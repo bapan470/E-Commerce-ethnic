@@ -1,0 +1,382 @@
+'use client';
+
+import { useState, useMemo, useEffect } from 'react';
+import { useParams } from 'next/navigation';
+import Link from 'next/link';
+import Image from 'next/image';
+import {
+  Star,
+  ShoppingBag,
+  Minus,
+  Plus,
+  Truck,
+  ShieldCheck,
+  RefreshCw,
+  ChevronRight,
+} from 'lucide-react';
+import { useProducts, useCart } from '@/lib/cart-context';
+import { fetchProductBySlug } from '@/lib/products-api';
+import { Product } from '@/lib/types';
+import { formatINR, discountPct } from '@/lib/format';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Skeleton } from '@/components/ui/skeleton';
+import ProductCard from '@/components/product-card';
+import { toast } from 'sonner';
+
+export default function ProductDetail() {
+  const params = useParams<{ slug: string }>();
+  const { getBySlug, products, loading } = useProducts();
+  const { addItem } = useCart();
+
+  const fromContext = useMemo(
+    () => getBySlug(params.slug),
+    [params.slug, getBySlug]
+  );
+
+  const [directProduct, setDirectProduct] = useState<Product | null>(null);
+  const [directLoading, setDirectLoading] = useState(false);
+  const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const [quantity, setQuantity] = useState(1);
+
+  useEffect(() => {
+    if (fromContext) return;
+    setDirectLoading(true);
+    fetchProductBySlug(params.slug)
+      .then((p) => setDirectProduct(p))
+      .catch(() => setDirectProduct(null))
+      .finally(() => setDirectLoading(false));
+  }, [fromContext, params.slug]);
+
+  const product = fromContext ?? directProduct;
+  const isLoading = loading || directLoading;
+
+  useEffect(() => {
+    if (product) setSelectedSize(product.sizes[0] ?? null);
+  }, [product]);
+
+  if (isLoading && !product) {
+    return (
+      <div className="container-boutique py-8">
+        <div className="grid gap-8 lg:grid-cols-2 lg:gap-12">
+          <Skeleton className="aspect-[4/5] rounded-xl" />
+          <div className="flex flex-col gap-4">
+            <Skeleton className="h-6 w-24" />
+            <Skeleton className="h-10 w-3/4" />
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-8 w-32" />
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!product) {
+    return (
+      <div className="container-boutique flex flex-col items-center gap-4 py-24 text-center">
+        <h1 className="font-serif text-2xl font-bold text-primary">Product not found</h1>
+        <p className="text-sm text-muted-foreground">
+          The product you are looking for does not exist or has been removed.
+        </p>
+        <Button asChild className="bg-primary">
+          <Link href="/shop">Back to Shop</Link>
+        </Button>
+      </div>
+    );
+  }
+
+  const related = products
+    .filter((p) => p.category === product.category && p.id !== product.id)
+    .slice(0, 4);
+
+  const discount = discountPct(product.price, product.mrp);
+
+  const handleAddToCart = () => {
+    if (!selectedSize) {
+      toast.error('Please select a size');
+      return;
+    }
+    addItem(product, selectedSize, quantity);
+    toast.success(`${product.name} added to cart`);
+  };
+
+  return (
+    <div className="container-boutique py-8">
+      <nav className="mb-6 flex items-center gap-1 text-xs text-muted-foreground" aria-label="Breadcrumb">
+        <Link href="/" className="hover:text-primary">Home</Link>
+        <ChevronRight className="h-3 w-3" />
+        <Link href="/shop" className="hover:text-primary">Shop</Link>
+        <ChevronRight className="h-3 w-3" />
+        <Link
+          href={`/shop?category=${encodeURIComponent(product.category)}`}
+          className="hover:text-primary"
+        >
+          {product.category}
+        </Link>
+        <ChevronRight className="h-3 w-3" />
+        <span className="text-foreground">{product.name}</span>
+      </nav>
+
+      <div className="grid gap-8 lg:grid-cols-2 lg:gap-12">
+        <ProductGallery images={product.images} alt={product.name} discount={discount} />
+        <ProductInfo
+          product={product}
+          selectedSize={selectedSize}
+          setSelectedSize={setSelectedSize}
+          quantity={quantity}
+          setQuantity={setQuantity}
+          onAdd={handleAddToCart}
+        />
+      </div>
+
+      <div className="mt-14">
+        <Tabs defaultValue="description">
+          <TabsList className="w-full justify-start">
+            <TabsTrigger value="description">Description</TabsTrigger>
+            <TabsTrigger value="details">Details</TabsTrigger>
+            <TabsTrigger value="shipping">Shipping & Returns</TabsTrigger>
+          </TabsList>
+          <TabsContent value="description" className="max-w-3xl text-sm leading-relaxed text-foreground/80">
+            <p>{product.description}</p>
+            <p className="mt-3">
+              Each piece is handcrafted by skilled artisans, carrying forward
+              centuries of weaving tradition. Subtle variations in motif and
+              colour are a hallmark of genuine handloom and make every piece
+              uniquely yours.
+            </p>
+          </TabsContent>
+          <TabsContent value="details" className="max-w-3xl text-sm">
+            <ul className="grid gap-2 sm:grid-cols-2">
+              <li><strong className="text-foreground">Fabric:</strong> {product.fabric}</li>
+              <li><strong className="text-foreground">Origin:</strong> {product.origin}</li>
+              <li><strong className="text-foreground">Category:</strong> {product.category}</li>
+              <li><strong className="text-foreground">Colors:</strong> {product.colors.join(', ')}</li>
+              <li><strong className="text-foreground">Sizes:</strong> {product.sizes.join(', ')}</li>
+              <li><strong className="text-foreground">Care:</strong> Dry clean only</li>
+              <li><strong className="text-foreground">In stock:</strong> {product.stock_quantity} units</li>
+            </ul>
+          </TabsContent>
+          <TabsContent value="shipping" className="max-w-3xl text-sm leading-relaxed text-foreground/80">
+            <p>Free shipping on all orders above Rs 2,000. Dispatched within 2-3 business days. 7-day easy returns on unworn items with original packaging.</p>
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      {related.length > 0 && (
+        <section className="mt-14">
+          <h2 className="mb-5 font-serif text-2xl font-bold text-primary">
+            You may also like
+          </h2>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+            {related.map((p) => (
+              <ProductCard key={p.id} product={p} />
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function ProductGallery({
+  images,
+  alt,
+  discount,
+}: {
+  images: string[];
+  alt: string;
+  discount: number;
+}) {
+  const [active, setActive] = useState(0);
+  const valid = images.length > 0 ? images : ['https://placehold.co/800x1000?text=No+Image'];
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="relative aspect-[4/5] overflow-hidden rounded-xl border border-border/60 bg-muted">
+        <Image
+          src={valid[active] || valid[0]}
+          alt={alt}
+          fill
+          priority
+          sizes="(max-width: 1024px) 100vw, 50vw"
+          className="object-cover"
+        />
+        {discount > 0 && (
+          <Badge className="absolute left-4 top-4 bg-secondary text-secondary-foreground">
+            {discount}% OFF
+          </Badge>
+        )}
+      </div>
+      {valid.length > 1 && (
+        <div className="flex gap-3">
+          {valid.map((img, idx) => (
+            <button
+              key={idx}
+              onClick={() => setActive(idx)}
+              className={`relative h-20 w-16 overflow-hidden rounded-md border-2 transition-colors ${
+                active === idx
+                  ? 'border-primary'
+                  : 'border-border hover:border-primary/40'
+              }`}
+              aria-label={`View ${alt} image ${idx + 1}`}
+            >
+              <Image
+                src={img}
+                alt={`${alt} - image ${idx + 1}`}
+                fill
+                sizes="64px"
+                className="object-cover"
+              />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProductInfo({
+  product,
+  selectedSize,
+  setSelectedSize,
+  quantity,
+  setQuantity,
+  onAdd,
+}: {
+  product: Product;
+  selectedSize: string | null;
+  setSelectedSize: (s: string) => void;
+  quantity: number;
+  setQuantity: (n: number | ((q: number) => number)) => void;
+  onAdd: () => void;
+}) {
+  const discount = discountPct(product.price, product.mrp);
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
+          {product.category}
+        </p>
+        <h1 className="mt-1 font-serif text-3xl font-bold text-primary sm:text-4xl">
+          {product.name}
+        </h1>
+        <div className="mt-2 flex items-center gap-2 text-sm">
+          <div className="flex items-center gap-0.5">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Star
+                key={i}
+                className={`h-4 w-4 ${
+                  i < Math.round(product.rating)
+                    ? 'fill-secondary text-secondary'
+                    : 'text-muted-foreground/40'
+                }`}
+              />
+            ))}
+          </div>
+          <span className="font-medium">{product.rating.toFixed(1)}</span>
+          <span className="text-muted-foreground">&middot;</span>
+          <span className="text-muted-foreground">{product.reviews} reviews</span>
+        </div>
+      </div>
+
+      <div className="flex items-baseline gap-3">
+        <span className="font-serif text-3xl font-bold text-primary">
+          {formatINR(product.price)}
+        </span>
+        {product.mrp && product.mrp > product.price && (
+          <>
+            <span className="text-base text-muted-foreground line-through">
+              {formatINR(product.mrp)}
+            </span>
+            <Badge className="bg-secondary/20 text-secondary-foreground">
+              Save {formatINR(product.mrp - product.price)}
+            </Badge>
+          </>
+        )}
+      </div>
+
+      <p className="text-sm leading-relaxed text-foreground/80">
+        {product.description}
+      </p>
+
+      <div className="grid grid-cols-2 gap-3 text-sm">
+        <div className="rounded-lg bg-muted/50 p-3">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground">Fabric</p>
+          <p className="mt-0.5 font-medium">{product.fabric}</p>
+        </div>
+        <div className="rounded-lg bg-muted/50 p-3">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground">Origin</p>
+          <p className="mt-0.5 font-medium">{product.origin}</p>
+        </div>
+      </div>
+
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-sm font-semibold">Select Size</p>
+          <button className="text-xs text-primary underline">Size guide</button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {product.sizes.map((s) => (
+            <button
+              key={s}
+              onClick={() => setSelectedSize(s)}
+              className={`min-w-[3rem] rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
+                selectedSize === s
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : 'border-border bg-background hover:border-primary/50'
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center rounded-md border border-border">
+          <button
+            onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+            className="p-3 text-muted-foreground hover:text-primary"
+            aria-label="Decrease quantity"
+          >
+            <Minus className="h-4 w-4" />
+          </button>
+          <span className="w-10 text-center text-sm font-semibold">{quantity}</span>
+          <button
+            onClick={() => setQuantity((q) => q + 1)}
+            className="p-3 text-muted-foreground hover:text-primary"
+            aria-label="Increase quantity"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        </div>
+        <Button
+          onClick={onAdd}
+          disabled={!product.inStock}
+          size="lg"
+          className="flex-1 gap-2 bg-primary text-base"
+        >
+          <ShoppingBag className="h-4 w-4" />
+          {product.inStock ? 'Add to Cart' : 'Out of Stock'}
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 rounded-lg border border-border/60 bg-card p-4 text-center">
+        {[
+          { icon: Truck, label: 'Free Shipping' },
+          { icon: ShieldCheck, label: 'Authentic' },
+          { icon: RefreshCw, label: '7-day Returns' },
+        ].map((a) => (
+          <div key={a.label} className="flex flex-col items-center gap-1">
+            <a.icon className="h-5 w-5 text-secondary" />
+            <span className="text-[11px] font-medium">{a.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

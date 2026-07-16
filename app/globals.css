@@ -1,0 +1,130 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Cream background */
+    --background: 40 38% 97%;
+    --foreground: 345 25% 14%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 345 25% 14%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 345 25% 14%;
+
+    /* Maroon primary */
+    --primary: 345 60% 28%;
+    --primary-foreground: 40 38% 97%;
+
+    /* Gold secondary */
+    --secondary: 43 70% 52%;
+    --secondary-foreground: 345 25% 14%;
+
+    --muted: 40 25% 93%;
+    --muted-foreground: 345 10% 40%;
+
+    /* Soft gold accent */
+    --accent: 43 60% 90%;
+    --accent-foreground: 345 60% 28%;
+
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 40 38% 97%;
+
+    --border: 40 25% 88%;
+    --input: 40 25% 88%;
+    --ring: 345 60% 28%;
+
+    --chart-1: 345 60% 28%;
+    --chart-2: 43 70% 52%;
+    --chart-3: 345 30% 50%;
+    --chart-4: 43 60% 70%;
+    --chart-5: 345 60% 45%;
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 345 30% 8%;
+    --foreground: 40 38% 95%;
+    --card: 345 30% 12%;
+    --card-foreground: 40 38% 95%;
+    --popover: 345 30% 12%;
+    --popover-foreground: 40 38% 95%;
+    --primary: 43 70% 52%;
+    --primary-foreground: 345 30% 10%;
+    --secondary: 345 40% 35%;
+    --secondary-foreground: 40 38% 95%;
+    --muted: 345 20% 18%;
+    --muted-foreground: 40 15% 70%;
+    --accent: 345 30% 20%;
+    --accent-foreground: 43 70% 52%;
+    --destructive: 0 62% 40%;
+    --destructive-foreground: 40 38% 95%;
+    --border: 345 20% 22%;
+    --input: 345 20% 22%;
+    --ring: 43 70% 52%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+  }
+  h1, h2, h3, h4, h5 {
+    @apply font-serif;
+    letter-spacing: -0.01em;
+  }
+}
+
+@layer components {
+  .container-boutique {
+    @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+  .product-card-hover {
+    @apply transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-xl;
+  }
+  .gold-divider {
+    @apply h-px w-full bg-gradient-to-r from-transparent via-secondary/60 to-transparent;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+  .shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.4),
+      transparent
+    );
+    animation: shimmer 1.5s infinite;
+  }
+  @keyframes shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+}
