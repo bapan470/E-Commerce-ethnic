@@ -19,7 +19,6 @@ const navLinks = [
   { href: '/shop?category=Lehenga', label: 'Lehenga' },
   { href: '/shop?category=Bridal', label: 'Bridal' },
   { href: '/shop?category=Kurti', label: 'Kurti' },
-  { href: '/admin', label: 'Admin' },
 ];
 
 export default function Header() {

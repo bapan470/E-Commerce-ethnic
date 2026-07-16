@@ -30,7 +30,7 @@ export default function Footer() {
           <ul className="mt-3 space-y-2 text-sm text-primary-foreground/80">
             <li><Link href="/cart" className="hover:text-secondary">Cart</Link></li>
             <li><Link href="/checkout" className="hover:text-secondary">Checkout</Link></li>
-            <li><Link href="/admin" className="hover:text-secondary">Admin</Link></li>
+            {/* Admin link intentionally omitted for security */}
             <li>Shipping & Returns</li>
           </ul>
         </div>
