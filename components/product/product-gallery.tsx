@@ -150,7 +150,7 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
           */}
           <div
             ref={stageRef}
-            className="group/stage relative overflow-hidden border border-border/60 bg-muted sm:rounded-xl"
+            className="group/stage relative border border-border/60 bg-muted sm:overflow-hidden sm:rounded-xl"
             onMouseEnter={() => setZooming(true)}
             onMouseLeave={() => setZooming(false)}
             onMouseMove={handleMouseMove}
@@ -164,6 +164,7 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
             >
               {valid.map((img, idx) => {
                 const isNear = Math.abs(idx - active) <= 1;
+                const isActive = idx === active;
                 return (
                   <div
                     key={idx}
@@ -174,16 +175,22 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
                         src={img}
                         alt={`${alt} - image ${idx + 1}`}
                         fill
+                        // Only the very first paint is `priority` (preloaded,
+                        // no lazy delay). Neighbours are fetched lazily and at
+                        // a much lower quality — they're pre-warming the cache
+                        // for a swipe that may not even happen, so they
+                        // shouldn't steal bandwidth from the image the user
+                        // is actually looking at right now.
                         priority={idx === 0}
                         loading={idx === 0 ? undefined : 'lazy'}
                         draggable={false}
                         sizes="(max-width: 1024px) 100vw, 50vw"
-                        quality={82}
+                        quality={isActive ? 82 : 35}
                         placeholder="blur"
                         blurDataURL={blurDataURL(32, 40)}
                         className={cn(
                           'select-none object-cover transition-opacity duration-300',
-                          idx === active && zooming ? 'sm:opacity-0' : 'opacity-100'
+                          isActive && zooming ? 'sm:opacity-0' : 'opacity-100'
                         )}
                       />
                     )}
@@ -345,14 +352,16 @@ function Lightbox({
         toggleZoom(e.touches[0].clientX, e.touches[0].clientY, rect);
       }
       lastTapRef.current = now;
-      if (scale > 1) {
-        dragRef.current = {
-          startX: e.touches[0].clientX,
-          startY: e.touches[0].clientY,
-          offX: offset.x,
-          offY: offset.y,
-        };
-      }
+      // Track the touch regardless of zoom level: when zoomed in this pans
+      // the image; when at 1x the same delta is used below to swipe to the
+      // next/previous photo, so a plain left/right finger drag now moves
+      // through the gallery instead of doing nothing.
+      dragRef.current = {
+        startX: e.touches[0].clientX,
+        startY: e.touches[0].clientY,
+        offX: offset.x,
+        offY: offset.y,
+      };
     }
   };
 
@@ -360,16 +369,34 @@ function Lightbox({
     if (e.touches.length === 2 && pinchRef.current) {
       const next = (distance(e.touches) / pinchRef.current.startDist) * pinchRef.current.startScale;
       setScale(Math.min(4, Math.max(1, next)));
-    } else if (e.touches.length === 1 && dragRef.current && scale > 1) {
+    } else if (e.touches.length === 1 && dragRef.current) {
       const dx = e.touches[0].clientX - dragRef.current.startX;
       const dy = e.touches[0].clientY - dragRef.current.startY;
-      setOffset({ x: dragRef.current.offX + dx, y: dragRef.current.offY + dy });
+      if (scale > 1) {
+        setOffset({ x: dragRef.current.offX + dx, y: dragRef.current.offY + dy });
+      } else {
+        // Not zoomed: follow the finger horizontally only, so the current
+        // image visibly slides with the swipe before we decide whether to
+        // commit to the next/previous photo on release.
+        setOffset({ x: dx, y: 0 });
+      }
     }
   };
 
-  const onTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+  const onTouchEnd = () => {
+    const wasSwiping = !!dragRef.current && scale <= 1;
+    const finalDx = offset.x;
     pinchRef.current = null;
     dragRef.current = null;
+    if (wasSwiping) {
+      if (finalDx <= -60) {
+        goTo(active + 1);
+      } else if (finalDx >= 60) {
+        goTo(active - 1);
+      } else {
+        setOffset({ x: 0, y: 0 });
+      }
+    }
     if (scale < 1.05) resetZoom();
   };
 

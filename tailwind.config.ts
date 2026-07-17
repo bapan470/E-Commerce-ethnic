@@ -2,6 +2,15 @@ import type { Config } from 'tailwindcss';
 
 const config: Config = {
   darkMode: ['class'],
+  future: {
+    // Touch devices don't have real ":hover" — without this flag, Tailwind's
+    // hover:/group-hover: styles still match on the first tap, so the tap
+    // just "previews" the hover state (quick-add button fading in, image
+    // swap, etc.) and a SECOND tap is needed to actually follow the link.
+    // Gating hover behind `@media (hover: hover)` makes the first tap act
+    // as a normal, immediate click everywhere in the app.
+    hoverOnlyWhenSupported: true,
+  },
   content: [
     './pages/**/*.{js,ts,jsx,tsx,mdx}',
     './components/**/*.{js,ts,jsx,tsx,mdx}',
