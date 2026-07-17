@@ -49,10 +49,10 @@ export default function VariantSwatches({
               className="group flex flex-col items-center gap-1.5"
             >
               <span
-                className={`relative block h-16 w-14 shrink-0 overflow-hidden rounded-md border-2 bg-muted transition-all group-hover:opacity-90 ${
+                className={`relative block h-16 w-14 shrink-0 overflow-hidden rounded-md border-2 bg-muted ${
                   isActive
                     ? 'border-primary ring-2 ring-primary/25 ring-offset-1'
-                    : 'border-border/70'
+                    : 'border-border/70 hover:border-primary/40'
                 }`}
               >
                 {thumb ? (
@@ -63,6 +63,7 @@ export default function VariantSwatches({
                     draggable={false}
                     onDragStart={(e) => e.preventDefault()}
                     sizes="56px"
+                    quality={60}
                     className="select-none object-cover"
                   />
                 ) : (
