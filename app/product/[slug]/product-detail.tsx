@@ -255,7 +255,8 @@ function ProductGallery({
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [lightboxZoomed, setLightboxZoomed] = useState(false);
-  const [lightboxZoomOrigin, setLightboxZoomOrigin] = useState('50% 50%');
+  const [lightboxZoomOrigin, setLightboxZoomOrigin] = useState({ x: 50, y: 50 });
+  const lightboxScrollRef = useRef<HTMLDivElement | null>(null);
   const mainRef = useRef<HTMLDivElement | null>(null);
   const thumbColRef = useRef<HTMLDivElement | null>(null);
   const valid = images.length > 0 ? images : ['https://placehold.co/800x1000?text=No+Image'];
@@ -308,10 +309,26 @@ function ProductGallery({
       const rect = e.currentTarget.getBoundingClientRect();
       const x = ((e.clientX - rect.left) / rect.width) * 100;
       const y = ((e.clientY - rect.top) / rect.height) * 100;
-      setLightboxZoomOrigin(`${x}% ${y}%`);
+      setLightboxZoomOrigin({ x, y });
     }
     setLightboxZoomed((z) => !z);
   };
+
+  // When zooming in, scroll the (now larger) image so the tapped point sits
+  // in view, then let the user pan around with a normal touch-drag scroll.
+  useEffect(() => {
+    const el = lightboxScrollRef.current;
+    if (!el) return;
+    if (lightboxZoomed) {
+      requestAnimationFrame(() => {
+        const left = el.scrollWidth * (lightboxZoomOrigin.x / 100) - el.clientWidth / 2;
+        const top = el.scrollHeight * (lightboxZoomOrigin.y / 100) - el.clientHeight / 2;
+        el.scrollTo({ left: Math.max(0, left), top: Math.max(0, top), behavior: 'auto' });
+      });
+    } else {
+      el.scrollTo({ left: 0, top: 0 });
+    }
+  }, [lightboxZoomed, lightboxZoomOrigin]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -334,7 +351,15 @@ function ProductGallery({
                   }`}
                   aria-label={`View ${alt} image ${idx + 1}`}
                 >
-                  <Image src={img} alt={`${alt} - image ${idx + 1}`} fill sizes="64px" className="object-cover" />
+                  <Image
+                    src={img}
+                    alt={`${alt} - image ${idx + 1}`}
+                    fill
+                    draggable={false}
+                    onDragStart={(e) => e.preventDefault()}
+                    sizes="64px"
+                    className="select-none object-cover"
+                  />
                 </button>
               ))}
             </div>
@@ -379,8 +404,10 @@ function ProductGallery({
                   alt={`${alt} - image ${idx + 1}`}
                   fill
                   priority={idx === 0}
+                  draggable={false}
+                  onDragStart={(e) => e.preventDefault()}
                   sizes="(max-width: 1024px) 100vw, 50vw"
-                  className={`object-cover transition-transform duration-200 ease-out cursor-zoom-in ${
+                  className={`select-none object-cover transition-transform duration-200 ease-out cursor-zoom-in ${
                     isZooming && active === idx ? 'scale-[2]' : 'scale-100'
                   }`}
                   style={active === idx ? zoomStyle : undefined}
@@ -421,19 +448,27 @@ function ProductGallery({
           </button>
           <div className="flex flex-1 items-center justify-center overflow-hidden p-4">
             <div
-              className="relative h-full w-full overflow-hidden"
-              onClick={handleLightboxImageClick}
+              ref={lightboxScrollRef}
+              className={`no-scrollbar relative h-full w-full ${
+                lightboxZoomed ? 'overflow-auto' : 'overflow-hidden'
+              }`}
             >
-              <Image
-                src={valid[lightboxIndex]}
-                alt={`${alt} - image ${lightboxIndex + 1}`}
-                fill
-                sizes="100vw"
-                className={`object-contain transition-transform duration-300 ease-out cursor-zoom-in ${
-                  lightboxZoomed ? 'scale-[2.2]' : 'scale-100'
+              <div
+                className={`relative transition-[width,height] duration-300 ease-out ${
+                  lightboxZoomed ? 'h-[220%] w-[220%]' : 'h-full w-full'
                 }`}
-                style={lightboxZoomed ? { transformOrigin: lightboxZoomOrigin } : undefined}
-              />
+                onClick={handleLightboxImageClick}
+              >
+                <Image
+                  src={valid[lightboxIndex]}
+                  alt={`${alt} - image ${lightboxIndex + 1}`}
+                  fill
+                  draggable={false}
+                  onDragStart={(e) => e.preventDefault()}
+                  sizes="100vw"
+                  className={`select-none object-contain ${lightboxZoomed ? 'cursor-zoom-out' : 'cursor-zoom-in'}`}
+                />
+              </div>
             </div>
           </div>
           {valid.length > 1 && (
@@ -450,7 +485,7 @@ function ProductGallery({
                   }`}
                   aria-label={`View ${alt} image ${idx + 1}`}
                 >
-                  <Image src={img} alt="" fill sizes="56px" className="object-cover" />
+                  <Image src={img} alt="" fill draggable={false} onDragStart={(e) => e.preventDefault()} sizes="56px" className="select-none object-cover" />
                 </button>
               ))}
             </div>

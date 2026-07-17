@@ -44,6 +44,7 @@ export default function VariantSwatches({
             <Link
               key={v.id}
               href={`/product/${v.slug}`}
+              replace
               title={v.color}
               aria-label={`View in ${v.color}`}
               className="group flex flex-col items-center gap-1.5"
