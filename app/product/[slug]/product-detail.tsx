@@ -178,8 +178,8 @@ export default function ProductDetail() {
         <span className="text-foreground">{product.name}</span>
       </nav>
 
-      <div className="grid gap-8 lg:grid-cols-2 lg:gap-12">
-        <div className="flex flex-col gap-4">
+      <div className="grid gap-8 lg:grid-cols-2 lg:gap-12 lg:items-start">
+        <div className="flex flex-col gap-4 lg:sticky lg:top-24 lg:self-start">
           <div className="-mx-4 sm:mx-0">
             <ProductGallery images={product.images} alt={product.name} discount={discount} />
           </div>
@@ -266,14 +266,24 @@ function ProductGallery({
   const [active, setActive] = useState(0);
   const [zoomStyle, setZoomStyle] = useState<{ transformOrigin: string } | undefined>(undefined);
   const [isZooming, setIsZooming] = useState(false);
+  // Only real mice/trackpads get the hover-zoom effect. Touch devices fire
+  // synthetic mouseenter/mousemove/mouseleave events on tap, which was
+  // toggling the scale(2) transform for a frame during swipes/taps — that's
+  // the "image hilta hai" (image shaking/jumping) bug on mobile.
+  const [canHover, setCanHover] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
-  const [lightboxZoomed, setLightboxZoomed] = useState(false);
-  const [lightboxZoomOrigin, setLightboxZoomOrigin] = useState({ x: 50, y: 50 });
-  const lightboxScrollRef = useRef<HTMLDivElement | null>(null);
   const mainRef = useRef<HTMLDivElement | null>(null);
   const thumbColRef = useRef<HTMLDivElement | null>(null);
   const valid = images.length > 0 ? images : ['https://placehold.co/800x1000?text=No+Image'];
+
+  useEffect(() => {
+    const mq = window.matchMedia('(hover: hover) and (pointer: fine)');
+    setCanHover(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setCanHover(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
 
   // A colour switch swaps `images` in place (no remount), so make sure the
   // gallery snaps back to the first shot of the new set instead of showing
@@ -302,7 +312,14 @@ function ProductGallery({
     thumbColRef.current?.scrollBy({ top: dir * 96, behavior: 'smooth' });
   };
 
+  const handleMouseEnter = () => {
+    if (canHover) setIsZooming(true);
+  };
+  const handleMouseLeave = () => {
+    if (canHover) setIsZooming(false);
+  };
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!canHover) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const x = ((e.clientX - rect.left) / rect.width) * 100;
     const y = ((e.clientY - rect.top) / rect.height) * 100;
@@ -314,7 +331,6 @@ function ProductGallery({
   const handleMainImageClick = () => {
     if (typeof window !== 'undefined' && window.innerWidth < 640) {
       setLightboxIndex(active);
-      setLightboxZoomed(false);
       setLightboxOpen(true);
     }
   };
@@ -326,32 +342,6 @@ function ProductGallery({
       document.body.style.overflow = '';
     };
   }, [lightboxOpen]);
-
-  const handleLightboxImageClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!lightboxZoomed) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const x = ((e.clientX - rect.left) / rect.width) * 100;
-      const y = ((e.clientY - rect.top) / rect.height) * 100;
-      setLightboxZoomOrigin({ x, y });
-    }
-    setLightboxZoomed((z) => !z);
-  };
-
-  // When zooming in, scroll the (now larger) image so the tapped point sits
-  // in view, then let the user pan around with a normal touch-drag scroll.
-  useEffect(() => {
-    const el = lightboxScrollRef.current;
-    if (!el) return;
-    if (lightboxZoomed) {
-      requestAnimationFrame(() => {
-        const left = el.scrollWidth * (lightboxZoomOrigin.x / 100) - el.clientWidth / 2;
-        const top = el.scrollHeight * (lightboxZoomOrigin.y / 100) - el.clientHeight / 2;
-        el.scrollTo({ left: Math.max(0, left), top: Math.max(0, top), behavior: 'auto' });
-      });
-    } else {
-      el.scrollTo({ left: 0, top: 0 });
-    }
-  }, [lightboxZoomed, lightboxZoomOrigin]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -418,8 +408,8 @@ function ProductGallery({
               <div
                 key={idx}
                 className="relative h-full w-full flex-none snap-center overflow-hidden"
-                onMouseEnter={() => setIsZooming(true)}
-                onMouseLeave={() => setIsZooming(false)}
+                onMouseEnter={handleMouseEnter}
+                onMouseLeave={handleMouseLeave}
                 onMouseMove={handleMouseMove}
               >
                 <Image
@@ -470,39 +460,18 @@ function ProductGallery({
             <X className="h-5 w-5" />
           </button>
           <div className="flex flex-1 items-center justify-center overflow-hidden p-4">
-            <div
-              ref={lightboxScrollRef}
-              className={`no-scrollbar relative h-full w-full ${
-                lightboxZoomed ? 'overflow-auto' : 'overflow-hidden'
-              }`}
-            >
-              <div
-                className={`relative transition-[width,height] duration-300 ease-out ${
-                  lightboxZoomed ? 'h-[220%] w-[220%]' : 'h-full w-full'
-                }`}
-                onClick={handleLightboxImageClick}
-              >
-                <Image
-                  src={valid[lightboxIndex]}
-                  alt={`${alt} - image ${lightboxIndex + 1}`}
-                  fill
-                  draggable={false}
-                  onDragStart={(e) => e.preventDefault()}
-                  sizes="100vw"
-                  className={`select-none object-contain ${lightboxZoomed ? 'cursor-zoom-out' : 'cursor-zoom-in'}`}
-                />
-              </div>
-            </div>
+            <PinchZoomImage
+              key={lightboxIndex}
+              src={valid[lightboxIndex]}
+              alt={`${alt} - image ${lightboxIndex + 1}`}
+            />
           </div>
           {valid.length > 1 && (
             <div className="no-scrollbar flex gap-2 overflow-x-auto border-t border-border/60 p-3">
               {valid.map((img, idx) => (
                 <button
                   key={idx}
-                  onClick={() => {
-                    setLightboxIndex(idx);
-                    setLightboxZoomed(false);
-                  }}
+                  onClick={() => setLightboxIndex(idx)}
                   className={`relative h-16 w-14 flex-none overflow-hidden rounded-md border-2 ${
                     lightboxIndex === idx ? 'border-primary' : 'border-border'
                   }`}
@@ -515,6 +484,175 @@ function ProductGallery({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// Full-screen zoom view: zooming happens directly via pinch (touch) or
+// scroll/wheel (trackpad/mouse) — no tap needed first. Once zoomed in you
+// can drag with one finger to pan around. Tapping just toggles a quick
+// zoom in/out as a convenience shortcut; it's never required.
+function PinchZoomImage({ src, alt }: { src: string; alt: string }) {
+  const areaRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(1);
+  const [translate, setTranslate] = useState({ x: 0, y: 0 });
+  const scaleRef = useRef(1);
+  const translateRef = useRef({ x: 0, y: 0 });
+  const pinchRef = useRef<{ startDist: number; startScale: number } | null>(null);
+  const panRef = useRef<{ startX: number; startY: number; startTx: number; startTy: number } | null>(null);
+  const tapRef = useRef<{ x: number; y: number; time: number; moved: boolean } | null>(null);
+
+  useEffect(() => {
+    scaleRef.current = scale;
+  }, [scale]);
+  useEffect(() => {
+    translateRef.current = translate;
+  }, [translate]);
+
+  const clampScale = (s: number) => Math.min(4, Math.max(1, s));
+
+  const clampTranslate = (t: { x: number; y: number }, s: number, el: HTMLDivElement) => {
+    const maxX = (el.clientWidth * (s - 1)) / 2;
+    const maxY = (el.clientHeight * (s - 1)) / 2;
+    return {
+      x: Math.min(maxX, Math.max(-maxX, t.x)),
+      y: Math.min(maxY, Math.max(-maxY, t.y)),
+    };
+  };
+
+  const resetZoom = () => {
+    setScale(1);
+    setTranslate({ x: 0, y: 0 });
+  };
+
+  // Attached as native (non-passive) listeners so preventDefault reliably
+  // stops the page/lightbox from scrolling while pinching or panning —
+  // React's onTouch* props are passive by default and can't block that.
+  useEffect(() => {
+    const el = areaRef.current;
+    if (!el) return;
+
+    const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        pinchRef.current = { startDist: dist(e.touches), startScale: scaleRef.current };
+        panRef.current = null;
+        tapRef.current = null;
+      } else if (e.touches.length === 1) {
+        const t = e.touches[0];
+        tapRef.current = { x: t.clientX, y: t.clientY, time: Date.now(), moved: false };
+        if (scaleRef.current > 1) {
+          panRef.current = {
+            startX: t.clientX,
+            startY: t.clientY,
+            startTx: translateRef.current.x,
+            startTy: translateRef.current.y,
+          };
+        }
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && pinchRef.current) {
+        e.preventDefault();
+        const ratio = dist(e.touches) / pinchRef.current.startDist;
+        const next = clampScale(pinchRef.current.startScale * ratio);
+        setScale(next);
+        setTranslate((t) => clampTranslate(t, next, el));
+      } else if (e.touches.length === 1 && panRef.current) {
+        const t = e.touches[0];
+        if (tapRef.current && Math.hypot(t.clientX - tapRef.current.x, t.clientY - tapRef.current.y) > 8) {
+          tapRef.current.moved = true;
+        }
+        if (scaleRef.current > 1) {
+          e.preventDefault();
+          const dx = t.clientX - panRef.current.startX;
+          const dy = t.clientY - panRef.current.startY;
+          setTranslate(
+            clampTranslate({ x: panRef.current.startTx + dx, y: panRef.current.startTy + dy }, scaleRef.current, el)
+          );
+        }
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) pinchRef.current = null;
+      if (e.touches.length === 0) {
+        panRef.current = null;
+        if (scaleRef.current < 1.05) resetZoom();
+        // A quick, still tap (not a pinch/drag) toggles zoom as a shortcut —
+        // scrolling/pinching is the primary way to zoom, this is optional.
+        const tap = tapRef.current;
+        if (tap && !tap.moved && Date.now() - tap.time < 300) {
+          if (scaleRef.current > 1) {
+            resetZoom();
+          } else {
+            const rect = el.getBoundingClientRect();
+            setScale(2.5);
+            setTranslate(
+              clampTranslate(
+                {
+                  x: (rect.width / 2 - (tap.x - rect.left)) * 1.5,
+                  y: (rect.height / 2 - (tap.y - rect.top)) * 1.5,
+                },
+                2.5,
+                el
+              )
+            );
+          }
+        }
+        tapRef.current = null;
+      }
+    };
+
+    // Trackpad pinch and mouse-wheel scroll both zoom directly — no tap
+    // needed. Trackpad pinch arrives as a wheel event with ctrlKey set.
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const next = clampScale(scaleRef.current - e.deltaY * 0.01);
+      setScale(next);
+      setTranslate((t) => clampTranslate(t, next, el));
+      if (next <= 1) setTranslate({ x: 0, y: 0 });
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('wheel', onWheel);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={areaRef}
+      className={`relative h-full w-full touch-none select-none overflow-hidden ${
+        scale > 1 ? 'cursor-grab' : ''
+      }`}
+    >
+      <div
+        className="relative h-full w-full"
+        style={{
+          transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})`,
+          transition: 'transform 0.08s linear',
+        }}
+      >
+        <Image
+          src={src}
+          alt={alt}
+          fill
+          draggable={false}
+          onDragStart={(e) => e.preventDefault()}
+          sizes="100vw"
+          priority
+          className="select-none object-contain"
+        />
+      </div>
     </div>
   );
 }

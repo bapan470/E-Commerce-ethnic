@@ -4,7 +4,11 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   images: {
-    unoptimized: true,
+    // Netlify's Next.js runtime supports the built-in Image Optimization API,
+    // so images get auto resized/compressed (WebP/AVIF) per device instead of
+    // shipping full-size originals. This was previously disabled, which was
+    // the main cause of slow image loading on mobile.
+    formats: ['image/avif', 'image/webp'],
     remotePatterns: [
       { protocol: 'https', hostname: 'images.pexels.com' },
       { protocol: 'https', hostname: 'images.unsplash.com' },
