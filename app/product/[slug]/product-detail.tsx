@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { useProducts, useCart } from '@/lib/cart-context';
 import { fetchProductBySlug } from '@/lib/products-api';
-import { fetchVariantBySlug, VariantWithSizes } from '@/lib/variants-api';
+import { fetchVariantBySlug, ProductVariant, VariantWithSizes } from '@/lib/variants-api';
 import { Product } from '@/lib/types';
 import { formatINR, discountPct } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -81,6 +81,20 @@ export default function ProductDetail() {
 
   const baseProduct = fromContext ?? directProduct;
   const isLoading = loading || directLoading;
+
+  // Switching colour never navigates — it just swaps state on the page
+  // that's already mounted, so nothing reloads or re-fetches the product.
+  // The thumbnail/price/colour change instantly using data we already have;
+  // sizes (needed for stock accuracy) fill in a moment later in the background.
+  const handleSelectVariant = (v: ProductVariant) => {
+    setVariant((prev) => ({ ...v, sizes: prev?.slug === v.slug ? prev.sizes : [] }));
+    window.history.replaceState(null, '', `/product/${v.slug}`);
+    fetchVariantBySlug(v.slug)
+      .then((res) => {
+        if (res) setVariant(res.variant);
+      })
+      .catch(() => {});
+  };
 
   // Merge variant overrides (colour, images, price) onto the base product
   // so the rest of the page can just render `product` as usual.
@@ -173,7 +187,7 @@ export default function ProductDetail() {
             <VariantSwatches
               productId={baseProduct.id}
               activeSlug={variant?.slug}
-              fallbackHref={`/product/${baseProduct.slug}`}
+              onSelect={handleSelectVariant}
             />
           </div>
         </div>
@@ -260,6 +274,15 @@ function ProductGallery({
   const mainRef = useRef<HTMLDivElement | null>(null);
   const thumbColRef = useRef<HTMLDivElement | null>(null);
   const valid = images.length > 0 ? images : ['https://placehold.co/800x1000?text=No+Image'];
+
+  // A colour switch swaps `images` in place (no remount), so make sure the
+  // gallery snaps back to the first shot of the new set instead of showing
+  // whatever index/scroll position was active for the previous colour.
+  useEffect(() => {
+    setActive(0);
+    mainRef.current?.scrollTo({ left: 0 });
+    setIsZooming(false);
+  }, [images]);
 
   // Keep the active index in sync while the user swipes/scrolls through the
   // main image strip (mobile) instead of only reacting to thumbnail taps.

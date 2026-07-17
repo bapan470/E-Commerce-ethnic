@@ -1,20 +1,19 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import Image from 'next/image';
 import { fetchVariantsForProduct, ProductVariant } from '@/lib/variants-api';
 
 export default function VariantSwatches({
   productId,
   activeSlug,
-  fallbackHref,
+  onSelect,
 }: {
   productId: string;
   /** Currently viewed variant slug, or undefined when on the base product page. */
   activeSlug?: string;
-  /** Link for the base/default product colour (the main product slug). */
-  fallbackHref: string;
+  /** Called with the clicked variant; the parent swaps images/price/sizes in place — no page navigation. */
+  onSelect: (variant: ProductVariant) => void;
 }) {
   const [variants, setVariants] = useState<ProductVariant[]>([]);
 
@@ -41,10 +40,10 @@ export default function VariantSwatches({
           const isActive = v.slug === activeSlug;
           const thumb = v.images[0];
           return (
-            <Link
+            <button
               key={v.id}
-              href={`/product/${v.slug}`}
-              replace
+              type="button"
+              onClick={() => onSelect(v)}
               title={v.color}
               aria-label={`View in ${v.color}`}
               className="group flex flex-col items-center gap-1.5"
@@ -61,8 +60,10 @@ export default function VariantSwatches({
                     src={thumb}
                     alt={v.color}
                     fill
+                    draggable={false}
+                    onDragStart={(e) => e.preventDefault()}
                     sizes="56px"
-                    className="object-cover"
+                    className="select-none object-cover"
                   />
                 ) : (
                   <span className="flex h-full w-full items-center justify-center text-[10px] font-semibold uppercase text-muted-foreground">
@@ -77,7 +78,7 @@ export default function VariantSwatches({
               >
                 {v.color}
               </span>
-            </Link>
+            </button>
           );
         })}
       </div>
