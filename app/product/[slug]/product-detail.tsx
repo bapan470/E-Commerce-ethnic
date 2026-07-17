@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
 import {
   Star,
   ShoppingBag,
@@ -13,9 +12,6 @@ import {
   ShieldCheck,
   RefreshCw,
   ChevronRight,
-  ChevronUp,
-  ChevronDown,
-  X,
 } from 'lucide-react';
 import { useProducts, useCart } from '@/lib/cart-context';
 import { fetchProductBySlug } from '@/lib/products-api';
@@ -30,6 +26,7 @@ import ProductCard from '@/components/product-card';
 import ReviewsSection from '@/components/product/reviews-section';
 import PincodeChecker from '@/components/product/pincode-checker';
 import VariantSwatches from '@/components/product/variant-swatches';
+import ProductGallery from '@/components/product/product-gallery';
 import { toast } from 'sonner';
 
 export default function ProductDetail() {
@@ -249,218 +246,6 @@ export default function ProductDetail() {
             ))}
           </div>
         </section>
-      )}
-    </div>
-  );
-}
-
-function ProductGallery({
-  images,
-  alt,
-  discount,
-}: {
-  images: string[];
-  alt: string;
-  discount: number;
-}) {
-  const [active, setActive] = useState(0);
-  const [lightboxOpen, setLightboxOpen] = useState(false);
-  const trackRef = useRef<HTMLDivElement | null>(null);
-  const thumbColRef = useRef<HTMLDivElement | null>(null);
-  const valid = images.length > 0 ? images : ['https://placehold.co/800x1000?text=No+Image'];
-
-  // Reset to the first image whenever the image set changes (e.g. colour swap).
-  useEffect(() => {
-    setActive(0);
-    trackRef.current?.scrollTo({ left: 0 });
-  }, [images]);
-
-  // Track which slide is active as the user swipes through the strip.
-  const handleScroll = () => {
-    const el = trackRef.current;
-    if (!el) return;
-    const idx = Math.round(el.scrollLeft / el.clientWidth);
-    if (idx !== active) setActive(idx);
-  };
-
-  const goTo = (idx: number) => {
-    setActive(idx);
-    trackRef.current?.scrollTo({ left: idx * (trackRef.current?.clientWidth ?? 0), behavior: 'smooth' });
-  };
-
-  const scrollThumbCol = (dir: 1 | -1) => {
-    thumbColRef.current?.scrollBy({ top: dir * 96, behavior: 'smooth' });
-  };
-
-  const openLightbox = () => {
-    if (typeof window !== 'undefined' && window.innerWidth < 640) {
-      setLightboxOpen(true);
-    }
-  };
-
-  useEffect(() => {
-    if (!lightboxOpen) return;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [lightboxOpen]);
-
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex gap-3">
-        {/* Desktop: vertical thumbnail rail on the left with up/down paging */}
-        {valid.length > 1 && (
-          <div className="relative hidden w-16 shrink-0 flex-col sm:flex">
-            <div
-              ref={thumbColRef}
-              className="no-scrollbar flex max-h-[500px] w-full flex-col gap-3 overflow-y-auto"
-            >
-              {valid.map((img, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => goTo(idx)}
-                  className={`relative aspect-square w-full shrink-0 overflow-hidden rounded-lg border transition-colors ${
-                    active === idx ? 'border-primary' : 'border-border/60 hover:border-primary/40'
-                  }`}
-                >
-                  <Image
-                    src={img}
-                    alt={`${alt} thumbnail ${idx + 1}`}
-                    fill
-                    draggable={false}
-                    sizes="64px"
-                    className="select-none object-cover"
-                  />
-                </button>
-              ))}
-            </div>
-            {valid.length > 5 && (
-              <div className="mt-2 flex justify-center gap-2">
-                <button
-                  type="button"
-                  aria-label="Scroll thumbnails up"
-                  onClick={() => scrollThumbCol(-1)}
-                  className="rounded-full border border-border p-1 text-muted-foreground hover:border-primary/40 hover:text-primary"
-                >
-                  <ChevronUp className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  aria-label="Scroll thumbnails down"
-                  onClick={() => scrollThumbCol(1)}
-                  className="rounded-full border border-border p-1 text-muted-foreground hover:border-primary/40 hover:text-primary"
-                >
-                  <ChevronDown className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="relative flex-1">
-          {/*
-            Mobile-scroll fix:
-            - touchAction: 'pan-x' tells the browser this element only owns
-              HORIZONTAL gestures. Any vertical component of a touch is left
-              alone and bubbles straight to the page, so swiping down over
-              the image scrolls the PAGE, not the picture.
-            - No manual touch/scroll JS here at all - it's 100% native
-              CSS scroll-snap, which is what makes it reliable across
-              iOS Safari and Android Chrome (custom JS touch handlers are
-              exactly what caused the old "image hilta hai" bug).
-          */}
-          <div
-            ref={trackRef}
-            onScroll={handleScroll}
-            onClick={openLightbox}
-            style={{ touchAction: 'pan-x' }}
-            className="no-scrollbar flex aspect-[4/5] snap-x snap-mandatory overflow-x-auto scroll-smooth border border-border/60 bg-muted sm:rounded-xl"
-          >
-            {valid.map((img, idx) => {
-              const isNear = Math.abs(idx - active) <= 1;
-              return (
-                <div
-                  key={idx}
-                  className="relative h-full w-full flex-none snap-center overflow-hidden bg-muted"
-                >
-                  {isNear && (
-                    <Image
-                      src={img}
-                      alt={`${alt} - image ${idx + 1}`}
-                      fill
-                      priority={idx === 0}
-                      loading={idx === 0 ? undefined : 'lazy'}
-                      draggable={false}
-                      sizes="(max-width: 1024px) 100vw, 50vw"
-                      className="select-none object-cover"
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          {discount > 0 && (
-            <Badge className="absolute left-4 top-4 bg-secondary text-secondary-foreground">
-              {discount}% OFF
-            </Badge>
-          )}
-          {/* Mobile: dots only, no thumbnail strip - tap the image to open the full-screen zoom view */}
-          {valid.length > 1 && (
-            <div className="pointer-events-none absolute inset-x-0 bottom-3 flex items-center justify-center gap-1.5 sm:hidden">
-              {valid.map((_, idx) => (
-                <span
-                  key={idx}
-                  className={`h-1.5 rounded-full transition-all ${
-                    active === idx ? 'w-4 bg-primary' : 'w-1.5 bg-white/80'
-                  }`}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Mobile full-screen lightbox: simple pinch-to-zoom image viewer */}
-      {lightboxOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-black sm:hidden">
-          <button
-            type="button"
-            onClick={() => setLightboxOpen(false)}
-            aria-label="Close"
-            className="absolute right-4 top-4 z-10 rounded-full bg-black/50 p-2 text-white"
-          >
-            <X className="h-5 w-5" />
-          </button>
-          <div className="relative flex-1">
-            <Image
-              src={valid[active]}
-              alt={`${alt} - full view`}
-              fill
-              draggable={false}
-              sizes="100vw"
-              priority
-              className="select-none object-contain"
-            />
-          </div>
-          {valid.length > 1 && (
-            <div className="no-scrollbar flex gap-2 overflow-x-auto border-t border-border/60 p-3">
-              {valid.map((img, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => setActive(idx)}
-                  className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-md border-2 ${
-                    active === idx ? 'border-primary' : 'border-transparent'
-                  }`}
-                >
-                  <Image src={img} alt="" fill draggable={false} sizes="56px" className="select-none object-cover" />
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
       )}
     </div>
   );

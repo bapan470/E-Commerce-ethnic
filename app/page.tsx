@@ -172,8 +172,8 @@ export default function Home() {
               ? Array.from({ length: 8 }).map((_, i) => (
                   <Skeleton key={i} className="aspect-[4/5] rounded-lg" />
                 ))
-              : featured.map((p) => (
-                  <ProductCard key={p.id} product={p} />
+              : featured.map((p, idx) => (
+                  <ProductCard key={p.id} product={p} priority={idx < 4} />
                 ))}
           </div>
         </div>

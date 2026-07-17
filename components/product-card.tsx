@@ -9,9 +9,18 @@ import { useCart } from '@/lib/cart-context';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import WishlistButton from '@/components/wishlist-button';
+import { blurDataURL } from '@/lib/utils';
 import { toast } from 'sonner';
 
-export default function ProductCard({ product }: { product: Product }) {
+export default function ProductCard({
+  product,
+  priority = false,
+}: {
+  product: Product;
+  /** Set true for cards in the first visible row so their image gets
+   *  preloaded instead of lazy-loaded — improves LCP on the shop/home grid. */
+  priority?: boolean;
+}) {
   const { addItem } = useCart();
 
   const quickAdd = (e: React.MouseEvent) => {
@@ -24,6 +33,7 @@ export default function ProductCard({ product }: { product: Product }) {
 
   const discount = discountPct(product.price, product.mrp);
   const img = product.images[0] || 'https://placehold.co/800x1000?text=No+Image';
+  const hoverImg = product.images[1];
   const altText = `${product.name} - ${product.fabric} ${product.category} from ${product.origin}`;
 
   return (
@@ -37,8 +47,30 @@ export default function ProductCard({ product }: { product: Product }) {
           alt={altText}
           fill
           sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-          className="object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+          quality={78}
+          priority={priority}
+          loading={priority ? undefined : 'lazy'}
+          placeholder="blur"
+          blurDataURL={blurDataURL(32, 40)}
+          className={`object-cover transition-opacity duration-300 ease-out ${
+            hoverImg ? 'group-hover:opacity-0' : 'group-hover:scale-105 transition-transform duration-500'
+          }`}
         />
+        {/* Shopify-style hover swap: shows the second product photo on hover
+            instead of a plain zoom, giving a peek at another angle without
+            an extra click. Falls back to a simple scale zoom if there's
+            only one image. Lazy — only loads once the card is in view. */}
+        {hoverImg && (
+          <Image
+            src={hoverImg}
+            alt={`${altText} - alternate view`}
+            fill
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+            quality={70}
+            loading="lazy"
+            className="absolute inset-0 object-cover opacity-0 transition-opacity duration-300 ease-out group-hover:opacity-100"
+          />
+        )}
         {discount > 0 && (
           <Badge className="absolute left-3 top-3 bg-secondary text-secondary-foreground shadow-sm">
             {discount}% OFF
