@@ -6,13 +6,15 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://saaj.example';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const supabase = getServerSupabase();
-  const [productsRes, categoriesRes] = await Promise.all([
+  const [productsRes, categoriesRes, variantsRes] = await Promise.all([
     supabase.from('products').select('slug, updated_at'),
     supabase.from('categories').select('slug, name'),
+    supabase.from('product_variants').select('slug, created_at'),
   ]);
 
   const products = (productsRes.data ?? []) as Pick<ProductRow, 'slug' | 'updated_at'>[];
   const categories = (categoriesRes.data ?? []) as Pick<CategoryRow, 'slug' | 'name'>[];
+  const variants = (variantsRes.data ?? []) as { slug: string; created_at: string }[];
 
   const staticPages: MetadataRoute.Sitemap = [
     {
@@ -61,5 +63,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.8,
   }));
 
-  return [...staticPages, ...categoryPages, ...productPages];
+  const variantPages: MetadataRoute.Sitemap = variants.map((v) => ({
+    url: `${SITE_URL}/product/${v.slug}`,
+    lastModified: v.created_at ? new Date(v.created_at) : new Date(),
+    changeFrequency: 'weekly' as const,
+    priority: 0.6,
+  }));
+
+  return [...staticPages, ...categoryPages, ...productPages, ...variantPages];
 }

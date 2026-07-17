@@ -1,11 +1,13 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { useState, FormEvent } from 'react';
+import { useState, useMemo, useRef, useEffect, FormEvent } from 'react';
 import { Search, ShoppingBag, Menu, User, Heart } from 'lucide-react';
-import { useCart } from '@/lib/cart-context';
+import { useCart, useProducts } from '@/lib/cart-context';
 import { useAuth } from '@/lib/auth-context';
+import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -24,17 +26,51 @@ const navLinks = [
 
 export default function Header() {
   const { count, setCartOpen } = useCart();
+  const { products } = useProducts();
   const { user } = useAuth();
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const searchWrapRef = useRef<HTMLDivElement>(null);
+
+  const suggestions = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return products
+      .filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          p.category.toLowerCase().includes(q) ||
+          p.fabric.toLowerCase().includes(q)
+      )
+      .slice(0, 5);
+  }, [query, products]);
+
+  useEffect(() => {
+    const onClickOutside = (e: MouseEvent) => {
+      if (searchWrapRef.current && !searchWrapRef.current.contains(e.target as Node)) {
+        setSuggestOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, []);
 
   const onSearch = (e: FormEvent) => {
     e.preventDefault();
     if (query.trim()) {
       router.push(`/shop?q=${encodeURIComponent(query.trim())}`);
       setMobileOpen(false);
+      setSuggestOpen(false);
     }
+  };
+
+  const goToProduct = (slug: string) => {
+    router.push(`/product/${slug}`);
+    setQuery('');
+    setSuggestOpen(false);
+    setMobileOpen(false);
   };
 
   return (
@@ -103,17 +139,51 @@ export default function Header() {
           ))}
         </nav>
 
-        <form onSubmit={onSearch} className="hidden flex-1 max-w-xs items-center md:flex">
-          <div className="relative w-full">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search sarees, lehenga, kurti..."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="border-border/60 bg-muted/40 pl-9"
-            />
-          </div>
-        </form>
+        <div ref={searchWrapRef} className="relative hidden flex-1 max-w-xs md:block">
+          <form onSubmit={onSearch} className="flex items-center">
+            <div className="relative w-full">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search sarees, lehenga, kurti..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onFocus={() => setSuggestOpen(true)}
+                className="border-border/60 bg-muted/40 pl-9"
+              />
+            </div>
+          </form>
+
+          {suggestOpen && suggestions.length > 0 && (
+            <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-lg border border-border/60 bg-background shadow-lg">
+              {suggestions.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => goToProduct(p.slug)}
+                  className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-muted/60"
+                >
+                  <div className="relative h-11 w-9 shrink-0 overflow-hidden rounded bg-muted">
+                    {p.images[0] && (
+                      <Image src={p.images[0]} alt={p.name} fill sizes="36px" className="object-cover" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{p.name}</p>
+                    <p className="text-xs text-muted-foreground">{p.category}</p>
+                  </div>
+                  <span className="shrink-0 text-sm font-semibold text-primary">
+                    {formatINR(p.price)}
+                  </span>
+                </button>
+              ))}
+              <button
+                onClick={onSearch as any}
+                className="w-full border-t border-border/60 px-3 py-2 text-center text-xs font-medium text-primary hover:bg-muted/60"
+              >
+                See all results for &quot;{query}&quot;
+              </button>
+            </div>
+          )}
+        </div>
 
         <div className="flex items-center gap-1">
           <Button variant="ghost" size="icon" asChild className="hidden sm:inline-flex" aria-label="Wishlist">

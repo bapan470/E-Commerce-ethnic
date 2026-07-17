@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useProducts, useCart } from '@/lib/cart-context';
 import { fetchProductBySlug } from '@/lib/products-api';
+import { fetchVariantBySlug, VariantWithSizes } from '@/lib/variants-api';
 import { Product } from '@/lib/types';
 import { formatINR, discountPct } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -23,6 +24,9 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import ProductCard from '@/components/product-card';
+import ReviewsSection from '@/components/product/reviews-section';
+import PincodeChecker from '@/components/product/pincode-checker';
+import VariantSwatches from '@/components/product/variant-swatches';
 import { toast } from 'sonner';
 
 export default function ProductDetail() {
@@ -37,20 +41,57 @@ export default function ProductDetail() {
 
   const [directProduct, setDirectProduct] = useState<Product | null>(null);
   const [directLoading, setDirectLoading] = useState(false);
+  const [variant, setVariant] = useState<VariantWithSizes | null>(null);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
 
+  // The URL slug might belong either to a base product or to one of its
+  // colour variants (independent SEO pages). Try the product table first;
+  // if nothing matches, fall back to a variant lookup.
   useEffect(() => {
-    if (fromContext) return;
+    if (fromContext) {
+      setVariant(null);
+      return;
+    }
+    let cancelled = false;
     setDirectLoading(true);
     fetchProductBySlug(params.slug)
-      .then((p) => setDirectProduct(p))
+      .then((p) => {
+        if (cancelled) return;
+        if (p) {
+          setDirectProduct(p);
+          setVariant(null);
+          return;
+        }
+        return fetchVariantBySlug(params.slug).then((res) => {
+          if (cancelled || !res) return;
+          setDirectProduct(res.product);
+          setVariant(res.variant);
+        });
+      })
       .catch(() => setDirectProduct(null))
-      .finally(() => setDirectLoading(false));
+      .finally(() => !cancelled && setDirectLoading(false));
+    return () => {
+      cancelled = true;
+    };
   }, [fromContext, params.slug]);
 
-  const product = fromContext ?? directProduct;
+  const baseProduct = fromContext ?? directProduct;
   const isLoading = loading || directLoading;
+
+  // Merge variant overrides (colour, images, price) onto the base product
+  // so the rest of the page can just render `product` as usual.
+  const product = useMemo(() => {
+    if (!baseProduct) return null;
+    if (!variant) return baseProduct;
+    return {
+      ...baseProduct,
+      price: variant.price_override ?? baseProduct.price,
+      images: variant.images.length > 0 ? variant.images : baseProduct.images,
+      colors: [variant.color],
+      sizes: variant.sizes.length > 0 ? variant.sizes.map((s) => s.size) : baseProduct.sizes,
+    };
+  }, [baseProduct, variant]);
 
   useEffect(() => {
     if (product) setSelectedSize(product.sizes[0] ?? null);
@@ -74,7 +115,7 @@ export default function ProductDetail() {
     );
   }
 
-  if (!product) {
+  if (!product || !baseProduct) {
     return (
       <div className="container-boutique flex flex-col items-center gap-4 py-24 text-center">
         <h1 className="font-serif text-2xl font-bold text-primary">Product not found</h1>
@@ -124,6 +165,9 @@ export default function ProductDetail() {
         <ProductGallery images={product.images} alt={product.name} discount={discount} />
         <ProductInfo
           product={product}
+          baseProductId={baseProduct.id}
+          activeVariantSlug={variant?.slug}
+          baseProductSlug={baseProduct.slug}
           selectedSize={selectedSize}
           setSelectedSize={setSelectedSize}
           quantity={quantity}
@@ -138,6 +182,7 @@ export default function ProductDetail() {
             <TabsTrigger value="description">Description</TabsTrigger>
             <TabsTrigger value="details">Details</TabsTrigger>
             <TabsTrigger value="shipping">Shipping & Returns</TabsTrigger>
+            <TabsTrigger value="reviews">Reviews ({product.reviews})</TabsTrigger>
           </TabsList>
           <TabsContent value="description" className="max-w-3xl text-sm leading-relaxed text-foreground/80">
             <p>{product.description}</p>
@@ -161,6 +206,9 @@ export default function ProductDetail() {
           </TabsContent>
           <TabsContent value="shipping" className="max-w-3xl text-sm leading-relaxed text-foreground/80">
             <p>Free shipping on all orders above Rs 2,000. Dispatched within 2-3 business days. 7-day easy returns on unworn items with original packaging.</p>
+          </TabsContent>
+          <TabsContent value="reviews">
+            <ReviewsSection productId={baseProduct.id} productSlug={baseProduct.slug} />
           </TabsContent>
         </Tabs>
       </div>
@@ -240,6 +288,9 @@ function ProductGallery({
 
 function ProductInfo({
   product,
+  baseProductId,
+  activeVariantSlug,
+  baseProductSlug,
   selectedSize,
   setSelectedSize,
   quantity,
@@ -247,6 +298,9 @@ function ProductInfo({
   onAdd,
 }: {
   product: Product;
+  baseProductId: string;
+  activeVariantSlug?: string;
+  baseProductSlug: string;
   selectedSize: string | null;
   setSelectedSize: (s: string) => void;
   quantity: number;
@@ -314,6 +368,12 @@ function ProductInfo({
         </div>
       </div>
 
+      <VariantSwatches
+        productId={baseProductId}
+        activeSlug={activeVariantSlug}
+        fallbackHref={`/product/${baseProductSlug}`}
+      />
+
       <div>
         <div className="mb-2 flex items-center justify-between">
           <p className="text-sm font-semibold">Select Size</p>
@@ -364,6 +424,8 @@ function ProductInfo({
           {product.inStock ? 'Add to Cart' : 'Out of Stock'}
         </Button>
       </div>
+
+      <PincodeChecker />
 
       <div className="grid grid-cols-3 gap-3 rounded-lg border border-border/60 bg-card p-4 text-center">
         {[

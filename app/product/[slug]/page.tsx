@@ -1,15 +1,32 @@
 import { Metadata } from 'next';
 import { fetchProductBySlugServer } from '@/lib/products-api-server';
+import { fetchVariantBySlug, VariantWithSizes } from '@/lib/variants-api';
 import ProductDetail from './product-detail';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://saaj.example';
 
 type Params = { params: { slug: string } };
 
-export async function generateMetadata({ params }: Params): Promise<Metadata> {
-  const product = await fetchProductBySlugServer(params.slug);
+/**
+ * Resolves either a base product slug or an independent colour-variant
+ * slug, returning enough info to build variant-specific SEO metadata.
+ * Each variant gets its own title/description/canonical/OG image so it
+ * can rank independently in search (e.g. "Red Banarasi Silk Saree" vs
+ * "Blue Banarasi Silk Saree" as two distinct indexable pages).
+ */
+async function resolveSeoTarget(slug: string) {
+  const product = await fetchProductBySlugServer(slug);
+  if (product) return { product, variant: null as VariantWithSizes | null };
 
-  if (!product) {
+  const variantResult = await fetchVariantBySlug(slug, true);
+  if (!variantResult) return null;
+  return { product: variantResult.product, variant: variantResult.variant };
+}
+
+export async function generateMetadata({ params }: Params): Promise<Metadata> {
+  const resolved = await resolveSeoTarget(params.slug);
+
+  if (!resolved) {
     return {
       title: 'Product not found | Saaj Boutique',
       description: 'The product you are looking for does not exist.',
@@ -17,10 +34,17 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     };
   }
 
-  const title = `${product.name} | Saaj Boutique`;
-  const description = product.description || `Buy ${product.name} - ${product.fabric} from ${product.origin}. Handwoven ethnic wear from Saaj Boutique.`;
-  const url = `${SITE_URL}/product/${product.slug}`;
-  const image = product.images[0] || 'https://images.pexels.com/photos/1191349/pexels-photo-1191349.jpeg?auto=compress&cs=tinysrgb&w=1200&h=630&fit=crop';
+  const { product, variant } = resolved;
+  const displayName = variant ? `${product.name} - ${variant.color}` : product.name;
+
+  const title = variant?.meta_title || `${displayName} | Saaj Boutique`;
+  const description =
+    variant?.meta_description ||
+    product.description ||
+    `Buy ${displayName} - ${product.fabric} from ${product.origin}. Handwoven ethnic wear from Saaj Boutique.`;
+  const url = `${SITE_URL}/product/${params.slug}`;
+  const images = variant?.images.length ? variant.images : product.images;
+  const image = images[0] || 'https://images.pexels.com/photos/1191349/pexels-photo-1191349.jpeg?auto=compress&cs=tinysrgb&w=1200&h=630&fit=crop';
 
   return {
     title,
@@ -38,7 +62,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
           url: image,
           width: 1200,
           height: 630,
-          alt: product.name,
+          alt: displayName,
         },
       ],
       type: 'website',
@@ -62,27 +86,35 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 }
 
 export default async function ProductPage({ params }: Params) {
-  const product = await fetchProductBySlugServer(params.slug);
+  const resolved = await resolveSeoTarget(params.slug);
+  const product = resolved?.product ?? null;
+  const variant = resolved?.variant ?? null;
 
   const jsonLd = product
     ? {
         '@context': 'https://schema.org',
         '@type': 'Product',
-        name: product.name,
+        name: variant ? `${product.name} - ${variant.color}` : product.name,
         description: product.description,
-        slug: product.slug,
+        slug: params.slug,
         category: product.category,
-        image: product.images.length > 0 ? product.images : undefined,
-        sku: product.id,
+        color: variant?.color || product.colors[0] || undefined,
+        image:
+          (variant?.images.length ? variant.images : product.images).length > 0
+            ? variant?.images.length
+              ? variant.images
+              : product.images
+            : undefined,
+        sku: variant?.id || product.id,
         brand: {
           '@type': 'Brand',
           name: 'Saaj Boutique',
         },
         offers: {
           '@type': 'Offer',
-          url: `${SITE_URL}/product/${product.slug}`,
+          url: `${SITE_URL}/product/${params.slug}`,
           priceCurrency: 'INR',
-          price: product.price,
+          price: variant?.price_override ?? product.price,
           availability: product.inStock
             ? 'https://schema.org/InStock'
             : 'https://schema.org/OutOfStock',
