@@ -32,21 +32,51 @@ data delete/change nahi hota, safe hai.
 
 (`returns` aur `abandoned_carts` tables already tumhare DB mein hain — unhe dobara banane ki zarurat nahi.)
 
-## 3. Environment variables (.env aur Vercel Project Settings dono mein add karo)
+## 3. Email provider — ab admin panel se hi configure hota hai
+Ab tumhe env variables mein `RESEND_API_KEY` waghera daalne ki zarurat **nahi hai**. Admin panel
+kholo → **Settings** tab → sabse neeche **"Email Notifications"** section:
 
+1. **Provider** dropdown mein "Zoho ZeptoMail" select karo.
+2. **ZeptoMail account region** — apne Zoho dashboard ka URL check karo: agar `zoho.in` hai to
+   "India" select karo, agar `zoho.com` hai to "Global".
+3. **ZeptoMail API token** — Zoho Mail Admin → ZeptoMail → Mail Agents → apna agent kholo →
+   API tokens se "Send Mail" token copy karo, poora paste karo (agar `Zoho-enczapikey ` prefix
+   ke saath dikhaya gaya hai to woh bhi saath rakho).
+4. **From name / From email address** — jis domain se email bhejna hai, woh pehle Zoho
+   ZeptoMail mein verify karna hoga (SPF/DKIM records) warna emails spam mein jayenge ya bounce
+   ho jayenge.
+5. "Save Email Settings" click karo.
+6. Neeche apna email daal ke **"Send test email"** button se turant verify kar lo ki setup
+   sahi hai.
+
+Baad mein kabhi Resend pe switch karna ho to bas dropdown se "Resend" select karke uski API key
+daal dena — koi redeploy nahi chahiye.
+
+### ⚠️ Security note (zaroor padhna)
+Yeh app abhi Supabase ki bahut open RLS policies pe chal raha hai — matlab `settings` table
+(jahan yeh API key store hoti hai) tumhare Supabase project ke anon/public key se **koi bhi**
+seedhe query karke padh sakta hai, sirf admin panel se hi nahi. Yeh poore project ka existing
+design hai (orders, products, sab kuch waise hi khula hai) — Delhivery ka token isiliye already
+`.env` mein rakha gaya tha, is table mein nahi.
+
+Do options hain:
+- **Aasan (abhi ke liye theek hai):** Jaisa upar bataya, admin panel se hi save karo. Chhoti
+  shop ke liye practically low-risk hai, lekin API key thoda expose rehta hai.
+- **Zyada secure:** Supabase → SQL Editor mein `settings` table ki RLS policy tighten karo taaki
+  sirf `key != 'email_provider'` wale rows anon ko dikhein, aur server-side ek Supabase
+  **service_role** key (jo RLS bypass karti hai) env var mein daal ke use karo email settings
+  padhne ke liye. If yeh chahiye to bata dena, main woh migration + code change bhi bana dunga.
+
+### Still-needed env vars (email provider ke alawa)
+Add these in `.env` (local) and Vercel → Settings → Environment Variables:
 ```
-RESEND_API_KEY=your_resend_api_key
-EMAIL_FROM=Saaj Boutique <onboarding@resend.dev>
 CRON_SECRET=koi_bhi_random_secret_string
 NEXT_PUBLIC_SITE_URL=https://your-vercel-domain.vercel.app
 ```
-
-- `RESEND_API_KEY` — https://resend.com pe free account bana ke API key lo.
-- `EMAIL_FROM` — jab tak apna domain verify nahi karte, `onboarding@resend.dev` use karo — lekin
-  ismein sirf woh email address pe deliver hoga jisse tumne Resend account banaya hai. Real customers
-  ko bhejne ke liye apna domain Resend mein verify karna padega.
 - `CRON_SECRET` — koi bhi random string; Vercel Cron isse automatically header mein bhejta hai.
 - `NEXT_PUBLIC_SITE_URL` — cart recovery email ke "Complete your purchase" button ke link ke liye.
+
+
 
 ## 4. Vercel Cron — Hobby/Free plan
 Tum Hobby (free) plan pe ho, jahan cron sirf **din mein ek baar** chal sakta hai. Isliye

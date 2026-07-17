@@ -2,7 +2,7 @@
 
 import { useEffect, useState, FormEvent } from 'react';
 import { Save } from 'lucide-react';
-import { StoreInfo, fetchStoreInfo, saveStoreInfo } from '@/lib/settings-api';
+import { StoreInfo, fetchStoreInfo, saveStoreInfo, EmailSettings, fetchEmailSettings, saveEmailSettings } from '@/lib/settings-api';
 import {
   ShippingSettings,
   fetchShippingSettings,
@@ -30,6 +30,11 @@ export default function SettingsPanel() {
   const [delhiveryForm, setDelhiveryForm] = useState<DelhiverySettings | null>(null);
   const [savingDelhivery, setSavingDelhivery] = useState(false);
 
+  const [emailForm, setEmailForm] = useState<EmailSettings | null>(null);
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [testEmailTo, setTestEmailTo] = useState('');
+  const [sendingTest, setSendingTest] = useState(false);
+
   useEffect(() => {
     fetchStoreInfo()
       .then(setForm)
@@ -43,6 +48,10 @@ export default function SettingsPanel() {
     fetchDelhiverySettings()
       .then(setDelhiveryForm)
       .catch(() => toast.error('Failed to load Delhivery settings'));
+
+    fetchEmailSettings()
+      .then(setEmailForm)
+      .catch(() => toast.error('Failed to load email settings'));
   }, []);
 
   const onSubmit = async (e: FormEvent) => {
@@ -84,6 +93,45 @@ export default function SettingsPanel() {
       toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSavingDelhivery(false);
+    }
+  };
+
+  const onSubmitEmail = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!emailForm) return;
+    setSavingEmail(true);
+    try {
+      await saveEmailSettings(emailForm);
+      toast.success('Email settings saved');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSavingEmail(false);
+    }
+  };
+
+  const onSendTestEmail = async () => {
+    if (!testEmailTo.trim()) {
+      toast.error('Enter an email address to send the test to');
+      return;
+    }
+    setSendingTest(true);
+    try {
+      const res = await fetch('/api/admin/settings/test-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: testEmailTo.trim() }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast.success('Test email sent — check the inbox (and spam folder)');
+      } else {
+        toast.error(body.error || 'Failed to send test email');
+      }
+    } catch {
+      toast.error('Failed to send test email');
+    } finally {
+      setSendingTest(false);
     }
   };
 
@@ -363,6 +411,119 @@ export default function SettingsPanel() {
             <Save className="mr-1.5 h-4 w-4" />{' '}
             {savingDelhivery ? 'Saving…' : 'Save Delhivery Settings'}
           </Button>
+        </form>
+      )}
+
+      <div className="mt-8">
+        <h2 className="font-serif text-2xl font-bold text-primary">Email Notifications</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Powers order confirmation, shipping, return-status, and abandoned-cart recovery emails.
+        </p>
+      </div>
+
+      {!emailForm ? (
+        <p className="py-4 text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <form
+          onSubmit={onSubmitEmail}
+          className="mt-4 grid max-w-xl gap-4 rounded-lg border border-border/60 bg-card p-5"
+        >
+          <div className="grid gap-1.5">
+            <Label htmlFor="email-provider">Provider</Label>
+            <select
+              id="email-provider"
+              value={emailForm.provider}
+              onChange={(e) =>
+                setEmailForm((f) => f && { ...f, provider: e.target.value as EmailSettings['provider'] })
+              }
+              className="rounded border px-3 py-2 text-sm"
+            >
+              <option value="">Not configured</option>
+              <option value="resend">Resend</option>
+              <option value="zeptomail">Zoho ZeptoMail</option>
+            </select>
+          </div>
+
+          {emailForm.provider === 'zeptomail' && (
+            <div className="grid gap-1.5">
+              <Label htmlFor="zeptomail-region">ZeptoMail account region</Label>
+              <select
+                id="zeptomail-region"
+                value={emailForm.zeptomail_region}
+                onChange={(e) =>
+                  setEmailForm((f) => f && { ...f, zeptomail_region: e.target.value as 'in' | 'com' })
+                }
+                className="rounded border px-3 py-2 text-sm"
+              >
+                <option value="in">India (zeptomail.in)</option>
+                <option value="com">Global (zeptomail.com)</option>
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Check your ZeptoMail dashboard URL — zoho.in accounts use the India API, zoho.com uses Global.
+              </p>
+            </div>
+          )}
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="email-api-key">
+              {emailForm.provider === 'zeptomail' ? 'ZeptoMail API token (Send Mail token)' : 'Resend API key'}
+            </Label>
+            <Input
+              id="email-api-key"
+              type="password"
+              value={emailForm.api_key}
+              onChange={(e) => setEmailForm((f) => f && { ...f, api_key: e.target.value })}
+              placeholder={emailForm.provider === 'zeptomail' ? 'Zoho-enczapikey PHtE6r1a...' : 're_xxxxxxxxxxxx'}
+            />
+            <p className="text-xs text-muted-foreground">
+              {emailForm.provider === 'zeptomail'
+                ? 'Zoho Mail Admin → ZeptoMail → Mail Agents → your agent → API tokens. Paste the whole token, including the "Zoho-enczapikey " prefix if shown.'
+                : 'From resend.com/api-keys.'}
+            </p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-1.5">
+              <Label htmlFor="email-sender-name">From name</Label>
+              <Input
+                id="email-sender-name"
+                value={emailForm.sender_name}
+                onChange={(e) => setEmailForm((f) => f && { ...f, sender_name: e.target.value })}
+                placeholder="Saaj Boutique"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="email-sender-address">From email address</Label>
+              <Input
+                id="email-sender-address"
+                type="email"
+                value={emailForm.sender_email}
+                onChange={(e) => setEmailForm((f) => f && { ...f, sender_email: e.target.value })}
+                placeholder="orders@yourdomain.com"
+              />
+              <p className="text-xs text-muted-foreground">
+                Must be on a domain you've verified with your provider (or Resend's sandbox address
+                onboarding@resend.dev, which only delivers to your own signup email).
+              </p>
+            </div>
+          </div>
+
+          <Button type="submit" disabled={savingEmail} className="mt-2 w-fit bg-primary">
+            <Save className="mr-1.5 h-4 w-4" /> {savingEmail ? 'Saving…' : 'Save Email Settings'}
+          </Button>
+
+          <div className="mt-2 flex flex-col gap-2 border-t border-border/60 pt-4 sm:flex-row sm:items-center">
+            <Input
+              value={testEmailTo}
+              onChange={(e) => setTestEmailTo(e.target.value)}
+              type="email"
+              placeholder="you@example.com"
+              className="sm:max-w-xs"
+            />
+            <Button type="button" variant="outline" disabled={sendingTest} onClick={onSendTestEmail}>
+              {sendingTest ? 'Sending…' : 'Send test email'}
+            </Button>
+          </div>
         </form>
       )}
     </div>

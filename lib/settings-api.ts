@@ -34,3 +34,40 @@ export async function saveStoreInfo(info: StoreInfo) {
     .upsert({ key: 'store_info', value: info }, { onConflict: 'key' });
   if (error) throw error;
 }
+
+export type EmailProvider = 'resend' | 'zeptomail' | '';
+
+export interface EmailSettings {
+  provider: EmailProvider;
+  api_key: string;
+  sender_email: string;
+  sender_name: string;
+  // ZeptoMail is hosted regionally — India (.in) vs global (.com) accounts
+  // use different API base URLs. Ignored by Resend.
+  zeptomail_region: 'in' | 'com';
+}
+
+const DEFAULT_EMAIL_SETTINGS: EmailSettings = {
+  provider: '',
+  api_key: '',
+  sender_email: '',
+  sender_name: 'Saaj Boutique',
+  zeptomail_region: 'in',
+};
+
+export async function fetchEmailSettings(): Promise<EmailSettings> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'email_provider')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_EMAIL_SETTINGS;
+  return { ...DEFAULT_EMAIL_SETTINGS, ...(data.value as Partial<EmailSettings>) };
+}
+
+export async function saveEmailSettings(settings: EmailSettings) {
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ key: 'email_provider', value: settings }, { onConflict: 'key' });
+  if (error) throw error;
+}
