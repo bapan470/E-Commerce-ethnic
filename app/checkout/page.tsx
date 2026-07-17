@@ -3,11 +3,13 @@
 import { useState, FormEvent } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { CheckCircle2, Lock, Loader2, CreditCard } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Lock, Loader2, CreditCard, Tag, X } from 'lucide-react';
 import { useCart } from '@/lib/cart-context';
 import { formatINR } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import { getSupabaseBrowser } from '@/lib/supabase-browser';
+import { validateCoupon, Coupon } from '@/lib/coupons-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,14 +23,41 @@ declare global {
 }
 
 export default function CheckoutPage() {
+  const router = useRouter();
   const { items, subtotal, clearCart } = useCart();
   const [placing, setPlacing] = useState(false);
-  const [placed, setPlaced] = useState(false);
-  const [orderId, setOrderId] = useState<string | null>(null);
+
+  const [couponInput, setCouponInput] = useState('');
+  const [applyingCoupon, setApplyingCoupon] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
+  const [couponDiscount, setCouponDiscount] = useState(0);
 
   const shipping = subtotal >= 2000 ? 0 : 99;
-  const tax = Math.round(subtotal * 0.05);
-  const total = subtotal + shipping + tax;
+  const discountedSubtotal = Math.max(0, subtotal - couponDiscount);
+  const tax = Math.round(discountedSubtotal * 0.05);
+  const total = discountedSubtotal + shipping + tax;
+
+  const handleApplyCoupon = async () => {
+    setCouponError(null);
+    setApplyingCoupon(true);
+    const result = await validateCoupon(couponInput, subtotal);
+    setApplyingCoupon(false);
+    if (!result.ok || !result.coupon) {
+      setCouponError(result.error || 'Invalid coupon');
+      return;
+    }
+    setAppliedCoupon(result.coupon);
+    setCouponDiscount(result.discount || 0);
+    toast.success(`Coupon "${result.coupon.code}" applied`);
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponDiscount(0);
+    setCouponInput('');
+    setCouponError(null);
+  };
 
   const openRazorpayCheckout = (
     razorpayOrderId: string,
@@ -149,6 +178,8 @@ export default function CheckoutPage() {
           subtotal,
           shipping_charge: shipping,
           gst_amount: tax,
+          coupon_code: appliedCoupon?.code ?? null,
+          coupon_discount: couponDiscount,
         })
         .select('id')
         .single();
@@ -182,11 +213,19 @@ export default function CheckoutPage() {
         customerPhone
       );
 
-      // 4. Payment succeeded and verified — show confirmation
-      setOrderId(internalOrderId);
-      setPlaced(true);
+      // 4. Payment succeeded and verified.
+      if (appliedCoupon) {
+        // Best-effort — a failed increment shouldn't block order confirmation.
+        supabase
+          .from('coupons')
+          .update({ times_used: appliedCoupon.times_used + 1 })
+          .eq('id', appliedCoupon.id)
+          .then(() => {});
+      }
       clearCart();
       toast.success('Payment successful! Order confirmed.');
+      router.push(`/order-confirmation/${internalOrderId}`);
+      return;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to place order';
       if (message.includes('cancelled')) {
@@ -198,31 +237,6 @@ export default function CheckoutPage() {
       setPlacing(false);
     }
   };
-
-  if (placed) {
-    return (
-      <div className="container-boutique flex flex-col items-center gap-5 py-24 text-center">
-        <div className="rounded-full bg-secondary/20 p-5">
-          <CheckCircle2 className="h-12 w-12 text-secondary" />
-        </div>
-        <div>
-          <h1 className="font-serif text-3xl font-bold text-primary">Thank you for your order!</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {orderId && (
-              <>Order #{orderId.slice(0, 8)} &middot; </>
-            )}
-            We have received your payment and will send a confirmation to your email shortly.
-            Your handwoven pieces will be on their way soon.
-          </p>
-        </div>
-        <div className="flex gap-3">
-          <Button asChild className="bg-primary">
-            <Link href="/shop">Continue Shopping</Link>
-          </Button>
-        </div>
-      </div>
-    );
-  }
 
   if (items.length === 0) {
     return (
@@ -366,11 +380,59 @@ export default function CheckoutPage() {
               ))}
             </ul>
             <Separator className="my-4" />
+
+            {/* Coupon */}
+            <div>
+              {appliedCoupon ? (
+                <div className="flex items-center justify-between rounded-md bg-secondary/10 px-3 py-2 text-sm">
+                  <span className="flex items-center gap-1.5 font-medium text-secondary-foreground">
+                    <Tag className="h-3.5 w-3.5" /> {appliedCoupon.code} applied
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleRemoveCoupon}
+                    aria-label="Remove coupon"
+                    className="text-muted-foreground hover:text-destructive"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Coupon code"
+                      value={couponInput}
+                      onChange={(e) => setCouponInput(e.target.value)}
+                      className="h-9"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 shrink-0"
+                      disabled={applyingCoupon || !couponInput.trim()}
+                      onClick={handleApplyCoupon}
+                    >
+                      {applyingCoupon ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}
+                    </Button>
+                  </div>
+                  {couponError && <p className="text-xs text-destructive">{couponError}</p>}
+                </div>
+              )}
+            </div>
+
+            <Separator className="my-4" />
             <div className="flex flex-col gap-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Subtotal</span>
                 <span>{formatINR(subtotal)}</span>
               </div>
+              {couponDiscount > 0 && (
+                <div className="flex justify-between text-secondary-foreground">
+                  <span>Coupon discount</span>
+                  <span>-{formatINR(couponDiscount)}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Shipping</span>
                 <span>{shipping === 0 ? 'FREE' : formatINR(shipping)}</span>
