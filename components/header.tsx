@@ -32,7 +32,9 @@ export default function Header() {
   const [query, setQuery] = useState('');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const searchWrapRef = useRef<HTMLDivElement>(null);
+  const mobileSearchInputRef = useRef<HTMLInputElement>(null);
 
   const suggestions = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -57,12 +59,19 @@ export default function Header() {
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, []);
 
+  useEffect(() => {
+    if (mobileSearchOpen) {
+      mobileSearchInputRef.current?.focus();
+    }
+  }, [mobileSearchOpen]);
+
   const onSearch = (e: FormEvent) => {
     e.preventDefault();
     if (query.trim()) {
       router.push(`/shop?q=${encodeURIComponent(query.trim())}`);
       setMobileOpen(false);
       setSuggestOpen(false);
+      setMobileSearchOpen(false);
     }
   };
 
@@ -71,6 +80,7 @@ export default function Header() {
     setQuery('');
     setSuggestOpen(false);
     setMobileOpen(false);
+    setMobileSearchOpen(false);
   };
 
   return (
@@ -186,6 +196,16 @@ export default function Header() {
         </div>
 
         <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setMobileSearchOpen((v) => !v)}
+            className="md:hidden"
+            aria-label="Search"
+          >
+            <Search className="h-5 w-5" />
+          </Button>
+
           <Button variant="ghost" size="icon" asChild className="hidden sm:inline-flex" aria-label="Wishlist">
             <Link href="/account/wishlist">
               <Heart className="h-5 w-5" />
@@ -214,6 +234,48 @@ export default function Header() {
           </Button>
         </div>
       </div>
+
+      {mobileSearchOpen && (
+        <div className="border-t border-border/60 bg-background md:hidden">
+          <div className="container-boutique py-3">
+            <form onSubmit={onSearch} className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                ref={mobileSearchInputRef}
+                placeholder="Search sarees, lehenga, kurti..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="border-border/60 bg-muted/40 pl-9"
+              />
+            </form>
+
+            {suggestions.length > 0 && (
+              <div className="mt-2 max-h-80 overflow-y-auto rounded-lg border border-border/60">
+                {suggestions.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => goToProduct(p.slug)}
+                    className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-muted/60"
+                  >
+                    <div className="relative h-11 w-9 shrink-0 overflow-hidden rounded bg-muted">
+                      {p.images[0] && (
+                        <Image src={p.images[0]} alt={p.name} fill sizes="36px" className="object-cover" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{p.name}</p>
+                      <p className="text-xs text-muted-foreground">{p.category}</p>
+                    </div>
+                    <span className="shrink-0 text-sm font-semibold text-primary">
+                      {formatINR(p.price)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </header>
   );
 }
