@@ -290,35 +290,53 @@ export default function VariantsPanel() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">Admin</p>
-          <h1 className="mt-1 font-serif text-3xl font-bold text-primary sm:text-4xl">
+          <h1 className="mt-1 font-serif text-2xl font-bold text-primary sm:text-4xl">
             Product Variants
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Manage colour options, images, price overrides and per-size stock.
           </p>
         </div>
-        <Button onClick={openNew} disabled={!selectedProductId} className="bg-primary">
+        <Button
+          onClick={openNew}
+          disabled={!selectedProductId}
+          className="w-full bg-primary sm:w-auto"
+        >
           <Plus className="mr-1 h-4 w-4" /> Add Variant
         </Button>
       </div>
 
-      <div className="mb-6 max-w-md">
-        <Label htmlFor="product-picker">Product</Label>
-        <Select value={selectedProductId} onValueChange={setSelectedProductId}>
-          <SelectTrigger id="product-picker" className="mt-1.5">
-            <SelectValue placeholder={productsLoading ? 'Loading products…' : 'Select a product'} />
-          </SelectTrigger>
-          <SelectContent>
-            {products.map((p: Product) => (
-              <SelectItem key={p.id} value={p.id}>
-                {p.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="mb-6 flex flex-col gap-3 rounded-lg border border-border/60 bg-card p-3 sm:max-w-md sm:flex-row sm:items-center sm:gap-3">
+        {selectedProduct?.images?.[0] && (
+          <div className="relative hidden h-12 w-10 shrink-0 overflow-hidden rounded-md bg-muted sm:block">
+            <Image src={selectedProduct.images[0]} alt="" fill sizes="40px" className="object-cover" />
+          </div>
+        )}
+        <div className="flex-1">
+          <Label htmlFor="product-picker" className="text-xs text-muted-foreground">
+            Product
+          </Label>
+          <Select value={selectedProductId} onValueChange={setSelectedProductId}>
+            <SelectTrigger id="product-picker" className="mt-1">
+              <SelectValue placeholder={productsLoading ? 'Loading products…' : 'Select a product'} />
+            </SelectTrigger>
+            <SelectContent>
+              {products.map((p: Product) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {!loadingVariants && (
+          <Badge variant="outline" className="w-fit shrink-0 text-xs">
+            {variants.length} colour{variants.length === 1 ? '' : 's'}
+          </Badge>
+        )}
       </div>
 
       {loadingVariants ? (
@@ -335,50 +353,80 @@ export default function VariantsPanel() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {variants.map((v) => (
-            <div key={v.id} className="rounded-lg border border-border/60 bg-card p-4">
+            <div
+              key={v.id}
+              className={`rounded-lg border bg-card p-4 transition-shadow hover:shadow-sm ${
+                v.is_default ? 'border-primary/40 ring-1 ring-primary/10' : 'border-border/60'
+              }`}
+            >
               <div className="mb-3 flex items-start gap-3">
-                <div className="relative h-16 w-14 shrink-0 overflow-hidden rounded-md border border-border bg-muted">
-                  {v.images[0] && (
-                    <Image src={v.images[0]} alt={v.color} fill sizes="56px" className="object-cover" />
+                <div className="relative h-20 w-16 shrink-0 overflow-hidden rounded-md border border-border bg-muted">
+                  {v.images[0] ? (
+                    <Image src={v.images[0]} alt={v.color} fill sizes="64px" className="object-cover" />
+                  ) : (
+                    <span className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground">
+                      No image
+                    </span>
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <p className="truncate text-sm font-semibold">{v.color}</p>
                     {v.is_default && (
-                      <Badge className="bg-primary/10 text-primary">
-                        <Star className="mr-1 h-3 w-3" /> Default
+                      <Badge className="bg-primary text-primary-foreground">
+                        <Star className="mr-1 h-3 w-3 fill-current" /> Default
                       </Badge>
                     )}
                   </div>
                   <p className="truncate text-xs text-muted-foreground">/{v.slug}</p>
                   {v.price_override != null && (
-                    <p className="text-xs text-muted-foreground">Price override: ₹{v.price_override}</p>
+                    <p className="text-xs font-medium text-secondary-foreground">
+                      Price override: ₹{v.price_override}
+                    </p>
                   )}
                 </div>
               </div>
 
               <div className="mb-3 flex flex-wrap gap-1.5">
                 {v.sizes.map((s) => (
-                  <Badge key={s.id} variant="outline" className="text-xs">
+                  <Badge
+                    key={s.id}
+                    variant="outline"
+                    className={`text-xs ${
+                      s.stock_quantity === 0
+                        ? 'border-destructive/40 text-destructive'
+                        : s.stock_quantity <= 3
+                        ? 'border-amber-400 text-amber-600'
+                        : ''
+                    }`}
+                  >
                     {s.size}: {s.stock_quantity}
                   </Badge>
                 ))}
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={() => openEdit(v)}>
-                  <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
+              <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
+                <Button size="sm" variant="outline" onClick={() => openEdit(v)} className="col-span-1">
+                  <Pencil className="h-3.5 w-3.5 sm:mr-1" />
+                  <span className="hidden sm:inline">Edit</span>
                 </Button>
-                {!v.is_default && (
-                  <Button size="sm" variant="outline" onClick={() => makeDefault(v)}>
-                    <Star className="mr-1 h-3.5 w-3.5" /> Make default
+                {!v.is_default ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => makeDefault(v)}
+                    className="col-span-1"
+                  >
+                    <Star className="h-3.5 w-3.5 sm:mr-1" />
+                    <span className="hidden sm:inline">Make default</span>
                   </Button>
+                ) : (
+                  <div className="col-span-1" />
                 )}
                 <Button
                   size="sm"
                   variant="outline"
-                  className="text-destructive hover:bg-destructive/10"
+                  className="col-span-1 text-destructive hover:bg-destructive/10"
                   onClick={() => setConfirmVariant(v)}
                 >
                   <Trash2 className="h-3.5 w-3.5" />

@@ -162,7 +162,9 @@ export default function ProductDetail() {
       </nav>
 
       <div className="grid gap-8 lg:grid-cols-2 lg:gap-12">
-        <ProductGallery images={product.images} alt={product.name} discount={discount} />
+        <div className="-mx-4 sm:mx-0">
+          <ProductGallery images={product.images} alt={product.name} discount={discount} />
+        </div>
         <ProductInfo
           product={product}
           baseProductId={baseProduct.id}
@@ -243,7 +245,7 @@ function ProductGallery({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="relative aspect-[4/5] overflow-hidden rounded-xl border border-border/60 bg-muted">
+      <div className="relative aspect-[4/5] overflow-hidden border border-border/60 bg-muted sm:rounded-xl">
         <Image
           src={valid[active] || valid[0]}
           alt={alt}
@@ -259,7 +261,7 @@ function ProductGallery({
         )}
       </div>
       {valid.length > 1 && (
-        <div className="flex gap-3">
+        <div className="flex gap-3 px-4 sm:px-0">
           {valid.map((img, idx) => (
             <button
               key={idx}

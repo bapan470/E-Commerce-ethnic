@@ -2,43 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { fetchVariantsForProduct, ProductVariant } from '@/lib/variants-api';
-
-// Best-effort colour-name -> swatch mapping for common saree/ethnic-wear
-// colours. Falls back to a neutral dot if the name isn't recognised.
-const COLOR_MAP: Record<string, string> = {
-  red: '#c0392b',
-  maroon: '#7b241c',
-  pink: '#e195ab',
-  magenta: '#c2185b',
-  orange: '#e67e22',
-  yellow: '#f1c40f',
-  mustard: '#c9a316',
-  gold: '#d4af37',
-  green: '#27ae60',
-  olive: '#6b8e23',
-  teal: '#16a085',
-  blue: '#2980b9',
-  navy: '#1a2a4a',
-  purple: '#8e44ad',
-  black: '#1c1c1c',
-  white: '#f5f5f0',
-  cream: '#f2e8d5',
-  ivory: '#fffff0',
-  grey: '#95a5a6',
-  gray: '#95a5a6',
-  brown: '#7a5230',
-  beige: '#d8c3a5',
-  silver: '#c0c0c0',
-};
-
-function swatchColor(name: string): string {
-  const key = name.toLowerCase().trim();
-  for (const [k, v] of Object.entries(COLOR_MAP)) {
-    if (key.includes(k)) return v;
-  }
-  return '#b0a99f';
-}
 
 export default function VariantSwatches({
   productId,
@@ -63,24 +28,54 @@ export default function VariantSwatches({
 
   return (
     <div>
-      <p className="mb-2 text-sm font-semibold">Colour</p>
-      <div className="flex flex-wrap gap-2.5">
+      <p className="mb-2 text-sm font-semibold">
+        Colour
+        {activeSlug && (
+          <span className="ml-1.5 font-normal text-muted-foreground">
+            — {variants.find((v) => v.slug === activeSlug)?.color}
+          </span>
+        )}
+      </p>
+      <div className="flex flex-wrap gap-3">
         {variants.map((v) => {
           const isActive = v.slug === activeSlug;
+          const thumb = v.images[0];
           return (
             <Link
               key={v.id}
               href={`/product/${v.slug}`}
               title={v.color}
               aria-label={`View in ${v.color}`}
-              className={`relative flex h-9 w-9 items-center justify-center rounded-full border-2 transition-transform hover:scale-105 ${
-                isActive ? 'border-primary' : 'border-border'
-              }`}
+              className="group flex flex-col items-center gap-1.5"
             >
               <span
-                className="h-6 w-6 rounded-full border border-black/10"
-                style={{ backgroundColor: swatchColor(v.color) }}
-              />
+                className={`relative block h-16 w-14 shrink-0 overflow-hidden rounded-md border-2 bg-muted transition-all group-hover:opacity-90 ${
+                  isActive
+                    ? 'border-primary ring-2 ring-primary/25 ring-offset-1'
+                    : 'border-border/70'
+                }`}
+              >
+                {thumb ? (
+                  <Image
+                    src={thumb}
+                    alt={v.color}
+                    fill
+                    sizes="56px"
+                    className="object-cover"
+                  />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center text-[10px] font-semibold uppercase text-muted-foreground">
+                    {v.color.slice(0, 2)}
+                  </span>
+                )}
+              </span>
+              <span
+                className={`max-w-[4rem] truncate text-[11px] ${
+                  isActive ? 'font-semibold text-primary' : 'text-muted-foreground'
+                }`}
+              >
+                {v.color}
+              </span>
             </Link>
           );
         })}
