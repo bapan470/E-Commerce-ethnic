@@ -17,6 +17,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Missing orderId' }, { status: 400 });
   }
 
+  const packageDetails =
+    body?.weight_grams && body?.length_cm && body?.width_cm && body?.height_cm
+      ? {
+          weight_grams: Number(body.weight_grams),
+          length_cm: Number(body.length_cm),
+          width_cm: Number(body.width_cm),
+          height_cm: Number(body.height_cm),
+          shipping_mode: body.shipping_mode === 'E' ? ('E' as const) : ('S' as const),
+        }
+      : undefined;
+
   const supabase = getServerSupabase();
 
   try {
@@ -37,15 +48,18 @@ export async function POST(req: Request) {
       );
     }
 
-    const result = await createDelhiveryShipment({
-      id: order.id,
-      customer_name: order.customer_name,
-      customer_phone: order.customer_phone,
-      total_amount: order.total_amount,
-      payment_method: order.payment_method,
-      items: Array.isArray(order.items) ? order.items : [],
-      shipping_address: order.shipping_address,
-    });
+    const result = await createDelhiveryShipment(
+      {
+        id: order.id,
+        customer_name: order.customer_name,
+        customer_phone: order.customer_phone,
+        total_amount: order.total_amount,
+        payment_method: order.payment_method,
+        items: Array.isArray(order.items) ? order.items : [],
+        shipping_address: order.shipping_address,
+      },
+      packageDetails
+    );
 
     if (!result.success || !result.waybill) {
       return NextResponse.json(

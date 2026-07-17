@@ -7,6 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { toast } from 'sonner';
 import OrderTracking from '@/components/order/order-tracking';
+import CreateShipmentModal, {
+  type CreateShipmentPayload,
+} from '@/components/admin/create-shipment-modal';
 
 type Order = {
   id: string;
@@ -57,14 +60,16 @@ export default function OrdersPanel() {
   const pendingCount = orders.filter((o) => o.status === 'pending').length;
 
   const [creatingShipmentFor, setCreatingShipmentFor] = useState<string | null>(null);
+  const [shipmentModalOrderId, setShipmentModalOrderId] = useState<string | null>(null);
+  const [pendingStatusAfterShip, setPendingStatusAfterShip] = useState<string | null>(null);
 
-  const createShipment = async (id: string): Promise<boolean> => {
+  const createShipment = async (id: string, packageDetails?: CreateShipmentPayload): Promise<boolean> => {
     setCreatingShipmentFor(id);
     try {
       const res = await fetch('/api/admin/delhivery/create-shipment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: id }),
+        body: JSON.stringify({ orderId: id, ...(packageDetails || {}) }),
       });
       const body = await res.json().catch(() => ({}));
       if (res.ok) {
@@ -82,13 +87,25 @@ export default function OrdersPanel() {
     }
   };
 
+  // Opens the box/weight/mode popup instead of hitting the Delhivery API directly.
+  const openShipmentModal = (id: string) => setShipmentModalOrderId(id);
+
+  const confirmShipmentFromModal = async (payload: CreateShipmentPayload) => {
+    if (!shipmentModalOrderId) return;
+    const ok = await createShipment(shipmentModalOrderId, payload);
+    if (ok) {
+      setShipmentModalOrderId(null);
+      setPendingStatusAfterShip(null);
+    }
+  };
+
   const updateStatus = async (id: string, status: string) => {
-    // Moving an order to "shipped" automatically manifests it with Delhivery
-    // (if it hasn't been already) so the tracking number is assigned in one step.
+    // Moving an order to "shipped" first opens the box/weight/mode popup so the
+    // admin can review before Delhivery actually manifests (and charges) it.
     const order = orders.find((o) => o.id === id);
     if (status === 'shipped' && order && !order.tracking_number) {
-      const ok = await createShipment(id);
-      if (!ok) return; // shipment creation already updates status; bail on failure
+      setPendingStatusAfterShip(status);
+      openShipmentModal(id);
       return;
     }
 
@@ -145,13 +162,27 @@ export default function OrdersPanel() {
                 key={o.id}
                 order={o}
                 onChangeStatus={updateStatus}
-                onCreateShipment={createShipment}
+                onCreateShipment={openShipmentModal}
                 creatingShipment={creatingShipmentFor === o.id}
               />
             ))}
           </tbody>
         </table>
       </div>
+
+      <CreateShipmentModal
+        open={!!shipmentModalOrderId}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShipmentModalOrderId(null);
+            setPendingStatusAfterShip(null);
+          }
+        }}
+        destinationPincode={orders.find((o) => o.id === shipmentModalOrderId)?.shipping_address?.pincode}
+        paymentMethod={orders.find((o) => o.id === shipmentModalOrderId)?.payment_method}
+        confirming={creatingShipmentFor === shipmentModalOrderId}
+        onConfirm={confirmShipmentFromModal}
+      />
     </div>
   );
 }
@@ -164,7 +195,7 @@ function OrderRow({
 }: {
   order: Order;
   onChangeStatus: (id: string, status: string) => void;
-  onCreateShipment: (id: string) => Promise<boolean>;
+  onCreateShipment: (id: string) => void;
   creatingShipment: boolean;
 }) {
   const [open, setOpen] = useState(false);

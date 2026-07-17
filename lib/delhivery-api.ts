@@ -116,6 +116,76 @@ export interface OrderForShipment {
   } | null;
 }
 
+/** Package details entered by the admin in the "Create Shipment" popup before manifesting. */
+export interface PackageDetails {
+  /** Weight in grams. */
+  weight_grams: number;
+  /** Dimensions in cm. */
+  length_cm: number;
+  width_cm: number;
+  height_cm: number;
+  /** Surface is cheaper/slower, Express is pricier/faster — mirrors the Delhivery One "Shipping mode" choice. */
+  shipping_mode: 'S' | 'E';
+}
+
+export interface RateEstimate {
+  mode: 'S' | 'E';
+  label: string;
+  total_amount: number;
+  raw?: unknown;
+}
+
+/**
+ * Calls Delhivery's Rate Calculator (Invoice/Charges) API to preview the shipping
+ * cost for a given weight + mode, the same numbers shown on the Delhivery One
+ * "Get AWB Number" screen. Used to power the pre-shipment confirmation popup.
+ */
+export async function getDelhiveryRateEstimate(params: {
+  destination_pincode: string;
+  weight_grams: number;
+  payment_method?: string | null;
+}): Promise<RateEstimate[]> {
+  const settings = await fetchDelhiverySettingsServer();
+  const token = getApiToken();
+
+  const modes: Array<{ mode: 'S' | 'E'; label: string }> = [
+    { mode: 'S', label: 'Surface' },
+    { mode: 'E', label: 'Express' },
+  ];
+
+  const results = await Promise.all(
+    modes.map(async ({ mode, label }) => {
+      const qs = new URLSearchParams({
+        md: mode,
+        ss: 'Delivered',
+        pt: params.payment_method === 'cod' ? 'COD' : 'Pre-paid',
+        d_pin: params.destination_pincode,
+        o_pin: settings.pickup_pincode,
+        cgm: String(params.weight_grams),
+      });
+      try {
+        const res = await fetch(
+          `${getBaseUrl()}/api/kinko/v1/invoice/charges/.json?${qs.toString()}`,
+          { headers: { Authorization: `Token ${token}` }, cache: 'no-store' }
+        );
+        const data = await res.json().catch(() => null);
+        // Response is typically an array like [{ total_amount, charge_DL, ... }]
+        const entry = Array.isArray(data) ? data[0] : data;
+        return {
+          mode,
+          label,
+          total_amount: Number(entry?.total_amount ?? 0),
+          raw: data,
+        };
+      } catch {
+        return { mode, label, total_amount: 0, raw: null };
+      }
+    })
+  );
+
+  return results;
+}
+
 export interface CreateShipmentResult {
   success: boolean;
   waybill?: string;
@@ -128,7 +198,8 @@ export interface CreateShipmentResult {
  * returns the assigned waybill (tracking) number.
  */
 export async function createDelhiveryShipment(
-  order: OrderForShipment
+  order: OrderForShipment,
+  packageDetails?: PackageDetails
 ): Promise<CreateShipmentResult> {
   const settings = await fetchDelhiverySettingsServer();
   if (!settings.enabled) {
@@ -169,6 +240,13 @@ export async function createDelhiveryShipment(
         quantity: String(order.items.reduce((s, i) => s + (i.quantity || 1), 0)),
         seller_gst_tin: settings.seller_gst_tin || undefined,
         hsn_code: '6204', // Women's ethnic wear/garments — adjust per your product HSN if needed
+        // Weight/dimensions from the pre-shipment popup. Delhivery uses these to
+        // display accurate parcel details in the One panel and to compute the
+        // final chargeable (dead vs volumetric) weight.
+        weight: packageDetails ? String(packageDetails.weight_grams) : undefined,
+        shipment_length: packageDetails ? String(packageDetails.length_cm) : undefined,
+        shipment_width: packageDetails ? String(packageDetails.width_cm) : undefined,
+        shipment_height: packageDetails ? String(packageDetails.height_cm) : undefined,
       },
     ],
   };
