@@ -8,6 +8,11 @@ import {
   fetchShippingSettings,
   saveShippingSettings,
 } from '@/lib/pincode-api';
+import {
+  DelhiverySettings,
+  fetchDelhiverySettings,
+  saveDelhiverySettings,
+} from '@/lib/delhivery-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,6 +27,9 @@ export default function SettingsPanel() {
   const [checkoutForm, setCheckoutForm] = useState<ShippingSettings | null>(null);
   const [savingCheckout, setSavingCheckout] = useState(false);
 
+  const [delhiveryForm, setDelhiveryForm] = useState<DelhiverySettings | null>(null);
+  const [savingDelhivery, setSavingDelhivery] = useState(false);
+
   useEffect(() => {
     fetchStoreInfo()
       .then(setForm)
@@ -31,6 +39,10 @@ export default function SettingsPanel() {
     fetchShippingSettings()
       .then(setCheckoutForm)
       .catch(() => toast.error('Failed to load GST & shipping settings'));
+
+    fetchDelhiverySettings()
+      .then(setDelhiveryForm)
+      .catch(() => toast.error('Failed to load Delhivery settings'));
   }, []);
 
   const onSubmit = async (e: FormEvent) => {
@@ -58,6 +70,20 @@ export default function SettingsPanel() {
       toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSavingCheckout(false);
+    }
+  };
+
+  const onSubmitDelhivery = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!delhiveryForm) return;
+    setSavingDelhivery(true);
+    try {
+      await saveDelhiverySettings(delhiveryForm);
+      toast.success('Delhivery settings saved');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSavingDelhivery(false);
     }
   };
 
@@ -209,6 +235,133 @@ export default function SettingsPanel() {
           <Button type="submit" disabled={savingCheckout} className="mt-2 w-fit bg-primary">
             <Save className="mr-1.5 h-4 w-4" />{' '}
             {savingCheckout ? 'Saving…' : 'Save GST & Shipping'}
+          </Button>
+        </form>
+      )}
+
+      <div className="mt-8">
+        <h2 className="font-serif text-2xl font-bold text-primary">Delhivery Courier</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Auto-create shipments and show live tracking on order pages once an order ships.
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          The API token is a secret and is read from the <code>DELHIVERY_API_TOKEN</code>{' '}
+          environment variable on your server (Vercel → Settings → Environment Variables) — not
+          from this form. Everything below is your pickup warehouse info, which is safe to store
+          here.
+        </p>
+      </div>
+
+      {!delhiveryForm ? (
+        <p className="py-4 text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <form
+          onSubmit={onSubmitDelhivery}
+          className="mt-4 grid max-w-xl gap-4 rounded-lg border border-border/60 bg-card p-5"
+        >
+          <label className="flex items-center gap-2 text-sm font-medium">
+            <input
+              type="checkbox"
+              checked={delhiveryForm.enabled}
+              onChange={(e) =>
+                setDelhiveryForm((f) => f && { ...f, enabled: e.target.checked })
+              }
+              className="h-4 w-4"
+            />
+            Enable Delhivery integration
+          </label>
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="dl-location-name">Pickup location name</Label>
+            <Input
+              id="dl-location-name"
+              value={delhiveryForm.pickup_location_name}
+              onChange={(e) =>
+                setDelhiveryForm((f) => f && { ...f, pickup_location_name: e.target.value })
+              }
+              placeholder="Must exactly match the warehouse name in your Delhivery dashboard"
+            />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-1.5">
+              <Label htmlFor="dl-pincode">Pickup PIN code</Label>
+              <Input
+                id="dl-pincode"
+                value={delhiveryForm.pickup_pincode}
+                onChange={(e) =>
+                  setDelhiveryForm((f) => f && { ...f, pickup_pincode: e.target.value })
+                }
+                inputMode="numeric"
+                placeholder="400050"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="dl-phone">Pickup phone</Label>
+              <Input
+                id="dl-phone"
+                value={delhiveryForm.pickup_phone}
+                onChange={(e) =>
+                  setDelhiveryForm((f) => f && { ...f, pickup_phone: e.target.value })
+                }
+                placeholder="+91 98765 43210"
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="dl-address">Pickup address</Label>
+            <Textarea
+              id="dl-address"
+              rows={2}
+              value={delhiveryForm.pickup_address}
+              onChange={(e) =>
+                setDelhiveryForm((f) => f && { ...f, pickup_address: e.target.value })
+              }
+              placeholder="Warehouse address"
+            />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-1.5">
+              <Label htmlFor="dl-city">City</Label>
+              <Input
+                id="dl-city"
+                value={delhiveryForm.pickup_city}
+                onChange={(e) =>
+                  setDelhiveryForm((f) => f && { ...f, pickup_city: e.target.value })
+                }
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="dl-state">State</Label>
+              <Input
+                id="dl-state"
+                value={delhiveryForm.pickup_state}
+                onChange={(e) =>
+                  setDelhiveryForm((f) => f && { ...f, pickup_state: e.target.value })
+                }
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="dl-gst">Seller GST TIN</Label>
+            <Input
+              id="dl-gst"
+              value={delhiveryForm.seller_gst_tin}
+              onChange={(e) =>
+                setDelhiveryForm(
+                  (f) => f && { ...f, seller_gst_tin: e.target.value.toUpperCase() }
+                )
+              }
+              placeholder="27ABCDE1234F1Z5"
+            />
+          </div>
+
+          <Button type="submit" disabled={savingDelhivery} className="mt-2 w-fit bg-primary">
+            <Save className="mr-1.5 h-4 w-4" />{' '}
+            {savingDelhivery ? 'Saving…' : 'Save Delhivery Settings'}
           </Button>
         </form>
       )}

@@ -4,6 +4,7 @@ import { formatINR } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import ReturnRequestButton from '@/components/account/return-request-button';
+import OrderTracking from '@/components/order/order-tracking';
 
 const RETURN_WINDOW_DAYS = 7;
 
@@ -42,12 +43,13 @@ export default async function OrderDetailPage({ params }: { params: { id: string
         <Badge className="bg-muted text-foreground">{order.status}</Badge>
       </div>
 
-      {order.tracking_number && (
-        <div className="mt-4 rounded-lg bg-secondary/10 p-4 text-sm">
-          <p className="font-medium">Courier: {order.courier_name || 'Assigned'}</p>
-          <p className="text-muted-foreground">Tracking #: {order.tracking_number}</p>
-        </div>
-      )}
+      <div className="mt-4">
+        <OrderTracking
+          orderId={order.id}
+          initialTrackingNumber={order.tracking_number}
+          initialCourierName={order.courier_name}
+        />
+      </div>
 
       <Separator className="my-6" />
 

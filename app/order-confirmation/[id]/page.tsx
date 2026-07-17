@@ -5,6 +5,7 @@ import { getServerSupabase } from '@/lib/supabase-server';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import OrderTracking from '@/components/order/order-tracking';
 
 export default async function OrderConfirmationPage({ params }: { params: { id: string } }) {
   const supabase = getServerSupabase();
@@ -112,6 +113,15 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
             </p>
           )}
         </div>
+      </div>
+
+      <div className="mt-5">
+        <h2 className="mb-2 font-serif text-lg font-semibold text-primary">Shipment Tracking</h2>
+        <OrderTracking
+          orderId={order.id}
+          initialTrackingNumber={order.tracking_number}
+          initialCourierName={order.courier_name}
+        />
       </div>
 
       <div className="mt-5 grid grid-cols-2 gap-3 rounded-lg border border-border/60 bg-card p-4 text-center text-sm sm:grid-cols-3">

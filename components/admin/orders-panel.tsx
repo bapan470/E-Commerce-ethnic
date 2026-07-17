@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Loader2, Truck } from 'lucide-react';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
 import { toast } from 'sonner';
+import OrderTracking from '@/components/order/order-tracking';
 
 type Order = {
   id: string;
@@ -12,6 +14,8 @@ type Order = {
   total_amount: number;
   status: string;
   payment_method?: string;
+  tracking_number?: string | null;
+  courier_name?: string | null;
   shipping_address?: any;
   customer_name?: string;
   customer_email?: string;
@@ -52,7 +56,42 @@ export default function OrdersPanel() {
     .reduce((s, o) => s + (o.total_amount || 0), 0);
   const pendingCount = orders.filter((o) => o.status === 'pending').length;
 
+  const [creatingShipmentFor, setCreatingShipmentFor] = useState<string | null>(null);
+
+  const createShipment = async (id: string): Promise<boolean> => {
+    setCreatingShipmentFor(id);
+    try {
+      const res = await fetch('/api/admin/delhivery/create-shipment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: id }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast.success(`Shipment created — waybill ${body.waybill}`);
+        await load();
+        return true;
+      }
+      toast.error(body.error || 'Failed to create Delhivery shipment');
+      return false;
+    } catch (err) {
+      toast.error('Failed to create Delhivery shipment');
+      return false;
+    } finally {
+      setCreatingShipmentFor(null);
+    }
+  };
+
   const updateStatus = async (id: string, status: string) => {
+    // Moving an order to "shipped" automatically manifests it with Delhivery
+    // (if it hasn't been already) so the tracking number is assigned in one step.
+    const order = orders.find((o) => o.id === id);
+    if (status === 'shipped' && order && !order.tracking_number) {
+      const ok = await createShipment(id);
+      if (!ok) return; // shipment creation already updates status; bail on failure
+      return;
+    }
+
     try {
       const res = await fetch(`/api/admin/orders/${id}`, {
         method: 'PATCH',
@@ -96,12 +135,19 @@ export default function OrdersPanel() {
               <th className="px-4 py-3">Total</th>
               <th className="px-4 py-3">Payment</th>
               <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Ship</th>
               <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
           <tbody>
             {orders.map((o) => (
-              <OrderRow key={o.id} order={o} onChangeStatus={updateStatus} />
+              <OrderRow
+                key={o.id}
+                order={o}
+                onChangeStatus={updateStatus}
+                onCreateShipment={createShipment}
+                creatingShipment={creatingShipmentFor === o.id}
+              />
             ))}
           </tbody>
         </table>
@@ -110,7 +156,17 @@ export default function OrdersPanel() {
   );
 }
 
-function OrderRow({ order, onChangeStatus }: { order: Order; onChangeStatus: (id: string, status: string) => void }) {
+function OrderRow({
+  order,
+  onChangeStatus,
+  onCreateShipment,
+  creatingShipment,
+}: {
+  order: Order;
+  onChangeStatus: (id: string, status: string) => void;
+  onCreateShipment: (id: string) => Promise<boolean>;
+  creatingShipment: boolean;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -144,12 +200,31 @@ function OrderRow({ order, onChangeStatus }: { order: Order; onChangeStatus: (id
           </select>
         </td>
         <td className="px-4 py-3 align-top text-sm">
+          {order.tracking_number ? (
+            <div className="flex items-center gap-1.5 text-xs">
+              <Truck className="h-3.5 w-3.5 text-secondary" />
+              <span className="font-medium">{order.tracking_number}</span>
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={creatingShipment}
+              onClick={() => onCreateShipment(order.id)}
+              className="gap-1.5"
+            >
+              {creatingShipment ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Truck className="h-3.5 w-3.5" />}
+              Create Shipment
+            </Button>
+          )}
+        </td>
+        <td className="px-4 py-3 align-top text-sm">
           <Button size="sm" onClick={() => setOpen((v) => !v)}>{open ? 'Hide' : 'View'}</Button>
         </td>
       </tr>
       {open && (
         <tr className="bg-muted/20">
-          <td colSpan={6} className="px-4 py-3">
+          <td colSpan={7} className="px-4 py-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <h4 className="mb-2 text-sm font-semibold">Items</h4>
@@ -175,6 +250,14 @@ function OrderRow({ order, onChangeStatus }: { order: Order; onChangeStatus: (id
                   )}
                 </div>
               </div>
+            </div>
+            <div className="mt-4">
+              <h4 className="mb-2 text-sm font-semibold">Live Tracking</h4>
+              <OrderTracking
+                orderId={order.id}
+                initialTrackingNumber={order.tracking_number}
+                initialCourierName={order.courier_name}
+              />
             </div>
           </td>
         </tr>
