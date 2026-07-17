@@ -13,6 +13,9 @@ import {
   ShieldCheck,
   RefreshCw,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
+  X,
 } from 'lucide-react';
 import { useProducts, useCart } from '@/lib/cart-context';
 import { fetchProductBySlug } from '@/lib/products-api';
@@ -249,8 +252,12 @@ function ProductGallery({
   const [active, setActive] = useState(0);
   const [zoomStyle, setZoomStyle] = useState<{ transformOrigin: string } | undefined>(undefined);
   const [isZooming, setIsZooming] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
+  const [lightboxZoomed, setLightboxZoomed] = useState(false);
+  const [lightboxZoomOrigin, setLightboxZoomOrigin] = useState('50% 50%');
   const mainRef = useRef<HTMLDivElement | null>(null);
-  const thumbRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const thumbColRef = useRef<HTMLDivElement | null>(null);
   const valid = images.length > 0 ? images : ['https://placehold.co/800x1000?text=No+Image'];
 
   // Keep the active index in sync while the user swipes/scrolls through the
@@ -262,10 +269,13 @@ function ProductGallery({
     if (idx !== active) setActive(idx);
   };
 
-  const goTo = (idx: number) => {
+  const selectImage = (idx: number) => {
     setActive(idx);
     mainRef.current?.scrollTo({ left: idx * mainRef.current.clientWidth, behavior: 'smooth' });
-    thumbRefs.current[idx]?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  };
+
+  const scrollThumbCol = (dir: 1 | -1) => {
+    thumbColRef.current?.scrollBy({ top: dir * 96, behavior: 'smooth' });
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -275,83 +285,176 @@ function ProductGallery({
     setZoomStyle({ transformOrigin: `${x}% ${y}%` });
   };
 
+  // Only jump into the full-screen lightbox on touch/mobile taps — desktop
+  // already zooms in place on hover, matching the two references sent.
+  const handleMainImageClick = () => {
+    if (typeof window !== 'undefined' && window.innerWidth < 640) {
+      setLightboxIndex(active);
+      setLightboxZoomed(false);
+      setLightboxOpen(true);
+    }
+  };
+
+  useEffect(() => {
+    if (!lightboxOpen) return;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [lightboxOpen]);
+
+  const handleLightboxImageClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!lightboxZoomed) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      const y = ((e.clientY - rect.top) / rect.height) * 100;
+      setLightboxZoomOrigin(`${x}% ${y}%`);
+    }
+    setLightboxZoomed((z) => !z);
+  };
+
   return (
     <div className="flex flex-col gap-3">
-      <div className="relative">
-        <div
-          ref={mainRef}
-          onScroll={handleMainScroll}
-          className="no-scrollbar flex aspect-[4/5] snap-x snap-mandatory overflow-x-auto scroll-smooth border border-border/60 bg-muted sm:rounded-xl"
-        >
-          {valid.map((img, idx) => (
-            <div
-              key={idx}
-              className="relative h-full w-full flex-none snap-center overflow-hidden"
-              onMouseEnter={() => setIsZooming(true)}
-              onMouseLeave={() => setIsZooming(false)}
-              onMouseMove={handleMouseMove}
-            >
-              <Image
-                src={img}
-                alt={`${alt} - image ${idx + 1}`}
-                fill
-                priority={idx === 0}
-                sizes="(max-width: 1024px) 100vw, 50vw"
-                className={`object-cover transition-transform duration-200 ease-out cursor-zoom-in ${
-                  isZooming && active === idx ? 'scale-[2]' : 'scale-100'
-                }`}
-                style={active === idx ? zoomStyle : undefined}
-              />
-            </div>
-          ))}
-        </div>
-        {discount > 0 && (
-          <Badge className="absolute left-4 top-4 bg-secondary text-secondary-foreground">
-            {discount}% OFF
-          </Badge>
-        )}
+      <div className="flex gap-3">
+        {/* Desktop: vertical thumbnail rail on the left with up/down paging */}
         {valid.length > 1 && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-3 flex items-center justify-center gap-1.5">
-            {valid.map((_, idx) => (
-              <span
-                key={idx}
-                className={`h-1.5 rounded-full transition-all ${
-                  active === idx ? 'w-4 bg-primary' : 'w-1.5 bg-white/80'
-                }`}
-              />
-            ))}
+          <div className="hidden w-16 flex-shrink-0 flex-col items-center gap-2 sm:flex">
+            <div
+              ref={thumbColRef}
+              className="no-scrollbar flex max-h-[500px] w-full flex-col gap-3 overflow-y-auto"
+            >
+              {valid.map((img, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => selectImage(idx)}
+                  className={`relative aspect-[4/5] w-full flex-shrink-0 overflow-hidden rounded-md border-2 transition-colors ${
+                    active === idx
+                      ? 'border-primary'
+                      : 'border-border hover:border-primary/40'
+                  }`}
+                  aria-label={`View ${alt} image ${idx + 1}`}
+                >
+                  <Image src={img} alt={`${alt} - image ${idx + 1}`} fill sizes="64px" className="object-cover" />
+                </button>
+              ))}
+            </div>
+            {valid.length > 4 && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => scrollThumbCol(-1)}
+                  aria-label="Scroll thumbnails up"
+                  className="rounded-full border border-border p-1 text-muted-foreground hover:border-primary/40 hover:text-primary"
+                >
+                  <ChevronUp className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => scrollThumbCol(1)}
+                  aria-label="Scroll thumbnails down"
+                  className="rounded-full border border-border p-1 text-muted-foreground hover:border-primary/40 hover:text-primary"
+                >
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
           </div>
         )}
-      </div>
-      {valid.length > 1 && (
-        <div className="relative">
-          <div className="no-scrollbar flex snap-x gap-3 overflow-x-auto px-4 sm:px-0">
+
+        <div className="relative flex-1">
+          <div
+            ref={mainRef}
+            onScroll={handleMainScroll}
+            onClick={handleMainImageClick}
+            className="no-scrollbar flex aspect-[4/5] snap-x snap-mandatory overflow-x-auto scroll-smooth border border-border/60 bg-muted sm:rounded-xl"
+          >
             {valid.map((img, idx) => (
-              <button
+              <div
                 key={idx}
-                ref={(el) => {
-                  thumbRefs.current[idx] = el;
-                }}
-                onClick={() => goTo(idx)}
-                className={`relative h-20 w-16 flex-none snap-start overflow-hidden rounded-md border-2 transition-colors ${
-                  active === idx
-                    ? 'border-primary'
-                    : 'border-border hover:border-primary/40'
-                }`}
-                aria-label={`View ${alt} image ${idx + 1}`}
+                className="relative h-full w-full flex-none snap-center overflow-hidden"
+                onMouseEnter={() => setIsZooming(true)}
+                onMouseLeave={() => setIsZooming(false)}
+                onMouseMove={handleMouseMove}
               >
                 <Image
                   src={img}
                   alt={`${alt} - image ${idx + 1}`}
                   fill
-                  sizes="64px"
-                  className="object-cover"
+                  priority={idx === 0}
+                  sizes="(max-width: 1024px) 100vw, 50vw"
+                  className={`object-cover transition-transform duration-200 ease-out cursor-zoom-in ${
+                    isZooming && active === idx ? 'scale-[2]' : 'scale-100'
+                  }`}
+                  style={active === idx ? zoomStyle : undefined}
                 />
-              </button>
+              </div>
             ))}
           </div>
-          {/* fade hint on the right edge signals there are more thumbnails to scroll to */}
-          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent sm:hidden" />
+          {discount > 0 && (
+            <Badge className="absolute left-4 top-4 bg-secondary text-secondary-foreground">
+              {discount}% OFF
+            </Badge>
+          )}
+          {/* Mobile: dots only, no thumbnail strip — tap the image to open the full-screen zoom view */}
+          {valid.length > 1 && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-3 flex items-center justify-center gap-1.5 sm:hidden">
+              {valid.map((_, idx) => (
+                <span
+                  key={idx}
+                  className={`h-1.5 rounded-full transition-all ${
+                    active === idx ? 'w-4 bg-primary' : 'w-1.5 bg-white/80'
+                  }`}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Mobile full-screen zoom lightbox */}
+      {lightboxOpen && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-white sm:hidden">
+          <button
+            onClick={() => setLightboxOpen(false)}
+            aria-label="Close"
+            className="absolute right-4 top-4 z-10 rounded-full bg-white/90 p-2 shadow-md"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          <div className="flex flex-1 items-center justify-center overflow-hidden p-4">
+            <div
+              className="relative h-full w-full overflow-hidden"
+              onClick={handleLightboxImageClick}
+            >
+              <Image
+                src={valid[lightboxIndex]}
+                alt={`${alt} - image ${lightboxIndex + 1}`}
+                fill
+                sizes="100vw"
+                className={`object-contain transition-transform duration-300 ease-out cursor-zoom-in ${
+                  lightboxZoomed ? 'scale-[2.2]' : 'scale-100'
+                }`}
+                style={lightboxZoomed ? { transformOrigin: lightboxZoomOrigin } : undefined}
+              />
+            </div>
+          </div>
+          {valid.length > 1 && (
+            <div className="no-scrollbar flex gap-2 overflow-x-auto border-t border-border/60 p-3">
+              {valid.map((img, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    setLightboxIndex(idx);
+                    setLightboxZoomed(false);
+                  }}
+                  className={`relative h-16 w-14 flex-none overflow-hidden rounded-md border-2 ${
+                    lightboxIndex === idx ? 'border-primary' : 'border-border'
+                  }`}
+                  aria-label={`View ${alt} image ${idx + 1}`}
+                >
+                  <Image src={img} alt="" fill sizes="56px" className="object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
