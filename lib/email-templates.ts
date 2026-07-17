@@ -1,0 +1,118 @@
+import { formatINR } from './format';
+
+const BRAND_COLOR = '#7c3a1d';
+const SITE_NAME = 'Saaj Boutique';
+
+function wrapper(bodyHtml: string) {
+  return `
+  <div style="font-family: Georgia, 'Times New Roman', serif; max-width: 560px; margin: 0 auto; color: #2b2320;">
+    <div style="background: ${BRAND_COLOR}; padding: 24px; text-align: center;">
+      <h1 style="color: #fff; margin: 0; font-size: 22px; letter-spacing: 0.05em;">${SITE_NAME}</h1>
+    </div>
+    <div style="padding: 28px 24px; background: #fffaf5;">
+      ${bodyHtml}
+    </div>
+    <div style="padding: 16px 24px; text-align: center; font-size: 11px; color: #9a8f87;">
+      You're receiving this email because of a recent activity on ${SITE_NAME}.
+    </div>
+  </div>`;
+}
+
+function itemsTable(items: any[]) {
+  const rows = (items || [])
+    .map(
+      (it) => `
+      <tr>
+        <td style="padding: 8px 0; border-bottom: 1px solid #eee;">
+          ${it.product_name || it.name || 'Item'}${it.size ? ` <span style="color:#9a8f87;">(Size: ${it.size})</span>` : ''}
+        </td>
+        <td style="padding: 8px 0; border-bottom: 1px solid #eee; text-align: center;">x${it.quantity || 1}</td>
+        <td style="padding: 8px 0; border-bottom: 1px solid #eee; text-align: right;">${formatINR((it.price || 0) * (it.quantity || 1))}</td>
+      </tr>`
+    )
+    .join('');
+  return `<table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">${rows}</table>`;
+}
+
+export function orderConfirmationEmail(order: {
+  id: string;
+  customer_name?: string;
+  items: any[];
+  total_amount: number;
+  payment_method?: string;
+}) {
+  const subject = `Order confirmed — #${order.id.slice(0, 8)}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Thank you for your order, ${order.customer_name || 'there'}!</h2>
+    <p>We've received your order <strong>#${order.id.slice(0, 8)}</strong> and it's being prepared.</p>
+    ${itemsTable(order.items)}
+    <p style="text-align:right; font-size:16px; font-weight:bold;">Total: ${formatINR(order.total_amount)}</p>
+    <p style="font-size:13px; color:#6b5f57;">
+      Payment method: ${order.payment_method === 'cod' ? 'Cash on Delivery' : 'Paid Online'}
+    </p>
+    <p>You can track your order anytime from your account's Order History page.</p>
+  `);
+  return { subject, html };
+}
+
+export function orderShippedEmail(order: {
+  id: string;
+  customer_name?: string;
+  tracking_number?: string | null;
+  courier_name?: string | null;
+}) {
+  const subject = `Your order has shipped — #${order.id.slice(0, 8)}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Good news, ${order.customer_name || 'there'} — it's on the way!</h2>
+    <p>Your order <strong>#${order.id.slice(0, 8)}</strong> has been shipped${order.courier_name ? ` via ${order.courier_name}` : ''}.</p>
+    ${order.tracking_number ? `<p style="font-size:16px;"><strong>Tracking number:</strong> ${order.tracking_number}</p>` : ''}
+    <p>You can track live status from your account's Order History page.</p>
+  `);
+  return { subject, html };
+}
+
+export function returnStatusEmail(ret: {
+  id: string;
+  order_id: string;
+  type: string;
+  status: string;
+  admin_notes?: string | null;
+  refund_amount?: number | null;
+}) {
+  const statusLabelMap: Record<string, string> = {
+    approved: 'approved',
+    rejected: 'declined',
+    refunded: 'refunded',
+    completed: 'completed',
+  };
+  const label = statusLabelMap[ret.status] || ret.status;
+  const subject = `Your ${ret.type} request has been ${label} — Order #${ret.order_id.slice(0, 8)}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Update on your ${ret.type} request</h2>
+    <p>Your ${ret.type} request for order <strong>#${ret.order_id.slice(0, 8)}</strong> has been <strong>${label}</strong>.</p>
+    ${
+      ret.refund_amount
+        ? `<p style="font-size:16px;"><strong>Refund amount:</strong> ${formatINR(ret.refund_amount)}</p>`
+        : ''
+    }
+    ${ret.admin_notes ? `<p style="font-size:14px; color:#6b5f57;"><strong>Note from our team:</strong> ${ret.admin_notes}</p>` : ''}
+    <p>If you have any questions, just reply to this email.</p>
+  `);
+  return { subject, html };
+}
+
+export function cartRecoveryEmail(cart: { items: any[]; cart_value: number }) {
+  const subject = `You left something behind — complete your order`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Still thinking it over?</h2>
+    <p>You left a few items in your cart. They're still waiting for you!</p>
+    ${itemsTable(cart.items)}
+    <p style="text-align:right; font-size:16px; font-weight:bold;">Cart total: ${formatINR(cart.cart_value)}</p>
+    <p style="text-align:center; margin-top: 20px;">
+      <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/cart" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px;">
+        Complete your purchase
+      </a>
+    </p>
+  `);
+  return { subject, html };
+}

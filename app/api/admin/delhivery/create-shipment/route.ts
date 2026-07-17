@@ -3,6 +3,8 @@ import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getServerSupabase } from '@/lib/supabase-server';
 import { createDelhiveryShipment } from '@/lib/delhivery-api';
+import { sendEmail } from '@/lib/email';
+import { orderShippedEmail } from '@/lib/email-templates';
 
 export async function POST(req: Request) {
   const cookie = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? null;
@@ -82,6 +84,17 @@ export async function POST(req: Request) {
       .eq('id', orderId);
 
     if (updateError) throw updateError;
+
+    if (order.customer_email) {
+      const { subject, html } = orderShippedEmail({
+        id: order.id,
+        customer_name: order.customer_name,
+        tracking_number: result.waybill,
+        courier_name: 'Delhivery',
+      });
+      // Best-effort — a failed email shouldn't undo the shipment creation.
+      sendEmail({ to: order.customer_email, subject, html }).catch(() => {});
+    }
 
     return NextResponse.json({ success: true, waybill: result.waybill, status: nextStatus });
   } catch (err) {

@@ -11,6 +11,8 @@ import VariantsPanel from '@/components/admin/variants-panel';
 import ReviewsPanel from '@/components/admin/reviews-panel';
 import CouponsPanel from '@/components/admin/coupons-panel';
 import SettingsPanel from '@/components/admin/settings-panel';
+import ReturnsPanel from '@/components/admin/returns-panel';
+import AbandonedCartsPanel from '@/components/admin/abandoned-carts-panel';
 import { toast } from 'sonner';
 
 export default function AdminPage() {
@@ -36,6 +38,8 @@ export default function AdminPage() {
           <TabsTrigger value="categories">Categories</TabsTrigger>
           <TabsTrigger value="reviews">Reviews</TabsTrigger>
           <TabsTrigger value="orders">Orders</TabsTrigger>
+          <TabsTrigger value="returns">Returns</TabsTrigger>
+          <TabsTrigger value="abandoned-carts">Abandoned Carts</TabsTrigger>
           <TabsTrigger value="coupons">Coupons</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
@@ -58,6 +62,14 @@ export default function AdminPage() {
 
         <TabsContent value="orders">
           <OrdersPanel />
+        </TabsContent>
+
+        <TabsContent value="returns">
+          <ReturnsPanel />
+        </TabsContent>
+
+        <TabsContent value="abandoned-carts">
+          <AbandonedCartsPanel />
         </TabsContent>
 
         <TabsContent value="coupons">

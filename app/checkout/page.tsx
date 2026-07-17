@@ -43,6 +43,30 @@ export default function CheckoutPage() {
     DEFAULT_SHIPPING_SETTINGS
   );
 
+  // Abandoned-cart recovery: once the shopper has typed an email, ping the
+  // tracking API (debounced) so we can email them later if they never finish.
+  const [trackingEmail, setTrackingEmail] = useState('');
+  useEffect(() => {
+    if (!trackingEmail || !trackingEmail.includes('@') || items.length === 0) return;
+    const timer = setTimeout(() => {
+      fetch('/api/cart-track', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: trackingEmail,
+          items: items.map((i) => ({
+            product_name: i.product.name,
+            size: i.size,
+            quantity: i.quantity,
+            price: i.product.price,
+          })),
+          cartValue: subtotal,
+        }),
+      }).catch(() => {});
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [trackingEmail, items, subtotal]);
+
   useEffect(() => {
     fetchShippingSettings().then(setShippingSettings).catch(() => {
       // fall back to defaults already set above
@@ -220,6 +244,11 @@ export default function CheckoutPage() {
         }
         clearCart();
         toast.success('Order placed! Pay cash on delivery.');
+        fetch('/api/order-confirm', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId: internalOrderId }),
+        }).catch(() => {});
         router.push(`/order-confirmation/${internalOrderId}`);
         return;
       }
@@ -261,6 +290,11 @@ export default function CheckoutPage() {
       }
       clearCart();
       toast.success('Payment successful! Order confirmed.');
+      fetch('/api/order-confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: internalOrderId }),
+      }).catch(() => {});
       router.push(`/order-confirmation/${internalOrderId}`);
       return;
     } catch (err) {
@@ -315,7 +349,14 @@ export default function CheckoutPage() {
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="email">Email *</Label>
-                <Input id="email" name="email" type="email" required placeholder="aanya@example.com" />
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  required
+                  placeholder="aanya@example.com"
+                  onChange={(e) => setTrackingEmail(e.target.value)}
+                />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="phone">Phone *</Label>
