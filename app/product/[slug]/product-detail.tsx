@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -162,14 +162,20 @@ export default function ProductDetail() {
       </nav>
 
       <div className="grid gap-8 lg:grid-cols-2 lg:gap-12">
-        <div className="-mx-4 sm:mx-0">
-          <ProductGallery images={product.images} alt={product.name} discount={discount} />
+        <div className="flex flex-col gap-4">
+          <div className="-mx-4 sm:mx-0">
+            <ProductGallery images={product.images} alt={product.name} discount={discount} />
+          </div>
+          <div className="px-4 sm:px-0">
+            <VariantSwatches
+              productId={baseProduct.id}
+              activeSlug={variant?.slug}
+              fallbackHref={`/product/${baseProduct.slug}`}
+            />
+          </div>
         </div>
         <ProductInfo
           product={product}
-          baseProductId={baseProduct.id}
-          activeVariantSlug={variant?.slug}
-          baseProductSlug={baseProduct.slug}
           selectedSize={selectedSize}
           setSelectedSize={setSelectedSize}
           quantity={quantity}
@@ -241,47 +247,111 @@ function ProductGallery({
   discount: number;
 }) {
   const [active, setActive] = useState(0);
+  const [zoomStyle, setZoomStyle] = useState<{ transformOrigin: string } | undefined>(undefined);
+  const [isZooming, setIsZooming] = useState(false);
+  const mainRef = useRef<HTMLDivElement | null>(null);
+  const thumbRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const valid = images.length > 0 ? images : ['https://placehold.co/800x1000?text=No+Image'];
 
+  // Keep the active index in sync while the user swipes/scrolls through the
+  // main image strip (mobile) instead of only reacting to thumbnail taps.
+  const handleMainScroll = () => {
+    const el = mainRef.current;
+    if (!el) return;
+    const idx = Math.round(el.scrollLeft / el.clientWidth);
+    if (idx !== active) setActive(idx);
+  };
+
+  const goTo = (idx: number) => {
+    setActive(idx);
+    mainRef.current?.scrollTo({ left: idx * mainRef.current.clientWidth, behavior: 'smooth' });
+    thumbRefs.current[idx]?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    setZoomStyle({ transformOrigin: `${x}% ${y}%` });
+  };
+
   return (
-    <div className="flex flex-col gap-4">
-      <div className="relative aspect-[4/5] overflow-hidden border border-border/60 bg-muted sm:rounded-xl">
-        <Image
-          src={valid[active] || valid[0]}
-          alt={alt}
-          fill
-          priority
-          sizes="(max-width: 1024px) 100vw, 50vw"
-          className="object-cover"
-        />
-        {discount > 0 && (
-          <Badge className="absolute left-4 top-4 bg-secondary text-secondary-foreground">
-            {discount}% OFF
-          </Badge>
-        )}
-      </div>
-      {valid.length > 1 && (
-        <div className="flex gap-3 px-4 sm:px-0">
+    <div className="flex flex-col gap-3">
+      <div className="relative">
+        <div
+          ref={mainRef}
+          onScroll={handleMainScroll}
+          className="no-scrollbar flex aspect-[4/5] snap-x snap-mandatory overflow-x-auto scroll-smooth border border-border/60 bg-muted sm:rounded-xl"
+        >
           {valid.map((img, idx) => (
-            <button
+            <div
               key={idx}
-              onClick={() => setActive(idx)}
-              className={`relative h-20 w-16 overflow-hidden rounded-md border-2 transition-colors ${
-                active === idx
-                  ? 'border-primary'
-                  : 'border-border hover:border-primary/40'
-              }`}
-              aria-label={`View ${alt} image ${idx + 1}`}
+              className="relative h-full w-full flex-none snap-center overflow-hidden"
+              onMouseEnter={() => setIsZooming(true)}
+              onMouseLeave={() => setIsZooming(false)}
+              onMouseMove={handleMouseMove}
             >
               <Image
                 src={img}
                 alt={`${alt} - image ${idx + 1}`}
                 fill
-                sizes="64px"
-                className="object-cover"
+                priority={idx === 0}
+                sizes="(max-width: 1024px) 100vw, 50vw"
+                className={`object-cover transition-transform duration-200 ease-out cursor-zoom-in ${
+                  isZooming && active === idx ? 'scale-[2]' : 'scale-100'
+                }`}
+                style={active === idx ? zoomStyle : undefined}
               />
-            </button>
+            </div>
           ))}
+        </div>
+        {discount > 0 && (
+          <Badge className="absolute left-4 top-4 bg-secondary text-secondary-foreground">
+            {discount}% OFF
+          </Badge>
+        )}
+        {valid.length > 1 && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-3 flex items-center justify-center gap-1.5">
+            {valid.map((_, idx) => (
+              <span
+                key={idx}
+                className={`h-1.5 rounded-full transition-all ${
+                  active === idx ? 'w-4 bg-primary' : 'w-1.5 bg-white/80'
+                }`}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+      {valid.length > 1 && (
+        <div className="relative">
+          <div className="no-scrollbar flex snap-x gap-3 overflow-x-auto px-4 sm:px-0">
+            {valid.map((img, idx) => (
+              <button
+                key={idx}
+                ref={(el) => {
+                  thumbRefs.current[idx] = el;
+                }}
+                onClick={() => goTo(idx)}
+                className={`relative h-20 w-16 flex-none snap-start overflow-hidden rounded-md border-2 transition-colors ${
+                  active === idx
+                    ? 'border-primary'
+                    : 'border-border hover:border-primary/40'
+                }`}
+                aria-label={`View ${alt} image ${idx + 1}`}
+              >
+                <Image
+                  src={img}
+                  alt={`${alt} - image ${idx + 1}`}
+                  fill
+                  sizes="64px"
+                  className="object-cover"
+                />
+              </button>
+            ))}
+          </div>
+          {/* fade hint on the right edge signals there are more thumbnails to scroll to */}
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent sm:hidden" />
         </div>
       )}
     </div>
@@ -290,9 +360,6 @@ function ProductGallery({
 
 function ProductInfo({
   product,
-  baseProductId,
-  activeVariantSlug,
-  baseProductSlug,
   selectedSize,
   setSelectedSize,
   quantity,
@@ -300,9 +367,6 @@ function ProductInfo({
   onAdd,
 }: {
   product: Product;
-  baseProductId: string;
-  activeVariantSlug?: string;
-  baseProductSlug: string;
   selectedSize: string | null;
   setSelectedSize: (s: string) => void;
   quantity: number;
@@ -369,12 +433,6 @@ function ProductInfo({
           <p className="mt-0.5 font-medium">{product.origin}</p>
         </div>
       </div>
-
-      <VariantSwatches
-        productId={baseProductId}
-        activeSlug={activeVariantSlug}
-        fallbackHref={`/product/${baseProductSlug}`}
-      />
 
       <div>
         <div className="mb-2 flex items-center justify-between">
