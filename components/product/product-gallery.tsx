@@ -141,12 +141,19 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
         <div className="relative flex-1">
           {/*
             Mobile-scroll fix:
-            - touchAction: 'pan-x' tells the browser this element only owns
-              HORIZONTAL gestures. Any vertical component of a touch is left
-              alone and bubbles straight to the page, so swiping down over
-              the image scrolls the PAGE, not the picture.
-            - No manual touch/scroll JS here at all on mobile - it's 100%
-              native CSS scroll-snap, reliable across iOS Safari/Android Chrome.
+            - No touchAction override here. Leaving it at the default `auto`
+              lets the browser's native gesture disambiguation do its job:
+              this track only overflows HORIZONTALLY, so a horizontal drag
+              slides the carousel while a vertical drag has nothing to
+              scroll locally and correctly falls through to the page.
+            - IMPORTANT: `touch-action: pan-x` looks like the right fix but
+              is actually the opposite - once a touch starts on an element
+              restricted to pan-x, the browser disables vertical-scroll
+              gesture recognition for that whole touch, and it does NOT
+              hand off to the parent for the Y axis. That's what caused
+              swipes over the image to trap the page and refuse to scroll
+              down. Do not re-add touchAction: 'pan-x' here.
+            - 100% native CSS scroll-snap, reliable across iOS Safari/Android Chrome.
           */}
           <div
             ref={stageRef}
@@ -159,7 +166,6 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
               ref={trackRef}
               onScroll={handleScroll}
               onClick={() => setLightboxOpen(true)}
-              style={{ touchAction: 'pan-x' }}
               className="no-scrollbar flex aspect-[4/5] snap-x snap-mandatory overflow-x-auto scroll-smooth cursor-zoom-in"
             >
               {valid.map((img, idx) => {
