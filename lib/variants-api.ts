@@ -118,8 +118,119 @@ export async function createVariant(input: {
   return variant as ProductVariant;
 }
 
+/** Admin: fetch every colour variant for a product together with its per-size stock. */
+export async function fetchVariantsWithSizes(productId: string): Promise<VariantWithSizes[]> {
+  const supabase = getSupabaseBrowser();
+  const { data, error } = await supabase
+    .from('product_variants')
+    .select('*, product_variant_sizes(*)')
+    .eq('product_id', productId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((row: any) => {
+    const { product_variant_sizes, ...variant } = row;
+    return { ...variant, sizes: (product_variant_sizes ?? []) as VariantSize[] } as VariantWithSizes;
+  });
+}
+
+export async function updateVariant(
+  id: string,
+  input: Partial<{
+    color: string;
+    slug: string;
+    images: string[];
+    price_override: number | null;
+    meta_title: string | null;
+    meta_description: string | null;
+    is_default: boolean;
+  }>
+): Promise<ProductVariant> {
+  const supabase = getSupabaseBrowser();
+  const { data, error } = await supabase
+    .from('product_variants')
+    .update(input)
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return data as ProductVariant;
+}
+
+/**
+ * Marking a variant as the default unsets the flag on its siblings first,
+ * since only one colour variant per product should show as default.
+ */
+export async function setDefaultVariant(productId: string, variantId: string): Promise<void> {
+  const supabase = getSupabaseBrowser();
+  const { error: clearErr } = await supabase
+    .from('product_variants')
+    .update({ is_default: false })
+    .eq('product_id', productId);
+  if (clearErr) throw clearErr;
+
+  const { error } = await supabase
+    .from('product_variants')
+    .update({ is_default: true })
+    .eq('id', variantId);
+  if (error) throw error;
+}
+
 export async function deleteVariant(id: string): Promise<void> {
   const supabase = getSupabaseBrowser();
   const { error } = await supabase.from('product_variants').delete().eq('id', id);
   if (error) throw error;
+}
+
+export async function addVariantSize(input: {
+  variantId: string;
+  size: string;
+  stockQuantity: number;
+  priceOverride?: number | null;
+}): Promise<VariantSize> {
+  const supabase = getSupabaseBrowser();
+  const { data, error } = await supabase
+    .from('product_variant_sizes')
+    .insert({
+      variant_id: input.variantId,
+      size: input.size,
+      stock_quantity: input.stockQuantity,
+      price_override: input.priceOverride ?? null,
+    })
+    .select('*')
+    .single();
+  if (error) throw error;
+  return data as VariantSize;
+}
+
+export async function updateVariantSize(
+  id: string,
+  input: Partial<{ size: string; stock_quantity: number; price_override: number | null }>
+): Promise<VariantSize> {
+  const supabase = getSupabaseBrowser();
+  const { data, error } = await supabase
+    .from('product_variant_sizes')
+    .update(input)
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return data as VariantSize;
+}
+
+export async function deleteVariantSize(id: string): Promise<void> {
+  const supabase = getSupabaseBrowser();
+  const { error } = await supabase.from('product_variant_sizes').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function uploadVariantImage(file: File): Promise<string> {
+  const supabase = getSupabaseBrowser();
+  const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+  const path = `variants/${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
+  const { error } = await supabase.storage
+    .from('product-images')
+    .upload(path, file, { cacheControl: '3600', upsert: false });
+  if (error) throw error;
+  const { data } = supabase.storage.from('product-images').getPublicUrl(path);
+  return data.publicUrl;
 }

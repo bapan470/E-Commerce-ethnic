@@ -55,6 +55,53 @@ export async function fetchCategories(): Promise<CategoryRow[]> {
   return (data ?? []) as CategoryRow[];
 }
 
+export async function createCategory(input: {
+  name: string;
+  slug: string;
+  description?: string | null;
+}): Promise<CategoryRow> {
+  const { data, error } = await supabase
+    .from('categories')
+    .insert({
+      name: input.name,
+      slug: input.slug,
+      description: input.description ?? null,
+    })
+    .select('*')
+    .single();
+  if (error) throw error;
+  return data as CategoryRow;
+}
+
+export async function updateCategory(
+  id: string,
+  input: Partial<{ name: string; slug: string; description: string | null }>
+): Promise<CategoryRow> {
+  const { data, error } = await supabase
+    .from('categories')
+    .update(input)
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return data as CategoryRow;
+}
+
+export async function deleteCategory(id: string): Promise<void> {
+  const { error } = await supabase.from('categories').delete().eq('id', id);
+  if (error) throw error;
+}
+
+/** How many products currently reference this category — shown before delete. */
+export async function countProductsInCategory(categoryId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('products')
+    .select('id', { count: 'exact', head: true })
+    .eq('category_id', categoryId);
+  if (error) throw error;
+  return count ?? 0;
+}
+
 export async function createProduct(input: Partial<ProductRow>): Promise<Product> {
   const payload = {
     name: input.name,

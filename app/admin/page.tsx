@@ -6,6 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import ProductsPanel from '@/components/admin/products-panel';
 import OrdersPanel from '@/components/admin/orders-panel';
+import CategoriesPanel from '@/components/admin/categories-panel';
+import VariantsPanel from '@/components/admin/variants-panel';
+import ReviewsPanel from '@/components/admin/reviews-panel';
 import { toast } from 'sonner';
 
 export default function AdminPage() {
@@ -27,11 +30,26 @@ export default function AdminPage() {
       <Tabs defaultValue="products">
         <TabsList>
           <TabsTrigger value="products">Products</TabsTrigger>
+          <TabsTrigger value="variants">Variants</TabsTrigger>
+          <TabsTrigger value="categories">Categories</TabsTrigger>
+          <TabsTrigger value="reviews">Reviews</TabsTrigger>
           <TabsTrigger value="orders">Orders</TabsTrigger>
         </TabsList>
 
         <TabsContent value="products">
           <ProductsPanel />
+        </TabsContent>
+
+        <TabsContent value="variants">
+          <VariantsPanel />
+        </TabsContent>
+
+        <TabsContent value="categories">
+          <CategoriesPanel />
+        </TabsContent>
+
+        <TabsContent value="reviews">
+          <ReviewsPanel />
         </TabsContent>
 
         <TabsContent value="orders">

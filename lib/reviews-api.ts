@@ -60,6 +60,51 @@ export async function fetchMyReviewForProduct(productId: string): Promise<Review
   return (data as Review) ?? null;
 }
 
+export interface AdminReview extends Review {
+  product_name: string;
+  product_slug: string;
+}
+
+/**
+ * Admin: every review regardless of approval status, newest first,
+ * with the parent product's name/slug joined in for display.
+ */
+export async function fetchAllReviewsAdmin(): Promise<AdminReview[]> {
+  const supabase = getSupabaseBrowser();
+  const { data, error } = await supabase
+    .from('reviews')
+    .select('*, products(name, slug)')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((row: any) => {
+    const { products: product, ...review } = row;
+    return {
+      ...review,
+      product_name: product?.name ?? 'Deleted product',
+      product_slug: product?.slug ?? '',
+    } as AdminReview;
+  });
+}
+
+export async function approveReview(id: string): Promise<void> {
+  const supabase = getSupabaseBrowser();
+  const { error } = await supabase.from('reviews').update({ is_approved: true }).eq('id', id);
+  if (error) throw error;
+}
+
+/** Reject/unpublish — keeps the review row (and its author) but hides it storefront-side. */
+export async function unapproveReview(id: string): Promise<void> {
+  const supabase = getSupabaseBrowser();
+  const { error } = await supabase.from('reviews').update({ is_approved: false }).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteReviewAdmin(id: string): Promise<void> {
+  const supabase = getSupabaseBrowser();
+  const { error } = await supabase.from('reviews').delete().eq('id', id);
+  if (error) throw error;
+}
+
 /** Only customers who purchased the product (delivered order) may review it. */
 export async function hasPurchasedProduct(productId: string): Promise<boolean> {
   const supabase = getSupabaseBrowser();
