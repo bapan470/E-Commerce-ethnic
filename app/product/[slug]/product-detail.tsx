@@ -264,73 +264,36 @@ function ProductGallery({
   discount: number;
 }) {
   const [active, setActive] = useState(0);
-  const [zoomStyle, setZoomStyle] = useState<{ transformOrigin: string } | undefined>(undefined);
-  const [isZooming, setIsZooming] = useState(false);
-  // Only real mice/trackpads get the hover-zoom effect. Touch devices fire
-  // synthetic mouseenter/mousemove/mouseleave events on tap, which was
-  // toggling the scale(2) transform for a frame during swipes/taps — that's
-  // the "image hilta hai" (image shaking/jumping) bug on mobile.
-  const [canHover, setCanHover] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
-  const [lightboxIndex, setLightboxIndex] = useState(0);
-  const mainRef = useRef<HTMLDivElement | null>(null);
+  const trackRef = useRef<HTMLDivElement | null>(null);
   const thumbColRef = useRef<HTMLDivElement | null>(null);
   const valid = images.length > 0 ? images : ['https://placehold.co/800x1000?text=No+Image'];
 
-  useEffect(() => {
-    const mq = window.matchMedia('(hover: hover) and (pointer: fine)');
-    setCanHover(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setCanHover(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
-
-  // A colour switch swaps `images` in place (no remount), so make sure the
-  // gallery snaps back to the first shot of the new set instead of showing
-  // whatever index/scroll position was active for the previous colour.
+  // Reset to the first image whenever the image set changes (e.g. colour swap).
   useEffect(() => {
     setActive(0);
-    mainRef.current?.scrollTo({ left: 0 });
-    setIsZooming(false);
+    trackRef.current?.scrollTo({ left: 0 });
   }, [images]);
 
-  // Keep the active index in sync while the user swipes/scrolls through the
-  // main image strip (mobile) instead of only reacting to thumbnail taps.
-  const handleMainScroll = () => {
-    const el = mainRef.current;
+  // Track which slide is active as the user swipes through the strip.
+  const handleScroll = () => {
+    const el = trackRef.current;
     if (!el) return;
     const idx = Math.round(el.scrollLeft / el.clientWidth);
     if (idx !== active) setActive(idx);
   };
 
-  const selectImage = (idx: number) => {
+  const goTo = (idx: number) => {
     setActive(idx);
-    mainRef.current?.scrollTo({ left: idx * mainRef.current.clientWidth, behavior: 'smooth' });
+    trackRef.current?.scrollTo({ left: idx * (trackRef.current?.clientWidth ?? 0), behavior: 'smooth' });
   };
 
   const scrollThumbCol = (dir: 1 | -1) => {
     thumbColRef.current?.scrollBy({ top: dir * 96, behavior: 'smooth' });
   };
 
-  const handleMouseEnter = () => {
-    if (canHover) setIsZooming(true);
-  };
-  const handleMouseLeave = () => {
-    if (canHover) setIsZooming(false);
-  };
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!canHover) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-    setZoomStyle({ transformOrigin: `${x}% ${y}%` });
-  };
-
-  // Only jump into the full-screen lightbox on touch/mobile taps — desktop
-  // already zooms in place on hover, matching the two references sent.
-  const handleMainImageClick = () => {
+  const openLightbox = () => {
     if (typeof window !== 'undefined' && window.innerWidth < 640) {
-      setLightboxIndex(active);
       setLightboxOpen(true);
     }
   };
@@ -348,7 +311,7 @@ function ProductGallery({
       <div className="flex gap-3">
         {/* Desktop: vertical thumbnail rail on the left with up/down paging */}
         {valid.length > 1 && (
-          <div className="hidden w-16 flex-shrink-0 flex-col items-center gap-2 sm:flex">
+          <div className="relative hidden w-16 shrink-0 flex-col sm:flex">
             <div
               ref={thumbColRef}
               className="no-scrollbar flex max-h-[500px] w-full flex-col gap-3 overflow-y-auto"
@@ -356,38 +319,37 @@ function ProductGallery({
               {valid.map((img, idx) => (
                 <button
                   key={idx}
-                  onClick={() => selectImage(idx)}
-                  className={`relative aspect-[4/5] w-full flex-shrink-0 overflow-hidden rounded-md border-2 transition-colors ${
-                    active === idx
-                      ? 'border-primary'
-                      : 'border-border hover:border-primary/40'
+                  type="button"
+                  onClick={() => goTo(idx)}
+                  className={`relative aspect-square w-full shrink-0 overflow-hidden rounded-lg border transition-colors ${
+                    active === idx ? 'border-primary' : 'border-border/60 hover:border-primary/40'
                   }`}
-                  aria-label={`View ${alt} image ${idx + 1}`}
                 >
                   <Image
                     src={img}
-                    alt={`${alt} - image ${idx + 1}`}
+                    alt={`${alt} thumbnail ${idx + 1}`}
                     fill
                     draggable={false}
-                    onDragStart={(e) => e.preventDefault()}
                     sizes="64px"
                     className="select-none object-cover"
                   />
                 </button>
               ))}
             </div>
-            {valid.length > 4 && (
-              <div className="flex gap-2">
+            {valid.length > 5 && (
+              <div className="mt-2 flex justify-center gap-2">
                 <button
-                  onClick={() => scrollThumbCol(-1)}
+                  type="button"
                   aria-label="Scroll thumbnails up"
+                  onClick={() => scrollThumbCol(-1)}
                   className="rounded-full border border-border p-1 text-muted-foreground hover:border-primary/40 hover:text-primary"
                 >
                   <ChevronUp className="h-3.5 w-3.5" />
                 </button>
                 <button
-                  onClick={() => scrollThumbCol(1)}
+                  type="button"
                   aria-label="Scroll thumbnails down"
+                  onClick={() => scrollThumbCol(1)}
                   className="rounded-full border border-border p-1 text-muted-foreground hover:border-primary/40 hover:text-primary"
                 >
                   <ChevronDown className="h-3.5 w-3.5" />
@@ -398,28 +360,30 @@ function ProductGallery({
         )}
 
         <div className="relative flex-1">
+          {/*
+            Mobile-scroll fix:
+            - touchAction: 'pan-x' tells the browser this element only owns
+              HORIZONTAL gestures. Any vertical component of a touch is left
+              alone and bubbles straight to the page, so swiping down over
+              the image scrolls the PAGE, not the picture.
+            - No manual touch/scroll JS here at all - it's 100% native
+              CSS scroll-snap, which is what makes it reliable across
+              iOS Safari and Android Chrome (custom JS touch handlers are
+              exactly what caused the old "image hilta hai" bug).
+          */}
           <div
-            ref={mainRef}
-            onScroll={handleMainScroll}
-            onClick={handleMainImageClick}
-            style={{ overscrollBehaviorX: 'contain', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
+            ref={trackRef}
+            onScroll={handleScroll}
+            onClick={openLightbox}
+            style={{ touchAction: 'pan-x' }}
             className="no-scrollbar flex aspect-[4/5] snap-x snap-mandatory overflow-x-auto scroll-smooth border border-border/60 bg-muted sm:rounded-xl"
           >
             {valid.map((img, idx) => {
-              // Only mount the current slide + its immediate neighbours with a
-              // real <Image>. The rest stay as empty placeholders (same size,
-              // no request fired) until the user swipes near them. Without
-              // this, every photo in the gallery started downloading the
-              // moment the page opened, which is what was making mobile feel
-              // slow to load.
               const isNear = Math.abs(idx - active) <= 1;
               return (
                 <div
                   key={idx}
                   className="relative h-full w-full flex-none snap-center overflow-hidden bg-muted"
-                  onMouseEnter={canHover ? handleMouseEnter : undefined}
-                  onMouseLeave={canHover ? handleMouseLeave : undefined}
-                  onMouseMove={canHover ? handleMouseMove : undefined}
                 >
                   {isNear && (
                     <Image
@@ -429,12 +393,8 @@ function ProductGallery({
                       priority={idx === 0}
                       loading={idx === 0 ? undefined : 'lazy'}
                       draggable={false}
-                      onDragStart={(e) => e.preventDefault()}
                       sizes="(max-width: 1024px) 100vw, 50vw"
-                      className={`select-none object-cover transition-transform duration-200 ease-out cursor-zoom-in ${
-                        isZooming && active === idx ? 'scale-[2]' : 'scale-100'
-                      }`}
-                      style={active === idx ? zoomStyle : undefined}
+                      className="select-none object-cover"
                     />
                   )}
                 </div>
@@ -446,7 +406,7 @@ function ProductGallery({
               {discount}% OFF
             </Badge>
           )}
-          {/* Mobile: dots only, no thumbnail strip — tap the image to open the full-screen zoom view */}
+          {/* Mobile: dots only, no thumbnail strip - tap the image to open the full-screen zoom view */}
           {valid.length > 1 && (
             <div className="pointer-events-none absolute inset-x-0 bottom-3 flex items-center justify-center gap-1.5 sm:hidden">
               {valid.map((_, idx) => (
@@ -462,21 +422,26 @@ function ProductGallery({
         </div>
       </div>
 
-      {/* Mobile full-screen zoom lightbox */}
+      {/* Mobile full-screen lightbox: simple pinch-to-zoom image viewer */}
       {lightboxOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-white sm:hidden">
+        <div className="fixed inset-0 z-50 flex flex-col bg-black sm:hidden">
           <button
+            type="button"
             onClick={() => setLightboxOpen(false)}
             aria-label="Close"
-            className="absolute right-4 top-4 z-10 rounded-full bg-white/90 p-2 shadow-md"
+            className="absolute right-4 top-4 z-10 rounded-full bg-black/50 p-2 text-white"
           >
             <X className="h-5 w-5" />
           </button>
-          <div className="flex flex-1 items-center justify-center overflow-hidden p-4">
-            <PinchZoomImage
-              key={lightboxIndex}
-              src={valid[lightboxIndex]}
-              alt={`${alt} - image ${lightboxIndex + 1}`}
+          <div className="relative flex-1">
+            <Image
+              src={valid[active]}
+              alt={`${alt} - full view`}
+              fill
+              draggable={false}
+              sizes="100vw"
+              priority
+              className="select-none object-contain"
             />
           </div>
           {valid.length > 1 && (
@@ -484,13 +449,13 @@ function ProductGallery({
               {valid.map((img, idx) => (
                 <button
                   key={idx}
-                  onClick={() => setLightboxIndex(idx)}
-                  className={`relative h-16 w-14 flex-none overflow-hidden rounded-md border-2 ${
-                    lightboxIndex === idx ? 'border-primary' : 'border-border'
+                  type="button"
+                  onClick={() => setActive(idx)}
+                  className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-md border-2 ${
+                    active === idx ? 'border-primary' : 'border-transparent'
                   }`}
-                  aria-label={`View ${alt} image ${idx + 1}`}
                 >
-                  <Image src={img} alt="" fill draggable={false} onDragStart={(e) => e.preventDefault()} sizes="56px" className="select-none object-cover" />
+                  <Image src={img} alt="" fill draggable={false} sizes="56px" className="select-none object-cover" />
                 </button>
               ))}
             </div>
@@ -501,174 +466,6 @@ function ProductGallery({
   );
 }
 
-// Full-screen zoom view: zooming happens directly via pinch (touch) or
-// scroll/wheel (trackpad/mouse) — no tap needed first. Once zoomed in you
-// can drag with one finger to pan around. Tapping just toggles a quick
-// zoom in/out as a convenience shortcut; it's never required.
-function PinchZoomImage({ src, alt }: { src: string; alt: string }) {
-  const areaRef = useRef<HTMLDivElement | null>(null);
-  const [scale, setScale] = useState(1);
-  const [translate, setTranslate] = useState({ x: 0, y: 0 });
-  const scaleRef = useRef(1);
-  const translateRef = useRef({ x: 0, y: 0 });
-  const pinchRef = useRef<{ startDist: number; startScale: number } | null>(null);
-  const panRef = useRef<{ startX: number; startY: number; startTx: number; startTy: number } | null>(null);
-  const tapRef = useRef<{ x: number; y: number; time: number; moved: boolean } | null>(null);
-
-  useEffect(() => {
-    scaleRef.current = scale;
-  }, [scale]);
-  useEffect(() => {
-    translateRef.current = translate;
-  }, [translate]);
-
-  const clampScale = (s: number) => Math.min(4, Math.max(1, s));
-
-  const clampTranslate = (t: { x: number; y: number }, s: number, el: HTMLDivElement) => {
-    const maxX = (el.clientWidth * (s - 1)) / 2;
-    const maxY = (el.clientHeight * (s - 1)) / 2;
-    return {
-      x: Math.min(maxX, Math.max(-maxX, t.x)),
-      y: Math.min(maxY, Math.max(-maxY, t.y)),
-    };
-  };
-
-  const resetZoom = () => {
-    setScale(1);
-    setTranslate({ x: 0, y: 0 });
-  };
-
-  // Attached as native (non-passive) listeners so preventDefault reliably
-  // stops the page/lightbox from scrolling while pinching or panning —
-  // React's onTouch* props are passive by default and can't block that.
-  useEffect(() => {
-    const el = areaRef.current;
-    if (!el) return;
-
-    const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
-
-    const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 2) {
-        pinchRef.current = { startDist: dist(e.touches), startScale: scaleRef.current };
-        panRef.current = null;
-        tapRef.current = null;
-      } else if (e.touches.length === 1) {
-        const t = e.touches[0];
-        tapRef.current = { x: t.clientX, y: t.clientY, time: Date.now(), moved: false };
-        if (scaleRef.current > 1) {
-          panRef.current = {
-            startX: t.clientX,
-            startY: t.clientY,
-            startTx: translateRef.current.x,
-            startTy: translateRef.current.y,
-          };
-        }
-      }
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 2 && pinchRef.current) {
-        e.preventDefault();
-        const ratio = dist(e.touches) / pinchRef.current.startDist;
-        const next = clampScale(pinchRef.current.startScale * ratio);
-        setScale(next);
-        setTranslate((t) => clampTranslate(t, next, el));
-      } else if (e.touches.length === 1 && panRef.current) {
-        const t = e.touches[0];
-        if (tapRef.current && Math.hypot(t.clientX - tapRef.current.x, t.clientY - tapRef.current.y) > 8) {
-          tapRef.current.moved = true;
-        }
-        if (scaleRef.current > 1) {
-          e.preventDefault();
-          const dx = t.clientX - panRef.current.startX;
-          const dy = t.clientY - panRef.current.startY;
-          setTranslate(
-            clampTranslate({ x: panRef.current.startTx + dx, y: panRef.current.startTy + dy }, scaleRef.current, el)
-          );
-        }
-      }
-    };
-
-    const onTouchEnd = (e: TouchEvent) => {
-      if (e.touches.length < 2) pinchRef.current = null;
-      if (e.touches.length === 0) {
-        panRef.current = null;
-        if (scaleRef.current < 1.05) resetZoom();
-        // A quick, still tap (not a pinch/drag) toggles zoom as a shortcut —
-        // scrolling/pinching is the primary way to zoom, this is optional.
-        const tap = tapRef.current;
-        if (tap && !tap.moved && Date.now() - tap.time < 300) {
-          if (scaleRef.current > 1) {
-            resetZoom();
-          } else {
-            const rect = el.getBoundingClientRect();
-            setScale(2.5);
-            setTranslate(
-              clampTranslate(
-                {
-                  x: (rect.width / 2 - (tap.x - rect.left)) * 1.5,
-                  y: (rect.height / 2 - (tap.y - rect.top)) * 1.5,
-                },
-                2.5,
-                el
-              )
-            );
-          }
-        }
-        tapRef.current = null;
-      }
-    };
-
-    // Trackpad pinch and mouse-wheel scroll both zoom directly — no tap
-    // needed. Trackpad pinch arrives as a wheel event with ctrlKey set.
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      const next = clampScale(scaleRef.current - e.deltaY * 0.01);
-      setScale(next);
-      setTranslate((t) => clampTranslate(t, next, el));
-      if (next <= 1) setTranslate({ x: 0, y: 0 });
-    };
-
-    el.addEventListener('touchstart', onTouchStart, { passive: true });
-    el.addEventListener('touchmove', onTouchMove, { passive: false });
-    el.addEventListener('touchend', onTouchEnd, { passive: true });
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => {
-      el.removeEventListener('touchstart', onTouchStart);
-      el.removeEventListener('touchmove', onTouchMove);
-      el.removeEventListener('touchend', onTouchEnd);
-      el.removeEventListener('wheel', onWheel);
-    };
-  }, []);
-
-  return (
-    <div
-      ref={areaRef}
-      className={`relative h-full w-full touch-none select-none overflow-hidden ${
-        scale > 1 ? 'cursor-grab' : ''
-      }`}
-    >
-      <div
-        className="relative h-full w-full"
-        style={{
-          transform: `translate(${translate.x}px, ${translate.y}px) scale(${scale})`,
-          transition: 'transform 0.08s linear',
-        }}
-      >
-        <Image
-          src={src}
-          alt={alt}
-          fill
-          draggable={false}
-          onDragStart={(e) => e.preventDefault()}
-          sizes="100vw"
-          priority
-          className="select-none object-contain"
-        />
-      </div>
-    </div>
-  );
-}
 
 function ProductInfo({
   product,
