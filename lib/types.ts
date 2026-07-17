@@ -40,6 +40,39 @@ export interface CategoryRow {
   description?: string | null;
 }
 
+export interface Address {
+  id: string;
+  user_id: string;
+  full_name: string;
+  phone: string;
+  line1: string;
+  line2?: string | null;
+  city: string;
+  state: string;
+  pincode: string;
+  is_default: boolean;
+  created_at?: string;
+}
+
+export interface Profile {
+  id: string;
+  full_name: string | null;
+  phone: string | null;
+}
+
+export interface ReturnRequest {
+  id: string;
+  order_id: string;
+  order_item_id: string | null;
+  user_id: string | null;
+  type: 'return' | 'exchange';
+  reason: string;
+  status: 'requested' | 'approved' | 'rejected' | 'refunded' | 'completed';
+  admin_notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 // Shape returned by Supabase (snake_case) — we map to Product on read.
 export interface ProductRow {
   id: string;

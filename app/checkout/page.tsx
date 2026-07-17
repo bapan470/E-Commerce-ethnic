@@ -7,6 +7,7 @@ import { CheckCircle2, Lock, Loader2, CreditCard } from 'lucide-react';
 import { useCart } from '@/lib/cart-context';
 import { formatINR } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
+import { getSupabaseBrowser } from '@/lib/supabase-browser';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -130,6 +131,10 @@ export default function CheckoutPage() {
         price: i.product.price,
       }));
 
+      const {
+        data: { user: loggedInUser },
+      } = await getSupabaseBrowser().auth.getUser();
+
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -140,6 +145,10 @@ export default function CheckoutPage() {
           customer_name: customerName,
           customer_email: customerEmail,
           customer_phone: customerPhone,
+          user_id: loggedInUser?.id ?? null,
+          subtotal,
+          shipping_charge: shipping,
+          gst_amount: tax,
         })
         .select('id')
         .single();

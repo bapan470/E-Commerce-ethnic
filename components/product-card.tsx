@@ -8,6 +8,7 @@ import { formatINR, discountPct } from '@/lib/format';
 import { useCart } from '@/lib/cart-context';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import WishlistButton from '@/components/wishlist-button';
 import { toast } from 'sonner';
 
 export default function ProductCard({ product }: { product: Product }) {
@@ -43,6 +44,7 @@ export default function ProductCard({ product }: { product: Product }) {
             {discount}% OFF
           </Badge>
         )}
+        <WishlistButton productId={product.id} className="absolute right-3 top-3" />
         {!product.inStock && (
           <div className="absolute inset-0 flex items-center justify-center bg-background/60">
             <span className="rounded bg-primary px-3 py-1 text-xs font-semibold uppercase tracking-wider text-primary-foreground">

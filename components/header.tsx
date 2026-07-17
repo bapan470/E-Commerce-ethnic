@@ -3,8 +3,9 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, FormEvent } from 'react';
-import { Search, ShoppingBag, Menu } from 'lucide-react';
+import { Search, ShoppingBag, Menu, User, Heart } from 'lucide-react';
 import { useCart } from '@/lib/cart-context';
+import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -23,6 +24,7 @@ const navLinks = [
 
 export default function Header() {
   const { count, setCartOpen } = useCart();
+  const { user } = useAuth();
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -113,20 +115,34 @@ export default function Header() {
           </div>
         </form>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setCartOpen(true)}
-          aria-label="Open cart"
-          className="relative"
-        >
-          <ShoppingBag className="h-5 w-5" />
-          {count > 0 && (
-            <span className="absolute -right-1 -top-1 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-secondary px-1 text-xs font-bold text-secondary-foreground">
-              {count}
-            </span>
-          )}
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon" asChild className="hidden sm:inline-flex" aria-label="Wishlist">
+            <Link href="/account/wishlist">
+              <Heart className="h-5 w-5" />
+            </Link>
+          </Button>
+
+          <Button variant="ghost" size="icon" asChild aria-label={user ? 'My account' : 'Login'}>
+            <Link href={user ? '/account/orders' : '/login'}>
+              <User className="h-5 w-5" />
+            </Link>
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setCartOpen(true)}
+            aria-label="Open cart"
+            className="relative"
+          >
+            <ShoppingBag className="h-5 w-5" />
+            {count > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-secondary px-1 text-xs font-bold text-secondary-foreground">
+                {count}
+              </span>
+            )}
+          </Button>
+        </div>
       </div>
     </header>
   );
