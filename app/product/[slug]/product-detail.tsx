@@ -402,31 +402,44 @@ function ProductGallery({
             ref={mainRef}
             onScroll={handleMainScroll}
             onClick={handleMainImageClick}
+            style={{ overscrollBehaviorX: 'contain', WebkitOverflowScrolling: 'touch' }}
             className="no-scrollbar flex aspect-[4/5] snap-x snap-mandatory overflow-x-auto scroll-smooth border border-border/60 bg-muted sm:rounded-xl"
           >
-            {valid.map((img, idx) => (
-              <div
-                key={idx}
-                className="relative h-full w-full flex-none snap-center overflow-hidden"
-                onMouseEnter={handleMouseEnter}
-                onMouseLeave={handleMouseLeave}
-                onMouseMove={handleMouseMove}
-              >
-                <Image
-                  src={img}
-                  alt={`${alt} - image ${idx + 1}`}
-                  fill
-                  priority={idx === 0}
-                  draggable={false}
-                  onDragStart={(e) => e.preventDefault()}
-                  sizes="(max-width: 1024px) 100vw, 50vw"
-                  className={`select-none object-cover transition-transform duration-200 ease-out cursor-zoom-in ${
-                    isZooming && active === idx ? 'scale-[2]' : 'scale-100'
-                  }`}
-                  style={active === idx ? zoomStyle : undefined}
-                />
-              </div>
-            ))}
+            {valid.map((img, idx) => {
+              // Only mount the current slide + its immediate neighbours with a
+              // real <Image>. The rest stay as empty placeholders (same size,
+              // no request fired) until the user swipes near them. Without
+              // this, every photo in the gallery started downloading the
+              // moment the page opened, which is what was making mobile feel
+              // slow to load.
+              const isNear = Math.abs(idx - active) <= 1;
+              return (
+                <div
+                  key={idx}
+                  className="relative h-full w-full flex-none snap-center overflow-hidden bg-muted"
+                  onMouseEnter={canHover ? handleMouseEnter : undefined}
+                  onMouseLeave={canHover ? handleMouseLeave : undefined}
+                  onMouseMove={canHover ? handleMouseMove : undefined}
+                >
+                  {isNear && (
+                    <Image
+                      src={img}
+                      alt={`${alt} - image ${idx + 1}`}
+                      fill
+                      priority={idx === 0}
+                      loading={idx === 0 ? undefined : 'lazy'}
+                      draggable={false}
+                      onDragStart={(e) => e.preventDefault()}
+                      sizes="(max-width: 1024px) 100vw, 50vw"
+                      className={`select-none object-cover transition-transform duration-200 ease-out cursor-zoom-in ${
+                        isZooming && active === idx ? 'scale-[2]' : 'scale-100'
+                      }`}
+                      style={active === idx ? zoomStyle : undefined}
+                    />
+                  )}
+                </div>
+              );
+            })}
           </div>
           {discount > 0 && (
             <Badge className="absolute left-4 top-4 bg-secondary text-secondary-foreground">
