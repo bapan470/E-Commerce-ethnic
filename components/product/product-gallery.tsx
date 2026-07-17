@@ -53,91 +53,16 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
     thumbColRef.current?.scrollBy({ top: dir * 96, behavior: 'smooth' });
   };
 
-  // --- Mobile swipe: fully manual, dual-axis direction lock -----------------
-  // Why `touch-action: pan-y` wasn't enough: with pan-y set, the browser is
-  // allowed to start its own native vertical scroll the instant it sees ANY
-  // vertical component in a touchmove - it doesn't wait for our JS to decide
-  // anything. That race meant: sometimes a real horizontal swipe got
-  // hijacked into a page scroll (because the first few px had a tiny
-  // vertical wobble and the browser grabbed it first), and sometimes a real
-  // vertical swipe felt like it "didn't take" because our later
-  // preventDefault() fired after the browser had already committed the
-  // gesture elsewhere. Both directions ended up unreliable.
-  //
-  // Fix: set `touch-action: none` on the track so the browser NEVER starts
-  // any native panning on this element, for either axis - full stop, no
-  // race. We then own both axes ourselves in JS:
-  //   1. Track raw finger movement from touchstart.
-  //   2. Once movement passes an 8px threshold, lock the axis to whichever
-  //      of dx/dy is bigger - this only happens once per touch.
-  //   3. If locked horizontal -> drag the carousel's scrollLeft ourselves,
-  //      snapping to the nearest slide on release.
-  //   4. If locked vertical -> drive window scroll ourselves
-  //      (window.scrollTo) using the same delta, so the page moves in
-  //      lockstep with the finger.
-  useEffect(() => {
-    const el = trackRef.current;
-    if (!el) return;
-
-    const THRESHOLD = 8; // px of movement before we commit to an axis
-    let startX = 0;
-    let startY = 0;
-    let startScrollLeft = 0;
-    let startPageY = 0;
-    let direction: 'x' | 'y' | null = null;
-
-    const onTouchStart = (e: TouchEvent) => {
-      if (e.touches.length !== 1) return;
-      startX = e.touches[0].clientX;
-      startY = e.touches[0].clientY;
-      startScrollLeft = el.scrollLeft;
-      startPageY = window.scrollY;
-      direction = null;
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length !== 1) return;
-      const dx = e.touches[0].clientX - startX;
-      const dy = e.touches[0].clientY - startY;
-
-      if (direction === null) {
-        if (Math.abs(dx) < THRESHOLD && Math.abs(dy) < THRESHOLD) return;
-        direction = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
-      }
-
-      // touch-action: none already stops the browser from doing anything
-      // native here, but we still preventDefault defensively for older
-      // WebViews that don't fully honour touch-action.
-      e.preventDefault();
-
-      if (direction === 'x') {
-        el.scrollLeft = startScrollLeft - dx;
-      } else {
-        window.scrollTo(window.scrollX, startPageY - dy);
-      }
-    };
-
-    const onTouchEnd = () => {
-      if (direction === 'x') {
-        const idx = Math.round(el.scrollLeft / el.clientWidth);
-        goTo(idx);
-      }
-      direction = null;
-    };
-
-    el.addEventListener('touchstart', onTouchStart, { passive: true });
-    // Must be non-passive: we call preventDefault() above once an axis is locked.
-    el.addEventListener('touchmove', onTouchMove, { passive: false });
-    el.addEventListener('touchend', onTouchEnd, { passive: true });
-    el.addEventListener('touchcancel', onTouchEnd, { passive: true });
-
-    return () => {
-      el.removeEventListener('touchstart', onTouchStart);
-      el.removeEventListener('touchmove', onTouchMove);
-      el.removeEventListener('touchend', onTouchEnd);
-      el.removeEventListener('touchcancel', onTouchEnd);
-    };
-  }, [goTo]);
+  // --- Mobile swipe: 100% native, no JS interception ------------------------
+  // No manual touch handlers here on purpose. The track below is a plain
+  // horizontally-scrolling, scroll-snap container with no touch-action
+  // override, so the browser's own native gesture engine drives everything:
+  // a horizontal swipe scrolls the carousel with full native momentum, and a
+  // vertical swipe falls through and scrolls the page with full native
+  // momentum too — exactly the free, unlocked swipe feel of a normal
+  // e-commerce product gallery. Manually intercepting touches with JS
+  // (scrollLeft / window.scrollTo per-frame) removes the browser's built-in
+  // inertia and makes the scroll feel stepped/laggy, so we don't do that.
 
   // --- Desktop hover-zoom (magnifier) -------------------------------------
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -227,11 +152,12 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
         <div className="relative flex-1">
           {/*
             Mobile-scroll fix:
-            - touch-action: 'none' means the browser NEVER starts any native
-              panning on this element, for either axis - no race with our JS.
-              Horizontal swipe and vertical page-scroll are both driven
-              manually by the touch effect above, based on which direction
-              the finger actually moved first.
+            - No touch-action override, no JS touch handlers. Default
+              `auto` behavior lets the browser's native gesture engine
+              disambiguate the swipe itself: horizontal drag scrolls this
+              snap-carousel (with native momentum/inertia), vertical drag
+              scrolls the page (also with native momentum). This is the
+              same free-swipe pattern most e-commerce product galleries use.
           */}
           <div
             ref={stageRef}
@@ -244,7 +170,6 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
               ref={trackRef}
               onScroll={handleScroll}
               onClick={() => setLightboxOpen(true)}
-              style={{ touchAction: 'none' }}
               className="no-scrollbar flex aspect-[4/5] snap-x snap-mandatory overflow-x-auto scroll-smooth cursor-zoom-in"
             >
               {valid.map((img, idx) => {
