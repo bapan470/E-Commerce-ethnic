@@ -14,6 +14,21 @@ interface ProductGalleryProps {
 
 const PLACEHOLDER = 'https://placehold.co/800x1000?text=No+Image';
 
+/**
+ * Product image gallery — main stage + thumbnail rail + full-screen lightbox.
+ *
+ * Deliberately has ZERO external carousel dependency (no Swiper, no Embla).
+ * Swiper previously broke the main image silently in production: it ships
+ * pure ESM with no CJS build, and Next.js 13's default webpack config
+ * doesn't transpile that, so the whole component failed to mount on the
+ * client while everything else on the page rendered fine — a gray box
+ * where the photo should be, with no visible error.
+ *
+ * Instead, the main stage below is a plain horizontally-scrolling,
+ * scroll-snap <div>. The browser's own native touch/scroll engine drives
+ * swiping, so there is no library to go out of sync with Next/React/webpack
+ * versions, and nothing here can fail to compile.
+ */
 export default function ProductGallery({ images, alt, discount }: ProductGalleryProps) {
   const valid = images.length > 0 ? images : [PLACEHOLDER];
 
@@ -26,25 +41,33 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
   const thumbColRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
 
+  // Distinguish "tap to open lightbox" from "just finished dragging the
+  // scroll strip" — without this, the click that fires at the end of a
+  // swipe would also open the lightbox, which feels broken on touch.
+  const dragDistanceRef = useRef(0);
+  const dragStartXRef = useRef(0);
+
   // Reset to the first image whenever the image set changes (e.g. colour swap).
   useEffect(() => {
     setActive(0);
     trackRef.current?.scrollTo({ left: 0 });
   }, [images]);
 
-  // Track which slide is active as the user swipes through the strip (mobile).
+  // Track which slide is active as the user swipes through the strip.
   const handleScroll = () => {
     const el = trackRef.current;
-    if (!el) return;
+    if (!el || el.clientWidth === 0) return;
     const idx = Math.round(el.scrollLeft / el.clientWidth);
-    if (idx !== active) setActive(idx);
+    const clamped = Math.min(valid.length - 1, Math.max(0, idx));
+    if (clamped !== active) setActive(clamped);
   };
 
   const goTo = useCallback(
     (idx: number) => {
       const next = (idx + valid.length) % valid.length;
       setActive(next);
-      trackRef.current?.scrollTo({ left: next * (trackRef.current?.clientWidth ?? 0), behavior: 'smooth' });
+      const el = trackRef.current;
+      if (el) el.scrollTo({ left: next * el.clientWidth, behavior: 'smooth' });
     },
     [valid.length]
   );
@@ -53,29 +76,33 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
     thumbColRef.current?.scrollBy({ top: dir * 96, behavior: 'smooth' });
   };
 
-  // --- Mobile swipe: 100% native, no JS interception ------------------------
-  // No manual touch handlers here on purpose. The track below is a plain
-  // horizontally-scrolling, scroll-snap container with no touch-action
-  // override, so the browser's own native gesture engine drives everything:
-  // a horizontal swipe scrolls the carousel with full native momentum, and a
-  // vertical swipe falls through and scrolls the page with full native
-  // momentum too — exactly the free, unlocked swipe feel of a normal
-  // e-commerce product gallery. Manually intercepting touches with JS
-  // (scrollLeft / window.scrollTo per-frame) removes the browser's built-in
-  // inertia and makes the scroll feel stepped/laggy, so we don't do that.
-
   // --- Desktop hover-zoom (magnifier) -------------------------------------
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = stageRef.current?.getBoundingClientRect();
-    if (!rect) return;
+    if (!rect || rect.width === 0 || rect.height === 0) return;
     const x = ((e.clientX - rect.left) / rect.width) * 100;
     const y = ((e.clientY - rect.top) / rect.height) * 100;
     setZoomPos({ x: Math.min(100, Math.max(0, x)), y: Math.min(100, Math.max(0, y)) });
   };
 
-  // --- Lightbox (shared by mobile + desktop) ------------------------------
+  // --- Tap-vs-swipe disambiguation on the main stage ----------------------
+  const handleTrackPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    dragDistanceRef.current = 0;
+    dragStartXRef.current = e.clientX;
+  };
+  const handleTrackPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.buttons === 0 && e.pointerType === 'mouse') return;
+    dragDistanceRef.current = Math.max(dragDistanceRef.current, Math.abs(e.clientX - dragStartXRef.current));
+  };
+  const handleTrackClick = () => {
+    // A real swipe moved the pointer more than a few pixels; a tap didn't.
+    if (dragDistanceRef.current < 8) setLightboxOpen(true);
+  };
+
+  // --- Lightbox open/close side effects -----------------------------------
   useEffect(() => {
     if (!lightboxOpen) return;
+    const { overflow } = document.body.style;
     document.body.style.overflow = 'hidden';
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setLightboxOpen(false);
@@ -84,7 +111,7 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
     };
     window.addEventListener('keydown', onKey);
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = overflow;
       window.removeEventListener('keydown', onKey);
     };
   }, [lightboxOpen, active, goTo]);
@@ -92,7 +119,7 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
   return (
     <div className="flex flex-col gap-3">
       <div className="flex gap-3">
-        {/* Desktop: vertical thumbnail rail on the left with up/down paging */}
+        {/* Desktop: vertical thumbnail rail with up/down paging */}
         {valid.length > 1 && (
           <div className="relative hidden w-16 shrink-0 flex-col sm:flex lg:w-[72px]">
             <div
@@ -101,10 +128,11 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
             >
               {valid.map((img, idx) => (
                 <button
-                  key={idx}
+                  key={`${idx}-${img}`}
                   type="button"
                   onClick={() => goTo(idx)}
                   aria-label={`View image ${idx + 1}`}
+                  aria-current={active === idx}
                   className={cn(
                     'relative aspect-square w-full shrink-0 overflow-hidden rounded-lg border-2 transition-all duration-200',
                     active === idx
@@ -151,13 +179,12 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
 
         <div className="relative flex-1">
           {/*
-            Mobile-scroll fix:
-            - No touch-action override, no JS touch handlers. Default
-              `auto` behavior lets the browser's native gesture engine
-              disambiguate the swipe itself: horizontal drag scrolls this
-              snap-carousel (with native momentum/inertia), vertical drag
-              scrolls the page (also with native momentum). This is the
-              same free-swipe pattern most e-commerce product galleries use.
+            Main stage: native horizontal scroll-snap strip.
+            No touch-action override and no manual scrollLeft-per-frame
+            juggling — the browser's own gesture engine tells apart a
+            horizontal swipe (scrolls this strip, full native momentum)
+            from a vertical swipe (scrolls the page, full native momentum),
+            exactly like every other native carousel on the web.
           */}
           <div
             ref={stageRef}
@@ -169,7 +196,9 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
             <div
               ref={trackRef}
               onScroll={handleScroll}
-              onClick={() => setLightboxOpen(true)}
+              onPointerDown={handleTrackPointerDown}
+              onPointerMove={handleTrackPointerMove}
+              onClick={handleTrackClick}
               className="no-scrollbar flex aspect-[4/5] snap-x snap-mandatory overflow-x-auto scroll-smooth cursor-zoom-in"
             >
               {valid.map((img, idx) => {
@@ -177,7 +206,7 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
                 const isActive = idx === active;
                 return (
                   <div
-                    key={idx}
+                    key={`${idx}-${img}`}
                     className="relative h-full w-full flex-none snap-center overflow-hidden bg-muted"
                   >
                     {isNear && (
@@ -185,12 +214,10 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
                         src={img}
                         alt={`${alt} - image ${idx + 1}`}
                         fill
-                        // Only the very first paint is `priority` (preloaded,
-                        // no lazy delay). Neighbours are fetched lazily and at
-                        // a much lower quality — they're pre-warming the cache
-                        // for a swipe that may not even happen, so they
-                        // shouldn't steal bandwidth from the image the user
-                        // is actually looking at right now.
+                        // Only the very first paint is `priority`. Neighbours
+                        // are lazy and lower quality — they pre-warm the
+                        // cache for a swipe that may not happen, so they
+                        // shouldn't steal bandwidth from the active photo.
                         priority={idx === 0}
                         loading={idx === 0 ? undefined : 'lazy'}
                         draggable={false}
@@ -209,10 +236,9 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
               })}
             </div>
 
-            {/* Desktop hover-zoom magnifier: swaps in a scaled background image that
-                tracks the cursor, giving Shopify-style "inspect the fabric" zoom
-                without opening a modal. Only mounted on hover, so it costs nothing
-                until the user actually shows intent to zoom. */}
+            {/* Desktop hover-zoom magnifier: a scaled background image that
+                tracks the cursor. Only mounted on hover, so it costs
+                nothing until the user shows intent to zoom. */}
             {zooming && (
               <div
                 aria-hidden
@@ -259,7 +285,7 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
               </Badge>
             )}
 
-            {/* Image counter, Shopify-style "2 / 6" pill */}
+            {/* Image counter pill, mobile only */}
             {valid.length > 1 && (
               <span className="absolute right-3 top-3 rounded-full bg-background/80 px-2 py-0.5 text-[11px] font-medium text-foreground shadow-sm sm:hidden">
                 {active + 1} / {valid.length}
@@ -271,7 +297,7 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
               <ZoomIn className="h-3 w-3" /> Click to zoom
             </span>
 
-            {/* Mobile: dots only, no thumbnail strip - tap the image for the full-screen viewer */}
+            {/* Mobile: dots only — tap the image for the full-screen viewer */}
             {valid.length > 1 && (
               <div className="pointer-events-none absolute inset-x-0 bottom-3 flex items-center justify-center gap-1.5 sm:hidden">
                 {valid.map((_, idx) => (
@@ -303,11 +329,11 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
 }
 
 /**
- * Full-screen viewer used on both mobile and desktop.
+ * Full-screen viewer.
  * - Swipe / arrow keys / on-screen arrows to move between images.
- * - Double-tap (mobile) or double-click (desktop) to toggle 1x <-> 2.5x zoom.
- * - Pinch (two-finger) to zoom smoothly on touch devices.
- * - Drag to pan while zoomed in.
+ * - Double-tap (mobile) or double-click (desktop) toggles 1x <-> 2.5x zoom.
+ * - Pinch (two-finger) zooms smoothly on touch devices.
+ * - Drag pans while zoomed in.
  */
 function Lightbox({
   images,
@@ -343,8 +369,8 @@ function Lightbox({
       resetZoom();
       return;
     }
-    const x = ((rect.width / 2 - (clientX - rect.left)) * 1.5) / 1;
-    const y = ((rect.height / 2 - (clientY - rect.top)) * 1.5) / 1;
+    const x = (rect.width / 2 - (clientX - rect.left)) * 1.5;
+    const y = (rect.height / 2 - (clientY - rect.top)) * 1.5;
     setScale(2.5);
     setOffset({ x, y });
   };
@@ -362,10 +388,8 @@ function Lightbox({
         toggleZoom(e.touches[0].clientX, e.touches[0].clientY, rect);
       }
       lastTapRef.current = now;
-      // Track the touch regardless of zoom level: when zoomed in this pans
-      // the image; when at 1x the same delta is used below to swipe to the
-      // next/previous photo, so a plain left/right finger drag now moves
-      // through the gallery instead of doing nothing.
+      // Tracked regardless of zoom level: zoomed in, this pans the image;
+      // at 1x, the same delta (below) swipes to the next/previous photo.
       dragRef.current = {
         startX: e.touches[0].clientX,
         startY: e.touches[0].clientY,
@@ -386,8 +410,7 @@ function Lightbox({
         setOffset({ x: dragRef.current.offX + dx, y: dragRef.current.offY + dy });
       } else {
         // Not zoomed: follow the finger horizontally only, so the current
-        // image visibly slides with the swipe before we decide whether to
-        // commit to the next/previous photo on release.
+        // image visibly slides with the swipe before committing to a change.
         setOffset({ x: dx, y: 0 });
       }
     }
@@ -504,7 +527,7 @@ function Lightbox({
         <div className="no-scrollbar flex gap-2 overflow-x-auto border-t border-white/10 p-3">
           {images.map((img, idx) => (
             <button
-              key={idx}
+              key={`${idx}-${img}`}
               type="button"
               onClick={() => goTo(idx)}
               className={cn(
