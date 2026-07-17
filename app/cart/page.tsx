@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Minus, Plus, Trash2, ShoppingBag, ArrowRight } from 'lucide-react';
@@ -7,9 +8,23 @@ import { useCart } from '@/lib/cart-context';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import {
+  ShippingSettings,
+  DEFAULT_SHIPPING_SETTINGS,
+  fetchShippingSettings,
+} from '@/lib/pincode-api';
 
 export default function CartPage() {
   const { items, updateQuantity, removeItem, subtotal, clearCart } = useCart();
+  const [shippingSettings, setShippingSettings] = useState<ShippingSettings>(
+    DEFAULT_SHIPPING_SETTINGS
+  );
+
+  useEffect(() => {
+    fetchShippingSettings().then(setShippingSettings).catch(() => {
+      // fall back to defaults already set above
+    });
+  }, []);
 
   if (items.length === 0) {
     return (
@@ -30,7 +45,11 @@ export default function CartPage() {
     );
   }
 
-  const shipping = subtotal >= 2000 ? 0 : 99;
+  const shipping =
+    shippingSettings.free_shipping_threshold > 0 &&
+    subtotal >= shippingSettings.free_shipping_threshold
+      ? 0
+      : shippingSettings.flat_rate;
   const total = subtotal + shipping;
 
   return (

@@ -94,9 +94,19 @@ export async function checkPincodeServiceability(pincode: string): Promise<Pinco
 }
 
 export interface ShippingSettings {
+  /** Flat shipping fee in rupees, charged when subtotal is below the free-shipping threshold */
   flat_rate: number;
+  /** Order subtotal (in rupees) at or above which shipping becomes free. Set to 0 to always charge. */
   free_shipping_threshold: number;
+  /** GST / tax rate applied at checkout, as a percentage (e.g. 5 = 5%) */
+  gst_rate_percent: number;
 }
+
+export const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
+  flat_rate: 99,
+  free_shipping_threshold: 2000,
+  gst_rate_percent: 5,
+};
 
 export async function fetchShippingSettings(): Promise<ShippingSettings> {
   const supabase = getSupabaseBrowser();
@@ -105,6 +115,14 @@ export async function fetchShippingSettings(): Promise<ShippingSettings> {
     .select('value')
     .eq('key', 'shipping')
     .maybeSingle();
-  if (error || !data) return { flat_rate: 79, free_shipping_threshold: 1999 };
-  return data.value as ShippingSettings;
+  if (error || !data) return DEFAULT_SHIPPING_SETTINGS;
+  return { ...DEFAULT_SHIPPING_SETTINGS, ...(data.value as Partial<ShippingSettings>) };
+}
+
+export async function saveShippingSettings(settings: ShippingSettings): Promise<void> {
+  const supabase = getSupabaseBrowser();
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ key: 'shipping', value: settings }, { onConflict: 'key' });
+  if (error) throw error;
 }

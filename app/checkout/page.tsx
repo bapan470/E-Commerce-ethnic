@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -10,6 +10,11 @@ import { formatINR } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import { getSupabaseBrowser } from '@/lib/supabase-browser';
 import { validateCoupon, Coupon } from '@/lib/coupons-api';
+import {
+  ShippingSettings,
+  DEFAULT_SHIPPING_SETTINGS,
+  fetchShippingSettings,
+} from '@/lib/pincode-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -33,9 +38,23 @@ export default function CheckoutPage() {
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [couponDiscount, setCouponDiscount] = useState(0);
 
-  const shipping = subtotal >= 2000 ? 0 : 99;
+  const [shippingSettings, setShippingSettings] = useState<ShippingSettings>(
+    DEFAULT_SHIPPING_SETTINGS
+  );
+
+  useEffect(() => {
+    fetchShippingSettings().then(setShippingSettings).catch(() => {
+      // fall back to defaults already set above
+    });
+  }, []);
+
+  const shipping =
+    shippingSettings.free_shipping_threshold > 0 &&
+    subtotal >= shippingSettings.free_shipping_threshold
+      ? 0
+      : shippingSettings.flat_rate;
   const discountedSubtotal = Math.max(0, subtotal - couponDiscount);
-  const tax = Math.round(discountedSubtotal * 0.05);
+  const tax = Math.round(discountedSubtotal * (shippingSettings.gst_rate_percent / 100));
   const total = discountedSubtotal + shipping + tax;
 
   const handleApplyCoupon = async () => {
@@ -438,7 +457,9 @@ export default function CheckoutPage() {
                 <span>{shipping === 0 ? 'FREE' : formatINR(shipping)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Tax (5% GST)</span>
+                <span className="text-muted-foreground">
+                  Tax ({shippingSettings.gst_rate_percent}% GST)
+                </span>
                 <span>{formatINR(tax)}</span>
               </div>
             </div>
