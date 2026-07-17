@@ -402,7 +402,7 @@ function ProductGallery({
             ref={mainRef}
             onScroll={handleMainScroll}
             onClick={handleMainImageClick}
-            style={{ overscrollBehaviorX: 'contain', WebkitOverflowScrolling: 'touch' }}
+            style={{ overscrollBehaviorX: 'contain', WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
             className="no-scrollbar flex aspect-[4/5] snap-x snap-mandatory overflow-x-auto scroll-smooth border border-border/60 bg-muted sm:rounded-xl"
           >
             {valid.map((img, idx) => {
