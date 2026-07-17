@@ -10,6 +10,7 @@ export interface Coupon {
   times_used: number;
   expires_at: string | null;
   is_active: boolean;
+  created_at?: string;
 }
 
 export interface CouponResult {
@@ -18,6 +19,59 @@ export interface CouponResult {
   coupon?: Coupon;
   discount?: number;
 }
+
+// ---------------------------------------------------------------------
+// Admin management (Admin > Coupons tab)
+// ---------------------------------------------------------------------
+
+export async function fetchCoupons(): Promise<Coupon[]> {
+  const { data, error } = await supabase
+    .from('coupons')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as Coupon[];
+}
+
+export interface CouponInput {
+  code: string;
+  discount_type: 'percentage' | 'flat';
+  discount_value: number;
+  min_order_value: number;
+  usage_limit: number | null;
+  expires_at: string | null;
+  is_active: boolean;
+}
+
+export async function createCoupon(input: CouponInput) {
+  const { error } = await supabase.from('coupons').insert({
+    ...input,
+    code: input.code.trim().toUpperCase(),
+  });
+  if (error) throw error;
+}
+
+export async function updateCoupon(id: string, input: CouponInput) {
+  const { error } = await supabase
+    .from('coupons')
+    .update({ ...input, code: input.code.trim().toUpperCase() })
+    .eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteCoupon(id: string) {
+  const { error } = await supabase.from('coupons').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function setCouponActive(id: string, is_active: boolean) {
+  const { error } = await supabase.from('coupons').update({ is_active }).eq('id', id);
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------
+// Storefront validation (checkout page)
+// ---------------------------------------------------------------------
 
 /**
  * Looks up a coupon code and checks it against the current cart subtotal.
