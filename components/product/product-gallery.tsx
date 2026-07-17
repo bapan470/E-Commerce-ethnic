@@ -53,23 +53,28 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
     thumbColRef.current?.scrollBy({ top: dir * 96, behavior: 'smooth' });
   };
 
-  // --- Mobile swipe: manual direction lock ---------------------------------
-  // Why this exists: `touch-action: pan-x` (and even plain `auto`) is not
-  // enough here. Once a touch starts moving and the browser's native scroll
-  // machinery decides "this gesture belongs to the horizontal track", it
-  // keeps owning that ENTIRE touch until the finger lifts — even if the
-  // finger's motion turns mostly vertical a moment later. That's exactly why
-  // swiping over the image would scroll a little and then get "stuck":
-  // native gesture capture, not our CSS.
+  // --- Mobile swipe: fully manual, dual-axis direction lock -----------------
+  // Why `touch-action: pan-y` wasn't enough: with pan-y set, the browser is
+  // allowed to start its own native vertical scroll the instant it sees ANY
+  // vertical component in a touchmove - it doesn't wait for our JS to decide
+  // anything. That race meant: sometimes a real horizontal swipe got
+  // hijacked into a page scroll (because the first few px had a tiny
+  // vertical wobble and the browser grabbed it first), and sometimes a real
+  // vertical swipe felt like it "didn't take" because our later
+  // preventDefault() fired after the browser had already committed the
+  // gesture elsewhere. Both directions ended up unreliable.
   //
-  // Fix: mark the track `touch-action: pan-y` (only vertical is ever a
-  // native candidate on this element), then decide the axis ourselves in JS
-  // on the first ~8px of movement:
-  //   - horizontal drag -> we own it, preventDefault() and move
-  //     scrollLeft manually, snapping to the nearest slide on release.
-  //   - vertical drag -> we do NOTHING and never call preventDefault, so
-  //     the browser's native, buttery-smooth page scroll handles it,
-  //     exactly like it would for any other element on the page.
+  // Fix: set `touch-action: none` on the track so the browser NEVER starts
+  // any native panning on this element, for either axis - full stop, no
+  // race. We then own both axes ourselves in JS:
+  //   1. Track raw finger movement from touchstart.
+  //   2. Once movement passes an 8px threshold, lock the axis to whichever
+  //      of dx/dy is bigger - this only happens once per touch.
+  //   3. If locked horizontal -> drag the carousel's scrollLeft ourselves,
+  //      snapping to the nearest slide on release.
+  //   4. If locked vertical -> drive window scroll ourselves
+  //      (window.scrollTo) using the same delta, so the page moves in
+  //      lockstep with the finger.
   useEffect(() => {
     const el = trackRef.current;
     if (!el) return;
@@ -78,6 +83,7 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
     let startX = 0;
     let startY = 0;
     let startScrollLeft = 0;
+    let startPageY = 0;
     let direction: 'x' | 'y' | null = null;
 
     const onTouchStart = (e: TouchEvent) => {
@@ -85,6 +91,7 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
       startX = e.touches[0].clientX;
       startY = e.touches[0].clientY;
       startScrollLeft = el.scrollLeft;
+      startPageY = window.scrollY;
       direction = null;
     };
 
@@ -98,12 +105,16 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
         direction = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
       }
 
+      // touch-action: none already stops the browser from doing anything
+      // native here, but we still preventDefault defensively for older
+      // WebViews that don't fully honour touch-action.
+      e.preventDefault();
+
       if (direction === 'x') {
-        // We own this gesture now: slide the track, keep the page still.
-        e.preventDefault();
         el.scrollLeft = startScrollLeft - dx;
+      } else {
+        window.scrollTo(window.scrollX, startPageY - dy);
       }
-      // direction === 'y': do nothing — let the page scroll natively.
     };
 
     const onTouchEnd = () => {
@@ -115,7 +126,7 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
     };
 
     el.addEventListener('touchstart', onTouchStart, { passive: true });
-    // Must be non-passive: we conditionally call preventDefault() above.
+    // Must be non-passive: we call preventDefault() above once an axis is locked.
     el.addEventListener('touchmove', onTouchMove, { passive: false });
     el.addEventListener('touchend', onTouchEnd, { passive: true });
     el.addEventListener('touchcancel', onTouchEnd, { passive: true });
@@ -216,17 +227,11 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
         <div className="relative flex-1">
           {/*
             Mobile-scroll fix:
-            - touch-action: 'pan-y' below means only VERTICAL panning is
-              ever a native browser candidate on this element. Horizontal
-              swiping is handled entirely by our own JS (see the touch
-              effect above), which only calls preventDefault() once it has
-              confirmed the drag is horizontal.
-            - Net effect: a vertical swipe is never intercepted at all and
-              scrolls the page with full native momentum; a horizontal
-              swipe is fully owned by the carousel. This avoids the classic
-              mobile-Safari bug where the browser locks an entire touch
-              gesture onto whichever scroller it grabbed first, ignoring
-              later direction changes mid-swipe.
+            - touch-action: 'none' means the browser NEVER starts any native
+              panning on this element, for either axis - no race with our JS.
+              Horizontal swipe and vertical page-scroll are both driven
+              manually by the touch effect above, based on which direction
+              the finger actually moved first.
           */}
           <div
             ref={stageRef}
@@ -239,7 +244,7 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
               ref={trackRef}
               onScroll={handleScroll}
               onClick={() => setLightboxOpen(true)}
-              style={{ touchAction: 'pan-y' }}
+              style={{ touchAction: 'none' }}
               className="no-scrollbar flex aspect-[4/5] snap-x snap-mandatory overflow-x-auto scroll-smooth cursor-zoom-in"
             >
               {valid.map((img, idx) => {
