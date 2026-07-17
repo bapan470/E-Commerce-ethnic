@@ -48,14 +48,21 @@ NEXT_PUBLIC_SITE_URL=https://your-vercel-domain.vercel.app
 - `CRON_SECRET` — koi bhi random string; Vercel Cron isse automatically header mein bhejta hai.
 - `NEXT_PUBLIC_SITE_URL` — cart recovery email ke "Complete your purchase" button ke link ke liye.
 
-## 4. Vercel Cron ka important note
-`vercel.json` mein cron **har ghante** (`0 * * * *`) chalne ke liye set hai. Lekin **Vercel Hobby
-(free) plan sirf din mein ek baar cron allow karta hai** — agar tum Hobby plan pe ho to:
-- Schedule ko daily kar do (e.g. `"0 3 * * *"` — roz raat 3 baje), YA
-- Vercel Pro plan lo, YA
-- Free external cron service use karo (jaise cron-job.org / GitHub Actions) jo har ghante
-  `https://your-domain.vercel.app/api/cron/abandoned-carts` ko `Authorization: Bearer <CRON_SECRET>`
-  header ke saath hit kare.
+## 4. Vercel Cron — Hobby/Free plan
+Tum Hobby (free) plan pe ho, jahan cron sirf **din mein ek baar** chal sakta hai. Isliye
+`vercel.json` mein schedule ab **roz raat 3:00 AM IST (21:30 UTC)** pe set kar diya hai
+(`"30 21 * * *"`) — jab traffic sabse kam hota hai.
+
+Iska matlab: jo bhi cart 1+ ghante se abandoned hai, use is daily run ke time recovery email
+milega (turant nahi, roz ek baar batch mein). Agar future mein zyada frequent (hourly) recovery
+chahiye ho, to Vercel Pro plan lena hoga, ya ek free external cron service (jaise cron-job.org)
+use karke `https://your-domain.vercel.app/api/cron/abandoned-carts` ko har ghante
+`Authorization: Bearer <CRON_SECRET>` header ke saath hit karwa sakte ho — code already isko
+support karta hai, sirf trigger ka source badalta hai.
+
+**Vercel pe deploy karne ke baad ek baar zaroor check karo:** Project → Settings → Cron Jobs
+mein yeh entry dikhni chahiye. Agar nahi dikh rahi to `vercel.json` root folder mein hi hona
+chahiye (jahan `package.json` hai) — ismein woh already hai.
 
 ## 5. Kya-kya naya kaam karega
 - **Order confirmation email** — COD ya online payment, dono ke baad customer ko automatically email jayega.
