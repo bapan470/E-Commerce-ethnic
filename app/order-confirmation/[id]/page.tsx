@@ -32,6 +32,13 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
           Order #{order.id.slice(0, 8).toUpperCase()} has been placed successfully. A confirmation
           email is on its way to {order.customer_email}. Your handwoven pieces will be dispatched
           soon.
+          {order.payment_method === 'cod' && (
+            <>
+              {' '}
+              Please keep <strong>{formatINR(order.total_amount)}</strong> ready in cash for our
+              delivery partner.
+            </>
+          )}
         </p>
       </div>
 
@@ -79,12 +86,12 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
             <span>{order.shipping_charge ? formatINR(order.shipping_charge) : 'FREE'}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-muted-foreground">GST (5%)</span>
+            <span className="text-muted-foreground">GST</span>
             <span>{formatINR(order.gst_amount ?? 0)}</span>
           </div>
           <Separator className="my-2" />
           <div className="flex justify-between font-semibold text-foreground">
-            <span>Total Paid</span>
+            <span>{order.payment_method === 'cod' ? 'Total (Pay on Delivery)' : 'Total Paid'}</span>
             <span className="font-serif text-lg text-primary">{formatINR(order.total_amount)}</span>
           </div>
         </div>

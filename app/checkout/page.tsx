@@ -4,7 +4,7 @@ import { useState, useEffect, FormEvent } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { Lock, Loader2, CreditCard, Tag, X } from 'lucide-react';
+import { Lock, Loader2, CreditCard, Tag, X, Wallet } from 'lucide-react';
 import { useCart } from '@/lib/cart-context';
 import { formatINR } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
@@ -31,6 +31,7 @@ export default function CheckoutPage() {
   const router = useRouter();
   const { items, subtotal, clearCart } = useCart();
   const [placing, setPlacing] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('online');
 
   const [couponInput, setCouponInput] = useState('');
   const [applyingCoupon, setApplyingCoupon] = useState(false);
@@ -189,6 +190,7 @@ export default function CheckoutPage() {
           items: orderItems,
           total_amount: total,
           status: 'pending',
+          payment_method: paymentMethod,
           shipping_address: shippingAddress,
           customer_name: customerName,
           customer_email: customerEmail,
@@ -206,7 +208,23 @@ export default function CheckoutPage() {
       if (orderError) throw orderError;
       const internalOrderId = orderData.id;
 
-      // 2. Create Razorpay order via API route
+      // 2. Cash on Delivery — no online payment step, order is confirmed as-is
+      // and payment is collected at delivery time.
+      if (paymentMethod === 'cod') {
+        if (appliedCoupon) {
+          supabase
+            .from('coupons')
+            .update({ times_used: appliedCoupon.times_used + 1 })
+            .eq('id', appliedCoupon.id)
+            .then(() => {});
+        }
+        clearCart();
+        toast.success('Order placed! Pay cash on delivery.');
+        router.push(`/order-confirmation/${internalOrderId}`);
+        return;
+      }
+
+      // 3. Create Razorpay order via API route
       const createOrderRes = await fetch('/api/razorpay/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -222,7 +240,7 @@ export default function CheckoutPage() {
         throw new Error(createOrderData.error || 'Failed to create payment order');
       }
 
-      // 3. Open Razorpay checkout popup
+      // 4. Open Razorpay checkout popup
       await openRazorpayCheckout(
         createOrderData.order.id,
         createOrderData.keyId,
@@ -232,7 +250,7 @@ export default function CheckoutPage() {
         customerPhone
       );
 
-      // 4. Payment succeeded and verified.
+      // 5. Payment succeeded and verified.
       if (appliedCoupon) {
         // Best-effort — a failed increment shouldn't block order confirmation.
         supabase
@@ -347,17 +365,66 @@ export default function CheckoutPage() {
           <section className="mt-4 rounded-lg border border-border/60 bg-card p-5">
             <h2 className="mb-1 font-serif text-lg font-bold text-primary">Payment</h2>
             <p className="mb-4 flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Lock className="h-3 w-3" /> Secure payment via Razorpay (Test Mode)
+              <Lock className="h-3 w-3" /> Choose how you'd like to pay
             </p>
-            <div className="flex items-center gap-3 rounded-md bg-muted/50 p-3 text-sm">
-              <CreditCard className="h-5 w-5 text-secondary" />
-              <div>
-                <p className="font-medium">Razorpay Test Payment</p>
-                <p className="text-xs text-muted-foreground">
-                  Use test card: 4111 1111 1111 1111, any expiry, any CVV
-                </p>
-              </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('online')}
+                className={`flex items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors ${
+                  paymentMethod === 'online'
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border/60 hover:border-primary/40'
+                }`}
+              >
+                <CreditCard className="mt-0.5 h-5 w-5 shrink-0 text-secondary" />
+                <div>
+                  <p className="font-medium">Pay Online</p>
+                  <p className="text-xs text-muted-foreground">
+                    Razorpay (Test Mode) — card, UPI, netbanking
+                  </p>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('cod')}
+                className={`flex items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors ${
+                  paymentMethod === 'cod'
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border/60 hover:border-primary/40'
+                }`}
+              >
+                <Wallet className="mt-0.5 h-5 w-5 shrink-0 text-secondary" />
+                <div>
+                  <p className="font-medium">Cash on Delivery</p>
+                  <p className="text-xs text-muted-foreground">Pay in cash when your order arrives</p>
+                </div>
+              </button>
             </div>
+
+            {paymentMethod === 'online' ? (
+              <div className="mt-3 flex items-center gap-3 rounded-md bg-muted/50 p-3 text-sm">
+                <CreditCard className="h-5 w-5 text-secondary" />
+                <div>
+                  <p className="font-medium">Razorpay Test Payment</p>
+                  <p className="text-xs text-muted-foreground">
+                    Use test card: 4111 1111 1111 1111, any expiry, any CVV
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-3 flex items-center gap-3 rounded-md bg-muted/50 p-3 text-sm">
+                <Wallet className="h-5 w-5 text-secondary" />
+                <div>
+                  <p className="font-medium">Pay {formatINR(total)} on delivery</p>
+                  <p className="text-xs text-muted-foreground">
+                    Keep exact change ready for our delivery partner.
+                  </p>
+                </div>
+              </div>
+            )}
           </section>
         </div>
 
@@ -480,6 +547,11 @@ export default function CheckoutPage() {
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Processing...
+                </>
+              ) : paymentMethod === 'cod' ? (
+                <>
+                  <Wallet className="mr-2 h-4 w-4" />
+                  Place Order (COD) — {formatINR(total)}
                 </>
               ) : (
                 <>

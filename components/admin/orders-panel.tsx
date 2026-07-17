@@ -11,6 +11,7 @@ type Order = {
   items: any[];
   total_amount: number;
   status: string;
+  payment_method?: string;
   shipping_address?: any;
   customer_name?: string;
   customer_email?: string;
@@ -93,6 +94,7 @@ export default function OrdersPanel() {
               <th className="px-4 py-3">Customer</th>
               <th className="px-4 py-3">Date</th>
               <th className="px-4 py-3">Total</th>
+              <th className="px-4 py-3">Payment</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Actions</th>
             </tr>
@@ -120,6 +122,17 @@ function OrderRow({ order, onChangeStatus }: { order: Order; onChangeStatus: (id
         <td className="px-4 py-3 align-top text-sm">{order.created_at ? new Date(order.created_at).toLocaleString() : ''}</td>
         <td className="px-4 py-3 align-top text-sm font-medium">{formatINR(order.total_amount || 0)}</td>
         <td className="px-4 py-3 align-top text-sm">
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+              order.payment_method === 'cod'
+                ? 'bg-amber-100 text-amber-800'
+                : 'bg-emerald-100 text-emerald-800'
+            }`}
+          >
+            {order.payment_method === 'cod' ? 'COD' : 'Online'}
+          </span>
+        </td>
+        <td className="px-4 py-3 align-top text-sm">
           <select
             value={order.status}
             onChange={(e) => onChangeStatus(order.id, e.target.value)}
@@ -136,7 +149,7 @@ function OrderRow({ order, onChangeStatus }: { order: Order; onChangeStatus: (id
       </tr>
       {open && (
         <tr className="bg-muted/20">
-          <td colSpan={5} className="px-4 py-3">
+          <td colSpan={6} className="px-4 py-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <h4 className="mb-2 text-sm font-semibold">Items</h4>
