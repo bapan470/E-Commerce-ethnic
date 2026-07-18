@@ -1,0 +1,69 @@
+import { NextResponse } from 'next/server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { sendEmail } from '@/lib/email';
+import { signupVerificationEmail } from '@/lib/email-templates';
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export async function POST(req: Request) {
+  const body = await req.json().catch(() => ({}));
+  const fullName = (body?.fullName as string | undefined)?.trim();
+  const email = (body?.email as string | undefined)?.trim().toLowerCase();
+  const password = body?.password as string | undefined;
+  const next = (body?.next as string | undefined) || '/account';
+
+  if (!fullName) {
+    return NextResponse.json({ error: 'Full name is required' }, { status: 400 });
+  }
+  if (!email || !EMAIL_RE.test(email)) {
+    return NextResponse.json({ error: 'A valid email is required' }, { status: 400 });
+  }
+  if (!password || password.length < 6) {
+    return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 });
+  }
+
+  const { origin } = new URL(req.url);
+  const admin = getSupabaseAdmin();
+
+  // Creates the (unconfirmed) user and returns a one-time verification link,
+  // without Supabase sending any email of its own -- we send it ourselves below.
+  const { data, error } = await admin.auth.admin.generateLink({
+    type: 'signup',
+    email,
+    password,
+    options: {
+      data: { full_name: fullName },
+      redirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}`,
+    },
+  });
+
+  if (error) {
+    // Supabase returns this specific message when the email is already registered.
+    const alreadyRegistered = /already registered|already exists/i.test(error.message);
+    return NextResponse.json(
+      { error: alreadyRegistered ? 'An account with this email already exists.' : error.message },
+      { status: alreadyRegistered ? 409 : 400 }
+    );
+  }
+
+  const verifyUrl = data?.properties?.action_link;
+  if (!verifyUrl) {
+    return NextResponse.json({ error: 'Could not generate a verification link' }, { status: 500 });
+  }
+
+  const { subject, html } = signupVerificationEmail({ full_name: fullName, verify_url: verifyUrl });
+  const result = await sendEmail({ to: email, subject, html });
+
+  if (!result.success) {
+    console.error('[signup] verification email failed:', result.error);
+    return NextResponse.json(
+      {
+        error:
+          'Account created, but the confirmation email could not be sent. Please contact support or try again later.',
+      },
+      { status: 502 }
+    );
+  }
+
+  return NextResponse.json({ ok: true });
+}

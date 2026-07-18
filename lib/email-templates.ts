@@ -34,6 +34,22 @@ function itemsTable(items: any[]) {
   return `<table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">${rows}</table>`;
 }
 
+export function signupVerificationEmail(user: { full_name?: string; verify_url: string }) {
+  const subject = `Confirm your email — ${SITE_NAME}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Welcome${user.full_name ? `, ${user.full_name}` : ''}!</h2>
+    <p>Thanks for creating an account with ${SITE_NAME}. Please confirm your email address to activate your account.</p>
+    <p style="text-align:center; margin-top: 20px;">
+      <a href="${user.verify_url}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+        Confirm my email
+      </a>
+    </p>
+    <p style="font-size:12px; color:#9a8f87;">If the button doesn't work, copy and paste this link into your browser:<br />${user.verify_url}</p>
+    <p style="font-size:12px; color:#9a8f87;">This link expires shortly. If you didn't create this account, you can ignore this email.</p>
+  `);
+  return { subject, html };
+}
+
 export function orderConfirmationEmail(order: {
   id: string;
   customer_name?: string;

@@ -6,6 +6,7 @@ import { Loader2 } from 'lucide-react';
 import { getSupabaseBrowser } from '@/lib/supabase-browser';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 
@@ -68,11 +69,11 @@ export default function ResetPasswordPage() {
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="password">New password</Label>
-            <Input id="password" name="password" type="password" required minLength={6} />
+            <PasswordInput id="password" name="password" required minLength={6} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="confirmPassword">Confirm new password</Label>
-            <Input id="confirmPassword" name="confirmPassword" type="password" required minLength={6} />
+            <PasswordInput id="confirmPassword" name="confirmPassword" required minLength={6} />
           </div>
           <Button type="submit" className="w-full bg-primary" disabled={loading}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

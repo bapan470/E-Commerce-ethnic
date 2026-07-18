@@ -7,6 +7,7 @@ import { Loader2 } from 'lucide-react';
 import { getSupabaseBrowser } from '@/lib/supabase-browser';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 
@@ -99,7 +100,7 @@ function LoginForm() {
                 Forgot password?
               </Link>
             </div>
-            <Input id="password" name="password" type="password" required minLength={6} />
+            <PasswordInput id="password" name="password" required minLength={6} />
           </div>
           <Button type="submit" className="w-full bg-primary" disabled={loading}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

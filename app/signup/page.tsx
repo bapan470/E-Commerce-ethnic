@@ -7,6 +7,7 @@ import { Loader2 } from 'lucide-react';
 import { getSupabaseBrowser } from '@/lib/supabase-browser';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 
@@ -25,28 +26,21 @@ function SignupForm() {
     const password = fd.get('password') as string;
 
     setLoading(true);
-    const supabase = getSupabaseBrowser();
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: fullName } },
+    const res = await fetch('/api/auth/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fullName, email, password, next }),
     });
+    const result = await res.json().catch(() => ({}));
     setLoading(false);
 
-    if (error) {
-      toast.error(error.message);
+    if (!res.ok) {
+      toast.error(result.error || 'Something went wrong. Please try again.');
       return;
     }
 
-    if (!data.session) {
-      toast.success('Check your email to confirm your account, then log in.');
-      router.push('/login');
-      return;
-    }
-
-    toast.success('Account created!');
-    router.push(next);
-    router.refresh();
+    toast.success('Check your email to confirm your account, then log in.');
+    router.push('/login');
   };
 
   const onGoogle = async () => {
@@ -102,7 +96,7 @@ function SignupForm() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="password">Password</Label>
-            <Input id="password" name="password" type="password" required minLength={6} />
+            <PasswordInput id="password" name="password" required minLength={6} />
           </div>
           <Button type="submit" className="w-full bg-primary" disabled={loading}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
