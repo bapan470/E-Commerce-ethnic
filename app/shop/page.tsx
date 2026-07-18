@@ -44,10 +44,26 @@ function ShopContent() {
     initialCategory ? [initialCategory] : []
   );
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
+  const [selectedFabrics, setSelectedFabrics] = useState<string[]>([]);
+  const [selectedOccasions, setSelectedOccasions] = useState<string[]>([]);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 35000]);
   const [query, setQuery] = useState(initialQuery);
   const [sort, setSort] = useState<SortKey>('featured');
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Filter option lists are derived from whatever products/admin have
+  // actually tagged, so the panel never shows an empty or stale option.
+  const allFabrics = useMemo(
+    () =>
+      Array.from(new Set(products.map((p) => p.fabric).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b)
+      ),
+    [products]
+  );
+  const allOccasions = useMemo(
+    () => Array.from(new Set(products.flatMap((p) => p.occasion || []))).sort((a, b) => a.localeCompare(b)),
+    [products]
+  );
 
   useEffect(() => {
     const c = params.get('category') || '';
@@ -65,6 +81,12 @@ function ShopContent() {
     }
     if (selectedSizes.length > 0) {
       list = list.filter((p) => p.sizes.some((s) => selectedSizes.includes(s)));
+    }
+    if (selectedFabrics.length > 0) {
+      list = list.filter((p) => selectedFabrics.includes(p.fabric));
+    }
+    if (selectedOccasions.length > 0) {
+      list = list.filter((p) => (p.occasion || []).some((o) => selectedOccasions.includes(o)));
     }
     list = list.filter(
       (p) => p.price >= priceRange[0] && p.price <= priceRange[1]
@@ -96,14 +118,20 @@ function ShopContent() {
         list.sort((a, b) => Number(!!b.featured) - Number(!!a.featured));
     }
     return list;
-  }, [products, selectedCats, selectedSizes, priceRange, query, sort]);
+  }, [products, selectedCats, selectedSizes, selectedFabrics, selectedOccasions, priceRange, query, sort]);
 
   const activeCount =
-    selectedCats.length + selectedSizes.length + (priceRange[0] > 0 || priceRange[1] < 35000 ? 1 : 0);
+    selectedCats.length +
+    selectedSizes.length +
+    selectedFabrics.length +
+    selectedOccasions.length +
+    (priceRange[0] > 0 || priceRange[1] < 35000 ? 1 : 0);
 
   const clearAll = () => {
     setSelectedCats([]);
     setSelectedSizes([]);
+    setSelectedFabrics([]);
+    setSelectedOccasions([]);
     setPriceRange([0, 35000]);
     setQuery('');
   };
@@ -167,6 +195,54 @@ function ShopContent() {
           ))}
         </div>
       </div>
+
+      {allFabrics.length > 0 && (
+        <>
+          <Separator />
+          <div>
+            <h3 className="mb-3 font-serif text-sm font-semibold uppercase tracking-wider text-primary">
+              Fabric
+            </h3>
+            <div className="flex flex-col gap-2.5">
+              {allFabrics.map((f) => (
+                <label key={f} className="flex cursor-pointer items-center gap-2.5 text-sm">
+                  <Checkbox
+                    checked={selectedFabrics.includes(f)}
+                    onCheckedChange={() => setSelectedFabrics((prev) => toggle(prev, f))}
+                  />
+                  <span>{f}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
+      {allOccasions.length > 0 && (
+        <>
+          <Separator />
+          <div>
+            <h3 className="mb-3 font-serif text-sm font-semibold uppercase tracking-wider text-primary">
+              Occasion
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {allOccasions.map((o) => (
+                <button
+                  key={o}
+                  onClick={() => setSelectedOccasions((prev) => toggle(prev, o))}
+                  className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    selectedOccasions.includes(o)
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border bg-background hover:border-primary/50'
+                  }`}
+                >
+                  {o}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
 
       <Separator />
 

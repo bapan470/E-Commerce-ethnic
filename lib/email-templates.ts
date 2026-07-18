@@ -101,6 +101,25 @@ export function returnStatusEmail(ret: {
   return { subject, html };
 }
 
+export function restockEmail(product: { name: string; slug: string; price: number; images?: string[] }) {
+  const subject = `Back in stock — ${product.name}`;
+  const url = `${process.env.NEXT_PUBLIC_SITE_URL || ''}/product/${product.slug}`;
+  const image = product.images?.[0];
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Good news — it's back!</h2>
+    <p><strong>${product.name}</strong> is available again, just the way you wanted it.</p>
+    ${image ? `<img src="${image}" alt="${product.name}" style="width:100%; max-width:280px; border-radius:6px; display:block; margin: 12px auto;" />` : ''}
+    <p style="text-align:center; font-size:16px; font-weight:bold;">${formatINR(product.price)}</p>
+    <p style="text-align:center; margin-top: 20px;">
+      <a href="${url}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px;">
+        Shop it now
+      </a>
+    </p>
+    <p style="font-size:12px; color:#9a8f87; text-align:center;">Stock is limited, so grab it before it sells out again.</p>
+  `);
+  return { subject, html };
+}
+
 export function cartRecoveryEmail(cart: { items: any[]; cart_value: number }) {
   const subject = `You left something behind — complete your order`;
   const html = wrapper(`

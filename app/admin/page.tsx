@@ -14,6 +14,7 @@ import SettingsPanel from '@/components/admin/settings-panel';
 import ReturnsPanel from '@/components/admin/returns-panel';
 import AbandonedCartsPanel from '@/components/admin/abandoned-carts-panel';
 import MarketingPanel from '@/components/admin/marketing-panel';
+import StockNotificationsPanel from '@/components/admin/stock-notifications-panel';
 import { toast } from 'sonner';
 
 export default function AdminPage() {
@@ -41,6 +42,7 @@ export default function AdminPage() {
           <TabsTrigger value="orders">Orders</TabsTrigger>
           <TabsTrigger value="returns">Returns</TabsTrigger>
           <TabsTrigger value="abandoned-carts">Abandoned Carts</TabsTrigger>
+          <TabsTrigger value="restock-alerts">Restock Alerts</TabsTrigger>
           <TabsTrigger value="coupons">Coupons</TabsTrigger>
           <TabsTrigger value="marketing">Marketing</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
@@ -72,6 +74,10 @@ export default function AdminPage() {
 
         <TabsContent value="abandoned-carts">
           <AbandonedCartsPanel />
+        </TabsContent>
+
+        <TabsContent value="restock-alerts">
+          <StockNotificationsPanel />
         </TabsContent>
 
         <TabsContent value="coupons">

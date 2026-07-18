@@ -17,6 +17,7 @@ function mapRow(row: ProductRow): Product {
     origin: row.origin ?? '',
     colors: row.colors ?? [],
     sizes: row.sizes ?? [],
+    occasion: row.occasion ?? [],
     images: row.images ?? [],
     rating: row.rating,
     reviews: row.reviews,

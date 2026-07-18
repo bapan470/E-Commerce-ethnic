@@ -49,6 +49,25 @@ const slugify = (s: string) =>
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-');
 
+/** Fire-and-forget: emails everyone waiting on a "Notify me" signup for this product. */
+async function triggerRestockNotifications(productId: string) {
+  try {
+    const res = await fetch('/api/admin/notify-restock', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product_id: productId }),
+    });
+    if (res.ok) {
+      const body = await res.json();
+      if (body.sent > 0) {
+        toast.success(`Notified ${body.sent} customer${body.sent === 1 ? '' : 's'} waiting for restock`);
+      }
+    }
+  } catch {
+    // Non-critical -- stock update already succeeded either way.
+  }
+}
+
 interface FormState {
   id?: string;
   name: string;
@@ -61,6 +80,7 @@ interface FormState {
   origin: string;
   colors: string;
   sizes: string;
+  occasion: string;
   images: string[];
   stock_quantity: string;
   rating: string;
@@ -80,6 +100,7 @@ const emptyForm = (): FormState => ({
   origin: '',
   colors: '',
   sizes: 'Free Size',
+  occasion: '',
   images: [DEFAULT_IMAGE],
   stock_quantity: '0',
   rating: '4.5',
@@ -100,6 +121,7 @@ const fromProduct = (p: Product): FormState => ({
   origin: p.origin,
   colors: p.colors.join(', '),
   sizes: p.sizes.join(', '),
+  occasion: (p.occasion || []).join(', '),
   images: p.images.length ? p.images : [DEFAULT_IMAGE],
   stock_quantity: String(p.stock_quantity),
   rating: String(p.rating),
@@ -160,8 +182,11 @@ export default function ProductsPanel() {
     }
     const colors = form.colors.split(',').map((s) => s.trim()).filter(Boolean);
     const sizes = form.sizes.split(',').map((s) => s.trim()).filter(Boolean);
+    const occasion = form.occasion.split(',').map((s) => s.trim()).filter(Boolean);
     const images = form.images.length ? form.images : [DEFAULT_IMAGE];
     const category = categories.find((c) => c.name === form.category_name);
+    const wasOutOfStock = !!editing && (editing.stock_quantity === 0 || !editing.inStock);
+    const newStockQty = Number(form.stock_quantity) || 0;
 
     const payload = {
       name: form.name.trim(),
@@ -175,8 +200,9 @@ export default function ProductsPanel() {
       origin: form.origin,
       colors,
       sizes: sizes.length ? sizes : ['Free Size'],
+      occasion,
       images,
-      stock_quantity: Number(form.stock_quantity) || 0,
+      stock_quantity: newStockQty,
       rating: Number(form.rating) || 4.5,
       reviews: Number(form.reviews) || 0,
       featured: form.featured,
@@ -188,6 +214,9 @@ export default function ProductsPanel() {
       if (editing) {
         await updateProduct(editing.id, payload);
         toast.success('Product updated');
+        if (wasOutOfStock && newStockQty > 0) {
+          triggerRestockNotifications(editing.id);
+        }
       } else {
         await createProduct(payload);
         toast.success('Product added');
@@ -216,6 +245,7 @@ export default function ProductsPanel() {
 
   const quickStockUpdate = async (p: Product, delta: number) => {
     const newQty = Math.max(0, p.stock_quantity + delta);
+    const wasOutOfStock = p.stock_quantity === 0 || !p.inStock;
     try {
       await updateProduct(p.id, {
         stock_quantity: newQty,
@@ -223,6 +253,9 @@ export default function ProductsPanel() {
       });
       await refresh();
       toast.success(`Stock updated to ${newQty}`);
+      if (wasOutOfStock && newQty > 0) {
+        triggerRestockNotifications(p.id);
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Update failed');
     }
@@ -505,6 +538,21 @@ export default function ProductsPanel() {
                   placeholder="S, M, L, XL"
                 />
               </div>
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label htmlFor="occasion">Occasion tags (comma-separated)</Label>
+              <Input
+                id="occasion"
+                value={form.occasion}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, occasion: e.target.value }))
+                }
+                placeholder="Wedding, Festive, Party, Casual, Office Wear"
+              />
+              <p className="text-xs text-muted-foreground">
+                Shown as filters on the Shop page and used to power &quot;You may also like&quot; recommendations.
+              </p>
             </div>
 
             {/* Image upload + URL list */}

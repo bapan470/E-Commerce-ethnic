@@ -18,6 +18,7 @@ export interface Product {
   origin: string;
   colors: string[];
   sizes: string[];
+  occasion: string[];
   images: string[];
   rating: number;
   reviews: number;
@@ -87,6 +88,7 @@ export interface ProductRow {
   origin: string | null;
   colors: string[] | null;
   sizes: string[] | null;
+  occasion: string[] | null;
   images: string[] | null;
   stock_quantity: number;
   rating: number;

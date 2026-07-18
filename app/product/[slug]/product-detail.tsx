@@ -22,12 +22,15 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import ProductCard from '@/components/product-card';
 import ReviewsSection from '@/components/product/reviews-section';
 import PincodeChecker from '@/components/product/pincode-checker';
 import VariantSwatches from '@/components/product/variant-swatches';
 import ProductGallery from '@/components/product/product-gallery';
 import MobileStickyCartBar from '@/components/product/mobile-sticky-cart-bar';
+import RelatedProducts from '@/components/product/related-products';
+import RecentlyViewedSection from '@/components/product/recently-viewed';
+import NotifyMeForm from '@/components/product/notify-me-form';
+import { addRecentlyViewed } from '@/lib/recently-viewed';
 import { toast } from 'sonner';
 
 export default function ProductDetail() {
@@ -112,6 +115,10 @@ export default function ProductDetail() {
     if (product) setSelectedSize(product.sizes[0] ?? null);
   }, [product]);
 
+  useEffect(() => {
+    if (baseProduct) addRecentlyViewed(baseProduct.id);
+  }, [baseProduct]);
+
   if (isLoading && !product) {
     return (
       <div className="container-boutique py-8">
@@ -143,10 +150,6 @@ export default function ProductDetail() {
       </div>
     );
   }
-
-  const related = products
-    .filter((p) => p.category === product.category && p.id !== product.id)
-    .slice(0, 4);
 
   const discount = discountPct(product.price, product.mrp);
 
@@ -236,18 +239,9 @@ export default function ProductDetail() {
         </Tabs>
       </div>
 
-      {related.length > 0 && (
-        <section className="mt-14">
-          <h2 className="mb-5 font-serif text-2xl font-bold text-primary">
-            You may also like
-          </h2>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            {related.map((p) => (
-              <ProductCard key={p.id} product={p} />
-            ))}
-          </div>
-        </section>
-      )}
+      <RelatedProducts current={product} allProducts={products} />
+
+      <RecentlyViewedSection excludeId={product.id} />
 
       <MobileStickyCartBar
         name={product.name}
@@ -377,16 +371,28 @@ function ProductInfo({
             <Plus className="h-4 w-4" />
           </button>
         </div>
-        <Button
-          onClick={onAdd}
-          disabled={!product.inStock}
-          size="lg"
-          className="flex-1 gap-2 bg-primary text-base"
-        >
-          <ShoppingBag className="h-4 w-4" />
-          {product.inStock ? 'Add to Cart' : 'Out of Stock'}
-        </Button>
+        {product.inStock ? (
+          <Button
+            onClick={onAdd}
+            size="lg"
+            className="flex-1 gap-2 bg-primary text-base"
+          >
+            <ShoppingBag className="h-4 w-4" />
+            Add to Cart
+          </Button>
+        ) : (
+          <Button
+            disabled
+            size="lg"
+            variant="outline"
+            className="flex-1 gap-2 text-base"
+          >
+            Out of Stock
+          </Button>
+        )}
       </div>
+
+      {!product.inStock && <NotifyMeForm productId={product.id} />}
 
       <PincodeChecker />
 

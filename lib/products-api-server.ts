@@ -14,6 +14,7 @@ export function mapRowToProduct(row: ProductRow): Product {
     origin: row.origin ?? '',
     colors: row.colors ?? [],
     sizes: row.sizes ?? ['Free Size'],
+    occasion: row.occasion ?? [],
     images: row.images ?? [],
     rating: Number(row.rating) || 4.5,
     reviews: row.reviews ?? 0,
