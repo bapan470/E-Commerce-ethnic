@@ -140,6 +140,40 @@ export async function POST(req: Request) {
         messages: [{ role: 'user', content: userContent }],
         temperature: 0.4,
         max_tokens: 1024,
+        // Forces the model to always emit valid, schema-matching JSON instead
+        // of occasionally replying with a plain-text sentence (which used to
+        // crash JSON.parse below).
+        response_format: {
+          type: 'json_schema',
+          json_schema: {
+            name: 'ProductListing',
+            schema: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                description: { type: 'string' },
+                fabric: { type: 'string' },
+                origin: { type: 'string' },
+                occasion: { type: 'array', items: { type: 'string' } },
+                material: { type: 'string' },
+                pattern: { type: 'string' },
+                gender: { type: 'string', enum: ['female', 'male', 'unisex'] },
+                meta_description: { type: 'string' },
+              },
+              required: [
+                'name',
+                'description',
+                'fabric',
+                'origin',
+                'occasion',
+                'material',
+                'pattern',
+                'gender',
+                'meta_description',
+              ],
+            },
+          },
+        },
       }),
     });
 
@@ -160,7 +194,19 @@ export async function POST(req: Request) {
     const data = await res.json();
     const text: string = data?.choices?.[0]?.message?.content ?? '';
     const cleaned = text.replace(/^```(json)?/i, '').replace(/```$/, '').trim();
-    const parsed: GeneratedListing = JSON.parse(cleaned);
+
+    let parsed: GeneratedListing;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch (parseErr) {
+      // Log the raw model output so we can see exactly what came back
+      // (e.g. a refusal sentence) instead of just "not valid JSON".
+      console.error('[generate-listing] Non-JSON model response:', text.slice(0, 500));
+      return NextResponse.json(
+        { error: 'AI returned an unexpected response. Please try again.' },
+        { status: 502 }
+      );
+    }
 
     return NextResponse.json({ listing: parsed });
   } catch (err) {
