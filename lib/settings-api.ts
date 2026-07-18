@@ -10,7 +10,7 @@ export interface StoreInfo {
 }
 
 const DEFAULT_STORE_INFO: StoreInfo = {
-  name: 'Saaj Boutique',
+  name: 'Aruhi Handlooms',
   address: '',
   gstin: '',
   support_email: '',
@@ -51,7 +51,7 @@ const DEFAULT_EMAIL_SETTINGS: EmailSettings = {
   provider: '',
   api_key: '',
   sender_email: '',
-  sender_name: 'Saaj Boutique',
+  sender_name: 'Aruhi Handlooms',
   zeptomail_region: 'in',
 };
 

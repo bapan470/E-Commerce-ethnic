@@ -1,7 +1,7 @@
 import { getServerSupabase } from '@/lib/supabase-server';
 import HomeClient from './home-client';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://saaj.example';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
 interface HomeSeoData {
   name: string;
@@ -16,7 +16,7 @@ interface HomeSeoData {
 // needed if the shop rebrands.
 async function getHomeSeoData(): Promise<HomeSeoData> {
   const fallback: HomeSeoData = {
-    name: 'Saaj Boutique',
+    name: 'Aruhi Handlooms',
     description:
       'Handpicked sarees and ethnic wear from master weavers across India.',
     email: '',

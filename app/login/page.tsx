@@ -67,7 +67,7 @@ function LoginForm() {
       <div className="w-full max-w-sm space-y-6">
         <div className="text-center">
           <h1 className="font-serif text-3xl font-bold text-primary">Welcome back</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Login to your Saaj account</p>
+          <p className="mt-1 text-sm text-muted-foreground">Login to your Aruhi Handlooms account</p>
         </div>
 
         <Button
@@ -103,7 +103,7 @@ function LoginForm() {
         </form>
 
         <p className="text-center text-sm text-muted-foreground">
-          New to Saaj?{' '}
+          New to Aruhi Handlooms?{' '}
           <Link href="/signup" className="font-medium text-primary hover:underline">
             Create an account
           </Link>

@@ -3,7 +3,7 @@ import { getServerSupabase } from '@/lib/supabase-server';
 import { ProductRow, CategoryRow } from '@/lib/types';
 import { LEGAL_PAGE_TITLES } from '@/lib/marketing-api';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://saaj.example';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const supabase = getServerSupabase();

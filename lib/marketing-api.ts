@@ -68,7 +68,7 @@ const DEFAULT_MARKETING_SETTINGS: MarketingSettings = {
   whatsapp_number: '',
   whatsapp_message: 'Hi! I have a question about your products.',
   merchant_feed_enabled: true,
-  merchant_feed_brand: 'Saaj Boutique',
+  merchant_feed_brand: 'Aruhi Handlooms',
   newsletter_enabled: true,
 };
 
@@ -143,7 +143,7 @@ export interface SeoSettings {
 }
 
 const DEFAULT_SEO_SETTINGS: SeoSettings = {
-  site_title: 'Saaj — Handwoven Indian Ethnic Wear & Sarees',
+  site_title: 'Aruhi Handlooms — Handwoven Indian Ethnic Wear & Sarees',
   meta_description:
     'Discover handpicked sarees, lehengas and ethnic wear from master weavers across India. Timeless craftsmanship, modern convenience.',
   keywords: 'saree, ethnic wear, Indian boutique, handwoven sarees, lehenga, silk saree, banarasi, kanjivaram, bridal saree',

@@ -18,7 +18,7 @@ const playfair = Playfair_Display({
   display: 'swap',
 });
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://saaj.example';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
 const DEFAULT_SEO: SeoSettings = {
   site_title: 'Aruhi Handlooms — Handwoven Indian Ethnic Wear & Sarees',

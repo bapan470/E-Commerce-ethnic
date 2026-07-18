@@ -49,7 +49,7 @@ export default function Footer() {
             <a href="#" aria-label="Facebook" className="rounded-full bg-primary-foreground/10 p-2 transition-colors hover:bg-secondary hover:text-secondary-foreground">
               <Facebook className="h-4 w-4" />
             </a>
-            <a href="mailto:hello@saaj.in" aria-label="Email" className="rounded-full bg-primary-foreground/10 p-2 transition-colors hover:bg-secondary hover:text-secondary-foreground">
+            <a href="mailto:hello@aruhihandlooms.com" aria-label="Email" className="rounded-full bg-primary-foreground/10 p-2 transition-colors hover:bg-secondary hover:text-secondary-foreground">
               <Mail className="h-4 w-4" />
             </a>
             <a href="tel:+918001234567" aria-label="Phone" className="rounded-full bg-primary-foreground/10 p-2 transition-colors hover:bg-secondary hover:text-secondary-foreground">

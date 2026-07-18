@@ -70,7 +70,7 @@ function SignupForm() {
         <div className="text-center">
           <h1 className="font-serif text-3xl font-bold text-primary">Create your account</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Join Saaj Boutique for faster checkout &amp; order tracking
+            Join Aruhi Handlooms for faster checkout &amp; order tracking
           </p>
         </div>
 

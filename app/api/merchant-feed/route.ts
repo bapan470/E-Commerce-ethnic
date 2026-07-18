@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSupabase } from '@/lib/supabase-server';
 import { fetchProductsServer } from '@/lib/products-api-server';
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://saaj.example';
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
 function escapeXml(input: string): string {
   return input
@@ -29,7 +29,7 @@ export async function GET() {
     return new NextResponse('Merchant feed is disabled in Admin > Marketing.', { status: 404 });
   }
 
-  const brand = marketing.merchant_feed_brand || 'Saaj Boutique';
+  const brand = marketing.merchant_feed_brand || 'Aruhi Handlooms';
   const products = await fetchProductsServer();
 
   const items = products

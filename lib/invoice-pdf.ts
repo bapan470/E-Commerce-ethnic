@@ -75,7 +75,7 @@ export async function generateInvoicePdf(order: InvoiceOrder, store: StoreInfo):
   };
 
   // ---- Header ----
-  draw(store.name || 'Saaj Boutique', margin, y, { size: 20, f: bold, color: primary });
+  draw(store.name || 'Aruhi Handlooms', margin, y, { size: 20, f: bold, color: primary });
   y -= 16;
   if (store.address) {
     draw(store.address, margin, y, { size: 9, color: muted });

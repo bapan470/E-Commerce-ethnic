@@ -61,7 +61,7 @@ export default function HomeClient() {
             <div className="relative aspect-[4/5] w-full overflow-hidden rounded-2xl border border-secondary/30 shadow-2xl">
               <Image
                 src="https://images.pexels.com/photos/1043471/pexels-photo-1043471.jpeg?auto=compress&cs=tinysrgb&w=900&h=1125&fit=crop"
-                alt="Model wearing a handwoven embroidered Banarasi silk saree from Saaj Boutique"
+                alt="Model wearing a handwoven embroidered Banarasi silk saree from Aruhi Handlooms"
                 fill
                 priority
                 sizes="(max-width: 768px) 0px, 50vw"
@@ -132,7 +132,7 @@ export default function HomeClient() {
                 >
                   <Image
                     src="https://images.pexels.com/photos/1191349/pexels-photo-1191349.jpeg?auto=compress&cs=tinysrgb&w=600&h=700&fit=crop"
-                    alt={`${c.name} - handwoven Indian ethnic wear collection at Saaj Boutique`}
+                    alt={`${c.name} - handwoven Indian ethnic wear collection at Aruhi Handlooms`}
                     fill
                     sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
                     className="object-cover transition-transform duration-500 group-hover:scale-110"
