@@ -550,7 +550,7 @@ export default function VariantsPanel() {
                   ) : (
                     <Link2 className="mr-1.5 h-4 w-4" />
                   )}
-                  {importing ? 'Importing…' : 'Import & Convert to WebP'}
+                  {importing ? 'Importing…' : 'Import from URL'}
                 </Button>
               </div>
               <div className="flex flex-wrap gap-3">

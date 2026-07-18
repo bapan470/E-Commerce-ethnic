@@ -1,10 +1,18 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import sharp from 'sharp';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 const MAX_BYTES = 15 * 1024 * 1024; // 15MB safety cap on the source image
+
+const EXT_BY_MIME: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/avif': 'avif',
+};
 
 export async function POST(req: Request) {
   const cookie = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? null;
@@ -45,7 +53,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const contentType = sourceRes.headers.get('content-type') || '';
+    const contentType = (sourceRes.headers.get('content-type') || '').split(';')[0].trim();
     if (!contentType.startsWith('image/')) {
       return NextResponse.json({ error: 'That URL does not point to an image.' }, { status: 400 });
     }
@@ -55,22 +63,21 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Image is too large (max 15MB).' }, { status: 400 });
     }
 
-    // Convert to WebP: smaller file size, same visual quality, and a
-    // consistent format across every product image regardless of source.
-    const webpBuffer = await sharp(Buffer.from(arrayBuffer))
-      .rotate() // respect EXIF orientation before re-encoding
-      .webp({ quality: 82 })
-      .toBuffer();
-
-    const path = `${bucketFolder}/${Date.now()}-${Math.random().toString(36).slice(2, 9)}.webp`;
+    // Re-host the image in our own storage exactly as downloaded (no
+    // conversion) — this avoids native-binary image libraries, which are
+    // unreliable to run in serverless functions, while still fixing the
+    // main problem: the image keeps working even if the original site
+    // removes it or blocks hotlinking.
+    const ext = EXT_BY_MIME[contentType] || 'jpg';
+    const path = `${bucketFolder}/${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
 
     const admin = getSupabaseAdmin();
     const { error: uploadError } = await admin.storage
       .from('product-images')
-      .upload(path, webpBuffer, {
+      .upload(path, Buffer.from(arrayBuffer), {
         cacheControl: '31536000',
         upsert: false,
-        contentType: 'image/webp',
+        contentType,
       });
 
     if (uploadError) {

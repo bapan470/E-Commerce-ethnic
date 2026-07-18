@@ -806,11 +806,11 @@ export default function ProductsPanel() {
                   ) : (
                     <Link2 className="mr-1.5 h-4 w-4" />
                   )}
-                  {importing ? 'Importing…' : 'Import & Convert to WebP'}
+                  {importing ? 'Importing…' : 'Import from URL'}
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                This downloads the image, converts it to WebP, and saves it in your own Supabase
+                This downloads the image and saves it in your own Supabase
                 storage — so it keeps working even if the original site removes it.
               </p>
               <div className="flex flex-wrap gap-3">
