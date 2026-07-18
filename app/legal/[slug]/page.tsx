@@ -6,6 +6,12 @@ import { LEGAL_PAGE_TITLES, LegalPages, LegalSlug } from '@/lib/marketing-api';
 
 const VALID_SLUGS = Object.keys(LEGAL_PAGE_TITLES) as LegalSlug[];
 
+// Legal page content is edited from Admin > Marketing > Legal Pages and saved
+// straight to Supabase. Without this, Next.js would statically generate this
+// page once at build time and keep serving that stale copy forever, so admin
+// edits would never show up on the live site until the next deploy.
+export const dynamic = 'force-dynamic';
+
 async function getLegalPages(): Promise<LegalPages> {
   const supabase = getServerSupabase();
   const { data } = await supabase
@@ -30,7 +36,7 @@ export async function generateMetadata({
   const title = LEGAL_PAGE_TITLES[slug];
   return {
     title,
-    description: `${title} for Saaj Boutique — read our policy before you shop.`,
+    description: `${title} for Aruhi Handlooms — read our policy before you shop.`,
     alternates: { canonical: `/legal/${slug}` },
     robots: { index: true, follow: true },
   };
