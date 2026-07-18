@@ -3,6 +3,14 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // 'sharp' is a native (C++) module. If webpack tries to bundle it into the
+  // route handler, the serverless function crashes on Vercel at runtime
+  // (returns an HTML error page instead of JSON). Marking it external tells
+  // Next.js to leave it as a plain node_modules dependency, which Vercel's
+  // own build tracing then includes with the correct linux binary.
+  experimental: {
+    serverComponentsExternalPackages: ['sharp'],
+  },
   images: {
     // Netlify's Next.js runtime supports the built-in Image Optimization API,
     // so images get auto resized/compressed (WebP/AVIF) per device instead of
