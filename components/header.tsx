@@ -99,7 +99,7 @@ export default function Header() {
                 onClick={() => setMobileOpen(false)}
                 className="font-serif text-2xl font-bold text-primary"
               >
-                Saaj
+                Aruhi
               </Link>
               <form onSubmit={onSearch} className="flex gap-2">
                 <Input
@@ -130,10 +130,10 @@ export default function Header() {
 
         <Link href="/" className="flex items-center gap-2">
           <span className="font-serif text-2xl font-bold tracking-tight text-primary">
-            Saaj
+            Aruhi
           </span>
           <span className="hidden text-xs font-medium uppercase tracking-[0.2em] text-secondary sm:inline">
-            Boutique
+            Handlooms
           </span>
         </Link>
 
