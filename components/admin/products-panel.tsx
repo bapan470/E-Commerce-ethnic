@@ -3,7 +3,7 @@
 import { useState, FormEvent, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles } from 'lucide-react';
+import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles, Link2 } from 'lucide-react';
 import { useProducts } from '@/lib/cart-context';
 import {
   createProduct,
@@ -154,6 +154,8 @@ export default function ProductsPanel() {
   const [generating, setGenerating] = useState(false);
   const [aiHint, setAiHint] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [importUrl, setImportUrl] = useState('');
+  const [importing, setImporting] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -242,6 +244,31 @@ export default function ProductsPanel() {
 
   const removeImage = (idx: number) => {
     setForm((f) => ({ ...f, images: f.images.filter((_, i) => i !== idx) }));
+  };
+
+  const importFromUrl = async () => {
+    const url = importUrl.trim();
+    if (!url) return;
+    setImporting(true);
+    try {
+      const res = await fetch('/api/admin/import-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, folder: 'products' }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Could not import that image');
+        return;
+      }
+      setForm((f) => ({ ...f, images: [...f.images, data.url] }));
+      setImportUrl('');
+      toast.success('Image imported and converted to WebP');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Image import failed');
+    } finally {
+      setImporting(false);
+    }
   };
 
   const onSubmit = async (e: FormEvent) => {
@@ -751,9 +778,41 @@ export default function ProductsPanel() {
                   />
                 </label>
                 <span className="text-xs text-muted-foreground">
-                  Or paste image URLs below.
+                  Or import from any public image URL below.
                 </span>
               </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  value={importUrl}
+                  onChange={(e) => setImportUrl(e.target.value)}
+                  placeholder="Paste any public image URL (Amazon, Google, etc.)"
+                  className="max-w-md"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      importFromUrl();
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={importFromUrl}
+                  disabled={importing || !importUrl.trim()}
+                >
+                  {importing ? (
+                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Link2 className="mr-1.5 h-4 w-4" />
+                  )}
+                  {importing ? 'Importing…' : 'Import & Convert to WebP'}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                This downloads the image, converts it to WebP, and saves it in your own Supabase
+                storage — so it keeps working even if the original site removes it.
+              </p>
               <div className="flex flex-wrap gap-3">
                 {form.images.map((url, idx) => (
                   <div

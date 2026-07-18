@@ -2,7 +2,7 @@
 
 import { useEffect, useState, FormEvent } from 'react';
 import Image from 'next/image';
-import { Plus, Pencil, Trash2, Upload, Loader2, Star } from 'lucide-react';
+import { Plus, Pencil, Trash2, Upload, Loader2, Star, Link2 } from 'lucide-react';
 import { useProducts } from '@/lib/cart-context';
 import {
   fetchVariantsWithSizes,
@@ -81,6 +81,8 @@ export default function VariantsPanel() {
   const [form, setForm] = useState<VariantFormState>(emptyVariantForm());
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [importUrl, setImportUrl] = useState('');
+  const [importing, setImporting] = useState(false);
   const [confirmVariant, setConfirmVariant] = useState<VariantWithSizes | null>(null);
 
   const selectedProduct = products.find((p) => p.id === selectedProductId) || null;
@@ -154,6 +156,31 @@ export default function VariantsPanel() {
 
   const removeImage = (idx: number) => {
     setForm((f) => ({ ...f, images: f.images.filter((_, i) => i !== idx) }));
+  };
+
+  const importFromUrl = async () => {
+    const url = importUrl.trim();
+    if (!url) return;
+    setImporting(true);
+    try {
+      const res = await fetch('/api/admin/import-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, folder: 'variants' }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Could not import that image');
+        return;
+      }
+      setForm((f) => ({ ...f, images: [...f.images, data.url] }));
+      setImportUrl('');
+      toast.success('Image imported and converted to WebP');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Image import failed');
+    } finally {
+      setImporting(false);
+    }
   };
 
   const updateSizeRow = (idx: number, patch: Partial<{ size: string; stockQuantity: string }>) => {
@@ -497,6 +524,34 @@ export default function VariantsPanel() {
                     disabled={uploading}
                   />
                 </label>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  value={importUrl}
+                  onChange={(e) => setImportUrl(e.target.value)}
+                  placeholder="Paste any public image URL (Amazon, Google, etc.)"
+                  className="max-w-md"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      importFromUrl();
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={importFromUrl}
+                  disabled={importing || !importUrl.trim()}
+                >
+                  {importing ? (
+                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Link2 className="mr-1.5 h-4 w-4" />
+                  )}
+                  {importing ? 'Importing…' : 'Import & Convert to WebP'}
+                </Button>
               </div>
               <div className="flex flex-wrap gap-3">
                 {form.images.map((url, idx) => (
