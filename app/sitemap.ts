@@ -1,6 +1,7 @@
 import { MetadataRoute } from 'next';
 import { getServerSupabase } from '@/lib/supabase-server';
 import { ProductRow, CategoryRow } from '@/lib/types';
+import { LEGAL_PAGE_TITLES } from '@/lib/marketing-api';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://saaj.example';
 
@@ -56,6 +57,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.7,
   }));
 
+  const legalPages: MetadataRoute.Sitemap = Object.keys(LEGAL_PAGE_TITLES).map((slug) => ({
+    url: `${SITE_URL}/legal/${slug}`,
+    lastModified: new Date(),
+    changeFrequency: 'monthly' as const,
+    priority: 0.2,
+  }));
+
   const productPages: MetadataRoute.Sitemap = products.map((p) => ({
     url: `${SITE_URL}/product/${p.slug}`,
     lastModified: p.updated_at ? new Date(p.updated_at) : new Date(),
@@ -70,5 +78,5 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.6,
   }));
 
-  return [...staticPages, ...categoryPages, ...productPages, ...variantPages];
+  return [...staticPages, ...categoryPages, ...legalPages, ...productPages, ...variantPages];
 }

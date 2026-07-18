@@ -27,6 +27,7 @@ import ReviewsSection from '@/components/product/reviews-section';
 import PincodeChecker from '@/components/product/pincode-checker';
 import VariantSwatches from '@/components/product/variant-swatches';
 import ProductGallery from '@/components/product/product-gallery';
+import MobileStickyCartBar from '@/components/product/mobile-sticky-cart-bar';
 import { toast } from 'sonner';
 
 export default function ProductDetail() {
@@ -159,7 +160,7 @@ export default function ProductDetail() {
   };
 
   return (
-    <div className="container-boutique py-8">
+    <div className="container-boutique py-8 pb-24 md:pb-8">
       <nav className="mb-6 flex items-center gap-1 text-xs text-muted-foreground" aria-label="Breadcrumb">
         <Link href="/" className="hover:text-primary">Home</Link>
         <ChevronRight className="h-3 w-3" />
@@ -247,6 +248,14 @@ export default function ProductDetail() {
           </div>
         </section>
       )}
+
+      <MobileStickyCartBar
+        name={product.name}
+        price={product.price}
+        mrp={product.mrp}
+        inStock={product.inStock}
+        onAdd={handleAddToCart}
+      />
     </div>
   );
 }

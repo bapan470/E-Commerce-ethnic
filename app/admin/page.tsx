@@ -13,6 +13,7 @@ import CouponsPanel from '@/components/admin/coupons-panel';
 import SettingsPanel from '@/components/admin/settings-panel';
 import ReturnsPanel from '@/components/admin/returns-panel';
 import AbandonedCartsPanel from '@/components/admin/abandoned-carts-panel';
+import MarketingPanel from '@/components/admin/marketing-panel';
 import { toast } from 'sonner';
 
 export default function AdminPage() {
@@ -41,6 +42,7 @@ export default function AdminPage() {
           <TabsTrigger value="returns">Returns</TabsTrigger>
           <TabsTrigger value="abandoned-carts">Abandoned Carts</TabsTrigger>
           <TabsTrigger value="coupons">Coupons</TabsTrigger>
+          <TabsTrigger value="marketing">Marketing</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
 
@@ -74,6 +76,10 @@ export default function AdminPage() {
 
         <TabsContent value="coupons">
           <CouponsPanel />
+        </TabsContent>
+
+        <TabsContent value="marketing">
+          <MarketingPanel />
         </TabsContent>
 
         <TabsContent value="settings">

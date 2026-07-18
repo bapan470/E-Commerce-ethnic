@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Instagram, Facebook, Mail, Phone } from 'lucide-react';
+import NewsletterSignup from './newsletter-signup';
 
 export default function Footer() {
   return (
@@ -31,7 +32,10 @@ export default function Footer() {
             <li><Link href="/cart" className="hover:text-secondary">Cart</Link></li>
             <li><Link href="/checkout" className="hover:text-secondary">Checkout</Link></li>
             {/* Admin link intentionally omitted for security */}
-            <li>Shipping & Returns</li>
+            <li><Link href="/legal/shipping-policy" className="hover:text-secondary">Shipping & Returns</Link></li>
+            <li><Link href="/legal/refund-policy" className="hover:text-secondary">Refund & Cancellation</Link></li>
+            <li><Link href="/legal/privacy-policy" className="hover:text-secondary">Privacy Policy</Link></li>
+            <li><Link href="/legal/terms-conditions" className="hover:text-secondary">Terms & Conditions</Link></li>
           </ul>
         </div>
         <div>
@@ -55,6 +59,13 @@ export default function Footer() {
           <p className="mt-4 text-xs text-primary-foreground/70">
             +91 80012 34567<br />Mon–Sat, 10am–7pm IST
           </p>
+          <h4 className="mt-5 text-sm font-semibold uppercase tracking-wider text-secondary">
+            Newsletter
+          </h4>
+          <p className="mt-2 text-xs text-primary-foreground/70">
+            Get first access to new arrivals and offers.
+          </p>
+          <NewsletterSignup />
         </div>
       </div>
       <div className="border-t border-primary-foreground/10 py-4">

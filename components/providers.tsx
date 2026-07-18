@@ -7,6 +7,7 @@ import { Toaster } from 'sonner';
 import CartDrawer from './cart-drawer';
 import Header from './header';
 import Footer from './footer';
+import WhatsAppButton from './whatsapp-button';
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
@@ -18,6 +19,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
             <main className="flex-1">{children}</main>
             <Footer />
             <CartDrawer />
+            <WhatsAppButton />
           </div>
           <Toaster position="top-center" richColors closeButton />
         </CartProvider>
