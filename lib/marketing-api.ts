@@ -125,3 +125,44 @@ export async function deleteNewsletterSubscriber(id: string) {
   const { error } = await supabase.from('newsletter_subscribers').delete().eq('id', id);
   if (error) throw error;
 }
+
+// ---------------------------------------------------------------------
+// Site-wide SEO settings (homepage / default meta tags)
+// Individual product pages already generate their own meta tags from the
+// product data itself, so this only covers the site-level defaults used
+// as a fallback and on the homepage.
+// ---------------------------------------------------------------------
+
+export interface SeoSettings {
+  site_title: string;
+  meta_description: string;
+  keywords: string; // comma-separated, split into an array before use
+  og_image: string;
+  google_site_verification: string;
+}
+
+const DEFAULT_SEO_SETTINGS: SeoSettings = {
+  site_title: 'Saaj — Handwoven Indian Ethnic Wear & Sarees',
+  meta_description:
+    'Discover handpicked sarees, lehengas and ethnic wear from master weavers across India. Timeless craftsmanship, modern convenience.',
+  keywords: 'saree, ethnic wear, Indian boutique, handwoven sarees, lehenga, silk saree, banarasi, kanjivaram, bridal saree',
+  og_image: '',
+  google_site_verification: '',
+};
+
+export async function fetchSeoSettings(): Promise<SeoSettings> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'seo_settings')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_SEO_SETTINGS;
+  return { ...DEFAULT_SEO_SETTINGS, ...(data.value as Partial<SeoSettings>) };
+}
+
+export async function saveSeoSettings(settings: SeoSettings) {
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ key: 'seo_settings', value: settings }, { onConflict: 'key' });
+  if (error) throw error;
+}

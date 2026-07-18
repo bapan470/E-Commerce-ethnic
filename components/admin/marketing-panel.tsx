@@ -14,6 +14,9 @@ import {
   NewsletterSubscriber,
   fetchNewsletterSubscribers,
   deleteNewsletterSubscriber,
+  SeoSettings,
+  fetchSeoSettings,
+  saveSeoSettings,
 } from '@/lib/marketing-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,12 +42,14 @@ export default function MarketingPanel() {
             <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
             <TabsTrigger value="newsletter">Newsletter</TabsTrigger>
             <TabsTrigger value="feed">Merchant Feed</TabsTrigger>
+            <TabsTrigger value="seo">SEO</TabsTrigger>
           </TabsList>
 
           <TabsContent value="legal"><LegalPagesTab /></TabsContent>
           <TabsContent value="whatsapp"><WhatsAppTab /></TabsContent>
           <TabsContent value="newsletter"><NewsletterTab /></TabsContent>
           <TabsContent value="feed"><MerchantFeedTab /></TabsContent>
+          <TabsContent value="seo"><SeoTab /></TabsContent>
         </Tabs>
       </CardContent>
     </Card>
@@ -365,5 +370,110 @@ function NewsletterTab() {
         </div>
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Site SEO
+// ---------------------------------------------------------------------
+
+function SeoTab() {
+  const [seo, setSeo] = useState<SeoSettings | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetchSeoSettings()
+      .then(setSeo)
+      .catch(() => toast.error('Failed to load SEO settings'));
+  }, []);
+
+  const onSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!seo) return;
+    setSaving(true);
+    try {
+      await saveSeoSettings(seo);
+      toast.success('SEO settings saved');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!seo) return <p className="py-6 text-sm text-muted-foreground">Loading...</p>;
+
+  return (
+    <form onSubmit={onSubmit} className="mt-4 max-w-lg space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="seo-title">Site title</Label>
+        <Input
+          id="seo-title"
+          value={seo.site_title}
+          onChange={(e) => setSeo({ ...seo, site_title: e.target.value })}
+          placeholder="Saaj — Handwoven Indian Ethnic Wear & Sarees"
+        />
+        <p className="text-xs text-muted-foreground">
+          Shown in Google search results and the browser tab on the homepage.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="seo-description">Meta description</Label>
+        <Textarea
+          id="seo-description"
+          rows={3}
+          value={seo.meta_description}
+          onChange={(e) => setSeo({ ...seo, meta_description: e.target.value })}
+          placeholder="Discover handpicked sarees, lehengas and ethnic wear..."
+        />
+        <p className="text-xs text-muted-foreground">
+          Ideal length: under 160 characters. Currently {seo.meta_description.length}.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="seo-keywords">Keywords (comma-separated)</Label>
+        <Textarea
+          id="seo-keywords"
+          rows={2}
+          value={seo.keywords}
+          onChange={(e) => setSeo({ ...seo, keywords: e.target.value })}
+          placeholder="saree, ethnic wear, lehenga, silk saree"
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="seo-og-image">Social share image URL (Open Graph)</Label>
+        <Input
+          id="seo-og-image"
+          value={seo.og_image}
+          onChange={(e) => setSeo({ ...seo, og_image: e.target.value })}
+          placeholder="https://your-cdn.com/social-share.jpg"
+        />
+        <p className="text-xs text-muted-foreground">
+          Shown when the site is shared on WhatsApp, Facebook, Twitter/X. Recommended: 1200×630px.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="seo-gsc">Google Search Console verification code</Label>
+        <Input
+          id="seo-gsc"
+          value={seo.google_site_verification}
+          onChange={(e) => setSeo({ ...seo, google_site_verification: e.target.value })}
+          placeholder="abc123XYZ... (just the content value, not the full <meta> tag)"
+        />
+        <p className="text-xs text-muted-foreground">
+          Google Search Console → Settings → Ownership verification → HTML tag method → copy only
+          the <code>content=&quot;...&quot;</code> value here.
+        </p>
+      </div>
+
+      <Button type="submit" disabled={saving} className="gap-2 bg-primary">
+        <Save className="h-4 w-4" />
+        {saving ? 'Saving...' : 'Save SEO Settings'}
+      </Button>
+    </form>
   );
 }
