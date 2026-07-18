@@ -139,6 +139,7 @@ export interface SeoSettings {
   keywords: string; // comma-separated, split into an array before use
   og_image: string;
   google_site_verification: string;
+  favicon_url: string;
 }
 
 const DEFAULT_SEO_SETTINGS: SeoSettings = {
@@ -148,6 +149,7 @@ const DEFAULT_SEO_SETTINGS: SeoSettings = {
   keywords: 'saree, ethnic wear, Indian boutique, handwoven sarees, lehenga, silk saree, banarasi, kanjivaram, bridal saree',
   og_image: '',
   google_site_verification: '',
+  favicon_url: '',
 };
 
 export async function fetchSeoSettings(): Promise<SeoSettings> {
@@ -164,5 +166,40 @@ export async function saveSeoSettings(settings: SeoSettings) {
   const { error } = await supabase
     .from('settings')
     .upsert({ key: 'seo_settings', value: settings }, { onConflict: 'key' });
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------
+// Analytics: Google Analytics (GA4) + Meta (Facebook) Pixel
+// ---------------------------------------------------------------------
+
+export interface AnalyticsSettings {
+  ga_enabled: boolean;
+  ga_measurement_id: string; // e.g. G-XXXXXXXXXX
+  meta_pixel_enabled: boolean;
+  meta_pixel_id: string; // numeric Pixel ID
+}
+
+const DEFAULT_ANALYTICS_SETTINGS: AnalyticsSettings = {
+  ga_enabled: false,
+  ga_measurement_id: '',
+  meta_pixel_enabled: false,
+  meta_pixel_id: '',
+};
+
+export async function fetchAnalyticsSettings(): Promise<AnalyticsSettings> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'analytics_settings')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_ANALYTICS_SETTINGS;
+  return { ...DEFAULT_ANALYTICS_SETTINGS, ...(data.value as Partial<AnalyticsSettings>) };
+}
+
+export async function saveAnalyticsSettings(settings: AnalyticsSettings) {
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ key: 'analytics_settings', value: settings }, { onConflict: 'key' });
   if (error) throw error;
 }

@@ -17,6 +17,9 @@ import {
   SeoSettings,
   fetchSeoSettings,
   saveSeoSettings,
+  AnalyticsSettings,
+  fetchAnalyticsSettings,
+  saveAnalyticsSettings,
 } from '@/lib/marketing-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -43,6 +46,7 @@ export default function MarketingPanel() {
             <TabsTrigger value="newsletter">Newsletter</TabsTrigger>
             <TabsTrigger value="feed">Merchant Feed</TabsTrigger>
             <TabsTrigger value="seo">SEO</TabsTrigger>
+            <TabsTrigger value="analytics">Analytics</TabsTrigger>
           </TabsList>
 
           <TabsContent value="legal"><LegalPagesTab /></TabsContent>
@@ -50,6 +54,7 @@ export default function MarketingPanel() {
           <TabsContent value="newsletter"><NewsletterTab /></TabsContent>
           <TabsContent value="feed"><MerchantFeedTab /></TabsContent>
           <TabsContent value="seo"><SeoTab /></TabsContent>
+          <TabsContent value="analytics"><AnalyticsTab /></TabsContent>
         </Tabs>
       </CardContent>
     </Card>
@@ -457,6 +462,20 @@ function SeoTab() {
       </div>
 
       <div className="space-y-2">
+        <Label htmlFor="seo-favicon">Favicon / logo image URL</Label>
+        <Input
+          id="seo-favicon"
+          value={seo.favicon_url}
+          onChange={(e) => setSeo({ ...seo, favicon_url: e.target.value })}
+          placeholder="https://your-cdn.com/logo-square.png"
+        />
+        <p className="text-xs text-muted-foreground">
+          Used as the browser tab icon and phone home-screen icon. Square image, at least 180×180px.
+          Leave blank to use the default monogram icon.
+        </p>
+      </div>
+
+      <div className="space-y-2">
         <Label htmlFor="seo-gsc">Google Search Console verification code</Label>
         <Input
           id="seo-gsc"
@@ -473,6 +492,98 @@ function SeoTab() {
       <Button type="submit" disabled={saving} className="gap-2 bg-primary">
         <Save className="h-4 w-4" />
         {saving ? 'Saving...' : 'Save SEO Settings'}
+      </Button>
+    </form>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Analytics: Google Analytics (GA4) + Meta Pixel
+// ---------------------------------------------------------------------
+
+function AnalyticsTab() {
+  const [analytics, setAnalytics] = useState<AnalyticsSettings | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetchAnalyticsSettings()
+      .then(setAnalytics)
+      .catch(() => toast.error('Failed to load analytics settings'));
+  }, []);
+
+  const onSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!analytics) return;
+    setSaving(true);
+    try {
+      await saveAnalyticsSettings(analytics);
+      toast.success('Analytics settings saved — reload the site to see tracking active');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!analytics) return <p className="py-6 text-sm text-muted-foreground">Loading...</p>;
+
+  return (
+    <form onSubmit={onSubmit} className="mt-4 max-w-lg space-y-6">
+      <div className="space-y-3 rounded-lg border border-border p-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <Label htmlFor="ga-enabled">Google Analytics (GA4)</Label>
+            <p className="text-xs text-muted-foreground">Tracks page views, sales, and shopper behaviour.</p>
+          </div>
+          <Switch
+            id="ga-enabled"
+            checked={analytics.ga_enabled}
+            onCheckedChange={(checked) => setAnalytics({ ...analytics, ga_enabled: checked })}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="ga-id">Measurement ID</Label>
+          <Input
+            id="ga-id"
+            value={analytics.ga_measurement_id}
+            onChange={(e) => setAnalytics({ ...analytics, ga_measurement_id: e.target.value })}
+            placeholder="G-XXXXXXXXXX"
+          />
+          <p className="text-xs text-muted-foreground">
+            Google Analytics → Admin → Data Streams → your web stream → copy the Measurement ID.
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-3 rounded-lg border border-border p-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <Label htmlFor="pixel-enabled">Meta (Facebook/Instagram) Pixel</Label>
+            <p className="text-xs text-muted-foreground">Powers retargeting ads and conversion tracking.</p>
+          </div>
+          <Switch
+            id="pixel-enabled"
+            checked={analytics.meta_pixel_enabled}
+            onCheckedChange={(checked) => setAnalytics({ ...analytics, meta_pixel_enabled: checked })}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="pixel-id">Pixel ID</Label>
+          <Input
+            id="pixel-id"
+            value={analytics.meta_pixel_id}
+            onChange={(e) => setAnalytics({ ...analytics, meta_pixel_id: e.target.value })}
+            placeholder="1234567890123456"
+          />
+          <p className="text-xs text-muted-foreground">
+            Meta Events Manager → Data Sources → your Pixel → copy the numeric Pixel ID.
+          </p>
+        </div>
+      </div>
+
+      <Button type="submit" disabled={saving} className="gap-2 bg-primary">
+        <Save className="h-4 w-4" />
+        {saving ? 'Saving...' : 'Save Analytics Settings'}
       </Button>
     </form>
   );
