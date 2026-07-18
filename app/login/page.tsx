@@ -93,7 +93,12 @@ function LoginForm() {
             <Input id="email" name="email" type="email" required placeholder="you@example.com" />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="password">Password</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Password</Label>
+              <Link href="/forgot-password" className="text-xs font-medium text-primary hover:underline">
+                Forgot password?
+              </Link>
+            </div>
             <Input id="password" name="password" type="password" required minLength={6} />
           </div>
           <Button type="submit" className="w-full bg-primary" disabled={loading}>
