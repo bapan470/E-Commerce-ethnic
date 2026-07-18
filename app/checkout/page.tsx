@@ -32,6 +32,7 @@ export default function CheckoutPage() {
   const router = useRouter();
   const { items, subtotal, clearCart } = useCart();
   const [placing, setPlacing] = useState(false);
+  const [orderPlaced, setOrderPlaced] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('online');
 
   const [couponInput, setCouponInput] = useState('');
@@ -254,6 +255,7 @@ export default function CheckoutPage() {
             .eq('id', appliedCoupon.id)
             .then(() => {});
         }
+        setOrderPlaced(true);
         clearCart();
         trackEvent('purchase', {
           orderId: internalOrderId,
@@ -305,6 +307,7 @@ export default function CheckoutPage() {
           .eq('id', appliedCoupon.id)
           .then(() => {});
       }
+      setOrderPlaced(true);
       clearCart();
       trackEvent('purchase', {
         orderId: internalOrderId,
@@ -330,6 +333,15 @@ export default function CheckoutPage() {
       setPlacing(false);
     }
   };
+
+  if (orderPlaced) {
+    return (
+      <div className="container-boutique flex flex-col items-center gap-3 py-24 text-center">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">Redirecting to your order confirmation…</p>
+      </div>
+    );
+  }
 
   if (items.length === 0) {
     return (
