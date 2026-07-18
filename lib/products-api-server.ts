@@ -20,6 +20,7 @@ export function mapRowToProduct(row: ProductRow): Product {
     reviews: row.reviews ?? 0,
     featured: row.featured,
     stock_quantity: row.stock_quantity,
+    low_stock_threshold: row.low_stock_threshold ?? 5,
     inStock: row.in_stock,
     created_at: row.created_at,
   };

@@ -31,12 +31,15 @@ import RelatedProducts from '@/components/product/related-products';
 import RecentlyViewedSection from '@/components/product/recently-viewed';
 import NotifyMeForm from '@/components/product/notify-me-form';
 import { addRecentlyViewed } from '@/lib/recently-viewed';
+import { trackEvent } from '@/lib/track-api';
+import { useAuth } from '@/lib/auth-context';
 import { toast } from 'sonner';
 
 export default function ProductDetail() {
   const params = useParams<{ slug: string }>();
   const { getBySlug, products, loading } = useProducts();
   const { addItem } = useCart();
+  const { user } = useAuth();
 
   const fromContext = useMemo(
     () => getBySlug(params.slug),
@@ -126,6 +129,13 @@ export default function ProductDetail() {
     if (baseProduct) addRecentlyViewed(baseProduct.id);
   }, [baseProduct]);
 
+  useEffect(() => {
+    if (baseProduct) {
+      trackEvent('product_view', { productId: baseProduct.id, userId: user?.id ?? null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseProduct?.id]);
+
   if (isLoading && !product) {
     return (
       <div className="container-boutique py-8">
@@ -166,6 +176,11 @@ export default function ProductDetail() {
       return;
     }
     addItem(product, selectedSize, quantity);
+    trackEvent('add_to_cart', {
+      productId: product.id,
+      userId: user?.id ?? null,
+      metadata: { size: selectedSize, quantity, color: product.colors?.[0] ?? null },
+    });
     toast.success(`${product.name} added to cart`);
   };
 

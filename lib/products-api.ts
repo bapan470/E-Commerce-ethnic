@@ -22,6 +22,7 @@ export function mapRowToProduct(row: ProductRow): Product {
     reviews: row.reviews ?? 0,
     featured: row.featured,
     stock_quantity: row.stock_quantity,
+    low_stock_threshold: row.low_stock_threshold ?? 5,
     inStock: row.in_stock,
     created_at: row.created_at,
   };
@@ -119,6 +120,7 @@ export async function createProduct(input: Partial<ProductRow>): Promise<Product
     occasion: input.occasion ?? [],
     images: input.images ?? [],
     stock_quantity: input.stock_quantity ?? 0,
+    low_stock_threshold: input.low_stock_threshold ?? 5,
     rating: input.rating ?? 4.5,
     reviews: input.reviews ?? 0,
     featured: input.featured ?? false,
@@ -141,7 +143,7 @@ export async function updateProduct(
   for (const key of [
     'name', 'slug', 'description', 'price', 'mrp', 'category_id',
     'category_name', 'fabric', 'origin', 'colors', 'sizes', 'occasion', 'images',
-    'stock_quantity', 'rating', 'reviews', 'featured', 'in_stock',
+    'stock_quantity', 'low_stock_threshold', 'rating', 'reviews', 'featured', 'in_stock',
   ]) {
     if (input[key as keyof ProductRow] !== undefined) {
       payload[key] = input[key as keyof ProductRow];

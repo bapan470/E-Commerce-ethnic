@@ -83,6 +83,7 @@ interface FormState {
   occasion: string;
   images: string[];
   stock_quantity: string;
+  low_stock_threshold: string;
   rating: string;
   reviews: string;
   featured: boolean;
@@ -103,6 +104,7 @@ const emptyForm = (): FormState => ({
   occasion: '',
   images: [DEFAULT_IMAGE],
   stock_quantity: '0',
+  low_stock_threshold: '5',
   rating: '4.5',
   reviews: '0',
   featured: false,
@@ -124,6 +126,7 @@ const fromProduct = (p: Product): FormState => ({
   occasion: (p.occasion || []).join(', '),
   images: p.images.length ? p.images : [DEFAULT_IMAGE],
   stock_quantity: String(p.stock_quantity),
+  low_stock_threshold: String(p.low_stock_threshold ?? 5),
   rating: String(p.rating),
   reviews: String(p.reviews),
   featured: !!p.featured,
@@ -203,6 +206,7 @@ export default function ProductsPanel() {
       occasion,
       images,
       stock_quantity: newStockQty,
+      low_stock_threshold: Number(form.low_stock_threshold) || 5,
       rating: Number(form.rating) || 4.5,
       reviews: Number(form.reviews) || 0,
       featured: form.featured,
@@ -616,7 +620,7 @@ export default function ProductsPanel() {
               />
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-4">
               <div className="grid gap-1.5">
                 <Label htmlFor="stock">Stock quantity *</Label>
                 <Input
@@ -627,6 +631,18 @@ export default function ProductsPanel() {
                   value={form.stock_quantity}
                   onChange={(e) =>
                     setForm((f) => ({ ...f, stock_quantity: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="low-stock-threshold">Low stock alert at</Label>
+                <Input
+                  id="low-stock-threshold"
+                  type="number"
+                  min={0}
+                  value={form.low_stock_threshold}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, low_stock_threshold: e.target.value }))
                   }
                 />
               </div>

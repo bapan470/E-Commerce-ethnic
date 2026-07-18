@@ -15,6 +15,7 @@ import {
   DEFAULT_SHIPPING_SETTINGS,
   fetchShippingSettings,
 } from '@/lib/pincode-api';
+import { trackEvent, getSessionId } from '@/lib/track-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -71,6 +72,14 @@ export default function CheckoutPage() {
     fetchShippingSettings().then(setShippingSettings).catch(() => {
       // fall back to defaults already set above
     });
+  }, []);
+
+  // Log the funnel step once — used by Admin > Analytics for conversion rate.
+  useEffect(() => {
+    if (items.length > 0) {
+      trackEvent('checkout_start', { metadata: { itemCount: items.length, cartValue: subtotal } });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const shipping =
@@ -199,6 +208,8 @@ export default function CheckoutPage() {
       const orderItems = items.map((i) => ({
         product_id: i.product.id,
         product_name: i.product.name,
+        image_url: i.product.images?.[0] ?? null,
+        color: i.product.colors?.[0] ?? null,
         size: i.size,
         quantity: i.quantity,
         price: i.product.price,
@@ -220,6 +231,7 @@ export default function CheckoutPage() {
           customer_email: customerEmail,
           customer_phone: customerPhone,
           user_id: loggedInUser?.id ?? null,
+          session_id: getSessionId(),
           subtotal,
           shipping_charge: shipping,
           gst_amount: tax,
@@ -243,6 +255,11 @@ export default function CheckoutPage() {
             .then(() => {});
         }
         clearCart();
+        trackEvent('purchase', {
+          orderId: internalOrderId,
+          userId: loggedInUser?.id ?? null,
+          metadata: { total, itemCount: items.length, paymentMethod: 'cod', email: customerEmail },
+        });
         toast.success('Order placed! Pay cash on delivery.');
         fetch('/api/order-confirm', {
           method: 'POST',
@@ -289,6 +306,11 @@ export default function CheckoutPage() {
           .then(() => {});
       }
       clearCart();
+      trackEvent('purchase', {
+        orderId: internalOrderId,
+        userId: loggedInUser?.id ?? null,
+        metadata: { total, itemCount: items.length, paymentMethod: 'online', email: customerEmail },
+      });
       toast.success('Payment successful! Order confirmed.');
       fetch('/api/order-confirm', {
         method: 'POST',

@@ -15,6 +15,9 @@ import ReturnsPanel from '@/components/admin/returns-panel';
 import AbandonedCartsPanel from '@/components/admin/abandoned-carts-panel';
 import MarketingPanel from '@/components/admin/marketing-panel';
 import StockNotificationsPanel from '@/components/admin/stock-notifications-panel';
+import AnalyticsPanel from '@/components/admin/analytics-panel';
+import CustomersPanel from '@/components/admin/customers-panel';
+import WholesalePanel from '@/components/admin/wholesale-panel';
 import { toast } from 'sonner';
 
 export default function AdminPage() {
@@ -33,20 +36,27 @@ export default function AdminPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="products">
+      <Tabs defaultValue="analytics">
         <TabsList>
+          <TabsTrigger value="analytics">Analytics</TabsTrigger>
           <TabsTrigger value="products">Products</TabsTrigger>
           <TabsTrigger value="variants">Variants</TabsTrigger>
           <TabsTrigger value="categories">Categories</TabsTrigger>
           <TabsTrigger value="reviews">Reviews</TabsTrigger>
           <TabsTrigger value="orders">Orders</TabsTrigger>
+          <TabsTrigger value="customers">Customers</TabsTrigger>
           <TabsTrigger value="returns">Returns</TabsTrigger>
           <TabsTrigger value="abandoned-carts">Abandoned Carts</TabsTrigger>
           <TabsTrigger value="restock-alerts">Restock Alerts</TabsTrigger>
+          <TabsTrigger value="wholesale">Wholesale</TabsTrigger>
           <TabsTrigger value="coupons">Coupons</TabsTrigger>
           <TabsTrigger value="marketing">Marketing</TabsTrigger>
           <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="analytics">
+          <AnalyticsPanel />
+        </TabsContent>
 
         <TabsContent value="products">
           <ProductsPanel />
@@ -68,6 +78,10 @@ export default function AdminPage() {
           <OrdersPanel />
         </TabsContent>
 
+        <TabsContent value="customers">
+          <CustomersPanel />
+        </TabsContent>
+
         <TabsContent value="returns">
           <ReturnsPanel />
         </TabsContent>
@@ -78,6 +92,10 @@ export default function AdminPage() {
 
         <TabsContent value="restock-alerts">
           <StockNotificationsPanel />
+        </TabsContent>
+
+        <TabsContent value="wholesale">
+          <WholesalePanel />
         </TabsContent>
 
         <TabsContent value="coupons">

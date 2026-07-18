@@ -24,6 +24,7 @@ export interface Product {
   reviews: number;
   featured?: boolean;
   stock_quantity: number;
+  low_stock_threshold?: number;
   inStock: boolean;
   created_at?: string;
 }
@@ -74,6 +75,34 @@ export interface ReturnRequest {
   updated_at: string;
 }
 
+export type ActivityEventType =
+  | 'page_view'
+  | 'product_view'
+  | 'add_to_cart'
+  | 'checkout_start'
+  | 'purchase';
+
+export interface ActivityEvent {
+  id: string;
+  session_id: string;
+  user_id: string | null;
+  event_type: ActivityEventType;
+  page_path: string | null;
+  product_id: string | null;
+  order_id: string | null;
+  metadata: Record<string, any>;
+  created_at: string;
+}
+
+export interface WholesalePricingTier {
+  id: string;
+  product_id: string;
+  min_quantity: number;
+  unit_price: number;
+  label: string | null;
+  created_at?: string;
+}
+
 // Shape returned by Supabase (snake_case) — we map to Product on read.
 export interface ProductRow {
   id: string;
@@ -91,6 +120,7 @@ export interface ProductRow {
   occasion: string[] | null;
   images: string[] | null;
   stock_quantity: number;
+  low_stock_threshold?: number;
   rating: number;
   reviews: number;
   featured: boolean;

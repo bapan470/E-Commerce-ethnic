@@ -148,6 +148,7 @@ export default function OrdersPanel() {
           <thead className="bg-muted/40 text-left text-xs uppercase tracking-wider text-muted-foreground">
             <tr>
               <th className="px-4 py-3">Customer</th>
+              <th className="px-4 py-3">Product</th>
               <th className="px-4 py-3">Date</th>
               <th className="px-4 py-3">Total</th>
               <th className="px-4 py-3">Payment</th>
@@ -206,6 +207,26 @@ function OrderRow({
           <div className="text-sm font-medium">{order.customer_name || 'Guest'}</div>
           <div className="text-xs text-muted-foreground">{order.customer_email || order.customer_phone}</div>
         </td>
+        <td className="px-4 py-3 align-top">
+          <div className="flex items-center gap-2">
+            {order.items[0]?.image_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={order.items[0].image_url}
+                alt={order.items[0].product_name}
+                className="h-9 w-9 flex-shrink-0 rounded-md border border-border/60 object-cover"
+              />
+            ) : (
+              <div className="h-9 w-9 flex-shrink-0 rounded-md border border-border/60 bg-muted" />
+            )}
+            <div className="text-xs">
+              <div className="max-w-[9rem] truncate font-medium">{order.items[0]?.product_name || '—'}</div>
+              {order.items.length > 1 && (
+                <div className="text-muted-foreground">+{order.items.length - 1} more</div>
+              )}
+            </div>
+          </div>
+        </td>
         <td className="px-4 py-3 align-top text-sm">{order.created_at ? new Date(order.created_at).toLocaleString() : ''}</td>
         <td className="px-4 py-3 align-top text-sm font-medium">{formatINR(order.total_amount || 0)}</td>
         <td className="px-4 py-3 align-top text-sm">
@@ -255,18 +276,35 @@ function OrderRow({
       </tr>
       {open && (
         <tr className="bg-muted/20">
-          <td colSpan={7} className="px-4 py-3">
+          <td colSpan={8} className="px-4 py-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <h4 className="mb-2 text-sm font-semibold">Items</h4>
                 <ul className="space-y-2 text-sm">
                   {order.items.map((it: any, idx: number) => (
-                    <li key={idx} className="flex items-center justify-between">
-                      <div>
+                    <li key={idx} className="flex items-center gap-3">
+                      {it.image_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={it.image_url}
+                          alt={it.product_name}
+                          className="h-12 w-12 flex-shrink-0 rounded-md border border-border/60 object-cover"
+                        />
+                      ) : (
+                        <div className="h-12 w-12 flex-shrink-0 rounded-md border border-border/60 bg-muted" />
+                      )}
+                      <div className="flex-1">
                         <div className="font-medium">{it.product_name}</div>
-                        <div className="text-xs text-muted-foreground">{it.size ? `Size: ${it.size}` : ''}</div>
+                        <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
+                          {it.color && (
+                            <span className="rounded-full bg-muted px-2 py-0.5">Color: {it.color}</span>
+                          )}
+                          {it.size && (
+                            <span className="rounded-full bg-muted px-2 py-0.5">Size: {it.size}</span>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-sm">{formatINR(it.price)} x {it.quantity}</div>
+                      <div className="whitespace-nowrap text-sm">{formatINR(it.price)} x {it.quantity}</div>
                     </li>
                   ))}
                 </ul>
