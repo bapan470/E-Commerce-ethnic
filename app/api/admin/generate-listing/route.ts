@@ -2,9 +2,12 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 
-// Free-tier Gemini model with vision support. If you hit free-tier rate
-// limits, "gemini-2.5-flash-lite" has a higher daily quota (lower quality).
-const MODEL = 'gemini-2.5-flash';
+// Free-tier NVIDIA NIM vision-language model (build.nvidia.com).
+// Get a free API key (nvapi-...) at https://build.nvidia.com — no credit card,
+// ~1,000 free inference credits on signup. Swap this string for any other
+// vision-capable model in the NIM catalog if you want to try alternatives.
+const MODEL = 'meta/llama-3.2-90b-vision-instruct';
+const NIM_ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions';
 
 interface GeneratedListing {
   name: string;
@@ -62,13 +65,13 @@ Respond with ONLY a JSON object (no markdown fences, no preamble) with these exa
 }`;
 }
 
-/** Fetches a product image and base64-encodes it for Gemini's inline image input. */
-async function fetchImageAsInlineData(imageUrl: string) {
+/** Fetches a product image and returns it as a base64 data: URI for NIM's image_url input. */
+async function fetchImageAsDataUri(imageUrl: string) {
   const res = await fetch(imageUrl);
   if (!res.ok) return null;
   const mimeType = res.headers.get('content-type') || 'image/jpeg';
   const buffer = Buffer.from(await res.arrayBuffer());
-  return { mimeType, data: buffer.toString('base64') };
+  return `data:${mimeType};base64,${buffer.toString('base64')}`;
 }
 
 export async function POST(req: Request) {
@@ -78,10 +81,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.NVIDIA_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
-      { error: 'AI generation is not configured. Add GEMINI_API_KEY to your environment.' },
+      { error: 'AI generation is not configured. Add NVIDIA_API_KEY to your environment (free key at build.nvidia.com).' },
       { status: 500 }
     );
   }
@@ -109,34 +112,40 @@ export async function POST(req: Request) {
   }
 
   try {
-    let inlineImage: { mimeType: string; data: string } | null = null;
+    let imageDataUri: string | null = null;
     if (imageUrl) {
-      inlineImage = await fetchImageAsInlineData(imageUrl).catch(() => null);
+      imageDataUri = await fetchImageAsDataUri(imageUrl).catch(() => null);
     }
 
-    const parts: any[] = [{ text: buildPrompt({ ...input, hasImage: !!inlineImage }) }];
-    if (inlineImage) {
-      parts.push({ inlineData: { mimeType: inlineImage.mimeType, data: inlineImage.data } });
-    }
+    const promptText = buildPrompt({ ...input, hasImage: !!imageDataUri });
 
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey,
-        },
-        body: JSON.stringify({
-          contents: [{ role: 'user', parts }],
-          generationConfig: { responseMimeType: 'application/json' },
-        }),
-      }
-    );
+    // NIM follows the OpenAI chat-completions format: content is either a
+    // plain string, or an array of {type:"text"} / {type:"image_url"} parts
+    // when an image is attached.
+    const userContent: any = imageDataUri
+      ? [
+          { type: 'text', text: promptText },
+          { type: 'image_url', image_url: { url: imageDataUri } },
+        ]
+      : promptText;
+
+    const res = await fetch(NIM_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [{ role: 'user', content: userContent }],
+        temperature: 0.4,
+        max_tokens: 1024,
+      }),
+    });
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
-      console.error('[generate-listing] Gemini API error:', res.status, errText);
+      console.error('[generate-listing] NVIDIA NIM API error:', res.status, errText);
       const rateLimited = res.status === 429;
       return NextResponse.json(
         {
@@ -149,7 +158,7 @@ export async function POST(req: Request) {
     }
 
     const data = await res.json();
-    const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    const text: string = data?.choices?.[0]?.message?.content ?? '';
     const cleaned = text.replace(/^```(json)?/i, '').replace(/```$/, '').trim();
     const parsed: GeneratedListing = JSON.parse(cleaned);
 

@@ -102,3 +102,23 @@ chahiye (jahan `package.json` hai) — ismein woh already hai.
 - **Abandoned cart recovery** — checkout page pe jaise hi customer email type karta hai (cart khali nahi ho),
   1.5 second baad background mein track ho jata hai. 1 ghante baad bhi order complete nahi hua to cron job
   automatically recovery email bhejega. Admin → "Abandoned Carts" tab se manually bhi "Send recovery email" kar sakte ho.
+
+## AI Product Listing (image → auto-generated title/description)
+
+The admin "Products" panel can generate a full product listing (title, description,
+fabric, occasion tags, Google Shopping attributes, meta description) from a product
+photo using NVIDIA's free NIM vision model.
+
+1. Go to https://build.nvidia.com and sign in (free, no credit card).
+2. Generate an API key — it will start with `nvapi-`.
+3. Add it to your `.env.local` (and your Vercel/Netlify project env vars):
+
+   ```
+   NVIDIA_API_KEY=nvapi-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   ```
+
+4. In the admin Products panel, upload a product photo (or paste an image URL)
+   and click "Generate with AI" — it calls `app/api/admin/generate-listing/route.ts`.
+
+Free tier gives ~1,000 credits on signup and a 40 requests/minute limit, which is
+plenty for listing generation. If you hit a 429, wait a minute and retry.
