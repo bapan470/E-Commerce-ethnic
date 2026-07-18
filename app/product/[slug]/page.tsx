@@ -134,7 +134,8 @@ export default async function ProductPage({ params }: Params) {
                 worstRating: 1,
               }
             : undefined,
-        material: product.fabric || undefined,
+        material: product.material || product.fabric || undefined,
+        pattern: product.pattern || undefined,
         productionDate: product.created_at,
       }
     : null;

@@ -3,7 +3,7 @@
 import { useState, FormEvent, useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles } from 'lucide-react';
 import { useProducts } from '@/lib/cart-context';
 import {
   createProduct,
@@ -81,6 +81,10 @@ interface FormState {
   colors: string;
   sizes: string;
   occasion: string;
+  gender: string;
+  age_group: string;
+  material: string;
+  pattern: string;
   images: string[];
   stock_quantity: string;
   low_stock_threshold: string;
@@ -102,6 +106,10 @@ const emptyForm = (): FormState => ({
   colors: '',
   sizes: 'Free Size',
   occasion: '',
+  gender: 'female',
+  age_group: 'adult',
+  material: '',
+  pattern: '',
   images: [DEFAULT_IMAGE],
   stock_quantity: '0',
   low_stock_threshold: '5',
@@ -124,6 +132,10 @@ const fromProduct = (p: Product): FormState => ({
   colors: p.colors.join(', '),
   sizes: p.sizes.join(', '),
   occasion: (p.occasion || []).join(', '),
+  gender: p.gender || 'female',
+  age_group: p.age_group || 'adult',
+  material: p.material || '',
+  pattern: p.pattern || '',
   images: p.images.length ? p.images : [DEFAULT_IMAGE],
   stock_quantity: String(p.stock_quantity),
   low_stock_threshold: String(p.low_stock_threshold ?? 5),
@@ -139,6 +151,8 @@ export default function ProductsPanel() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
   const [saving, setSaving] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [aiHint, setAiHint] = useState('');
   const [uploading, setUploading] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
@@ -149,13 +163,66 @@ export default function ProductsPanel() {
   const openNew = () => {
     setEditing(null);
     setForm(emptyForm());
+    setAiHint('');
     setOpen(true);
   };
 
   const openEdit = (p: Product) => {
     setEditing(p);
     setForm(fromProduct(p));
+    setAiHint('');
     setOpen(true);
+  };
+
+  const generateWithAI = async () => {
+    const referenceImage = form.images.find((url) => url && url !== DEFAULT_IMAGE);
+    if (!form.name.trim() && !form.category_name.trim() && !aiHint.trim() && !referenceImage) {
+      toast.error('Add a product name, quick note, or photo first, then generate');
+      return;
+    }
+    setGenerating(true);
+    try {
+      const res = await fetch('/api/admin/generate-listing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hint: aiHint,
+          name: form.name,
+          category: form.category_name,
+          fabric: form.fabric,
+          origin: form.origin,
+          colors: form.colors,
+          occasion: form.occasion,
+          gender: form.gender,
+          material: form.material,
+          pattern: form.pattern,
+          imageUrl: referenceImage || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'AI generation failed');
+        return;
+      }
+      const { listing } = data;
+      setForm((f) => ({
+        ...f,
+        name: listing.name || f.name,
+        slug: f.slug || slugify(listing.name || f.name),
+        description: listing.description || f.description,
+        fabric: listing.fabric || f.fabric,
+        origin: listing.origin || f.origin,
+        occasion: Array.isArray(listing.occasion) ? listing.occasion.join(', ') : f.occasion,
+        material: f.material || listing.material || f.material,
+        pattern: f.pattern || listing.pattern || f.pattern,
+        gender: f.gender !== 'female' ? f.gender : listing.gender || f.gender,
+      }));
+      toast.success('AI listing generated — review and tweak before saving');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'AI generation failed');
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -204,6 +271,10 @@ export default function ProductsPanel() {
       colors,
       sizes: sizes.length ? sizes : ['Free Size'],
       occasion,
+      gender: form.gender,
+      age_group: form.age_group,
+      material: form.material.trim() || null,
+      pattern: form.pattern.trim() || null,
       images,
       stock_quantity: newStockQty,
       low_stock_threshold: Number(form.low_stock_threshold) || 5,
@@ -404,6 +475,41 @@ export default function ProductsPanel() {
           </DialogHeader>
 
           <form onSubmit={onSubmit} className="grid gap-4 py-2">
+            <div className="grid gap-2 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3">
+              <Label htmlFor="ai-hint" className="flex items-center gap-1.5 text-primary">
+                <Sparkles className="h-3.5 w-3.5" /> AI listing generator
+              </Label>
+              <Textarea
+                id="ai-hint"
+                rows={2}
+                value={aiHint}
+                onChange={(e) => setAiHint(e.target.value)}
+                placeholder="Optional notes to guide the AI, e.g. 'maroon Banarasi silk saree with gold zari border, bridal'"
+              />
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-muted-foreground">
+                  Fills in title, description, fabric, origin &amp; occasion tags. If you&apos;ve
+                  already uploaded a product photo (in the Images section below), it&apos;s used as
+                  a visual reference too. Review everything before saving.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 gap-1.5 border-primary/40 text-primary hover:bg-primary/10"
+                  onClick={generateWithAI}
+                  disabled={generating}
+                >
+                  {generating ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5" />
+                  )}
+                  {generating ? 'Generating…' : 'Generate with AI'}
+                </Button>
+              </div>
+            </div>
+
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-1.5">
                 <Label htmlFor="name">Name *</Label>
@@ -556,6 +662,71 @@ export default function ProductsPanel() {
               />
               <p className="text-xs text-muted-foreground">
                 Shown as filters on the Shop page and used to power &quot;You may also like&quot; recommendations.
+              </p>
+            </div>
+
+            <div className="grid gap-2 rounded-lg border border-border/60 p-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                Google Merchant Center &mdash; required for every apparel listing
+              </p>
+              <div className="grid gap-4 sm:grid-cols-4">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="gender">Gender *</Label>
+                  <Select
+                    value={form.gender}
+                    onValueChange={(v) => setForm((f) => ({ ...f, gender: v }))}
+                  >
+                    <SelectTrigger id="gender">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="female">Female</SelectItem>
+                      <SelectItem value="male">Male</SelectItem>
+                      <SelectItem value="unisex">Unisex</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="age_group">Age group *</Label>
+                  <Select
+                    value={form.age_group}
+                    onValueChange={(v) => setForm((f) => ({ ...f, age_group: v }))}
+                  >
+                    <SelectTrigger id="age_group">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="adult">Adult</SelectItem>
+                      <SelectItem value="kids">Kids</SelectItem>
+                      <SelectItem value="toddler">Toddler</SelectItem>
+                      <SelectItem value="infant">Infant</SelectItem>
+                      <SelectItem value="newborn">Newborn</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="material">Material</Label>
+                  <Input
+                    id="material"
+                    value={form.material}
+                    onChange={(e) => setForm((f) => ({ ...f, material: e.target.value }))}
+                    placeholder="e.g. Silk"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="pattern">Pattern</Label>
+                  <Input
+                    id="pattern"
+                    value={form.pattern}
+                    onChange={(e) => setForm((f) => ({ ...f, pattern: e.target.value }))}
+                    placeholder="e.g. Zari Border"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Gender &amp; age group are mandatory for Google Shopping/free listings on apparel
+                &mdash; missing them gets products disapproved. Color and size come from the fields
+                above.
               </p>
             </div>
 

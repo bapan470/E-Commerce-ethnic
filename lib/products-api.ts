@@ -17,6 +17,10 @@ export function mapRowToProduct(row: ProductRow): Product {
     colors: row.colors ?? [],
     sizes: row.sizes ?? ['Free Size'],
     occasion: row.occasion ?? [],
+    gender: row.gender || 'female',
+    age_group: row.age_group || 'adult',
+    material: row.material ?? null,
+    pattern: row.pattern ?? null,
     images: row.images ?? [],
     rating: Number(row.rating) || 4.5,
     reviews: row.reviews ?? 0,
@@ -118,6 +122,10 @@ export async function createProduct(input: Partial<ProductRow>): Promise<Product
     colors: input.colors ?? [],
     sizes: input.sizes ?? ['Free Size'],
     occasion: input.occasion ?? [],
+    gender: input.gender ?? 'female',
+    age_group: input.age_group ?? 'adult',
+    material: input.material ?? null,
+    pattern: input.pattern ?? null,
     images: input.images ?? [],
     stock_quantity: input.stock_quantity ?? 0,
     low_stock_threshold: input.low_stock_threshold ?? 5,
@@ -143,6 +151,7 @@ export async function updateProduct(
   for (const key of [
     'name', 'slug', 'description', 'price', 'mrp', 'category_id',
     'category_name', 'fabric', 'origin', 'colors', 'sizes', 'occasion', 'images',
+    'gender', 'age_group', 'material', 'pattern',
     'stock_quantity', 'low_stock_threshold', 'rating', 'reviews', 'featured', 'in_stock',
   ]) {
     if (input[key as keyof ProductRow] !== undefined) {

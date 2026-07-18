@@ -45,6 +45,15 @@ export async function GET() {
       const salePrice = p.mrp && p.mrp > p.price ? `<g:sale_price>${price}</g:sale_price>` : '';
       const listedPrice = p.mrp && p.mrp > p.price ? `${p.mrp.toFixed(2)} INR` : price;
 
+      // Required for every Apparel & Accessories product on both free
+      // listings and Shopping ads — Google disapproves items missing these.
+      const color = (p.colors || []).slice(0, 3).join('/') || 'Multicolor';
+      const size = (p.sizes || [])[0] || 'Free Size';
+      const gender = p.gender || 'female';
+      const ageGroup = p.age_group || 'adult';
+      const material = p.material ? `<g:material>${escapeXml(p.material)}</g:material>` : '';
+      const pattern = p.pattern ? `<g:pattern>${escapeXml(p.pattern)}</g:pattern>` : '';
+
       return `
     <item>
       <g:id>${escapeXml(p.id)}</g:id>
@@ -61,6 +70,12 @@ export async function GET() {
       <g:product_type>${escapeXml(p.category)}</g:product_type>
       <g:google_product_category>Apparel &amp; Accessories &gt; Clothing</g:google_product_category>
       <g:identifier_exists>false</g:identifier_exists>
+      <g:color>${escapeXml(color)}</g:color>
+      <g:size>${escapeXml(size)}</g:size>
+      <g:gender>${escapeXml(gender)}</g:gender>
+      <g:age_group>${escapeXml(ageGroup)}</g:age_group>
+      ${material}
+      ${pattern}
     </item>`;
     })
     .join('');

@@ -19,6 +19,10 @@ export interface Product {
   colors: string[];
   sizes: string[];
   occasion: string[];
+  gender: string;
+  age_group: string;
+  material: string | null;
+  pattern: string | null;
   images: string[];
   rating: number;
   reviews: number;
@@ -118,6 +122,10 @@ export interface ProductRow {
   colors: string[] | null;
   sizes: string[] | null;
   occasion: string[] | null;
+  gender: string;
+  age_group: string;
+  material: string | null;
+  pattern: string | null;
   images: string[] | null;
   stock_quantity: number;
   low_stock_threshold?: number;
