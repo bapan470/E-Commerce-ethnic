@@ -6,6 +6,7 @@ import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import OrderTracking from '@/components/order/order-tracking';
+import PurchaseTracker from '@/components/analytics/purchase-tracker';
 
 export default async function OrderConfirmationPage({ params }: { params: { id: string } }) {
   const supabase = getServerSupabase();
@@ -24,6 +25,19 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
 
   return (
     <div className="container-boutique max-w-3xl py-10">
+      <PurchaseTracker
+        orderId={order.id}
+        value={order.total_amount}
+        shipping={order.shipping_charge ?? 0}
+        tax={order.gst_amount ?? 0}
+        couponCode={order.coupon_code}
+        items={items.map((item: any) => ({
+          product_id: item.product_id ?? null,
+          product_name: item.product_name,
+          price: item.price,
+          quantity: item.quantity,
+        }))}
+      />
       <div className="flex flex-col items-center gap-3 text-center">
         <div className="rounded-full bg-secondary/20 p-4">
           <CheckCircle2 className="h-10 w-10 text-secondary" />
