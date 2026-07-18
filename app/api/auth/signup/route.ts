@@ -46,7 +46,11 @@ export async function POST(req: Request) {
     );
   }
 
-  const verifyUrl = data?.properties?.action_link;
+  const verifyUrl = data?.properties?.hashed_token
+    ? `${origin}/auth/confirm?token_hash=${encodeURIComponent(
+        data.properties.hashed_token
+      )}&type=signup&next=${encodeURIComponent(next)}`
+    : undefined;
   if (!verifyUrl) {
     return NextResponse.json({ error: 'Could not generate a verification link' }, { status: 500 });
   }
