@@ -102,12 +102,19 @@ export default function ProductDetail() {
   const product = useMemo(() => {
     if (!baseProduct) return null;
     if (!variant) return baseProduct;
+    // Sizes load in shortly after the swatch swap (see handleSelectVariant),
+    // so while variant.sizes is still empty we fall back to the base
+    // product's own stock figures rather than flashing "out of stock".
+    const hasSizeData = variant.sizes.length > 0;
+    const variantStockQty = variant.sizes.reduce((sum, s) => sum + s.stock_quantity, 0);
     return {
       ...baseProduct,
       price: variant.price_override ?? baseProduct.price,
       images: variant.images.length > 0 ? variant.images : baseProduct.images,
       colors: [variant.color],
-      sizes: variant.sizes.length > 0 ? variant.sizes.map((s) => s.size) : baseProduct.sizes,
+      sizes: hasSizeData ? variant.sizes.map((s) => s.size) : baseProduct.sizes,
+      stock_quantity: hasSizeData ? variantStockQty : baseProduct.stock_quantity,
+      inStock: hasSizeData ? variantStockQty > 0 : baseProduct.inStock,
     };
   }, [baseProduct, variant]);
 
