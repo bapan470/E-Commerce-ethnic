@@ -16,6 +16,7 @@ import StockNotificationsPanel from '@/components/admin/stock-notifications-pane
 import AnalyticsPanel from '@/components/admin/analytics-panel';
 import CustomersPanel from '@/components/admin/customers-panel';
 import WholesalePanel from '@/components/admin/wholesale-panel';
+import LoyaltyPanel from '@/components/admin/loyalty-panel';
 
 const PANELS: Record<AdminSection, React.ComponentType> = {
   analytics: AnalyticsPanel,
@@ -31,6 +32,7 @@ const PANELS: Record<AdminSection, React.ComponentType> = {
   wholesale: WholesalePanel,
   coupons: CouponsPanel,
   marketing: MarketingPanel,
+  loyalty: LoyaltyPanel,
   settings: SettingsPanel,
 };
 

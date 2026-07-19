@@ -4,12 +4,18 @@ import { useState, useEffect, FormEvent } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { Lock, Loader2, CreditCard, Tag, X, Wallet } from 'lucide-react';
+import { Lock, Loader2, CreditCard, Tag, X, Wallet, Sparkles } from 'lucide-react';
 import { useCart } from '@/lib/cart-context';
 import { formatINR } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import { getSupabaseBrowser } from '@/lib/supabase-browser';
 import { validateCoupon, Coupon } from '@/lib/coupons-api';
+import {
+  fetchLoyaltySettings,
+  fetchMyLoyaltyBalance,
+  DEFAULT_LOYALTY_SETTINGS,
+  LoyaltySettings,
+} from '@/lib/loyalty-api';
 import {
   ShippingSettings,
   DEFAULT_SHIPPING_SETTINGS,
@@ -20,6 +26,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 
 declare global {
@@ -44,6 +51,14 @@ export default function CheckoutPage() {
   const [shippingSettings, setShippingSettings] = useState<ShippingSettings>(
     DEFAULT_SHIPPING_SETTINGS
   );
+
+  // Loyalty points — only relevant for logged-in customers.
+  const [loyaltySettings, setLoyaltySettings] = useState<LoyaltySettings>(
+    DEFAULT_LOYALTY_SETTINGS
+  );
+  const [pointsBalance, setPointsBalance] = useState(0);
+  const [redeemPoints, setRedeemPoints] = useState(false);
+  const [pointsToRedeem, setPointsToRedeem] = useState(0);
 
   // Abandoned-cart recovery: once the shopper has typed an email, ping the
   // tracking API (debounced) so we can email them later if they never finish.
@@ -75,6 +90,15 @@ export default function CheckoutPage() {
     });
   }, []);
 
+  useEffect(() => {
+    fetchLoyaltySettings().then(setLoyaltySettings).catch(() => {
+      // fall back to defaults already set above
+    });
+    fetchMyLoyaltyBalance()
+      .then((bal) => setPointsBalance(bal))
+      .catch(() => setPointsBalance(0));
+  }, []);
+
   // Log the funnel step once — used by Admin > Analytics for conversion rate.
   useEffect(() => {
     if (items.length > 0) {
@@ -88,9 +112,36 @@ export default function CheckoutPage() {
     subtotal >= shippingSettings.free_shipping_threshold
       ? 0
       : shippingSettings.flat_rate;
-  const discountedSubtotal = Math.max(0, subtotal - couponDiscount);
+  const afterCouponSubtotal = Math.max(0, subtotal - couponDiscount);
+
+  // Loyalty points can never discount more than what's left to pay after
+  // the coupon, and never more than the customer actually has.
+  const maxRedeemablePoints =
+    loyaltySettings.redeem_value_per_point > 0
+      ? Math.min(
+          pointsBalance,
+          Math.floor(afterCouponSubtotal / loyaltySettings.redeem_value_per_point)
+        )
+      : 0;
+  const canRedeemPoints =
+    loyaltySettings.enabled && pointsBalance >= loyaltySettings.min_redeem_points && maxRedeemablePoints > 0;
+  const loyaltyDiscount =
+    redeemPoints && canRedeemPoints
+      ? Math.round(pointsToRedeem * loyaltySettings.redeem_value_per_point)
+      : 0;
+
+  const discountedSubtotal = Math.max(0, afterCouponSubtotal - loyaltyDiscount);
   const tax = Math.round(discountedSubtotal * (shippingSettings.gst_rate_percent / 100));
   const total = discountedSubtotal + shipping + tax;
+
+  const handleToggleRedeemPoints = (checked: boolean) => {
+    setRedeemPoints(checked);
+    if (checked) {
+      setPointsToRedeem(maxRedeemablePoints);
+    } else {
+      setPointsToRedeem(0);
+    }
+  };
 
   const handleApplyCoupon = async () => {
     setCouponError(null);
@@ -238,6 +289,8 @@ export default function CheckoutPage() {
           gst_amount: tax,
           coupon_code: appliedCoupon?.code ?? null,
           coupon_discount: couponDiscount,
+          loyalty_points_redeemed: loyaltyDiscount > 0 ? pointsToRedeem : 0,
+          loyalty_discount: loyaltyDiscount,
         })
         .select('id')
         .single();
@@ -582,6 +635,52 @@ export default function CheckoutPage() {
               )}
             </div>
 
+            {/* Loyalty points redeem */}
+            {loyaltySettings.enabled && pointsBalance > 0 && (
+              <>
+                <Separator className="my-4" />
+                <div className="rounded-md bg-muted/40 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="flex items-center gap-1.5 text-sm font-medium">
+                      <Sparkles className="h-3.5 w-3.5 text-secondary" />
+                      Use reward points
+                    </span>
+                    <Switch
+                      checked={redeemPoints}
+                      disabled={!canRedeemPoints}
+                      onCheckedChange={handleToggleRedeemPoints}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {canRedeemPoints
+                      ? `You have ${pointsBalance} points (worth ${formatINR(
+                          Math.round(pointsBalance * loyaltySettings.redeem_value_per_point)
+                        )}).`
+                      : `You have ${pointsBalance} points — minimum ${loyaltySettings.min_redeem_points} needed to redeem.`}
+                  </p>
+                  {redeemPoints && canRedeemPoints && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        max={maxRedeemablePoints}
+                        value={pointsToRedeem}
+                        onChange={(e) =>
+                          setPointsToRedeem(
+                            Math.max(0, Math.min(maxRedeemablePoints, Number(e.target.value) || 0))
+                          )
+                        }
+                        className="h-9"
+                      />
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        = -{formatINR(loyaltyDiscount)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
             <Separator className="my-4" />
             <div className="flex flex-col gap-2 text-sm">
               <div className="flex justify-between">
@@ -592,6 +691,12 @@ export default function CheckoutPage() {
                 <div className="flex justify-between text-secondary-foreground">
                   <span>Coupon discount</span>
                   <span>-{formatINR(couponDiscount)}</span>
+                </div>
+              )}
+              {loyaltyDiscount > 0 && (
+                <div className="flex justify-between text-secondary-foreground">
+                  <span>Points redeemed ({pointsToRedeem})</span>
+                  <span>-{formatINR(loyaltyDiscount)}</span>
                 </div>
               )}
               <div className="flex justify-between">

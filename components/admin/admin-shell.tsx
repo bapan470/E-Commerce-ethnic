@@ -17,6 +17,7 @@ import {
   Building2,
   Tag,
   Megaphone,
+  Gift,
   Settings,
   LogOut,
   Menu,
@@ -38,6 +39,7 @@ export type AdminSection =
   | 'wholesale'
   | 'coupons'
   | 'marketing'
+  | 'loyalty'
   | 'settings';
 
 interface NavItem {
@@ -84,6 +86,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { value: 'coupons', label: 'Coupons', icon: Tag },
       { value: 'marketing', label: 'Marketing', icon: Megaphone },
+      { value: 'loyalty', label: 'Loyalty', icon: Gift },
     ],
   },
   {

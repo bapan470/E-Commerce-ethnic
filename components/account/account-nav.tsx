@@ -4,11 +4,12 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
-import { Package, MapPin, User, Heart, RotateCcw, LogOut } from 'lucide-react';
+import { Package, MapPin, User, Heart, RotateCcw, LogOut, Gift } from 'lucide-react';
 
 const links = [
   { href: '/account/orders', label: 'Orders', icon: Package },
   { href: '/account/wishlist', label: 'Wishlist', icon: Heart },
+  { href: '/account/loyalty', label: 'Reward Points', icon: Gift },
   { href: '/account/addresses', label: 'Addresses', icon: MapPin },
   { href: '/account/returns', label: 'Returns & Exchanges', icon: RotateCcw },
   { href: '/account/profile', label: 'Profile', icon: User },
