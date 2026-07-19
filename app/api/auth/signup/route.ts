@@ -11,6 +11,7 @@ export async function POST(req: Request) {
   const email = (body?.email as string | undefined)?.trim().toLowerCase();
   const password = body?.password as string | undefined;
   const next = (body?.next as string | undefined) || '/account';
+  const referredByCode = (body?.referredByCode as string | undefined)?.trim().toUpperCase() || undefined;
 
   if (!fullName) {
     return NextResponse.json({ error: 'Full name is required' }, { status: 400 });
@@ -32,7 +33,10 @@ export async function POST(req: Request) {
     email,
     password,
     options: {
-      data: { full_name: fullName },
+      data: {
+        full_name: fullName,
+        ...(referredByCode ? { referred_by_code: referredByCode } : {}),
+      },
       redirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}`,
     },
   });

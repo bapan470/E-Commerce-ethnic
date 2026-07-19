@@ -3,6 +3,7 @@ import { getServerSupabase } from '@/lib/supabase-server';
 import { sendEmail } from '@/lib/email';
 import { orderConfirmationEmail } from '@/lib/email-templates';
 import { DEFAULT_LOYALTY_SETTINGS, type LoyaltySettings } from '@/lib/loyalty-api';
+import { DEFAULT_REFERRAL_SETTINGS, type ReferralSettings } from '@/lib/referrals-api';
 
 // Called from the checkout page right after an order is created/confirmed
 // (both COD and post-payment). Sends the order confirmation email and, if
@@ -101,6 +102,69 @@ export async function POST(req: Request) {
               .from('orders')
               .update({ loyalty_points_earned: pointsEarned })
               .eq('id', order.id);
+          }
+        }
+      }
+
+      // Referral reward — only fires on the referred customer's FIRST
+      // completed order, and reuses loyalty_points_ledger for both
+      // credits (no separate coupon/discount logic).
+      const { data: referral } = await supabase
+        .from('referrals')
+        .select('*')
+        .eq('referred_user_id', order.user_id)
+        .eq('status', 'pending')
+        .maybeSingle();
+
+      if (referral) {
+        const { count: priorOrderCount } = await supabase
+          .from('orders')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', order.user_id)
+          .neq('id', order.id);
+
+        // This is their first order (no other orders exist for this user).
+        if (!priorOrderCount) {
+          const { data: referralSettingsRow } = await supabase
+            .from('settings')
+            .select('value')
+            .eq('key', 'referral_program')
+            .maybeSingle();
+          const referralSettings: ReferralSettings = {
+            ...DEFAULT_REFERRAL_SETTINGS,
+            ...((referralSettingsRow?.value as Partial<ReferralSettings>) ?? {}),
+          };
+
+          if (referralSettings.enabled) {
+            if (referralSettings.referrer_reward_points > 0) {
+              await supabase.from('loyalty_points_ledger').insert({
+                user_id: referral.referrer_user_id,
+                order_id: order.id,
+                points: referralSettings.referrer_reward_points,
+                type: 'earn',
+                reason: `Referral bonus — friend's first order #${order.id.slice(0, 8)}`,
+              });
+            }
+            if (referralSettings.referred_reward_points > 0) {
+              await supabase.from('loyalty_points_ledger').insert({
+                user_id: order.user_id,
+                order_id: order.id,
+                points: referralSettings.referred_reward_points,
+                type: 'earn',
+                reason: `Welcome bonus — signed up with a referral code`,
+              });
+            }
+
+            await supabase
+              .from('referrals')
+              .update({
+                status: 'completed',
+                first_order_id: order.id,
+                referrer_reward_points: referralSettings.referrer_reward_points,
+                referred_reward_points: referralSettings.referred_reward_points,
+                completed_at: new Date().toISOString(),
+              })
+              .eq('id', referral.id);
           }
         }
       }

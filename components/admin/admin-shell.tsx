@@ -18,6 +18,7 @@ import {
   Tag,
   Megaphone,
   Gift,
+  Users2,
   Settings,
   LogOut,
   Menu,
@@ -40,6 +41,7 @@ export type AdminSection =
   | 'coupons'
   | 'marketing'
   | 'loyalty'
+  | 'referrals'
   | 'settings';
 
 interface NavItem {
@@ -87,6 +89,7 @@ const NAV_GROUPS: NavGroup[] = [
       { value: 'coupons', label: 'Coupons', icon: Tag },
       { value: 'marketing', label: 'Marketing', icon: Megaphone },
       { value: 'loyalty', label: 'Loyalty', icon: Gift },
+      { value: 'referrals', label: 'Referrals', icon: Users2 },
     ],
   },
   {

@@ -17,6 +17,7 @@ import AnalyticsPanel from '@/components/admin/analytics-panel';
 import CustomersPanel from '@/components/admin/customers-panel';
 import WholesalePanel from '@/components/admin/wholesale-panel';
 import LoyaltyPanel from '@/components/admin/loyalty-panel';
+import ReferralsPanel from '@/components/admin/referrals-panel';
 
 const PANELS: Record<AdminSection, React.ComponentType> = {
   analytics: AnalyticsPanel,
@@ -33,6 +34,7 @@ const PANELS: Record<AdminSection, React.ComponentType> = {
   coupons: CouponsPanel,
   marketing: MarketingPanel,
   loyalty: LoyaltyPanel,
+  referrals: ReferralsPanel,
   settings: SettingsPanel,
 };
 

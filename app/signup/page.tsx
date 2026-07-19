@@ -17,6 +17,7 @@ function SignupForm() {
   const next = searchParams.get('next') || '/account';
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [referredByCode, setReferredByCode] = useState(searchParams.get('ref') || '');
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -29,7 +30,7 @@ function SignupForm() {
     const res = await fetch('/api/auth/signup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fullName, email, password, next }),
+      body: JSON.stringify({ fullName, email, password, next, referredByCode: referredByCode || undefined }),
     });
     const result = await res.json().catch(() => ({}));
     setLoading(false);
@@ -97,6 +98,19 @@ function SignupForm() {
           <div className="space-y-1.5">
             <Label htmlFor="password">Password</Label>
             <PasswordInput id="password" name="password" required minLength={6} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="referredByCode">
+              Referral code <span className="font-normal text-muted-foreground">(optional)</span>
+            </Label>
+            <Input
+              id="referredByCode"
+              name="referredByCode"
+              value={referredByCode}
+              onChange={(e) => setReferredByCode(e.target.value.toUpperCase())}
+              placeholder="e.g. PRIYA4F2K"
+              className="uppercase"
+            />
           </div>
           <Button type="submit" className="w-full bg-primary" disabled={loading}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
