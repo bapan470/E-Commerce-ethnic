@@ -52,6 +52,7 @@ export default function ProductDetail() {
   const [variant, setVariant] = useState<VariantWithSizes | null>(null);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
+  const [activeTab, setActiveTab] = useState('description');
 
   // The URL slug might belong either to a base product or to one of its
   // colour variants (independent SEO pages). Try the product table first;
@@ -171,6 +172,11 @@ export default function ProductDetail() {
 
   const discount = discountPct(product.price, product.mrp);
 
+  const goToReviews = () => {
+    setActiveTab('reviews');
+    document.getElementById('product-tabs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   const handleAddToCart = () => {
     if (!selectedSize) {
       toast.error('Please select a size');
@@ -207,16 +213,17 @@ export default function ProductDetail() {
           quantity={quantity}
           setQuantity={setQuantity}
           onAdd={handleAddToCart}
+          onReviewsClick={goToReviews}
         />
       </div>
 
-      <div className="mt-14">
-        <Tabs defaultValue="description">
+      <div id="product-tabs" className="mt-14 scroll-mt-24">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="w-full justify-start">
+            <TabsTrigger value="reviews">Reviews ({product.reviews})</TabsTrigger>
             <TabsTrigger value="description">Description</TabsTrigger>
             <TabsTrigger value="details">Details</TabsTrigger>
             <TabsTrigger value="shipping">Shipping & Returns</TabsTrigger>
-            <TabsTrigger value="reviews">Reviews ({product.reviews})</TabsTrigger>
           </TabsList>
           <TabsContent value="description" className="max-w-3xl text-sm leading-relaxed text-foreground/80">
             <p>{product.description}</p>
@@ -272,6 +279,7 @@ function ProductInfo({
   quantity,
   setQuantity,
   onAdd,
+  onReviewsClick,
 }: {
   product: Product;
   selectedSize: string | null;
@@ -279,6 +287,7 @@ function ProductInfo({
   quantity: number;
   setQuantity: (n: number | ((q: number) => number)) => void;
   onAdd: () => void;
+  onReviewsClick: () => void;
 }) {
   const discount = discountPct(product.price, product.mrp);
   const [descExpanded, setDescExpanded] = useState(false);
@@ -292,7 +301,11 @@ function ProductInfo({
         <h1 className="mt-1 font-serif text-xl font-bold text-primary sm:text-2xl">
           {product.name}
         </h1>
-        <div className="mt-2 flex items-center gap-2 text-sm">
+        <button
+          type="button"
+          onClick={onReviewsClick}
+          className="mt-2 flex items-center gap-2 text-sm hover:underline"
+        >
           <div className="flex items-center gap-0.5">
             {Array.from({ length: 5 }).map((_, i) => (
               <Star
@@ -308,7 +321,7 @@ function ProductInfo({
           <span className="font-medium">{product.rating.toFixed(1)}</span>
           <span className="text-muted-foreground">&middot;</span>
           <span className="text-muted-foreground">{product.reviews} reviews</span>
-        </div>
+        </button>
       </div>
 
       <div className="flex items-baseline gap-3">
