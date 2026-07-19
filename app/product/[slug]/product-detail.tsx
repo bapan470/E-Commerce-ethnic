@@ -439,12 +439,6 @@ function ProductInfo({
         </div>
       )}
 
-      {appliedCoupon && (
-        <p className="rounded-md bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
-          🎉 Congratulations! You saved {formatINR(couponDiscount)} with code &quot;{appliedCoupon.code}&quot;
-        </p>
-      )}
-
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center rounded-md border border-border">
           <button
