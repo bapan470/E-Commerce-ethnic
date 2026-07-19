@@ -85,7 +85,7 @@ export default function Header() {
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/85 backdrop-blur-md">
-      <div className="container-boutique flex h-16 items-center justify-between gap-4">
+      <div className="container-boutique flex h-12 items-center justify-between gap-4">
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetTrigger asChild>
             <Button variant="ghost" size="icon" className="md:hidden" aria-label="Menu">
