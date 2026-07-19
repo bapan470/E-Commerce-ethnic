@@ -151,3 +151,47 @@ export function cartRecoveryEmail(cart: { items: any[]; cart_value: number }) {
   `);
   return { subject, html };
 }
+
+// ---------------------------------------------------------------------
+// Phase 13 — Lifecycle / drip automation: welcome series + win-back
+// ---------------------------------------------------------------------
+
+export function welcomeSeriesEmail(user: { full_name?: string; coupon_code: string }) {
+  const subject = `Welcome to ${SITE_NAME}${user.full_name ? `, ${user.full_name}` : ''}!`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Welcome${user.full_name ? `, ${user.full_name}` : ''}!</h2>
+    <p>Thanks for joining ${SITE_NAME}. We handpick every saree, lehenga and ethnic piece from master weavers across India — glad to have you here.</p>
+    <p style="text-align:center; margin: 20px 0;">
+      <span style="display:inline-block; border: 2px dashed ${BRAND_COLOR}; padding: 12px 24px; font-size: 18px; font-weight: bold; letter-spacing: 1px; color: ${BRAND_COLOR};">
+        ${user.coupon_code}
+      </span>
+    </p>
+    <p style="text-align:center; font-size: 13px; color:#6b5f57;">Use this code at checkout for a welcome discount on your first order.</p>
+    <p style="text-align:center; margin-top: 20px;">
+      <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/shop" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px;">
+        Start shopping
+      </a>
+    </p>
+  `);
+  return { subject, html };
+}
+
+export function winbackEmail(user: { full_name?: string; coupon_code: string }) {
+  const subject = `We miss you${user.full_name ? `, ${user.full_name}` : ''} — here's something for you`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">It's been a while!</h2>
+    <p>We've added new handwoven pieces since your last visit, and wanted to welcome you back with a little something.</p>
+    <p style="text-align:center; margin: 20px 0;">
+      <span style="display:inline-block; border: 2px dashed ${BRAND_COLOR}; padding: 12px 24px; font-size: 18px; font-weight: bold; letter-spacing: 1px; color: ${BRAND_COLOR};">
+        ${user.coupon_code}
+      </span>
+    </p>
+    <p style="text-align:center; font-size: 13px; color:#6b5f57;">Apply this code at checkout on your next order.</p>
+    <p style="text-align:center; margin-top: 20px;">
+      <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/shop" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px;">
+        See what's new
+      </a>
+    </p>
+  `);
+  return { subject, html };
+}

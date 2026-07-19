@@ -12,6 +12,8 @@ import SettingsPanel from '@/components/admin/settings-panel';
 import ReturnsPanel from '@/components/admin/returns-panel';
 import AbandonedCartsPanel from '@/components/admin/abandoned-carts-panel';
 import MarketingPanel from '@/components/admin/marketing-panel';
+import BundlesPanel from '@/components/admin/bundles-panel';
+import EmailAutomationPanel from '@/components/admin/email-automation-panel';
 import StockNotificationsPanel from '@/components/admin/stock-notifications-panel';
 import AnalyticsPanel from '@/components/admin/analytics-panel';
 import CustomersPanel from '@/components/admin/customers-panel';
@@ -33,6 +35,8 @@ const PANELS: Record<AdminSection, React.ComponentType> = {
   wholesale: WholesalePanel,
   coupons: CouponsPanel,
   marketing: MarketingPanel,
+  bundles: BundlesPanel,
+  'email-automation': EmailAutomationPanel,
   loyalty: LoyaltyPanel,
   referrals: ReferralsPanel,
   settings: SettingsPanel,

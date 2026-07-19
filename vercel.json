@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/abandoned-carts",
       "schedule": "30 21 * * *"
+    },
+    {
+      "path": "/api/cron/email-automation",
+      "schedule": "0 4 * * *"
     }
   ]
 }

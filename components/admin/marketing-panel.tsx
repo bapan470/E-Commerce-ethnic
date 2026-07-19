@@ -21,6 +21,12 @@ import {
   fetchAnalyticsSettings,
   saveAnalyticsSettings,
 } from '@/lib/marketing-api';
+import {
+  GrowthSettings,
+  DEFAULT_GROWTH_SETTINGS,
+  fetchGrowthSettings,
+  saveGrowthSettings,
+} from '@/lib/growth-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -43,6 +49,7 @@ export default function MarketingPanel() {
           <TabsList>
             <TabsTrigger value="legal">Legal Pages</TabsTrigger>
             <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
+            <TabsTrigger value="growth">Growth Tools</TabsTrigger>
             <TabsTrigger value="newsletter">Newsletter</TabsTrigger>
             <TabsTrigger value="feed">Merchant Feed</TabsTrigger>
             <TabsTrigger value="seo">SEO</TabsTrigger>
@@ -51,6 +58,7 @@ export default function MarketingPanel() {
 
           <TabsContent value="legal"><LegalPagesTab /></TabsContent>
           <TabsContent value="whatsapp"><WhatsAppTab /></TabsContent>
+          <TabsContent value="growth"><GrowthTab /></TabsContent>
           <TabsContent value="newsletter"><NewsletterTab /></TabsContent>
           <TabsContent value="feed"><MerchantFeedTab /></TabsContent>
           <TabsContent value="seo"><SeoTab /></TabsContent>
@@ -584,6 +592,180 @@ function AnalyticsTab() {
       <Button type="submit" disabled={saving} className="gap-2 bg-primary">
         <Save className="h-4 w-4" />
         {saving ? 'Saving...' : 'Save Analytics Settings'}
+      </Button>
+    </form>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Growth Tools: urgency banner, low-stock badges, exit-intent popup,
+// social proof toasts, sale countdown -- all conversion-focused and all
+// toggle-able without touching code.
+// ---------------------------------------------------------------------
+
+function GrowthTab() {
+  const [settings, setSettings] = useState<GrowthSettings | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetchGrowthSettings()
+      .then(setSettings)
+      .catch(() => toast.error('Failed to load growth settings'));
+  }, []);
+
+  const onSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!settings) return;
+    setSaving(true);
+    try {
+      await saveGrowthSettings(settings);
+      toast.success('Growth settings saved');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!settings) return <p className="py-6 text-sm text-muted-foreground">Loading...</p>;
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-8 py-4">
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-medium">Urgency banner</p>
+            <p className="text-sm text-muted-foreground">Sticky bar at the top of every page.</p>
+          </div>
+          <Switch
+            checked={settings.urgency_banner_enabled}
+            onCheckedChange={(v) => setSettings({ ...settings, urgency_banner_enabled: v })}
+          />
+        </div>
+        <Input
+          value={settings.urgency_banner_text}
+          onChange={(e) => setSettings({ ...settings, urgency_banner_text: e.target.value })}
+          placeholder="Free shipping on orders above ₹1999 — today only!"
+        />
+      </section>
+
+      <section className="space-y-3 border-t border-border pt-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-medium">Low stock badge</p>
+            <p className="text-sm text-muted-foreground">Shows "Only N left" on product pages.</p>
+          </div>
+          <Switch
+            checked={settings.low_stock_enabled}
+            onCheckedChange={(v) => setSettings({ ...settings, low_stock_enabled: v })}
+          />
+        </div>
+        <div className="max-w-xs">
+          <Label>Show badge when stock is at or below</Label>
+          <Input
+            type="number"
+            min={1}
+            value={settings.low_stock_threshold}
+            onChange={(e) => setSettings({ ...settings, low_stock_threshold: Number(e.target.value) })}
+          />
+        </div>
+      </section>
+
+      <section className="space-y-3 border-t border-border pt-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-medium">Exit-intent discount popup</p>
+            <p className="text-sm text-muted-foreground">
+              Shows once per visit when the cursor heads toward the tab bar.
+            </p>
+          </div>
+          <Switch
+            checked={settings.exit_intent_enabled}
+            onCheckedChange={(v) => setSettings({ ...settings, exit_intent_enabled: v })}
+          />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <Label>Headline</Label>
+            <Input
+              value={settings.exit_intent_headline}
+              onChange={(e) => setSettings({ ...settings, exit_intent_headline: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>Coupon code shown</Label>
+            <Input
+              value={settings.exit_intent_coupon_code}
+              onChange={(e) => setSettings({ ...settings, exit_intent_coupon_code: e.target.value })}
+            />
+          </div>
+        </div>
+        <div>
+          <Label>Message</Label>
+          <Textarea
+            rows={2}
+            value={settings.exit_intent_message}
+            onChange={(e) => setSettings({ ...settings, exit_intent_message: e.target.value })}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Create this coupon code under Admin &gt; Coupons so it actually works at checkout.
+        </p>
+      </section>
+
+      <section className="space-y-3 border-t border-border pt-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-medium">Social proof toasts</p>
+            <p className="text-sm text-muted-foreground">
+              "Someone in [city] just bought this" — pulled from real recent orders.
+            </p>
+          </div>
+          <Switch
+            checked={settings.social_proof_enabled}
+            onCheckedChange={(v) => setSettings({ ...settings, social_proof_enabled: v })}
+          />
+        </div>
+      </section>
+
+      <section className="space-y-3 border-t border-border pt-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-medium">Sale countdown bar</p>
+            <p className="text-sm text-muted-foreground">Ticking countdown until a set end time.</p>
+          </div>
+          <Switch
+            checked={settings.sale_countdown_enabled}
+            onCheckedChange={(v) => setSettings({ ...settings, sale_countdown_enabled: v })}
+          />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <Label>Text</Label>
+            <Input
+              value={settings.sale_countdown_text}
+              onChange={(e) => setSettings({ ...settings, sale_countdown_text: e.target.value })}
+            />
+          </div>
+          <div>
+            <Label>Ends at</Label>
+            <Input
+              type="datetime-local"
+              value={settings.sale_countdown_end_at ? settings.sale_countdown_end_at.slice(0, 16) : ''}
+              onChange={(e) =>
+                setSettings({
+                  ...settings,
+                  sale_countdown_end_at: e.target.value ? new Date(e.target.value).toISOString() : null,
+                })
+              }
+            />
+          </div>
+        </div>
+      </section>
+
+      <Button type="submit" disabled={saving} className="gap-2 bg-primary">
+        <Save className="h-4 w-4" />
+        {saving ? 'Saving...' : 'Save Growth Settings'}
       </Button>
     </form>
   );

@@ -19,6 +19,8 @@ import {
   Megaphone,
   Gift,
   Users2,
+  Boxes,
+  Mail,
   Settings,
   LogOut,
   Menu,
@@ -40,6 +42,8 @@ export type AdminSection =
   | 'wholesale'
   | 'coupons'
   | 'marketing'
+  | 'bundles'
+  | 'email-automation'
   | 'loyalty'
   | 'referrals'
   | 'settings';
@@ -88,6 +92,8 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { value: 'coupons', label: 'Coupons', icon: Tag },
       { value: 'marketing', label: 'Marketing', icon: Megaphone },
+      { value: 'bundles', label: 'Bundles', icon: Boxes },
+      { value: 'email-automation', label: 'Email Automation', icon: Mail },
       { value: 'loyalty', label: 'Loyalty', icon: Gift },
       { value: 'referrals', label: 'Referrals', icon: Users2 },
     ],

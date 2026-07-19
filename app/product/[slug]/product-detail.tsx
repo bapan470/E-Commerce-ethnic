@@ -30,6 +30,8 @@ import MobileStickyCartBar from '@/components/product/mobile-sticky-cart-bar';
 import RelatedProducts from '@/components/product/related-products';
 import RecentlyViewedSection from '@/components/product/recently-viewed';
 import NotifyMeForm from '@/components/product/notify-me-form';
+import LowStockBadge from '@/components/growth/low-stock-badge';
+import FrequentlyBoughtTogether from '@/components/product/frequently-bought-together';
 import { addRecentlyViewed } from '@/lib/recently-viewed';
 import { trackEvent } from '@/lib/track-api';
 import { useAuth } from '@/lib/auth-context';
@@ -261,6 +263,8 @@ export default function ProductDetail() {
         </Tabs>
       </div>
 
+      <FrequentlyBoughtTogether productId={baseProduct.id} />
+
       <RelatedProducts current={product} allProducts={products} />
 
       <RecentlyViewedSection excludeId={product.id} />
@@ -337,6 +341,8 @@ function ProductInfo({
           </>
         )}
       </div>
+
+      <LowStockBadge stockQuantity={product.stock_quantity} />
 
       <p className="text-sm leading-relaxed text-foreground/80">
         {product.description}
