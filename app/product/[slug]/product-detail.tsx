@@ -30,6 +30,7 @@ import RelatedProducts from '@/components/product/related-products';
 import RecentlyViewedSection from '@/components/product/recently-viewed';
 import NotifyMeForm from '@/components/product/notify-me-form';
 import LowStockBadge from '@/components/growth/low-stock-badge';
+import CouponList from '@/components/product/coupon-list';
 import FrequentlyBoughtTogether from '@/components/product/frequently-bought-together';
 import { addRecentlyViewed } from '@/lib/recently-viewed';
 import { trackEvent } from '@/lib/track-api';
@@ -339,6 +340,8 @@ function ProductInfo({
           </>
         )}
       </div>
+
+      <CouponList />
 
       <LowStockBadge stockQuantity={product.stock_quantity} />
 

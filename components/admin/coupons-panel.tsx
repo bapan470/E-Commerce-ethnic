@@ -10,6 +10,7 @@ import {
   updateCoupon,
   deleteCoupon,
   setCouponActive,
+  setCouponShowOnProductPage,
 } from '@/lib/coupons-api';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -42,6 +43,7 @@ const emptyForm: CouponInput = {
   usage_limit: null,
   expires_at: null,
   is_active: true,
+  show_on_product_page: false,
 };
 
 export default function CouponsPanel() {
@@ -84,6 +86,7 @@ export default function CouponsPanel() {
       usage_limit: c.usage_limit,
       expires_at: c.expires_at ? c.expires_at.slice(0, 10) : null,
       is_active: c.is_active,
+      show_on_product_page: c.show_on_product_page,
     });
     setOpen(true);
   };
@@ -130,6 +133,17 @@ export default function CouponsPanel() {
     }
   };
 
+  const toggleShowOnProductPage = async (c: Coupon) => {
+    try {
+      await setCouponShowOnProductPage(c.id, !c.show_on_product_page);
+      setCoupons((prev) =>
+        prev.map((x) => (x.id === c.id ? { ...x, show_on_product_page: !x.show_on_product_page } : x))
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update');
+    }
+  };
+
   const confirmDelete = async () => {
     if (!confirmTarget) return;
     try {
@@ -168,6 +182,7 @@ export default function CouponsPanel() {
               <th className="px-4 py-3">Usage</th>
               <th className="px-4 py-3">Expires</th>
               <th className="px-4 py-3">Active</th>
+              <th className="px-4 py-3">Show on Product Page</th>
               <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
@@ -196,6 +211,12 @@ export default function CouponsPanel() {
                   <Switch checked={c.is_active} onCheckedChange={() => toggleActive(c)} />
                 </td>
                 <td className="px-4 py-3 text-sm">
+                  <Switch
+                    checked={c.show_on_product_page}
+                    onCheckedChange={() => toggleShowOnProductPage(c)}
+                  />
+                </td>
+                <td className="px-4 py-3 text-sm">
                   <div className="flex gap-2">
                     <Button size="sm" variant="outline" onClick={() => openEdit(c)}>
                       <Pencil className="h-3.5 w-3.5" />
@@ -214,7 +235,7 @@ export default function CouponsPanel() {
             ))}
             {!loading && coupons.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={8} className="px-4 py-8 text-center text-sm text-muted-foreground">
                   No coupons yet. Add one to run your first offer.
                 </td>
               </tr>
@@ -326,6 +347,22 @@ export default function CouponsPanel() {
                 id="coupon-active"
                 checked={form.is_active}
                 onCheckedChange={(v) => setForm((f) => ({ ...f, is_active: v }))}
+              />
+            </div>
+
+            <div className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2">
+              <div>
+                <Label htmlFor="coupon-show-product-page" className="cursor-pointer">
+                  Show on Product Page
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Lists this coupon under &quot;Available Coupons&quot; on every product page
+                </p>
+              </div>
+              <Switch
+                id="coupon-show-product-page"
+                checked={form.show_on_product_page}
+                onCheckedChange={(v) => setForm((f) => ({ ...f, show_on_product_page: v }))}
               />
             </div>
 

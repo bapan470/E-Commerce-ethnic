@@ -10,6 +10,7 @@ export interface Coupon {
   times_used: number;
   expires_at: string | null;
   is_active: boolean;
+  show_on_product_page: boolean;
   created_at?: string;
 }
 
@@ -41,6 +42,7 @@ export interface CouponInput {
   usage_limit: number | null;
   expires_at: string | null;
   is_active: boolean;
+  show_on_product_page: boolean;
 }
 
 export async function createCoupon(input: CouponInput) {
@@ -67,6 +69,40 @@ export async function deleteCoupon(id: string) {
 export async function setCouponActive(id: string, is_active: boolean) {
   const { error } = await supabase.from('coupons').update({ is_active }).eq('id', id);
   if (error) throw error;
+}
+
+export async function setCouponShowOnProductPage(id: string, show_on_product_page: boolean) {
+  const { error } = await supabase
+    .from('coupons')
+    .update({ show_on_product_page })
+    .eq('id', id);
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------
+// Storefront display (product page "Available Coupons" list)
+// ---------------------------------------------------------------------
+
+/**
+ * Coupons an admin has flagged to show on the product page. Only
+ * returns ones that are active, flagged visible, not expired, and
+ * (if they have a usage limit) not yet exhausted.
+ */
+export async function fetchProductPageCoupons(): Promise<Coupon[]> {
+  const { data, error } = await supabase
+    .from('coupons')
+    .select('*')
+    .eq('is_active', true)
+    .eq('show_on_product_page', true)
+    .order('discount_value', { ascending: false });
+  if (error) throw error;
+
+  const now = Date.now();
+  return ((data ?? []) as Coupon[]).filter(
+    (c) =>
+      (!c.expires_at || new Date(c.expires_at).getTime() > now) &&
+      (c.usage_limit === null || c.times_used < c.usage_limit)
+  );
 }
 
 // ---------------------------------------------------------------------
