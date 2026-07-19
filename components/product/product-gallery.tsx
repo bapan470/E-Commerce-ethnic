@@ -41,58 +41,39 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
 
   const thumbColRef = useRef<HTMLDivElement | null>(null);
 
-  // Reset to the first image whenever the image set changes (e.g. colour swap).
-  useEffect(() => {
-    setActive(0);
-  }, [images]);
-
   const clamp = useCallback((idx: number) => (idx + valid.length) % valid.length, [valid.length]);
-
-  // Track direction so the image slide always animates the same way
-  // (new image sliding in from the right, old one sliding out to the left)
-  // regardless of what triggered the change (swipe, arrow key, thumbnail).
-  const activeRef = useRef(active);
-  useEffect(() => {
-    activeRef.current = active;
-  }, [active]);
-
-  const [slideOffset, setSlideOffset] = useState(0);
-  const [slideAnimating, setSlideAnimating] = useState(false);
-
-  const goTo = useCallback(
-    (idx: number) => {
-      const cur = activeRef.current;
-      const nextIdx = clamp(idx);
-      if (nextIdx === cur) return;
-      const dir = idx > cur ? 1 : -1; // 1 = next image enters from the right
-      setActive(nextIdx);
-      setSlideOffset(dir * 100);
-      setSlideAnimating(false);
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setSlideAnimating(true);
-          setSlideOffset(0);
-        });
-      });
-    },
-    [clamp]
-  );
+  const goTo = useCallback((idx: number) => setActive((cur) => (idx === cur ? cur : clamp(idx))), [clamp]);
 
   const scrollThumbCol = (dir: 1 | -1) => {
     thumbColRef.current?.scrollBy({ top: dir * 96, behavior: 'smooth' });
   };
 
-  // --- Swipe / tap on the main stage --------------------------------------
-  // touch-action: pan-y on the wrapper tells the browser "vertical page
-  // scroll is always native and yours" up front, so a vertical drag never
-  // gets intercepted even for a single frame. We only decide, on the first
-  // touchmove, whether THIS particular gesture is horizontal enough to
-  // treat as a swipe; if it isn't, we do nothing and the browser scrolls
-  // the page exactly as if the gallery weren't there.
-  const touchRef = useRef<{ startX: number; startY: number; horizontal: boolean | null } | null>(null);
+  // --- Swipe / drag on the main stage -------------------------------------
+  // No animation anywhere here: the image moves 1:1 with the finger while
+  // dragging (a genuine scroll, not a canned "effect"), and the instant the
+  // finger lifts it simply stops — either committed to the next/prev photo
+  // or snapped back, with zero transition either way.
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const touchRef = useRef<{ startX: number; startY: number; horizontal: boolean | null; width: number } | null>(
+    null
+  );
+  const [dragPx, setDragPx] = useState(0);
+  const [peekDir, setPeekDir] = useState<1 | -1 | null>(null);
+
+  // Reset to the first image whenever the image set changes (e.g. colour swap).
+  useEffect(() => {
+    setActive(0);
+    setDragPx(0);
+    setPeekDir(null);
+  }, [images]);
 
   const onTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    touchRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, horizontal: null };
+    touchRef.current = {
+      startX: e.touches[0].clientX,
+      startY: e.touches[0].clientY,
+      horizontal: null,
+      width: stageRef.current?.clientWidth || 1,
+    };
   };
 
   const onTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
@@ -107,6 +88,8 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
       // Only prevent default once we know it's a horizontal swipe, so the
       // page never loses its native vertical scroll for this touch.
       e.preventDefault();
+      setDragPx(dx);
+      setPeekDir(dx < 0 ? 1 : dx > 0 ? -1 : null);
     }
   };
 
@@ -116,12 +99,13 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
     if (!t) return;
     const dx = e.changedTouches[0].clientX - t.startX;
     if (t.horizontal) {
-      if (dx <= -SWIPE_THRESHOLD) goTo(active + 1);
-      else if (dx >= SWIPE_THRESHOLD) goTo(active - 1);
+      if (dx <= -SWIPE_THRESHOLD) setActive((cur) => clamp(cur + 1));
+      else if (dx >= SWIPE_THRESHOLD) setActive((cur) => clamp(cur - 1));
     }
-    // A plain tap does nothing here — the stage itself has no click/zoom
-    // handler anymore. Only the magnifier button (its own onClick) opens
-    // the zoom lightbox.
+    // Stop right here — no animation back to center, no momentum, no
+    // finishing slide. The drag offset is simply cleared instantly.
+    setDragPx(0);
+    setPeekDir(null);
   };
 
   // Zoom now only opens via the magnifier button — clicking/tapping
@@ -202,23 +186,19 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
 
         <div className="relative flex-1">
           <div
+            ref={stageRef}
             className="group/stage relative aspect-[4/5] w-full overflow-hidden border border-border/60 bg-muted sm:rounded-xl"
             style={{ touchAction: 'pan-y' }}
             onTouchStart={onTouchStart}
             onTouchMove={onTouchMove}
             onTouchEnd={onTouchEnd}
           >
-            {/* Only the active image is ever mounted — nothing preloads
-                silently in the background competing for bandwidth. Each
-                change slides in from the right and settles into place. */}
-            <div
-              key={active}
-              className="absolute inset-0"
-              style={{
-                transform: `translateX(${slideOffset}%)`,
-                transition: slideAnimating ? 'transform 320ms ease-out' : 'none',
-              }}
-            >
+            {/* Only the active image (plus, while actively dragging, the one
+                neighbour being revealed) is ever mounted — nothing preloads
+                silently in the background. The image tracks the finger 1:1
+                while dragging and simply stops the instant it's released —
+                no transition, no snap animation, no momentum. */}
+            <div className="absolute inset-0" style={{ transform: `translateX(${dragPx}px)` }}>
               <Image
                 src={valid[active]}
                 alt={`${alt} - image ${active + 1}`}
@@ -230,6 +210,25 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
                 className="select-none object-cover"
               />
             </div>
+
+            {peekDir !== null && (
+              <div
+                className="absolute inset-0"
+                style={{
+                  transform: `translateX(${dragPx + peekDir * (stageRef.current?.clientWidth || 0)}px)`,
+                }}
+              >
+                <Image
+                  src={valid[clamp(active + peekDir)]}
+                  alt={`${alt} - image ${clamp(active + peekDir) + 1}`}
+                  fill
+                  draggable={false}
+                  sizes="(max-width: 1024px) 100vw, 50vw"
+                  quality={80}
+                  className="select-none object-cover"
+                />
+              </div>
+            )}
 
             {discount > 0 && (
               <Badge className="absolute left-4 top-4 bg-secondary text-secondary-foreground">
