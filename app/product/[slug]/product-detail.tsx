@@ -281,6 +281,7 @@ function ProductInfo({
   onAdd: () => void;
 }) {
   const discount = discountPct(product.price, product.mrp);
+  const [descExpanded, setDescExpanded] = useState(false);
 
   return (
     <div className="flex flex-col gap-5">
@@ -288,7 +289,7 @@ function ProductInfo({
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
           {product.category}
         </p>
-        <h1 className="mt-1 font-serif text-3xl font-bold text-primary sm:text-4xl">
+        <h1 className="mt-1 font-serif text-xl font-bold text-primary sm:text-2xl">
           {product.name}
         </h1>
         <div className="mt-2 flex items-center gap-2 text-sm">
@@ -328,9 +329,22 @@ function ProductInfo({
 
       <LowStockBadge stockQuantity={product.stock_quantity} />
 
-      <p className="text-sm leading-relaxed text-foreground/80">
-        {product.description}
-      </p>
+      <div>
+        <p
+          className={`text-sm leading-relaxed text-foreground/80 ${
+            descExpanded ? '' : 'line-clamp-2'
+          }`}
+        >
+          {product.description}
+        </p>
+        <button
+          type="button"
+          onClick={() => setDescExpanded((v) => !v)}
+          className="mt-1 text-sm font-medium text-primary hover:underline"
+        >
+          {descExpanded ? 'Show less' : 'Show more'}
+        </button>
+      </div>
 
       <div className="grid grid-cols-2 gap-3 text-sm">
         <div className="rounded-lg bg-muted/50 p-3">
