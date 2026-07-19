@@ -295,7 +295,8 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
  * Full-screen zoom viewer — the one place actual "zoom" happens, on both
  * desktop and mobile, so the two platforms behave consistently:
  * - Mobile: pinch with two fingers, or double-tap, to zoom; drag to pan;
- *   swipe left/right at 1x to move between photos.
+ *   swipe left/right at 1x to move between photos — same native scroll
+ *   strip as the main product-page gallery, not a separate swipe gesture.
  * - Desktop: scroll the mouse wheel, or double-click, to zoom; drag to pan
  *   while zoomed; on-screen arrows or arrow keys to move between photos.
  */
@@ -317,16 +318,45 @@ function Lightbox({
   const dragRef = useRef<{ startX: number; startY: number; offX: number; offY: number } | null>(null);
   const pinchRef = useRef<{ startDist: number; startScale: number } | null>(null);
   const lastTapRef = useRef(0);
-  const swipeRef = useRef<{ startX: number } | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const mountedRef = useRef(false);
 
   const resetZoom = () => {
     setScale(1);
     setOffset({ x: 0, y: 0 });
   };
 
+  // Jumps (arrow buttons / thumbnail row / keyboard) just update `active`;
+  // the effect below notices the strip's scroll position doesn't match
+  // and glides the same native scroller to it — the exact same navigation
+  // as the main product-page gallery, just inside the full-screen viewer.
   const goTo = (idx: number) => {
     resetZoom();
     onActiveChange((idx + images.length) % images.length);
+  };
+
+  // Keeps the strip lined up with `active` for any *external* change
+  // (arrow keys, thumbnail row, prev/next buttons). When the change instead
+  // came from the user hand-scrolling the strip themselves, the scroll
+  // position already matches `active` (set by onScrollStrip below) by the
+  // time this runs, so it's a no-op — the user's own scroll is never
+  // fought or interrupted.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || el.clientWidth === 0) return;
+    const idx = Math.round(el.scrollLeft / el.clientWidth);
+    if (idx !== active) {
+      el.scrollTo({ left: active * el.clientWidth, behavior: mountedRef.current ? 'smooth' : ('instant' as ScrollBehavior) });
+    }
+    mountedRef.current = true;
+  }, [active]);
+
+  const onScrollStrip = () => {
+    if (scale > 1) return; // locked while zoomed in on a photo
+    const el = scrollRef.current;
+    if (!el || el.clientWidth === 0) return;
+    const idx = Math.round(el.scrollLeft / el.clientWidth);
+    if (idx !== active) onActiveChange((idx + images.length) % images.length);
   };
 
   const toggleZoom = (clientX: number, clientY: number, rect: DOMRect) => {
@@ -355,9 +385,10 @@ function Lightbox({
       lastTapRef.current = now;
       if (scale > 1) {
         dragRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, offX: offset.x, offY: offset.y };
-      } else {
-        swipeRef.current = { startX: e.touches[0].clientX };
       }
+      // At scale 1 a single finger is left alone entirely — the browser's
+      // native scroll (touch-action: pan-x below) handles it, same as the
+      // main gallery stage.
     }
   };
 
@@ -373,18 +404,11 @@ function Lightbox({
     }
   };
 
-  const onTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
+  const onTouchEnd = () => {
     pinchRef.current = null;
     if (dragRef.current) {
       dragRef.current = null;
       if (scale < 1.05) resetZoom();
-      return;
-    }
-    if (swipeRef.current) {
-      const dx = e.changedTouches[0].clientX - swipeRef.current.startX;
-      swipeRef.current = null;
-      if (dx <= -60) goTo(active + 1);
-      else if (dx >= 60) goTo(active - 1);
     }
   };
 
@@ -422,35 +446,54 @@ function Lightbox({
         </button>
       </div>
 
-      <div
-        className="relative flex-1 touch-none select-none overflow-hidden"
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-        onWheel={onWheel}
-        onMouseDown={onMouseDown}
-        onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
-        onMouseLeave={onMouseUp}
-        onDoubleClick={onDoubleClick}
-      >
+      <div className="relative flex-1 overflow-hidden">
+        {/* Same native horizontal scroller as the product-page gallery —
+            every photo sits side by side and a swipe/scroll moves between
+            them for real, instead of a separate swipe-threshold gesture.
+            It only locks (scale > 1) while actively zoomed into a photo,
+            so panning that photo doesn't also drag the strip underneath it. */}
         <div
-          className="absolute inset-0"
-          style={{
-            transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
-            cursor: scale > 1 ? 'grab' : 'zoom-in',
-          }}
+          ref={scrollRef}
+          className={cn(
+            'no-scrollbar h-full w-full select-none scroll-smooth',
+            scale > 1 ? 'touch-none overflow-hidden' : 'touch-pan-x snap-x snap-mandatory overflow-x-auto overflow-y-hidden'
+          )}
+          onScroll={onScrollStrip}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          onWheel={onWheel}
+          onMouseDown={onMouseDown}
+          onMouseMove={onMouseMove}
+          onMouseUp={onMouseUp}
+          onMouseLeave={onMouseUp}
+          onDoubleClick={onDoubleClick}
         >
-          <Image
-            src={images[active]}
-            alt={`${alt} - full view ${active + 1}`}
-            fill
-            draggable={false}
-            sizes="100vw"
-            quality={90}
-            priority
-            className="select-none object-contain"
-          />
+          <div className="flex h-full">
+            {images.map((img, idx) => (
+              <div key={`${idx}-${img}`} className="relative h-full w-full shrink-0 snap-start snap-always overflow-hidden">
+                <div
+                  className="absolute inset-0"
+                  style={
+                    idx === active
+                      ? { transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`, cursor: scale > 1 ? 'grab' : 'zoom-in' }
+                      : undefined
+                  }
+                >
+                  <Image
+                    src={img}
+                    alt={`${alt} - full view ${idx + 1}`}
+                    fill
+                    draggable={false}
+                    sizes="100vw"
+                    quality={90}
+                    priority={idx === active}
+                    className="select-none object-contain"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
         {images.length > 1 && scale === 1 && (
