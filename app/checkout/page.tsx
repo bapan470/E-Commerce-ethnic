@@ -146,8 +146,13 @@ export default function CheckoutPage() {
       : 0;
 
   const discountedSubtotal = Math.max(0, afterGiftCardSubtotal - loyaltyDiscount);
-  const tax = Math.round(discountedSubtotal * (shippingSettings.gst_rate_percent / 100));
-  const total = discountedSubtotal + shipping + tax;
+  // Prices are GST-inclusive: the tax is already baked into discountedSubtotal,
+  // so we only extract it here for display/invoice purposes and do NOT add it
+  // on top of the total again.
+  const tax = Math.round(
+    discountedSubtotal - (discountedSubtotal * 100) / (100 + shippingSettings.gst_rate_percent)
+  );
+  const total = discountedSubtotal + shipping;
 
   const handleToggleRedeemPoints = (checked: boolean) => {
     setRedeemPoints(checked);
@@ -798,7 +803,7 @@ export default function CheckoutPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">
-                  Tax ({shippingSettings.gst_rate_percent}% GST)
+                  Tax ({shippingSettings.gst_rate_percent}% GST, included)
                 </span>
                 <span>{formatINR(tax)}</span>
               </div>

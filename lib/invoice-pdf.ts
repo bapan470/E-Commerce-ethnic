@@ -174,7 +174,7 @@ export async function generateInvoicePdf(order: InvoiceOrder, store: StoreInfo):
     totalsRow(label, `-${rupee(order.coupon_discount)}`);
   }
   totalsRow('Shipping', order.shipping_charge ? rupee(order.shipping_charge) : 'FREE');
-  totalsRow('GST (5%)', rupee(order.gst_amount ?? 0));
+  totalsRow('GST (5%, included)', rupee(order.gst_amount ?? 0));
   y -= 4;
   page.drawLine({ start: { x: totalsX, y }, end: { x: pageWidth - margin, y }, thickness: 0.5, color: muted });
   y -= 16;

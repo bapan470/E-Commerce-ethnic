@@ -101,7 +101,7 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
             <span>{order.shipping_charge ? formatINR(order.shipping_charge) : 'FREE'}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-muted-foreground">GST</span>
+            <span className="text-muted-foreground">GST (included)</span>
             <span>{formatINR(order.gst_amount ?? 0)}</span>
           </div>
           <Separator className="my-2" />
