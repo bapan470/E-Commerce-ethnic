@@ -88,7 +88,7 @@ export default function ProductCard({
           onClick={quickAdd}
           disabled={!product.inStock}
           size="sm"
-          className="absolute bottom-3 right-3 gap-1 rounded-full bg-primary/95 opacity-0 shadow-md transition-all duration-300 group-hover:opacity-100 hover:bg-primary"
+          className="absolute bottom-3 right-3 hidden gap-1 rounded-full bg-primary/95 opacity-0 shadow-md transition-all duration-300 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100 hover:bg-primary sm:flex"
           aria-label="Add to cart"
         >
           <ShoppingBag className="h-4 w-4" />
