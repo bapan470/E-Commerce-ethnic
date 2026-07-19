@@ -1,8 +1,20 @@
 'use client';
 
 import { useEffect, useState, FormEvent } from 'react';
-import { Save } from 'lucide-react';
-import { StoreInfo, fetchStoreInfo, saveStoreInfo, EmailSettings, fetchEmailSettings, saveEmailSettings } from '@/lib/settings-api';
+import { Save, Upload, Loader2, Trash2 } from 'lucide-react';
+import Image from 'next/image';
+import {
+  StoreInfo,
+  fetchStoreInfo,
+  saveStoreInfo,
+  EmailSettings,
+  fetchEmailSettings,
+  saveEmailSettings,
+  SiteBanner,
+  fetchSiteBanner,
+  saveSiteBanner,
+} from '@/lib/settings-api';
+import { uploadProductImage } from '@/lib/products-api';
 import {
   ShippingSettings,
   fetchShippingSettings,
@@ -35,6 +47,10 @@ export default function SettingsPanel() {
   const [testEmailTo, setTestEmailTo] = useState('');
   const [sendingTest, setSendingTest] = useState(false);
 
+  const [bannerForm, setBannerForm] = useState<SiteBanner | null>(null);
+  const [savingBanner, setSavingBanner] = useState(false);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
+
   useEffect(() => {
     fetchStoreInfo()
       .then(setForm)
@@ -52,6 +68,10 @@ export default function SettingsPanel() {
     fetchEmailSettings()
       .then(setEmailForm)
       .catch(() => toast.error('Failed to load email settings'));
+
+    fetchSiteBanner()
+      .then(setBannerForm)
+      .catch(() => toast.error('Failed to load site banner'));
   }, []);
 
   const onSubmit = async (e: FormEvent) => {
@@ -108,6 +128,39 @@ export default function SettingsPanel() {
     } finally {
       setSavingEmail(false);
     }
+  };
+
+  const saveBanner = async (next: SiteBanner) => {
+    setBannerForm(next);
+    setSavingBanner(true);
+    try {
+      await saveSiteBanner(next);
+      toast.success('Site banner saved');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSavingBanner(false);
+    }
+  };
+
+  const onUploadBanner = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !bannerForm) return;
+    setUploadingBanner(true);
+    try {
+      const url = await uploadProductImage(file);
+      await saveBanner({ ...bannerForm, image_url: url });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Banner upload failed');
+    } finally {
+      setUploadingBanner(false);
+      e.target.value = '';
+    }
+  };
+
+  const removeBanner = () => {
+    if (!bannerForm) return;
+    saveBanner({ ...bannerForm, image_url: '' });
   };
 
   const onSendTestEmail = async () => {
@@ -211,6 +264,81 @@ export default function SettingsPanel() {
           <Save className="mr-1.5 h-4 w-4" /> {saving ? 'Saving…' : 'Save Settings'}
         </Button>
       </form>
+
+      <div className="mt-8">
+        <h2 className="font-serif text-2xl font-bold text-primary">Site Banner</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          A promotional image shown at the top of every page (except checkout).
+          Upload once and it appears storewide — no code needed.
+        </p>
+      </div>
+
+      {!bannerForm ? (
+        <p className="py-4 text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <div className="mt-4 grid max-w-xl gap-4 rounded-lg border border-border/60 bg-card p-5">
+          <div className="grid gap-1.5">
+            <Label>Banner image</Label>
+            {bannerForm.image_url ? (
+              <div className="flex items-center gap-3">
+                <div className="relative h-16 w-32 shrink-0 overflow-hidden rounded-md border border-border bg-muted">
+                  <Image
+                    src={bannerForm.image_url}
+                    alt="Site banner preview"
+                    fill
+                    sizes="128px"
+                    className="object-cover"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={removeBanner}
+                  disabled={savingBanner}
+                  className="gap-1.5 text-destructive"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Remove banner
+                </Button>
+              </div>
+            ) : (
+              <label className="flex w-fit cursor-pointer items-center gap-2 rounded-md border border-dashed border-border bg-muted/40 px-4 py-2 text-sm hover:border-primary/50">
+                {uploadingBanner ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Upload className="h-4 w-4" />
+                )}
+                <span>{uploadingBanner ? 'Uploading…' : 'Upload banner image'}</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={onUploadBanner}
+                  disabled={uploadingBanner}
+                />
+              </label>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Wide images work best (e.g. 1600×400). Shows on every page except checkout.
+              Remove it and the banner just disappears storewide.
+            </p>
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="banner-link">Link (optional)</Label>
+            <Input
+              id="banner-link"
+              value={bannerForm.link_url ?? ''}
+              onChange={(e) => setBannerForm((f) => f && { ...f, link_url: e.target.value })}
+              onBlur={() => bannerForm && saveBanner(bannerForm)}
+              placeholder="/shop?category=Bridal"
+            />
+            <p className="text-xs text-muted-foreground">
+              Where the banner takes people if they click it. Leave blank for a non-clickable banner.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="mt-8">
         <h2 className="font-serif text-2xl font-bold text-primary">GST & Shipping</h2>

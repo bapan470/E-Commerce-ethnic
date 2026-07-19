@@ -190,15 +190,7 @@ export default function ProductDetail() {
       <div className="grid gap-8 lg:grid-cols-2 lg:gap-12 lg:items-start">
         <div className="flex flex-col gap-4 lg:sticky lg:top-24 lg:self-start">
           <div className="-mx-4 sm:mx-0">
-            <ProductGallery
-              images={
-                product.bannerUrl
-                  ? [product.bannerUrl, ...product.images]
-                  : product.images
-              }
-              alt={product.name}
-              discount={discount}
-            />
+            <ProductGallery images={product.images} alt={product.name} discount={discount} />
           </div>
           <div className="px-4 sm:px-0">
             <VariantSwatches

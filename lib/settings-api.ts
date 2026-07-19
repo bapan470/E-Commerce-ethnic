@@ -35,6 +35,33 @@ export async function saveStoreInfo(info: StoreInfo) {
   if (error) throw error;
 }
 
+export interface SiteBanner {
+  image_url: string;
+  link_url?: string;
+}
+
+const DEFAULT_SITE_BANNER: SiteBanner = {
+  image_url: '',
+  link_url: '',
+};
+
+export async function fetchSiteBanner(): Promise<SiteBanner> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'site_banner')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_SITE_BANNER;
+  return { ...DEFAULT_SITE_BANNER, ...(data.value as Partial<SiteBanner>) };
+}
+
+export async function saveSiteBanner(banner: SiteBanner) {
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ key: 'site_banner', value: banner }, { onConflict: 'key' });
+  if (error) throw error;
+}
+
 export type EmailProvider = 'resend' | 'zeptomail' | '';
 
 export interface EmailSettings {

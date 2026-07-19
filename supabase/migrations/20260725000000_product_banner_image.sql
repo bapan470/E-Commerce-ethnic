@@ -1,5 +1,7 @@
--- Adds a per-product "banner image" that can be shown at the top of the
--- product gallery instead of the regular product photos (e.g. a festive
--- sale banner). Falls back to the normal product images when unset.
+-- Superseded: the per-product banner idea was replaced with a single
+-- site-wide banner, which is stored as a row in the existing generic
+-- `settings` table (key = 'site_banner') — no new column/table needed
+-- for that. This just drops the column if an earlier version of this
+-- migration already added it; a no-op otherwise.
 ALTER TABLE products
-  ADD COLUMN IF NOT EXISTS banner_url text;
+  DROP COLUMN IF EXISTS banner_url;

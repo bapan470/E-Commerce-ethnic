@@ -7,6 +7,7 @@ import { Toaster } from 'sonner';
 import CartDrawer from './cart-drawer';
 import Header from './header';
 import Footer from './footer';
+import SiteBanner from './site-banner';
 import WhatsAppButton from './whatsapp-button';
 import ActivityTracker from './activity-tracker';
 import UrgencyBanner from './growth/urgency-banner';
@@ -24,6 +25,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
             <UrgencyBanner />
             <SaleCountdownBar />
             <Header />
+            <SiteBanner />
             <main className="flex-1">{children}</main>
             <Footer />
             <CartDrawer />

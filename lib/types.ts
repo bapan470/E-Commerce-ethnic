@@ -24,7 +24,6 @@ export interface Product {
   material: string | null;
   pattern: string | null;
   images: string[];
-  bannerUrl?: string | null;
   rating: number;
   reviews: number;
   featured?: boolean;
@@ -128,7 +127,6 @@ export interface ProductRow {
   material: string | null;
   pattern: string | null;
   images: string[] | null;
-  banner_url: string | null;
   stock_quantity: number;
   low_stock_threshold?: number;
   rating: number;
