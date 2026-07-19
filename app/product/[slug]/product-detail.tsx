@@ -192,9 +192,9 @@ export default function ProductDetail() {
   };
 
   return (
-    <div className="container-boutique pt-0 pb-24 sm:pt-8 md:pb-8">
-      <div className="grid gap-8 lg:grid-cols-2 lg:gap-12 lg:items-start">
-        <div className="flex flex-col gap-4 lg:sticky lg:top-24 lg:self-start">
+    <div className="container-boutique pt-0 pb-24 sm:pt-4 md:pb-8">
+      <div className="grid gap-4 lg:grid-cols-2 lg:gap-8 lg:items-start">
+        <div className="flex flex-col gap-3 lg:sticky lg:top-24 lg:self-start">
           <div className="-mx-4 sm:mx-0">
             <ProductGallery images={product.images} alt={product.name} discount={discount} />
           </div>
@@ -217,7 +217,7 @@ export default function ProductDetail() {
         />
       </div>
 
-      <div id="product-tabs" className="mt-14 scroll-mt-24">
+      <div id="product-tabs" className="mt-8 scroll-mt-24">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="w-full justify-start">
             <TabsTrigger value="reviews">Reviews ({product.reviews})</TabsTrigger>
@@ -293,7 +293,7 @@ function ProductInfo({
   const [descExpanded, setDescExpanded] = useState(false);
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-3">
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
           {product.category}

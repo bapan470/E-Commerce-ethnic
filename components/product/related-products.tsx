@@ -46,7 +46,7 @@ export default function RelatedProducts({
   if (related.length === 0) return null;
 
   return (
-    <section className="mt-14">
+    <section className="mt-8">
       <h2 className="mb-5 font-serif text-2xl font-bold text-primary">{title}</h2>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
         {related.map((p) => (

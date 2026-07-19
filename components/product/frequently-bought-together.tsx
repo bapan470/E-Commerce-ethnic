@@ -59,7 +59,7 @@ export default function FrequentlyBoughtTogether({ productId }: { productId: str
   };
 
   return (
-    <section className="mt-14 border-t border-border pt-10">
+    <section className="mt-8 border-t border-border pt-6">
       <h2 className="font-serif text-2xl font-bold text-primary">Frequently Bought Together</h2>
 
       <div className="mt-5 flex flex-wrap items-center gap-3">
