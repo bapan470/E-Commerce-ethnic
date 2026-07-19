@@ -186,7 +186,7 @@ export default function ProductDetail() {
   };
 
   return (
-    <div className="container-boutique py-8 pb-24 md:pb-8">
+    <div className="container-boutique pt-0 pb-24 sm:pt-8 md:pb-8">
       <div className="grid gap-8 lg:grid-cols-2 lg:gap-12 lg:items-start">
         <div className="flex flex-col gap-4 lg:sticky lg:top-24 lg:self-start">
           <div className="-mx-4 sm:mx-0">
