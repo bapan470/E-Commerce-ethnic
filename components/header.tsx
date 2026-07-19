@@ -92,7 +92,11 @@ export default function Header() {
               <Menu className="h-5 w-5" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="w-72 bg-background">
+          <SheetContent
+            side="left"
+            className="w-72 bg-background"
+            onOpenAutoFocus={(e) => e.preventDefault()}
+          >
             <div className="flex h-full flex-col gap-6 pt-8">
               <Link
                 href="/"
