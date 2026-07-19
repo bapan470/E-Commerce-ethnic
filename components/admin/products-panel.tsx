@@ -86,6 +86,7 @@ interface FormState {
   material: string;
   pattern: string;
   images: string[];
+  banner_url: string;
   stock_quantity: string;
   low_stock_threshold: string;
   rating: string;
@@ -111,6 +112,7 @@ const emptyForm = (): FormState => ({
   material: '',
   pattern: '',
   images: [DEFAULT_IMAGE],
+  banner_url: '',
   stock_quantity: '0',
   low_stock_threshold: '5',
   rating: '4.5',
@@ -137,6 +139,7 @@ const fromProduct = (p: Product): FormState => ({
   material: p.material || '',
   pattern: p.pattern || '',
   images: p.images.length ? p.images : [DEFAULT_IMAGE],
+  banner_url: p.bannerUrl || '',
   stock_quantity: String(p.stock_quantity),
   low_stock_threshold: String(p.low_stock_threshold ?? 5),
   rating: String(p.rating),
@@ -156,6 +159,7 @@ export default function ProductsPanel() {
   const [uploading, setUploading] = useState(false);
   const [importUrl, setImportUrl] = useState('');
   const [importing, setImporting] = useState(false);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -246,6 +250,23 @@ export default function ProductsPanel() {
     setForm((f) => ({ ...f, images: f.images.filter((_, i) => i !== idx) }));
   };
 
+  const onUploadBanner = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingBanner(true);
+    try {
+      const url = await uploadProductImage(file);
+      setForm((f) => ({ ...f, banner_url: url }));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Banner upload failed');
+    } finally {
+      setUploadingBanner(false);
+      e.target.value = '';
+    }
+  };
+
+  const removeBanner = () => setForm((f) => ({ ...f, banner_url: '' }));
+
   const importFromUrl = async () => {
     const url = importUrl.trim();
     if (!url) return;
@@ -303,6 +324,7 @@ export default function ProductsPanel() {
       material: form.material.trim() || null,
       pattern: form.pattern.trim() || null,
       images,
+      banner_url: form.banner_url.trim() || null,
       stock_quantity: newStockQty,
       low_stock_threshold: Number(form.low_stock_threshold) || 5,
       rating: Number(form.rating) || 4.5,
@@ -554,15 +576,51 @@ export default function ProductsPanel() {
                 />
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="slug">Slug</Label>
-                <Input
-                  id="slug"
-                  value={form.slug}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, slug: slugify(e.target.value) }))
-                  }
-                  placeholder="auto-generated-from-name"
-                />
+                <Label>Banner image</Label>
+                {form.banner_url ? (
+                  <div className="flex items-center gap-3">
+                    <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border bg-muted">
+                      <Image
+                        src={form.banner_url}
+                        alt="Banner preview"
+                        fill
+                        sizes="64px"
+                        className="object-cover"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={removeBanner}
+                      className="gap-1.5 text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Remove banner
+                    </Button>
+                  </div>
+                ) : (
+                  <label className="flex w-fit cursor-pointer items-center gap-2 rounded-md border border-dashed border-border bg-muted/40 px-4 py-2 text-sm hover:border-primary/50">
+                    {uploadingBanner ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4" />
+                    )}
+                    <span>{uploadingBanner ? 'Uploading…' : 'Upload banner image'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={onUploadBanner}
+                      disabled={uploadingBanner}
+                    />
+                  </label>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Shown at the top of this product&apos;s photos on the product page
+                  (e.g. a festive sale banner). Until you upload one, the regular
+                  product image shows there instead.
+                </p>
               </div>
             </div>
 
