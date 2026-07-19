@@ -357,27 +357,29 @@ function ProductInfo({
         </div>
       </div>
 
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-sm font-semibold">Select Size</p>
-          <button className="text-xs text-primary underline">Size guide</button>
+      {product.sizes.length > 1 && (
+        <div>
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-sm font-semibold">Select Size</p>
+            <button className="text-xs text-primary underline">Size guide</button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {product.sizes.map((s) => (
+              <button
+                key={s}
+                onClick={() => setSelectedSize(s)}
+                className={`min-w-[3rem] rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
+                  selectedSize === s
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border bg-background hover:border-primary/50'
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {product.sizes.map((s) => (
-            <button
-              key={s}
-              onClick={() => setSelectedSize(s)}
-              className={`min-w-[3rem] rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
-                selectedSize === s
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : 'border-border bg-background hover:border-primary/50'
-              }`}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center rounded-md border border-border">
