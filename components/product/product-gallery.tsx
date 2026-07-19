@@ -21,17 +21,16 @@ const PLACEHOLDER = 'https://placehold.co/800x1000?text=No+Image';
  * - No carousel library (Swiper etc.) — those ship as ESM-only packages
  *   that Next 13's default webpack config won't transpile, which is what
  *   silently broke the main image before (blank box, no visible error).
- * - The main stage is a real drag-strip: every image sits side by side and
- *   the whole strip translates with the finger in real time — drag a
- *   little for a slow nudge, drag far/fast to fly past several photos at
- *   once. On release it snaps to the nearest photo with a smooth 400ms
- *   ease. Because every image is already mounted, there's no swap/remount
- *   moment — so no blank/white flash either.
- * - Vertical scrolling is 100% native. The gallery only ever calls
- *   preventDefault() once a touch has clearly moved more horizontally
- *   than vertically, so a finger dragging up/down always scrolls the
- *   page like anywhere else on the site — only a clearly sideways swipe
- *   drags the strip.
+ * - The main stage is a real native horizontal scroller (overflow-x-auto +
+ *   scroll-snap), not a JS-driven translateX "slide". Every image sits
+ *   side by side and the browser handles the swipe/scroll physics itself
+ *   (momentum, direction-locking against vertical page scroll, etc.),
+ *   snapping to the nearest photo automatically — the same feel as
+ *   scrolling a normal horizontal image strip, instead of a canned
+ *   right-to-left slide animation.
+ * - Vertical scrolling is 100% native. Touch-action is left at its default
+ *   so the browser itself decides, per-gesture, whether a diagonal drag
+ *   pans the page vertically or scrolls the strip horizontally.
  */
 export default function ProductGallery({ images, alt, discount }: ProductGalleryProps) {
   const valid = images.length > 0 ? images : [PLACEHOLDER];
@@ -50,102 +49,61 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
   }, [images]);
 
   const clamp = useCallback((idx: number) => (idx + valid.length) % valid.length, [valid.length]);
-  const goTo = useCallback((idx: number) => setActive((_) => clamp(idx)), [clamp]);
+
+  // `goTo` now drives the native scroller instead of a JS transform — it
+  // scrolls the stage to the target photo and lets the browser animate it,
+  // exactly like scrolling any normal horizontal strip. `active` itself is
+  // kept in sync by the onScroll handler below, so clicking a thumbnail,
+  // using arrow keys in the lightbox, etc. all funnel through one path.
+  const goTo = useCallback(
+    (idx: number) => {
+      const next = clamp(idx);
+      const el = stageRef.current;
+      if (el) {
+        el.scrollTo({ left: next * el.clientWidth, behavior: 'smooth' });
+      }
+      setActive(next);
+    },
+    [clamp]
+  );
+
+  // Keep `active` (thumbnail highlight, dots, badge, etc.) in sync while the
+  // user free-scrolls the strip by hand — no scroll-snap "jump", just a
+  // normal scroll that we read the nearest-photo index back out of.
+  const onScrollStage = () => {
+    const el = stageRef.current;
+    if (!el || el.clientWidth === 0) return;
+    const idx = Math.round(el.scrollLeft / el.clientWidth);
+    setActive((prev) => (prev === idx ? prev : clamp(idx)));
+  };
+
+  // Whenever the active image changes from outside a hand-scroll (e.g. a
+  // thumbnail click already calls goTo(), which scrolls directly — this
+  // effect only matters for the very first mount / image-set changes so
+  // the strip starts lined up with `active`).
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    el.scrollTo({ left: active * el.clientWidth, behavior: 'instant' as ScrollBehavior });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [images]);
 
   const scrollThumbCol = (dir: 1 | -1) => {
     thumbColRef.current?.scrollBy({ top: dir * 96, behavior: 'smooth' });
   };
 
-  // --- Drag-strip on the main stage ---------------------------------------
-  // `dragOffset` is a live pixel offset added on top of the resting
-  // position while a finger/mouse is down, so the strip tracks the pointer
-  // 1:1 every frame — this is what makes the slide feel "slow" when you
-  // drag slow and lets you fly past several photos when you drag far/fast.
-  //
-  // Uses the Pointer Events API (not separate touch/mouse handlers) with
-  // setPointerCapture on press. That capture is what fixes the drag
-  // "getting stuck": without it, if your finger/mouse moves outside the
-  // image box mid-swipe (very easy to do — the box isn't full-screen), the
-  // browser can stop sending move/up events to this element entirely, so
-  // the slide would freeze mid-drag with no "release" ever registering.
-  // Capturing the pointer guarantees every move/up for this gesture keeps
-  // arriving here no matter where the pointer travels.
-  const [dragOffset, setDragOffset] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const pointerRef = useRef<{
-    id: number;
-    startX: number;
-    startY: number;
-    horizontal: boolean | null;
-  } | null>(null);
-
-  const onPointerDownStage = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return; // left click only
-    pointerRef.current = { id: e.pointerId, startX: e.clientX, startY: e.clientY, horizontal: null };
-    e.currentTarget.setPointerCapture(e.pointerId);
-  };
-
-  const onPointerMoveStage = (e: React.PointerEvent<HTMLDivElement>) => {
-    // Magnifier follows the cursor whenever a mouse hovers the stage,
-    // whether or not a drag is in progress.
-    if (e.pointerType === 'mouse') {
-      const rect = stageRef.current?.getBoundingClientRect();
-      if (rect) {
-        const x = ((e.clientX - rect.left) / rect.width) * 100;
-        const y = ((e.clientY - rect.top) / rect.height) * 100;
-        setZoomPos({ x: Math.min(100, Math.max(0, x)), y: Math.min(100, Math.max(0, y)) });
-      }
-    }
-
-    const p = pointerRef.current;
-    if (!p || p.id !== e.pointerId) return;
-    const dx = e.clientX - p.startX;
-    const dy = e.clientY - p.startY;
-    if (p.horizontal === null && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
-      // Mouse drags are always treated as horizontal (there's no page
-      // scroll to protect); touch only commits once the gesture is
-      // clearly more horizontal than vertical, so a finger scrolling the
-      // page down is never hijacked.
-      p.horizontal = e.pointerType === 'mouse' ? true : Math.abs(dx) > Math.abs(dy);
-      if (p.horizontal) setIsDragging(true);
-    }
-    if (p.horizontal) {
-      e.preventDefault();
-      setDragOffset(dx);
+  // Desktop hover-zoom magnifier still tracks the cursor over the stage —
+  // this has nothing to do with sliding between photos, so it's unchanged.
+  const onMouseMoveStage = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = stageRef.current?.getBoundingClientRect();
+    if (rect) {
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      const y = ((e.clientY - rect.top) / rect.height) * 100;
+      setZoomPos({ x: Math.min(100, Math.max(0, x)), y: Math.min(100, Math.max(0, y)) });
     }
   };
-
-  const endDragStage = (e: React.PointerEvent<HTMLDivElement>) => {
-    const p = pointerRef.current;
-    if (!p || p.id !== e.pointerId) return;
-    pointerRef.current = null;
-    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    }
-    const dx = e.clientX - p.startX;
-    setIsDragging(false);
-    setDragOffset(0);
-    if (p.horizontal) {
-      const width = stageRef.current?.offsetWidth || 1;
-      // How far (in whole photos) the drag traveled — a small drag snaps
-      // right back, a drag past ~half a photo-width commits to the next
-      // one, and a big fast flick can jump straight past several photos.
-      const movedSlides = Math.round(-dx / width);
-      if (movedSlides !== 0) goTo(active + movedSlides);
-    }
-    // A plain tap/click no longer opens the zoom viewer — only the
-    // magnifier button does.
-  };
-
-  const onPointerEnterStage = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (e.pointerType === 'mouse') setZooming(true);
-  };
-  const onPointerLeaveStage = (e: React.PointerEvent<HTMLDivElement>) => {
-    setZooming(false);
-    // Note: with pointer capture in place, a drag that started here keeps
-    // receiving move/up events even after the pointer visually leaves this
-    // element, so we deliberately do NOT end the drag on leave.
-  };
+  const onMouseEnterStage = () => setZooming(true);
+  const onMouseLeaveStage = () => setZooming(false);
 
   useEffect(() => {
     if (!lightboxOpen) return;
@@ -223,30 +181,23 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
         <div className="relative flex-1">
           <div
             ref={stageRef}
-            className="group/stage relative aspect-[4/5] w-full cursor-grab overflow-hidden border border-border/60 bg-muted active:cursor-grabbing sm:rounded-xl"
-            style={{ touchAction: 'pan-y' }}
-            onPointerDown={onPointerDownStage}
-            onPointerMove={onPointerMoveStage}
-            onPointerUp={endDragStage}
-            onPointerCancel={endDragStage}
-            onPointerEnter={onPointerEnterStage}
-            onPointerLeave={onPointerLeaveStage}
+            className="group/stage no-scrollbar relative aspect-[4/5] w-full snap-x snap-mandatory overflow-x-auto overflow-y-hidden scroll-smooth border border-border/60 bg-muted sm:rounded-xl"
+            onScroll={onScrollStage}
+            onMouseMove={onMouseMoveStage}
+            onMouseEnter={onMouseEnterStage}
+            onMouseLeave={onMouseLeaveStage}
           >
-            {/* Every image sits side by side in one strip; only the transform
-                moves. Nothing swaps or remounts as you slide, so there's
-                never a blank/white flash — and the strip tracks your finger
-                in real time, whether you nudge it slowly or flick past
-                several photos at once. */}
-            <div
-              className="flex h-full"
-              style={{
-                width: `${valid.length * 100}%`,
-                transform: `translateX(calc(${-(active * 100) / valid.length}% + ${dragOffset}px))`,
-                transition: isDragging ? 'none' : 'transform 400ms cubic-bezier(0.22, 1, 0.36, 1)',
-              }}
-            >
+            {/* Every image sits side by side in one strip and the browser's
+                own native horizontal scrolling moves between them — this is
+                a real scroll (swipe momentum, scroll-snap settling on the
+                nearest photo, mouse-wheel/trackpad support) rather than a
+                JS-driven slide animation. */}
+            <div className="flex h-full">
               {valid.map((img, idx) => (
-                <div key={`${idx}-${img}`} className="relative h-full shrink-0" style={{ width: `${100 / valid.length}%` }}>
+                <div
+                  key={`${idx}-${img}`}
+                  className="relative h-full w-full shrink-0 snap-start snap-always"
+                >
                   <Image
                     src={img}
                     alt={`${alt} - image ${idx + 1}`}
@@ -257,7 +208,7 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
                     quality={80}
                     className={cn(
                       'select-none object-cover transition-opacity duration-150',
-                      idx === active && zooming && !isDragging ? 'sm:opacity-0' : 'opacity-100'
+                      idx === active && zooming ? 'sm:opacity-0' : 'opacity-100'
                     )}
                   />
                 </div>
@@ -266,9 +217,9 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
 
             {/* Desktop hover-zoom magnifier: swaps in a scaled background image
                 that tracks the cursor — the "inspect the fabric" zoom. Only
-                mounted while actually hovering (and not mid-drag), so it costs
-                nothing until the user shows intent to zoom. */}
-            {zooming && !isDragging && (
+                mounted while actually hovering, so it costs nothing until the
+                user shows intent to zoom. */}
+            {zooming && (
               <div
                 aria-hidden
                 className="pointer-events-none absolute inset-0 hidden bg-no-repeat sm:block"
