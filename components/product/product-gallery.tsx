@@ -179,40 +179,46 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
         )}
 
         <div className="relative flex-1">
-          <div
-            ref={stageRef}
-            className="group/stage no-scrollbar relative aspect-[4/5] w-full snap-x snap-mandatory overflow-x-auto overflow-y-hidden scroll-smooth border border-border/60 bg-muted sm:rounded-xl"
-            onScroll={onScrollStage}
-            onMouseMove={onMouseMoveStage}
-            onMouseEnter={onMouseEnterStage}
-            onMouseLeave={onMouseLeaveStage}
-          >
-            {/* Every image sits side by side in one strip and the browser's
-                own native horizontal scrolling moves between them — this is
-                a real scroll (swipe momentum, scroll-snap settling on the
-                nearest photo, mouse-wheel/trackpad support) rather than a
-                JS-driven slide animation. */}
-            <div className="flex h-full">
-              {valid.map((img, idx) => (
-                <div
-                  key={`${idx}-${img}`}
-                  className="relative h-full w-full shrink-0 snap-start snap-always"
-                >
-                  <Image
-                    src={img}
-                    alt={`${alt} - image ${idx + 1}`}
-                    fill
-                    priority={idx === 0}
-                    draggable={false}
-                    sizes="(max-width: 1024px) 100vw, 50vw"
-                    quality={80}
-                    className={cn(
-                      'select-none object-cover transition-opacity duration-150',
-                      idx === active && zooming ? 'sm:opacity-0' : 'opacity-100'
-                    )}
-                  />
-                </div>
-              ))}
+          <div className="group/stage relative aspect-[4/5] w-full overflow-hidden border border-border/60 bg-muted sm:rounded-xl">
+            {/* This inner div is the ONLY thing that scrolls. Badges, the
+                zoom button, the counter and the dots live outside it (as
+                siblings below) so they stay fixed on screen instead of
+                sliding off with the photo strip. */}
+            <div
+              ref={stageRef}
+              className="no-scrollbar h-full w-full snap-x snap-mandatory overflow-x-auto overflow-y-hidden scroll-smooth"
+              onScroll={onScrollStage}
+              onMouseMove={onMouseMoveStage}
+              onMouseEnter={onMouseEnterStage}
+              onMouseLeave={onMouseLeaveStage}
+            >
+              {/* Every image sits side by side in one strip and the browser's
+                  own native horizontal scrolling moves between them — this is
+                  a real scroll (swipe momentum, scroll-snap settling on the
+                  nearest photo, mouse-wheel/trackpad support) rather than a
+                  JS-driven slide animation. */}
+              <div className="flex h-full">
+                {valid.map((img, idx) => (
+                  <div
+                    key={`${idx}-${img}`}
+                    className="relative h-full w-full shrink-0 snap-start snap-always"
+                  >
+                    <Image
+                      src={img}
+                      alt={`${alt} - image ${idx + 1}`}
+                      fill
+                      priority={idx === 0}
+                      draggable={false}
+                      sizes="(max-width: 1024px) 100vw, 50vw"
+                      quality={80}
+                      className={cn(
+                        'select-none object-cover transition-opacity duration-150',
+                        idx === active && zooming ? 'sm:opacity-0' : 'opacity-100'
+                      )}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Desktop hover-zoom magnifier: swaps in a scaled background image
