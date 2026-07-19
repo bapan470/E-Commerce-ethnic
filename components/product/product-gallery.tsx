@@ -91,11 +91,17 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
       if (dx <= -SWIPE_THRESHOLD) goTo(active + 1);
       else if (dx >= SWIPE_THRESHOLD) goTo(active - 1);
     } else if (Math.abs(dx) < TAP_THRESHOLD) {
-      // Plain tap on the image no longer opens zoom on mobile — only the
-      // magnifier icon button does. Stop the browser's synthetic "click"
-      // (which fires after touchend) so it doesn't fall through to the
-      // desktop click-to-zoom handler below.
-      e.preventDefault();
+      const target = e.target as HTMLElement;
+      const hitButton = target?.closest('button');
+      if (!hitButton) {
+        // Plain tap on the image (not on a button) no longer opens zoom on
+        // mobile — only the magnifier icon button does. Stop the browser's
+        // synthetic "click" (which fires after touchend) so it doesn't fall
+        // through to the desktop click-to-zoom handler below.
+        e.preventDefault();
+      }
+      // If the tap landed on a button (magnifier, prev/next arrows), let the
+      // synthetic click through so that button's onClick actually fires.
     }
   };
 
