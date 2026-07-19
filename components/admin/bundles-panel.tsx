@@ -82,6 +82,9 @@ export default function BundlesPanel() {
           Together" on its page. If you don't curate anything here, the storefront automatically
           falls back to real co-purchase data from past orders.
         </p>
+        <p className="text-xs text-muted-foreground">
+          To turn this feature on/off site-wide, go to Admin &gt; Marketing &gt; Growth Tools.
+        </p>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="max-w-md">

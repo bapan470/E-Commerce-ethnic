@@ -731,6 +731,22 @@ function GrowthTab() {
       <section className="space-y-3 border-t border-border pt-6">
         <div className="flex items-center justify-between">
           <div>
+            <p className="font-medium">Frequently Bought Together</p>
+            <p className="text-sm text-muted-foreground">
+              Shows bundle suggestions on product pages. Pairs are curated under Admin &gt;
+              Marketing &gt; Bundles, or auto-computed from past orders.
+            </p>
+          </div>
+          <Switch
+            checked={settings.bundles_enabled}
+            onCheckedChange={(v) => setSettings({ ...settings, bundles_enabled: v })}
+          />
+        </div>
+      </section>
+
+      <section className="space-y-3 border-t border-border pt-6">
+        <div className="flex items-center justify-between">
+          <div>
             <p className="font-medium">Sale countdown bar</p>
             <p className="text-sm text-muted-foreground">Ticking countdown until a set end time.</p>
           </div>

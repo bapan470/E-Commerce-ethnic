@@ -23,6 +23,8 @@ export interface GrowthSettings {
 
   social_proof_enabled: boolean;
 
+  bundles_enabled: boolean;
+
   sale_countdown_enabled: boolean;
   sale_countdown_text: string;
   sale_countdown_end_at: string | null; // ISO timestamp
@@ -38,6 +40,7 @@ export const DEFAULT_GROWTH_SETTINGS: GrowthSettings = {
   exit_intent_message: "Here's 10% off your first order, just for you.",
   exit_intent_coupon_code: 'WELCOME10',
   social_proof_enabled: false,
+  bundles_enabled: true,
   sale_countdown_enabled: false,
   sale_countdown_text: 'Festive Sale ends in',
   sale_countdown_end_at: null,

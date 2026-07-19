@@ -8,13 +8,21 @@ import { Product } from '@/lib/types';
 import { formatINR } from '@/lib/format';
 import { useCart } from '@/lib/cart-context';
 import { fetchProductBundle } from '@/lib/bundles-api';
+import { fetchGrowthSettings } from '@/lib/growth-api';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
 export default function FrequentlyBoughtTogether({ productId }: { productId: string }) {
   const [items, setItems] = useState<Product[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [enabled, setEnabled] = useState(true);
   const { addItem } = useCart();
+
+  useEffect(() => {
+    fetchGrowthSettings()
+      .then((s) => setEnabled(s.bundles_enabled))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -30,7 +38,7 @@ export default function FrequentlyBoughtTogether({ productId }: { productId: str
     };
   }, [productId]);
 
-  if (items.length === 0) return null;
+  if (!enabled || items.length === 0) return null;
 
   const toggle = (id: string) => {
     setSelected((prev) => {
