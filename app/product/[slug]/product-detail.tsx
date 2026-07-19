@@ -41,7 +41,7 @@ import { toast } from 'sonner';
 export default function ProductDetail() {
   const params = useParams<{ slug: string }>();
   const { getBySlug, products, loading } = useProducts();
-  const { addItem } = useCart();
+  const { addItem, subtotal: cartSubtotal, applyCoupon: applyCartCoupon } = useCart();
   const { user } = useAuth();
 
   const fromContext = useMemo(
@@ -57,6 +57,10 @@ export default function ProductDetail() {
   const [activeTab, setActiveTab] = useState('description');
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [couponDiscount, setCouponDiscount] = useState(0);
+  // Code the shopper applied here on the product page, waiting to be synced
+  // into the shared cart coupon (lib/cart-context.tsx) once Add to Cart is
+  // clicked and the item — and therefore the real cart subtotal — exists.
+  const [pendingCouponCode, setPendingCouponCode] = useState<string | null>(null);
 
   // The URL slug might belong either to a base product or to one of its
   // colour variants (independent SEO pages). Try the product table first;
@@ -147,6 +151,22 @@ export default function ProductDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseProduct?.id]);
 
+  // Once an item has been added to the cart with a coupon previewed on this
+  // page, sync that coupon into the shared cart (lib/cart-context.tsx) so it
+  // actually applies and shows up in the cart drawer, cart page & checkout.
+  // Waiting on cartSubtotal ensures we validate against the subtotal that
+  // already includes the item just added.
+  useEffect(() => {
+    if (!pendingCouponCode) return;
+    applyCartCoupon(pendingCouponCode).then((result) => {
+      if (!result.ok) {
+        toast.error(result.error || 'Could not apply this coupon to your order');
+      }
+      setPendingCouponCode(null);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingCouponCode, cartSubtotal]);
+
   if (isLoading && !product) {
     return (
       <div className="container-boutique py-8">
@@ -192,6 +212,13 @@ export default function ProductDetail() {
       return;
     }
     addItem(product, selectedSize, quantity);
+    if (appliedCoupon) {
+      // Carry the coupon previewed on this page into the real cart so it
+      // shows up (and actually applies) in the cart drawer, cart page and
+      // checkout too — see effect above, which fires once the cart
+      // subtotal reflects this item.
+      setPendingCouponCode(appliedCoupon.code);
+    }
     trackEvent('add_to_cart', {
       productId: product.id,
       userId: user?.id ?? null,
