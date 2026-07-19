@@ -31,12 +31,17 @@ import RecentlyViewedSection from '@/components/product/recently-viewed';
 import NotifyMeForm from '@/components/product/notify-me-form';
 import LowStockBadge from '@/components/growth/low-stock-badge';
 import CouponList from '@/components/product/coupon-list';
-import { Coupon } from '@/lib/coupons-api';
+import { Coupon, validateCoupon } from '@/lib/coupons-api';
 import FrequentlyBoughtTogether from '@/components/product/frequently-bought-together';
 import { addRecentlyViewed } from '@/lib/recently-viewed';
 import { trackEvent } from '@/lib/track-api';
 import { useAuth } from '@/lib/auth-context';
 import { toast } from 'sonner';
+
+// Coupon "preview" applied on a product page before Add to Cart. Persisted
+// so it survives a page reload, or a trip to another product and back —
+// mirrors how the real cart coupon is persisted in lib/cart-context.tsx.
+const PRODUCT_COUPON_PREVIEW_KEY = 'saaj-product-coupon-preview-v1';
 
 export default function ProductDetail() {
   const params = useParams<{ slug: string }>();
@@ -57,6 +62,7 @@ export default function ProductDetail() {
   const [activeTab, setActiveTab] = useState('description');
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [couponDiscount, setCouponDiscount] = useState(0);
+  const [couponHydrated, setCouponHydrated] = useState(false);
   // Code the shopper applied here on the product page, waiting to be synced
   // into the shared cart coupon (lib/cart-context.tsx) once Add to Cart is
   // clicked and the item — and therefore the real cart subtotal — exists.
@@ -135,10 +141,67 @@ export default function ProductDetail() {
     if (product) setSelectedSize(product.sizes[0] ?? null);
   }, [product]);
 
+  // Restore a previously-applied coupon preview for this product (or the
+  // current colour variant's price) whenever the product changes — this
+  // fires on first load too, so a reload restores it, and it re-runs when
+  // navigating to another product and back. We reset to "no coupon" first
+  // so a moment mid-navigation never shows the PREVIOUS product's coupon
+  // on the new one, then re-validate the stored code (min order value,
+  // expiry, active status) against this product's actual price before
+  // showing it as applied again.
   useEffect(() => {
+    if (!product) return;
+    let cancelled = false;
     setAppliedCoupon(null);
     setCouponDiscount(0);
+    setCouponHydrated(false);
+
+    let storedCode: string | null = null;
+    try {
+      storedCode = localStorage.getItem(PRODUCT_COUPON_PREVIEW_KEY);
+    } catch {
+      storedCode = null;
+    }
+    if (!storedCode) {
+      setCouponHydrated(true);
+      return;
+    }
+    validateCoupon(storedCode, product.price)
+      .then((result) => {
+        if (cancelled) return;
+        if (result.ok && result.coupon) {
+          setAppliedCoupon(result.coupon);
+          setCouponDiscount(result.discount || 0);
+        }
+        // If it's no longer valid for this product (e.g. below min order
+        // value), we simply leave it un-applied; the persist effect below
+        // clears the stale code from storage once couponHydrated flips.
+      })
+      .finally(() => {
+        if (!cancelled) setCouponHydrated(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [product?.id, product?.price]);
+
+  // Keep localStorage in sync with the current preview coupon so it can be
+  // restored later. Gated on couponHydrated so this never fires with the
+  // initial `null` before the restore effect above has had a chance to run
+  // — otherwise it would wipe a just-read stored code before it's used.
+  useEffect(() => {
+    if (!couponHydrated) return;
+    try {
+      if (appliedCoupon) {
+        localStorage.setItem(PRODUCT_COUPON_PREVIEW_KEY, appliedCoupon.code);
+      } else {
+        localStorage.removeItem(PRODUCT_COUPON_PREVIEW_KEY);
+      }
+    } catch {
+      // ignore
+    }
+  }, [appliedCoupon, couponHydrated]);
 
   useEffect(() => {
     if (baseProduct) addRecentlyViewed(baseProduct.id);
@@ -224,6 +287,7 @@ export default function ProductDetail() {
       userId: user?.id ?? null,
       metadata: { size: selectedSize, quantity, color: product.colors?.[0] ?? null },
     });
+    toast.success(`${product.name} added to cart`);
   };
 
   return (
