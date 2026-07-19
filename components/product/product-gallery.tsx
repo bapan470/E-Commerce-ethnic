@@ -13,7 +13,6 @@ interface ProductGalleryProps {
 }
 
 const PLACEHOLDER = 'https://placehold.co/800x1000?text=No+Image';
-const TAP_THRESHOLD = 8; // px of total movement still counted as a "tap"
 
 /**
  * Product image gallery — main stage + thumbnail rail + full-screen zoom.
@@ -62,90 +61,90 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
   // position while a finger/mouse is down, so the strip tracks the pointer
   // 1:1 every frame — this is what makes the slide feel "slow" when you
   // drag slow and lets you fly past several photos when you drag far/fast.
+  //
+  // Uses the Pointer Events API (not separate touch/mouse handlers) with
+  // setPointerCapture on press. That capture is what fixes the drag
+  // "getting stuck": without it, if your finger/mouse moves outside the
+  // image box mid-swipe (very easy to do — the box isn't full-screen), the
+  // browser can stop sending move/up events to this element entirely, so
+  // the slide would freeze mid-drag with no "release" ever registering.
+  // Capturing the pointer guarantees every move/up for this gesture keeps
+  // arriving here no matter where the pointer travels.
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
-  const touchRef = useRef<{ startX: number; startY: number; horizontal: boolean | null } | null>(null);
+  const pointerRef = useRef<{
+    id: number;
+    startX: number;
+    startY: number;
+    horizontal: boolean | null;
+  } | null>(null);
 
-  const onTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    touchRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, horizontal: null };
+  const onPointerDownStage = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return; // left click only
+    pointerRef.current = { id: e.pointerId, startX: e.clientX, startY: e.clientY, horizontal: null };
+    e.currentTarget.setPointerCapture(e.pointerId);
   };
 
-  const onTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    const t = touchRef.current;
-    if (!t) return;
-    const dx = e.touches[0].clientX - t.startX;
-    const dy = e.touches[0].clientY - t.startY;
-    if (t.horizontal === null && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
-      t.horizontal = Math.abs(dx) > Math.abs(dy);
-      if (t.horizontal) setIsDragging(true);
+  const onPointerMoveStage = (e: React.PointerEvent<HTMLDivElement>) => {
+    // Magnifier follows the cursor whenever a mouse hovers the stage,
+    // whether or not a drag is in progress.
+    if (e.pointerType === 'mouse') {
+      const rect = stageRef.current?.getBoundingClientRect();
+      if (rect) {
+        const x = ((e.clientX - rect.left) / rect.width) * 100;
+        const y = ((e.clientY - rect.top) / rect.height) * 100;
+        setZoomPos({ x: Math.min(100, Math.max(0, x)), y: Math.min(100, Math.max(0, y)) });
+      }
     }
-    if (t.horizontal) {
-      // Only prevent default once we know it's a horizontal swipe, so the
-      // page never loses its native vertical scroll for this touch.
+
+    const p = pointerRef.current;
+    if (!p || p.id !== e.pointerId) return;
+    const dx = e.clientX - p.startX;
+    const dy = e.clientY - p.startY;
+    if (p.horizontal === null && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+      // Mouse drags are always treated as horizontal (there's no page
+      // scroll to protect); touch only commits once the gesture is
+      // clearly more horizontal than vertical, so a finger scrolling the
+      // page down is never hijacked.
+      p.horizontal = e.pointerType === 'mouse' ? true : Math.abs(dx) > Math.abs(dy);
+      if (p.horizontal) setIsDragging(true);
+    }
+    if (p.horizontal) {
       e.preventDefault();
       setDragOffset(dx);
     }
   };
 
-  const onTouchEnd = (e: React.TouchEvent<HTMLDivElement>) => {
-    const t = touchRef.current;
-    touchRef.current = null;
-    if (!t) return;
-    const dx = e.changedTouches[0].clientX - t.startX;
-    if (t.horizontal) {
-      setIsDragging(false);
+  const endDragStage = (e: React.PointerEvent<HTMLDivElement>) => {
+    const p = pointerRef.current;
+    if (!p || p.id !== e.pointerId) return;
+    pointerRef.current = null;
+    if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    const dx = e.clientX - p.startX;
+    setIsDragging(false);
+    setDragOffset(0);
+    if (p.horizontal) {
       const width = stageRef.current?.offsetWidth || 1;
       // How far (in whole photos) the drag traveled — a small drag snaps
       // right back, a drag past ~half a photo-width commits to the next
       // one, and a big fast flick can jump straight past several photos.
       const movedSlides = Math.round(-dx / width);
-      setDragOffset(0);
       if (movedSlides !== 0) goTo(active + movedSlides);
-    } else {
-      setDragOffset(0);
-      // A plain tap no longer opens the zoom viewer — only the magnifier
-      // button does. (A tiny tap-vs-drag threshold is still used above to
-      // decide whether this was a drag at all.)
     }
+    // A plain tap/click no longer opens the zoom viewer — only the
+    // magnifier button does.
   };
 
-  // Desktop: click-and-drag with the mouse works the same way as touch.
-  const mouseDownPos = useRef<{ x: number; y: number } | null>(null);
-  const onMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    mouseDownPos.current = { x: e.clientX, y: e.clientY };
-    setIsDragging(true);
+  const onPointerEnterStage = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse') setZooming(true);
   };
-  const onMouseMoveStage = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Magnifier follows the cursor whenever the mouse is over the stage,
-    // whether or not a drag is in progress.
-    const rect = stageRef.current?.getBoundingClientRect();
-    if (rect) {
-      const x = ((e.clientX - rect.left) / rect.width) * 100;
-      const y = ((e.clientY - rect.top) / rect.height) * 100;
-      setZoomPos({ x: Math.min(100, Math.max(0, x)), y: Math.min(100, Math.max(0, y)) });
-    }
-    if (!mouseDownPos.current) return;
-    setDragOffset(e.clientX - mouseDownPos.current.x);
-  };
-  const onMouseEnterStage = () => setZooming(true);
-  const onMouseLeaveStage = (e: React.MouseEvent<HTMLDivElement>) => {
+  const onPointerLeaveStage = (e: React.PointerEvent<HTMLDivElement>) => {
     setZooming(false);
-    if (mouseDownPos.current) endMouseDrag(e);
-  };
-  const endMouseDrag = (e: React.MouseEvent<HTMLDivElement>) => {
-    const start = mouseDownPos.current;
-    mouseDownPos.current = null;
-    setIsDragging(false);
-    if (!start) return;
-    const dx = e.clientX - start.x;
-    const width = stageRef.current?.offsetWidth || 1;
-    setDragOffset(0);
-    if (Math.abs(dx) >= TAP_THRESHOLD) {
-      const movedSlides = Math.round(-dx / width);
-      if (movedSlides !== 0) goTo(active + movedSlides);
-    }
-    // A plain click no longer opens the zoom viewer — only the magnifier
-    // button does.
+    // Note: with pointer capture in place, a drag that started here keeps
+    // receiving move/up events even after the pointer visually leaves this
+    // element, so we deliberately do NOT end the drag on leave.
   };
 
   useEffect(() => {
@@ -226,14 +225,12 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
             ref={stageRef}
             className="group/stage relative aspect-[4/5] w-full cursor-grab overflow-hidden border border-border/60 bg-muted active:cursor-grabbing sm:rounded-xl"
             style={{ touchAction: 'pan-y' }}
-            onTouchStart={onTouchStart}
-            onTouchMove={onTouchMove}
-            onTouchEnd={onTouchEnd}
-            onMouseDown={onMouseDown}
-            onMouseMove={onMouseMoveStage}
-            onMouseUp={endMouseDrag}
-            onMouseEnter={onMouseEnterStage}
-            onMouseLeave={onMouseLeaveStage}
+            onPointerDown={onPointerDownStage}
+            onPointerMove={onPointerMoveStage}
+            onPointerUp={endDragStage}
+            onPointerCancel={endDragStage}
+            onPointerEnter={onPointerEnterStage}
+            onPointerLeave={onPointerLeaveStage}
           >
             {/* Every image sits side by side in one strip; only the transform
                 moves. Nothing swaps or remounts as you slide, so there's
@@ -302,7 +299,7 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
                 e.stopPropagation();
                 setLightboxOpen(true);
               }}
-              className="absolute bottom-3 right-3 flex items-center gap-1 rounded-full bg-background/90 px-2.5 py-1.5 text-[11px] font-medium text-foreground shadow-md hover:bg-background sm:opacity-0 sm:transition-opacity sm:duration-150 sm:group-hover/stage:opacity-100"
+              className="absolute right-3 top-12 flex items-center gap-1 rounded-full bg-background/90 px-2.5 py-1.5 text-[11px] font-medium text-foreground shadow-md hover:bg-background sm:top-3 sm:opacity-0 sm:transition-opacity sm:duration-150 sm:group-hover/stage:opacity-100"
             >
               <ZoomIn className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Click to zoom</span>
             </button>
