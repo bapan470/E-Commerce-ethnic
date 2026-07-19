@@ -177,3 +177,49 @@ export function cartRecoveryEmail(cart: { items: any[]; cart_value: number }) {
   `);
   return { subject, html };
 }
+
+export function welcomeSeriesEmail(user: { full_name?: string; coupon_code?: string }) {
+  const subject = `Welcome to ${SITE_NAME}${user.coupon_code ? " — here's 10% off" : ''}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Welcome${user.full_name ? `, ${user.full_name}` : ''}!</h2>
+    <p>Thanks for joining ${SITE_NAME}. We're glad to have you — explore handpicked sarees, lehengas and ethnic wear from master weavers across India.</p>
+    ${
+      user.coupon_code
+        ? `<div style="margin:20px 0; padding:16px; background:#fff; border:1px dashed ${BRAND_COLOR}; text-align:center; border-radius:8px;">
+            <p style="margin:0 0 4px; font-size:12px; letter-spacing:0.1em; text-transform:uppercase; color:#9a8f87;">Your welcome coupon</p>
+            <p style="margin:0; font-size:22px; font-weight:bold; letter-spacing:0.05em; color:${BRAND_COLOR};">${user.coupon_code}</p>
+          </div>
+          <p>Use this code at checkout for a discount on your first order.</p>`
+        : ''
+    }
+    <p style="text-align:center; margin-top: 20px;">
+      <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/shop" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+        Start shopping
+      </a>
+    </p>
+  `);
+  return { subject, html };
+}
+
+export function winbackEmail(user: { full_name?: string; coupon_code?: string }) {
+  const subject = `We miss you${user.coupon_code ? ' — here\'s something special' : ''} — ${SITE_NAME}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">It's been a while, ${user.full_name || 'there'}!</h2>
+    <p>We haven't seen you in a bit and wanted to say we'd love to have you back at ${SITE_NAME}.</p>
+    ${
+      user.coupon_code
+        ? `<div style="margin:20px 0; padding:16px; background:#fff; border:1px dashed ${BRAND_COLOR}; text-align:center; border-radius:8px;">
+            <p style="margin:0 0 4px; font-size:12px; letter-spacing:0.1em; text-transform:uppercase; color:#9a8f87;">A little something for you</p>
+            <p style="margin:0; font-size:22px; font-weight:bold; letter-spacing:0.05em; color:${BRAND_COLOR};">${user.coupon_code}</p>
+          </div>
+          <p>Use this code at checkout for a discount on your next order.</p>`
+        : ''
+    }
+    <p style="text-align:center; margin-top: 20px;">
+      <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/shop" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+        Shop new arrivals
+      </a>
+    </p>
+  `);
+  return { subject, html };
+}
