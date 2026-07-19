@@ -306,7 +306,11 @@ function ShopContent() {
                   )}
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-80 overflow-y-auto bg-background">
+              <SheetContent
+                side="left"
+                className="w-80 overflow-y-auto bg-background"
+                onOpenAutoFocus={(e) => e.preventDefault()}
+              >
                 <SheetHeader>
                   <SheetTitle className="font-serif text-primary">Filters</SheetTitle>
                   <SheetDescription className="sr-only">Filter products</SheetDescription>
