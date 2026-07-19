@@ -91,7 +91,11 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
       if (dx <= -SWIPE_THRESHOLD) goTo(active + 1);
       else if (dx >= SWIPE_THRESHOLD) goTo(active - 1);
     } else if (Math.abs(dx) < TAP_THRESHOLD) {
-      setLightboxOpen(true);
+      // Plain tap on the image no longer opens zoom on mobile — only the
+      // magnifier icon button does. Stop the browser's synthetic "click"
+      // (which fires after touchend) so it doesn't fall through to the
+      // desktop click-to-zoom handler below.
+      e.preventDefault();
     }
   };
 
@@ -252,7 +256,10 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
                 e.stopPropagation();
                 setLightboxOpen(true);
               }}
-              className="absolute bottom-3 right-3 flex h-9 w-9 items-center justify-center rounded-full bg-background/90 text-foreground shadow-md ring-1 ring-border/60 transition-transform hover:scale-110 hover:bg-background sm:h-10 sm:w-10"
+              className={cn(
+                'absolute right-3 flex h-9 w-9 items-center justify-center rounded-full bg-background/90 text-foreground shadow-md ring-1 ring-border/60 transition-transform hover:scale-110 hover:bg-background sm:h-10 sm:w-10 sm:bottom-3 sm:top-auto',
+                valid.length > 1 ? 'top-12' : 'top-3'
+              )}
             >
               <ZoomIn className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
