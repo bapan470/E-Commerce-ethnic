@@ -13,7 +13,6 @@ interface ProductGalleryProps {
 }
 
 const PLACEHOLDER = 'https://placehold.co/800x1000?text=No+Image';
-const SWIPE_THRESHOLD = 40; // px of horizontal drag needed to change image
 const TAP_THRESHOLD = 8; // px of total movement still counted as a "tap"
 
 /**
@@ -23,15 +22,17 @@ const TAP_THRESHOLD = 8; // px of total movement still counted as a "tap"
  * - No carousel library (Swiper etc.) — those ship as ESM-only packages
  *   that Next 13's default webpack config won't transpile, which is what
  *   silently broke the main image before (blank box, no visible error).
- * - The next image loads quietly underneath the current one (0% opacity)
- *   and only fades in once fully decoded, over a slow 700ms crossfade —
- *   so the old photo is always on screen until the new one is ready.
- *   No blank/white flash, and only ever two images mounted at once.
+ * - The main stage is a real drag-strip: every image sits side by side and
+ *   the whole strip translates with the finger in real time — drag a
+ *   little for a slow nudge, drag far/fast to fly past several photos at
+ *   once. On release it snaps to the nearest photo with a smooth 400ms
+ *   ease. Because every image is already mounted, there's no swap/remount
+ *   moment — so no blank/white flash either.
  * - Vertical scrolling is 100% native. The gallery only ever calls
  *   preventDefault() once a touch has clearly moved more horizontally
  *   than vertically, so a finger dragging up/down always scrolls the
  *   page like anywhere else on the site — only a clearly sideways swipe
- *   changes the photo.
+ *   drags the strip.
  */
 export default function ProductGallery({ images, alt, discount }: ProductGalleryProps) {
   const valid = images.length > 0 ? images : [PLACEHOLDER];
@@ -39,41 +40,12 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
   const [active, setActive] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
-  // Crossfade state: `displayed` is the image currently fully visible.
-  // `incoming` is the next image, quietly loading underneath a 0-opacity
-  // layer; only once it has fully decoded do we fade it in — the old image
-  // never disappears before the new one is ready, so there's no white flash.
-  const [displayed, setDisplayed] = useState(0);
-  const [incoming, setIncoming] = useState<number | null>(null);
-  const [incomingLoaded, setIncomingLoaded] = useState(false);
-  const promoteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const TRANSITION_MS = 700; // slow, deliberate crossfade
-
-  useEffect(() => {
-    if (active === displayed) return;
-    if (promoteTimer.current) clearTimeout(promoteTimer.current);
-    setIncoming(active);
-    setIncomingLoaded(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active]);
-
-  const handleIncomingLoad = () => {
-    setIncomingLoaded(true);
-    promoteTimer.current = setTimeout(() => {
-      setDisplayed((d) => incoming ?? d);
-      setIncoming(null);
-    }, TRANSITION_MS);
-  };
-
-  useEffect(() => () => { if (promoteTimer.current) clearTimeout(promoteTimer.current); }, []);
-
   const thumbColRef = useRef<HTMLDivElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
 
   // Reset to the first image whenever the image set changes (e.g. colour swap).
   useEffect(() => {
     setActive(0);
-    setDisplayed(0);
-    setIncoming(null);
   }, [images]);
 
   const clamp = useCallback((idx: number) => (idx + valid.length) % valid.length, [valid.length]);
@@ -83,13 +55,13 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
     thumbColRef.current?.scrollBy({ top: dir * 96, behavior: 'smooth' });
   };
 
-  // --- Swipe / tap on the main stage --------------------------------------
-  // touch-action: pan-y on the wrapper tells the browser "vertical page
-  // scroll is always native and yours" up front, so a vertical drag never
-  // gets intercepted even for a single frame. We only decide, on the first
-  // touchmove, whether THIS particular gesture is horizontal enough to
-  // treat as a swipe; if it isn't, we do nothing and the browser scrolls
-  // the page exactly as if the gallery weren't there.
+  // --- Drag-strip on the main stage ---------------------------------------
+  // `dragOffset` is a live pixel offset added on top of the resting
+  // position while a finger/mouse is down, so the strip tracks the pointer
+  // 1:1 every frame — this is what makes the slide feel "slow" when you
+  // drag slow and lets you fly past several photos when you drag far/fast.
+  const [dragOffset, setDragOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
   const touchRef = useRef<{ startX: number; startY: number; horizontal: boolean | null } | null>(null);
 
   const onTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
@@ -103,11 +75,13 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
     const dy = e.touches[0].clientY - t.startY;
     if (t.horizontal === null && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
       t.horizontal = Math.abs(dx) > Math.abs(dy);
+      if (t.horizontal) setIsDragging(true);
     }
     if (t.horizontal) {
       // Only prevent default once we know it's a horizontal swipe, so the
       // page never loses its native vertical scroll for this touch.
       e.preventDefault();
+      setDragOffset(dx);
     }
   };
 
@@ -117,22 +91,44 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
     if (!t) return;
     const dx = e.changedTouches[0].clientX - t.startX;
     if (t.horizontal) {
-      if (dx <= -SWIPE_THRESHOLD) goTo(active + 1);
-      else if (dx >= SWIPE_THRESHOLD) goTo(active - 1);
-    } else if (Math.abs(dx) < TAP_THRESHOLD) {
-      setLightboxOpen(true);
+      setIsDragging(false);
+      const width = stageRef.current?.offsetWidth || 1;
+      // How far (in whole photos) the drag traveled — a small drag snaps
+      // right back, a drag past ~half a photo-width commits to the next
+      // one, and a big fast flick can jump straight past several photos.
+      const movedSlides = Math.round(-dx / width);
+      setDragOffset(0);
+      if (movedSlides !== 0) goTo(active + movedSlides);
+    } else {
+      setDragOffset(0);
+      if (Math.abs(dx) < TAP_THRESHOLD) setLightboxOpen(true);
     }
   };
 
-  // Desktop: a plain click (no drag) opens the zoom view.
-  const mouseDownPos = useRef({ x: 0, y: 0 });
+  // Desktop: click-and-drag with the mouse works the same way as touch.
+  const mouseDownPos = useRef<{ x: number; y: number } | null>(null);
   const onMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     mouseDownPos.current = { x: e.clientX, y: e.clientY };
+    setIsDragging(true);
   };
-  const onClickStage = (e: React.MouseEvent<HTMLDivElement>) => {
-    const dx = e.clientX - mouseDownPos.current.x;
-    const dy = e.clientY - mouseDownPos.current.y;
-    if (Math.hypot(dx, dy) < TAP_THRESHOLD) setLightboxOpen(true);
+  const onMouseMoveStage = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!mouseDownPos.current) return;
+    setDragOffset(e.clientX - mouseDownPos.current.x);
+  };
+  const endMouseDrag = (e: React.MouseEvent<HTMLDivElement>) => {
+    const start = mouseDownPos.current;
+    mouseDownPos.current = null;
+    setIsDragging(false);
+    if (!start) return;
+    const dx = e.clientX - start.x;
+    const width = stageRef.current?.offsetWidth || 1;
+    setDragOffset(0);
+    if (Math.abs(dx) < TAP_THRESHOLD) {
+      setLightboxOpen(true);
+    } else {
+      const movedSlides = Math.round(-dx / width);
+      if (movedSlides !== 0) goTo(active + movedSlides);
+    }
   };
 
   useEffect(() => {
@@ -210,46 +206,47 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
 
         <div className="relative flex-1">
           <div
-            className="group/stage relative aspect-[4/5] w-full cursor-zoom-in overflow-hidden border border-border/60 bg-muted sm:rounded-xl"
+            ref={stageRef}
+            className="group/stage relative aspect-[4/5] w-full cursor-grab overflow-hidden border border-border/60 bg-muted active:cursor-grabbing sm:rounded-xl"
             style={{ touchAction: 'pan-y' }}
             onTouchStart={onTouchStart}
             onTouchMove={onTouchMove}
             onTouchEnd={onTouchEnd}
             onMouseDown={onMouseDown}
-            onClick={onClickStage}
+            onMouseMove={onMouseMoveStage}
+            onMouseUp={endMouseDrag}
+            onMouseLeave={(e) => {
+              if (mouseDownPos.current) endMouseDrag(e);
+            }}
           >
-            {/* Base layer: the currently fully-shown image. Always visible,
-                so the stage is never blank while a new image loads. */}
-            <Image
-              key={`base-${displayed}`}
-              src={valid[displayed]}
-              alt={`${alt} - image ${displayed + 1}`}
-              fill
-              priority={displayed === 0}
-              draggable={false}
-              sizes="(max-width: 1024px) 100vw, 50vw"
-              quality={80}
-              className="select-none object-cover"
-            />
-            {/* Incoming layer: loads quietly at opacity 0, then fades in
-                slowly once fully decoded — that's the whole crossfade. */}
-            {incoming !== null && (
-              <Image
-                key={`incoming-${incoming}`}
-                src={valid[incoming]}
-                alt={`${alt} - image ${incoming + 1}`}
-                fill
-                draggable={false}
-                sizes="(max-width: 1024px) 100vw, 50vw"
-                quality={80}
-                onLoad={handleIncomingLoad}
-                className={cn(
-                  'absolute inset-0 select-none object-cover transition-opacity ease-in-out',
-                  incomingLoaded ? 'opacity-100' : 'opacity-0'
-                )}
-                style={{ transitionDuration: `${TRANSITION_MS}ms` }}
-              />
-            )}
+            {/* Every image sits side by side in one strip; only the transform
+                moves. Nothing swaps or remounts as you slide, so there's
+                never a blank/white flash — and the strip tracks your finger
+                in real time, whether you nudge it slowly or flick past
+                several photos at once. */}
+            <div
+              className="flex h-full"
+              style={{
+                width: `${valid.length * 100}%`,
+                transform: `translateX(calc(${-(active * 100) / valid.length}% + ${dragOffset}px))`,
+                transition: isDragging ? 'none' : 'transform 400ms cubic-bezier(0.22, 1, 0.36, 1)',
+              }}
+            >
+              {valid.map((img, idx) => (
+                <div key={`${idx}-${img}`} className="relative h-full shrink-0" style={{ width: `${100 / valid.length}%` }}>
+                  <Image
+                    src={img}
+                    alt={`${alt} - image ${idx + 1}`}
+                    fill
+                    priority={idx === 0}
+                    draggable={false}
+                    sizes="(max-width: 1024px) 100vw, 50vw"
+                    quality={80}
+                    className="select-none object-cover"
+                  />
+                </div>
+              ))}
+            </div>
 
             {/* Prev/next arrows */}
             {valid.length > 1 && (
