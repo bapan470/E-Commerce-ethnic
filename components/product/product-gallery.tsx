@@ -14,6 +14,7 @@ interface ProductGalleryProps {
 
 const PLACEHOLDER = 'https://placehold.co/800x1000?text=No+Image';
 const SWIPE_THRESHOLD = 40; // px of horizontal drag needed to change image
+const TAP_THRESHOLD = 8; // px of total movement still counted as a "tap"
 
 /**
  * Product image gallery — main stage + thumbnail rail + full-screen zoom.
@@ -22,11 +23,10 @@ const SWIPE_THRESHOLD = 40; // px of horizontal drag needed to change image
  * - No carousel library (Swiper etc.) — those ship as ESM-only packages
  *   that Next 13's default webpack config won't transpile, which is what
  *   silently broke the main image before (blank box, no visible error).
- * - Only ONE image is mounted in the main stage at a time — nothing pre-
- *   loads in the background, so there's nothing competing for bandwidth
- *   with the photo the person is actually looking at.
- * - No blur placeholder, no fade/opacity transitions, no hover magnifier
- *   layer — the image just appears the moment it's decoded.
+ * - The next image loads quietly underneath the current one (0% opacity)
+ *   and only fades in once fully decoded, over a slow 700ms crossfade —
+ *   so the old photo is always on screen until the new one is ready.
+ *   No blank/white flash, and only ever two images mounted at once.
  * - Vertical scrolling is 100% native. The gallery only ever calls
  *   preventDefault() once a touch has clearly moved more horizontally
  *   than vertically, so a finger dragging up/down always scrolls the
@@ -39,41 +39,61 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
   const [active, setActive] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
+  // Crossfade state: `displayed` is the image currently fully visible.
+  // `incoming` is the next image, quietly loading underneath a 0-opacity
+  // layer; only once it has fully decoded do we fade it in — the old image
+  // never disappears before the new one is ready, so there's no white flash.
+  const [displayed, setDisplayed] = useState(0);
+  const [incoming, setIncoming] = useState<number | null>(null);
+  const [incomingLoaded, setIncomingLoaded] = useState(false);
+  const promoteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const TRANSITION_MS = 700; // slow, deliberate crossfade
+
+  useEffect(() => {
+    if (active === displayed) return;
+    if (promoteTimer.current) clearTimeout(promoteTimer.current);
+    setIncoming(active);
+    setIncomingLoaded(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
+
+  const handleIncomingLoad = () => {
+    setIncomingLoaded(true);
+    promoteTimer.current = setTimeout(() => {
+      setDisplayed((d) => incoming ?? d);
+      setIncoming(null);
+    }, TRANSITION_MS);
+  };
+
+  useEffect(() => () => { if (promoteTimer.current) clearTimeout(promoteTimer.current); }, []);
+
   const thumbColRef = useRef<HTMLDivElement | null>(null);
 
+  // Reset to the first image whenever the image set changes (e.g. colour swap).
+  useEffect(() => {
+    setActive(0);
+    setDisplayed(0);
+    setIncoming(null);
+  }, [images]);
+
   const clamp = useCallback((idx: number) => (idx + valid.length) % valid.length, [valid.length]);
-  const goTo = useCallback((idx: number) => setActive((cur) => (idx === cur ? cur : clamp(idx))), [clamp]);
+  const goTo = useCallback((idx: number) => setActive((_) => clamp(idx)), [clamp]);
 
   const scrollThumbCol = (dir: 1 | -1) => {
     thumbColRef.current?.scrollBy({ top: dir * 96, behavior: 'smooth' });
   };
 
-  // --- Swipe / drag on the main stage -------------------------------------
-  // No animation anywhere here: the image moves 1:1 with the finger while
-  // dragging (a genuine scroll, not a canned "effect"), and the instant the
-  // finger lifts it simply stops — either committed to the next/prev photo
-  // or snapped back, with zero transition either way.
-  const stageRef = useRef<HTMLDivElement | null>(null);
-  const touchRef = useRef<{ startX: number; startY: number; horizontal: boolean | null; width: number } | null>(
-    null
-  );
-  const [dragPx, setDragPx] = useState(0);
-  const [peekDir, setPeekDir] = useState<1 | -1 | null>(null);
-
-  // Reset to the first image whenever the image set changes (e.g. colour swap).
-  useEffect(() => {
-    setActive(0);
-    setDragPx(0);
-    setPeekDir(null);
-  }, [images]);
+  // --- Swipe / tap on the main stage --------------------------------------
+  // touch-action: pan-y on the wrapper tells the browser "vertical page
+  // scroll is always native and yours" up front, so a vertical drag never
+  // gets intercepted even for a single frame. We only decide, on the first
+  // touchmove, whether THIS particular gesture is horizontal enough to
+  // treat as a swipe; if it isn't, we do nothing and the browser scrolls
+  // the page exactly as if the gallery weren't there.
+  const touchRef = useRef<{ startX: number; startY: number; horizontal: boolean | null } | null>(null);
 
   const onTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
-    touchRef.current = {
-      startX: e.touches[0].clientX,
-      startY: e.touches[0].clientY,
-      horizontal: null,
-      width: stageRef.current?.clientWidth || 1,
-    };
+    touchRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, horizontal: null };
   };
 
   const onTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
@@ -88,8 +108,6 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
       // Only prevent default once we know it's a horizontal swipe, so the
       // page never loses its native vertical scroll for this touch.
       e.preventDefault();
-      setDragPx(dx);
-      setPeekDir(dx < 0 ? 1 : dx > 0 ? -1 : null);
     }
   };
 
@@ -99,17 +117,23 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
     if (!t) return;
     const dx = e.changedTouches[0].clientX - t.startX;
     if (t.horizontal) {
-      if (dx <= -SWIPE_THRESHOLD) setActive((cur) => clamp(cur + 1));
-      else if (dx >= SWIPE_THRESHOLD) setActive((cur) => clamp(cur - 1));
+      if (dx <= -SWIPE_THRESHOLD) goTo(active + 1);
+      else if (dx >= SWIPE_THRESHOLD) goTo(active - 1);
+    } else if (Math.abs(dx) < TAP_THRESHOLD) {
+      setLightboxOpen(true);
     }
-    // Stop right here — no animation back to center, no momentum, no
-    // finishing slide. The drag offset is simply cleared instantly.
-    setDragPx(0);
-    setPeekDir(null);
   };
 
-  // Zoom now only opens via the magnifier button — clicking/tapping
-  // anywhere else on the image does nothing.
+  // Desktop: a plain click (no drag) opens the zoom view.
+  const mouseDownPos = useRef({ x: 0, y: 0 });
+  const onMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    mouseDownPos.current = { x: e.clientX, y: e.clientY };
+  };
+  const onClickStage = (e: React.MouseEvent<HTMLDivElement>) => {
+    const dx = e.clientX - mouseDownPos.current.x;
+    const dy = e.clientY - mouseDownPos.current.y;
+    if (Math.hypot(dx, dy) < TAP_THRESHOLD) setLightboxOpen(true);
+  };
 
   useEffect(() => {
     if (!lightboxOpen) return;
@@ -186,48 +210,73 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
 
         <div className="relative flex-1">
           <div
-            ref={stageRef}
-            className="group/stage relative aspect-[4/5] w-full overflow-hidden border border-border/60 bg-muted sm:rounded-xl"
+            className="group/stage relative aspect-[4/5] w-full cursor-zoom-in overflow-hidden border border-border/60 bg-muted sm:rounded-xl"
             style={{ touchAction: 'pan-y' }}
             onTouchStart={onTouchStart}
             onTouchMove={onTouchMove}
             onTouchEnd={onTouchEnd}
+            onMouseDown={onMouseDown}
+            onClick={onClickStage}
           >
-            {/* Only the active image (plus, while actively dragging, the one
-                neighbour being revealed) is ever mounted — nothing preloads
-                silently in the background. The image tracks the finger 1:1
-                while dragging and simply stops the instant it's released —
-                no transition, no snap animation, no momentum. */}
-            <div className="absolute inset-0" style={{ transform: `translateX(${dragPx}px)` }}>
+            {/* Base layer: the currently fully-shown image. Always visible,
+                so the stage is never blank while a new image loads. */}
+            <Image
+              key={`base-${displayed}`}
+              src={valid[displayed]}
+              alt={`${alt} - image ${displayed + 1}`}
+              fill
+              priority={displayed === 0}
+              draggable={false}
+              sizes="(max-width: 1024px) 100vw, 50vw"
+              quality={80}
+              className="select-none object-cover"
+            />
+            {/* Incoming layer: loads quietly at opacity 0, then fades in
+                slowly once fully decoded — that's the whole crossfade. */}
+            {incoming !== null && (
               <Image
-                src={valid[active]}
-                alt={`${alt} - image ${active + 1}`}
+                key={`incoming-${incoming}`}
+                src={valid[incoming]}
+                alt={`${alt} - image ${incoming + 1}`}
                 fill
-                priority={active === 0}
                 draggable={false}
                 sizes="(max-width: 1024px) 100vw, 50vw"
                 quality={80}
-                className="select-none object-cover"
+                onLoad={handleIncomingLoad}
+                className={cn(
+                  'absolute inset-0 select-none object-cover transition-opacity ease-in-out',
+                  incomingLoaded ? 'opacity-100' : 'opacity-0'
+                )}
+                style={{ transitionDuration: `${TRANSITION_MS}ms` }}
               />
-            </div>
+            )}
 
-            {peekDir !== null && (
-              <div
-                className="absolute inset-0"
-                style={{
-                  transform: `translateX(${dragPx + peekDir * (stageRef.current?.clientWidth || 0)}px)`,
-                }}
-              >
-                <Image
-                  src={valid[clamp(active + peekDir)]}
-                  alt={`${alt} - image ${clamp(active + peekDir) + 1}`}
-                  fill
-                  draggable={false}
-                  sizes="(max-width: 1024px) 100vw, 50vw"
-                  quality={80}
-                  className="select-none object-cover"
-                />
-              </div>
+            {/* Prev/next arrows */}
+            {valid.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  aria-label="Previous image"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    goTo(active - 1);
+                  }}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-background/80 p-2 shadow-md hover:bg-background sm:opacity-0 sm:transition-opacity sm:duration-150 sm:group-hover/stage:opacity-100"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Next image"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    goTo(active + 1);
+                  }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-background/80 p-2 shadow-md hover:bg-background sm:opacity-0 sm:transition-opacity sm:duration-150 sm:group-hover/stage:opacity-100"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </>
             )}
 
             {discount > 0 && (
@@ -242,22 +291,9 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
               </span>
             )}
 
-            {/* Magnifier glass icon — always visible (mobile + desktop),
-                tap/click it directly to open the zoom lightbox. */}
-            <button
-              type="button"
-              aria-label="Zoom image"
-              onClick={(e) => {
-                e.stopPropagation();
-                setLightboxOpen(true);
-              }}
-              className={cn(
-                'absolute right-3 flex h-9 w-9 items-center justify-center rounded-full bg-background/90 text-foreground shadow-md ring-1 ring-border/60 transition-transform hover:scale-110 hover:bg-background sm:h-10 sm:w-10 sm:bottom-3 sm:top-auto',
-                valid.length > 1 ? 'top-12' : 'top-3'
-              )}
-            >
-              <ZoomIn className="h-4 w-4 sm:h-5 sm:w-5" />
-            </button>
+            <span className="pointer-events-none absolute bottom-3 right-3 hidden items-center gap-1 rounded-full bg-background/80 px-2.5 py-1 text-[11px] font-medium text-foreground opacity-0 shadow-sm sm:flex sm:transition-opacity sm:duration-150 sm:group-hover/stage:opacity-100">
+              <ZoomIn className="h-3 w-3" /> Click to zoom
+            </span>
 
             {valid.length > 1 && (
               <div className="pointer-events-none absolute inset-x-0 bottom-3 flex items-center justify-center gap-1.5 sm:hidden">
