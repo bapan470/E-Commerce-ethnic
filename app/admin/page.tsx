@@ -12,14 +12,13 @@ import SettingsPanel from '@/components/admin/settings-panel';
 import ReturnsPanel from '@/components/admin/returns-panel';
 import AbandonedCartsPanel from '@/components/admin/abandoned-carts-panel';
 import MarketingPanel from '@/components/admin/marketing-panel';
-import BundlesPanel from '@/components/admin/bundles-panel';
-import EmailAutomationPanel from '@/components/admin/email-automation-panel';
 import StockNotificationsPanel from '@/components/admin/stock-notifications-panel';
 import AnalyticsPanel from '@/components/admin/analytics-panel';
 import CustomersPanel from '@/components/admin/customers-panel';
 import WholesalePanel from '@/components/admin/wholesale-panel';
 import LoyaltyPanel from '@/components/admin/loyalty-panel';
 import ReferralsPanel from '@/components/admin/referrals-panel';
+import GiftCardsPanel from '@/components/admin/giftcards-panel';
 
 const PANELS: Record<AdminSection, React.ComponentType> = {
   analytics: AnalyticsPanel,
@@ -35,10 +34,9 @@ const PANELS: Record<AdminSection, React.ComponentType> = {
   wholesale: WholesalePanel,
   coupons: CouponsPanel,
   marketing: MarketingPanel,
-  bundles: BundlesPanel,
-  'email-automation': EmailAutomationPanel,
   loyalty: LoyaltyPanel,
   referrals: ReferralsPanel,
+  giftcards: GiftCardsPanel,
   settings: SettingsPanel,
 };
 

@@ -48,6 +48,39 @@ export async function POST(req: Request) {
         .eq('recovered', false);
     }
 
+    // Gift card redemption — works for guest checkouts too (unlike loyalty),
+    // since a gift card code isn't tied to a login. Runs once: if a redeem
+    // entry already exists for this order, skip (order-confirm can be
+    // called more than once).
+    if (order.gift_card_code && order.gift_card_discount > 0) {
+      const { data: card } = await supabase
+        .from('gift_cards')
+        .select('id')
+        .eq('code', order.gift_card_code)
+        .maybeSingle();
+
+      if (card) {
+        const { data: existingRedeem } = await supabase
+          .from('gift_card_transactions')
+          .select('id')
+          .eq('gift_card_id', card.id)
+          .eq('order_id', order.id)
+          .limit(1);
+
+        if (!existingRedeem || existingRedeem.length === 0) {
+          // Trigger (apply_gift_card_transaction) deducts this from the
+          // card's balance and flips status to 'redeemed' if it hits 0.
+          await supabase.from('gift_card_transactions').insert({
+            gift_card_id: card.id,
+            order_id: order.id,
+            amount: -order.gift_card_discount,
+            type: 'redeem',
+            reason: `Redeemed on order #${order.id.slice(0, 8)}`,
+          });
+        }
+      }
+    }
+
     // Loyalty points — only for logged-in customers (guest checkouts have
     // no profile to credit). Runs once: if points were already recorded
     // for this order, skip (order-confirm can be called more than once).

@@ -4,12 +4,13 @@ import { useState, useEffect, FormEvent } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { Lock, Loader2, CreditCard, Tag, X, Wallet, Sparkles } from 'lucide-react';
+import { Lock, Loader2, CreditCard, Tag, X, Wallet, Sparkles, Gift } from 'lucide-react';
 import { useCart } from '@/lib/cart-context';
 import { formatINR } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import { getSupabaseBrowser } from '@/lib/supabase-browser';
 import { validateCoupon, Coupon } from '@/lib/coupons-api';
+import { validateGiftCard, GiftCard } from '@/lib/giftcards-api';
 import {
   fetchLoyaltySettings,
   fetchMyLoyaltyBalance,
@@ -47,6 +48,12 @@ export default function CheckoutPage() {
   const [couponError, setCouponError] = useState<string | null>(null);
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [couponDiscount, setCouponDiscount] = useState(0);
+
+  const [giftCardInput, setGiftCardInput] = useState('');
+  const [applyingGiftCard, setApplyingGiftCard] = useState(false);
+  const [giftCardError, setGiftCardError] = useState<string | null>(null);
+  const [appliedGiftCard, setAppliedGiftCard] = useState<GiftCard | null>(null);
+  const [giftCardDiscount, setGiftCardDiscount] = useState(0);
 
   const [shippingSettings, setShippingSettings] = useState<ShippingSettings>(
     DEFAULT_SHIPPING_SETTINGS
@@ -113,14 +120,17 @@ export default function CheckoutPage() {
       ? 0
       : shippingSettings.flat_rate;
   const afterCouponSubtotal = Math.max(0, subtotal - couponDiscount);
+  const clampedGiftCardDiscount = Math.min(giftCardDiscount, afterCouponSubtotal);
+  const afterGiftCardSubtotal = Math.max(0, afterCouponSubtotal - clampedGiftCardDiscount);
 
   // Loyalty points can never discount more than what's left to pay after
-  // the coupon, and never more than the customer actually has.
+  // the coupon and any gift card, and never more than the customer
+  // actually has.
   const maxRedeemablePoints =
     loyaltySettings.redeem_value_per_point > 0
       ? Math.min(
           pointsBalance,
-          Math.floor(afterCouponSubtotal / loyaltySettings.redeem_value_per_point)
+          Math.floor(afterGiftCardSubtotal / loyaltySettings.redeem_value_per_point)
         )
       : 0;
   const canRedeemPoints =
@@ -130,7 +140,7 @@ export default function CheckoutPage() {
       ? Math.round(pointsToRedeem * loyaltySettings.redeem_value_per_point)
       : 0;
 
-  const discountedSubtotal = Math.max(0, afterCouponSubtotal - loyaltyDiscount);
+  const discountedSubtotal = Math.max(0, afterGiftCardSubtotal - loyaltyDiscount);
   const tax = Math.round(discountedSubtotal * (shippingSettings.gst_rate_percent / 100));
   const total = discountedSubtotal + shipping + tax;
 
@@ -162,6 +172,27 @@ export default function CheckoutPage() {
     setCouponDiscount(0);
     setCouponInput('');
     setCouponError(null);
+  };
+
+  const handleApplyGiftCard = async () => {
+    setGiftCardError(null);
+    setApplyingGiftCard(true);
+    const result = await validateGiftCard(giftCardInput, afterCouponSubtotal);
+    setApplyingGiftCard(false);
+    if (!result.ok || !result.giftCard) {
+      setGiftCardError(result.error || 'Invalid gift card code');
+      return;
+    }
+    setAppliedGiftCard(result.giftCard);
+    setGiftCardDiscount(result.redeemable || 0);
+    toast.success(`Gift card "${result.giftCard.code}" applied`);
+  };
+
+  const handleRemoveGiftCard = () => {
+    setAppliedGiftCard(null);
+    setGiftCardDiscount(0);
+    setGiftCardInput('');
+    setGiftCardError(null);
   };
 
   const openRazorpayCheckout = (
@@ -289,6 +320,8 @@ export default function CheckoutPage() {
           gst_amount: tax,
           coupon_code: appliedCoupon?.code ?? null,
           coupon_discount: couponDiscount,
+          gift_card_code: appliedGiftCard?.code ?? null,
+          gift_card_discount: clampedGiftCardDiscount,
           loyalty_points_redeemed: loyaltyDiscount > 0 ? pointsToRedeem : 0,
           loyalty_discount: loyaltyDiscount,
         })
@@ -635,6 +668,48 @@ export default function CheckoutPage() {
               )}
             </div>
 
+            {/* Gift card */}
+            <Separator className="my-4" />
+            <div>
+              {appliedGiftCard ? (
+                <div className="flex items-center justify-between rounded-md bg-secondary/10 px-3 py-2 text-sm">
+                  <span className="flex items-center gap-1.5 font-medium text-secondary-foreground">
+                    <Gift className="h-3.5 w-3.5" /> {appliedGiftCard.code} applied (-
+                    {formatINR(clampedGiftCardDiscount)})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleRemoveGiftCard}
+                    aria-label="Remove gift card"
+                    className="text-muted-foreground hover:text-destructive"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Apply gift card code"
+                      value={giftCardInput}
+                      onChange={(e) => setGiftCardInput(e.target.value)}
+                      className="h-9"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 shrink-0"
+                      disabled={applyingGiftCard || !giftCardInput.trim()}
+                      onClick={handleApplyGiftCard}
+                    >
+                      {applyingGiftCard ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}
+                    </Button>
+                  </div>
+                  {giftCardError && <p className="text-xs text-destructive">{giftCardError}</p>}
+                </div>
+              )}
+            </div>
+
             {/* Loyalty points redeem */}
             {loyaltySettings.enabled && pointsBalance > 0 && (
               <>
@@ -691,6 +766,12 @@ export default function CheckoutPage() {
                 <div className="flex justify-between text-secondary-foreground">
                   <span>Coupon discount</span>
                   <span>-{formatINR(couponDiscount)}</span>
+                </div>
+              )}
+              {clampedGiftCardDiscount > 0 && (
+                <div className="flex justify-between text-secondary-foreground">
+                  <span>Gift card ({appliedGiftCard?.code})</span>
+                  <span>-{formatINR(clampedGiftCardDiscount)}</span>
                 </div>
               )}
               {loyaltyDiscount > 0 && (
