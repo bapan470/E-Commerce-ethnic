@@ -11,6 +11,7 @@ import React, {
 } from 'react';
 import { CartItem, Product, CategoryRow } from './types';
 import { fetchProducts, fetchCategories } from './products-api';
+import { validateCoupon, Coupon, CouponResult } from './coupons-api';
 
 /* ---------------- Cart ---------------- */
 
@@ -80,15 +81,23 @@ interface CartContextValue {
   clearCart: () => void;
   isCartOpen: boolean;
   setCartOpen: (open: boolean) => void;
+  /** Coupon currently applied to the cart, shared across cart drawer, cart page & checkout. */
+  appliedCoupon: Coupon | null;
+  /** Rupee amount saved by the applied coupon, recalculated live against the current subtotal. */
+  couponDiscount: number;
+  applyCoupon: (code: string) => Promise<CouponResult>;
+  removeCoupon: () => void;
 }
 
 const CartContext = createContext<CartContextValue | undefined>(undefined);
 const STORAGE_KEY = 'saaj-cart-v1';
+const COUPON_STORAGE_KEY = 'saaj-cart-coupon-v1';
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(cartReducer, { items: [] });
   const [isCartOpen, setCartOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
 
   useEffect(() => {
     try {
@@ -96,6 +105,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       if (raw) {
         const parsed = JSON.parse(raw) as CartItem[];
         dispatch({ type: 'HYDRATE', items: parsed });
+      }
+      const rawCoupon = localStorage.getItem(COUPON_STORAGE_KEY);
+      if (rawCoupon) {
+        setAppliedCoupon(JSON.parse(rawCoupon) as Coupon);
       }
     } catch {
       // ignore
@@ -111,6 +124,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       // ignore
     }
   }, [state.items, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      if (appliedCoupon) {
+        localStorage.setItem(COUPON_STORAGE_KEY, JSON.stringify(appliedCoupon));
+      } else {
+        localStorage.removeItem(COUPON_STORAGE_KEY);
+      }
+    } catch {
+      // ignore
+    }
+  }, [appliedCoupon, hydrated]);
 
   const addItem = useCallback(
     (product: Product, size: string, quantity?: number) => {
@@ -128,7 +154,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     },
     []
   );
-  const clearCart = useCallback(() => dispatch({ type: 'CLEAR' }), []);
+  const clearCart = useCallback(() => {
+    dispatch({ type: 'CLEAR' });
+    setAppliedCoupon(null);
+  }, []);
 
   const count = useMemo(
     () => state.items.reduce((sum, i) => sum + i.quantity, 0),
@@ -138,6 +167,32 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     () => state.items.reduce((sum, i) => sum + i.product.price * i.quantity, 0),
     [state.items]
   );
+
+  // Recalculated live off the current subtotal (not stored as a frozen
+  // number) so it stays correct as items are added/removed anywhere in
+  // the app — cart drawer, cart page, or checkout.
+  const couponDiscount = useMemo(() => {
+    if (!appliedCoupon || subtotal <= 0) return 0;
+    if (subtotal < appliedCoupon.min_order_value) return 0;
+    const raw =
+      appliedCoupon.discount_type === 'percentage'
+        ? Math.round((subtotal * appliedCoupon.discount_value) / 100)
+        : Math.round(appliedCoupon.discount_value);
+    return Math.min(raw, subtotal);
+  }, [appliedCoupon, subtotal]);
+
+  const applyCoupon = useCallback(
+    async (code: string): Promise<CouponResult> => {
+      const result = await validateCoupon(code, subtotal);
+      if (result.ok && result.coupon) {
+        setAppliedCoupon(result.coupon);
+      }
+      return result;
+    },
+    [subtotal]
+  );
+
+  const removeCoupon = useCallback(() => setAppliedCoupon(null), []);
 
   const value: CartContextValue = {
     items: state.items,
@@ -149,6 +204,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     clearCart,
     isCartOpen,
     setCartOpen,
+    appliedCoupon,
+    couponDiscount,
+    applyCoupon,
+    removeCoupon,
   };
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

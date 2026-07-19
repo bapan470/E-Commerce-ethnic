@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Minus, Plus, Trash2, ShoppingBag, ArrowRight } from 'lucide-react';
+import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Tag, X, Loader2 } from 'lucide-react';
 import { useCart } from '@/lib/cart-context';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import {
   ShippingSettings,
@@ -15,10 +16,41 @@ import {
 } from '@/lib/pincode-api';
 
 export default function CartPage() {
-  const { items, updateQuantity, removeItem, subtotal, clearCart } = useCart();
+  const {
+    items,
+    updateQuantity,
+    removeItem,
+    subtotal,
+    clearCart,
+    appliedCoupon,
+    couponDiscount,
+    applyCoupon,
+    removeCoupon,
+  } = useCart();
   const [shippingSettings, setShippingSettings] = useState<ShippingSettings>(
     DEFAULT_SHIPPING_SETTINGS
   );
+  const [couponInput, setCouponInput] = useState('');
+  const [applyingCoupon, setApplyingCoupon] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
+
+  const handleApplyCoupon = async () => {
+    setCouponError(null);
+    setApplyingCoupon(true);
+    const result = await applyCoupon(couponInput);
+    setApplyingCoupon(false);
+    if (!result.ok) {
+      setCouponError(result.error || 'Invalid coupon');
+      return;
+    }
+    setCouponInput('');
+  };
+
+  const handleRemoveCoupon = () => {
+    removeCoupon();
+    setCouponInput('');
+    setCouponError(null);
+  };
 
   useEffect(() => {
     fetchShippingSettings().then(setShippingSettings).catch(() => {
@@ -50,7 +82,8 @@ export default function CartPage() {
     subtotal >= shippingSettings.free_shipping_threshold
       ? 0
       : shippingSettings.flat_rate;
-  const total = subtotal + shipping;
+  const discountedSubtotal = Math.max(0, subtotal - couponDiscount);
+  const total = discountedSubtotal + shipping;
 
   return (
     <div className="container-boutique py-8">
@@ -151,11 +184,59 @@ export default function CartPage() {
               Order Summary
             </h2>
             <Separator className="my-4" />
+
+            {/* Coupon */}
+            <div>
+              {appliedCoupon ? (
+                <div className="flex items-center justify-between rounded-md bg-secondary/10 px-3 py-2 text-sm">
+                  <span className="flex items-center gap-1.5 font-medium text-secondary-foreground">
+                    <Tag className="h-3.5 w-3.5" /> {appliedCoupon.code} applied
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleRemoveCoupon}
+                    aria-label="Remove coupon"
+                    className="text-muted-foreground hover:text-destructive"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Coupon code"
+                      value={couponInput}
+                      onChange={(e) => setCouponInput(e.target.value)}
+                      className="h-9"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 shrink-0"
+                      disabled={applyingCoupon || !couponInput.trim()}
+                      onClick={handleApplyCoupon}
+                    >
+                      {applyingCoupon ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}
+                    </Button>
+                  </div>
+                  {couponError && <p className="text-xs text-destructive">{couponError}</p>}
+                </div>
+              )}
+            </div>
+            <Separator className="my-4" />
+
             <div className="flex flex-col gap-3 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Subtotal</span>
                 <span className="font-medium">{formatINR(subtotal)}</span>
               </div>
+              {couponDiscount > 0 && (
+                <div className="flex justify-between text-secondary-foreground">
+                  <span>Coupon discount</span>
+                  <span>-{formatINR(couponDiscount)}</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Shipping</span>
                 <span className="font-medium">

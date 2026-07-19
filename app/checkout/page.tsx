@@ -9,7 +9,6 @@ import { useCart } from '@/lib/cart-context';
 import { formatINR } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import { getSupabaseBrowser } from '@/lib/supabase-browser';
-import { validateCoupon, Coupon } from '@/lib/coupons-api';
 import { validateGiftCard, GiftCard } from '@/lib/giftcards-api';
 import {
   fetchLoyaltySettings,
@@ -38,7 +37,15 @@ declare global {
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { items, subtotal, clearCart } = useCart();
+  const {
+    items,
+    subtotal,
+    clearCart,
+    appliedCoupon,
+    couponDiscount,
+    applyCoupon,
+    removeCoupon,
+  } = useCart();
   const [placing, setPlacing] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('online');
@@ -46,8 +53,6 @@ export default function CheckoutPage() {
   const [couponInput, setCouponInput] = useState('');
   const [applyingCoupon, setApplyingCoupon] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
-  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
-  const [couponDiscount, setCouponDiscount] = useState(0);
 
   const [giftCardInput, setGiftCardInput] = useState('');
   const [applyingGiftCard, setApplyingGiftCard] = useState(false);
@@ -156,20 +161,17 @@ export default function CheckoutPage() {
   const handleApplyCoupon = async () => {
     setCouponError(null);
     setApplyingCoupon(true);
-    const result = await validateCoupon(couponInput, subtotal);
+    const result = await applyCoupon(couponInput);
     setApplyingCoupon(false);
     if (!result.ok || !result.coupon) {
       setCouponError(result.error || 'Invalid coupon');
       return;
     }
-    setAppliedCoupon(result.coupon);
-    setCouponDiscount(result.discount || 0);
     toast.success(`Coupon "${result.coupon.code}" applied`);
   };
 
   const handleRemoveCoupon = () => {
-    setAppliedCoupon(null);
-    setCouponDiscount(0);
+    removeCoupon();
     setCouponInput('');
     setCouponError(null);
   };
@@ -450,6 +452,16 @@ export default function CheckoutPage() {
       <h1 className="mb-6 font-serif text-3xl font-bold text-primary sm:text-4xl">
         Checkout
       </h1>
+
+      {appliedCoupon && couponDiscount > 0 && (
+        <div className="mb-6 flex items-center gap-2 rounded-md border border-secondary/30 bg-secondary/10 px-4 py-3 text-sm font-medium text-secondary-foreground">
+          <Tag className="h-4 w-4 shrink-0" />
+          <span>
+            You saved {formatINR(couponDiscount)} on this order with coupon{' '}
+            <span className="font-semibold">{appliedCoupon.code}</span>!
+          </span>
+        </div>
+      )}
 
       <form onSubmit={onSubmit} className="grid gap-8 lg:grid-cols-3">
         <div className="lg:col-span-2">

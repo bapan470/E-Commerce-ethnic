@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { Minus, Plus, Trash2, ShoppingBag } from 'lucide-react';
+import { Minus, Plus, Trash2, ShoppingBag, Tag } from 'lucide-react';
 import { useCart } from '@/lib/cart-context';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,8 @@ export default function CartDrawer() {
     removeItem,
     subtotal,
     count,
+    appliedCoupon,
+    couponDiscount,
   } = useCart();
 
   return (
@@ -135,10 +137,28 @@ export default function CartDrawer() {
             <div className="border-t border-border/60 p-5">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Subtotal</span>
-                <span className="font-serif text-lg font-bold text-primary">
+                <span className={couponDiscount > 0 ? 'text-sm font-medium line-through text-muted-foreground' : 'font-serif text-lg font-bold text-primary'}>
                   {formatINR(subtotal)}
                 </span>
               </div>
+              {appliedCoupon && couponDiscount > 0 && (
+                <>
+                  <div className="mt-1 flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-1.5 text-secondary-foreground">
+                      <Tag className="h-3.5 w-3.5" /> {appliedCoupon.code}
+                    </span>
+                    <span className="text-secondary-foreground">
+                      -{formatINR(couponDiscount)}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex items-center justify-between text-sm">
+                    <span className="font-medium">Estimated total</span>
+                    <span className="font-serif text-lg font-bold text-primary">
+                      {formatINR(Math.max(0, subtotal - couponDiscount))}
+                    </span>
+                  </div>
+                </>
+              )}
               <p className="mt-1 text-xs text-muted-foreground">
                 Shipping & taxes calculated at checkout.
               </p>
