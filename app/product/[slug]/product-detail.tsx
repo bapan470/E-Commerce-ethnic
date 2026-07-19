@@ -224,7 +224,6 @@ export default function ProductDetail() {
       userId: user?.id ?? null,
       metadata: { size: selectedSize, quantity, color: product.colors?.[0] ?? null },
     });
-    toast.success(`${product.name} added to cart`);
   };
 
   return (

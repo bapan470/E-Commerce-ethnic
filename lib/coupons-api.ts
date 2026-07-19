@@ -110,11 +110,42 @@ export async function fetchProductPageCoupons(): Promise<Coupon[]> {
 // ---------------------------------------------------------------------
 
 /**
+ * Core discount formula. Shared by the coupon validator and the live cart
+ * total so the two can never drift out of sync.
+ *
+ * - Flat coupons ("₹100 off") apply once PER DISTINCT PRODUCT in the cart,
+ *   not once per order — so 2 different sarees with a flat ₹100 coupon
+ *   give ₹200 off total, not ₹100.
+ * - Percentage coupons don't need a multiplier: X% of the whole subtotal
+ *   is already equal to X% off each product added together, so
+ *   productCount is ignored for those.
+ *
+ * Result is always clamped so the discount can never exceed the subtotal.
+ */
+export function computeCouponDiscount(
+  coupon: Pick<Coupon, 'discount_type' | 'discount_value'>,
+  subtotal: number,
+  productCount: number = 1
+): number {
+  if (subtotal <= 0) return 0;
+  const raw =
+    coupon.discount_type === 'percentage'
+      ? Math.round((subtotal * coupon.discount_value) / 100)
+      : Math.round(coupon.discount_value) * Math.max(1, productCount);
+  return Math.min(raw, subtotal);
+}
+
+/**
  * Looks up a coupon code and checks it against the current cart subtotal.
  * Returns the rupee discount to apply (already clamped to the subtotal so
- * a coupon can never take a total below zero).
+ * a coupon can never take a total below zero). Pass productCount = number
+ * of distinct products in the cart so flat coupons are priced correctly.
  */
-export async function validateCoupon(code: string, subtotal: number): Promise<CouponResult> {
+export async function validateCoupon(
+  code: string,
+  subtotal: number,
+  productCount: number = 1
+): Promise<CouponResult> {
   const trimmed = code.trim().toUpperCase();
   if (!trimmed) return { ok: false, error: 'Enter a coupon code' };
 
@@ -143,12 +174,7 @@ export async function validateCoupon(code: string, subtotal: number): Promise<Co
     };
   }
 
-  const rawDiscount =
-    coupon.discount_type === 'percentage'
-      ? Math.round((subtotal * coupon.discount_value) / 100)
-      : Math.round(coupon.discount_value);
-
-  const discount = Math.min(rawDiscount, subtotal);
+  const discount = computeCouponDiscount(coupon, subtotal, productCount);
 
   return { ok: true, coupon, discount };
 }

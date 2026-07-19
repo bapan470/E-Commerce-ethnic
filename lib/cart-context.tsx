@@ -11,7 +11,7 @@ import React, {
 } from 'react';
 import { CartItem, Product, CategoryRow } from './types';
 import { fetchProducts, fetchCategories } from './products-api';
-import { validateCoupon, Coupon, CouponResult } from './coupons-api';
+import { validateCoupon, computeCouponDiscount, Coupon, CouponResult } from './coupons-api';
 
 /* ---------------- Cart ---------------- */
 
@@ -168,28 +168,26 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     [state.items]
   );
 
-  // Recalculated live off the current subtotal (not stored as a frozen
-  // number) so it stays correct as items are added/removed anywhere in
-  // the app — cart drawer, cart page, or checkout.
+  // Recalculated live off the current subtotal and item count (not stored
+  // as a frozen number) so it stays correct as items are added/removed
+  // anywhere in the app — cart drawer, cart page, or checkout. Flat
+  // coupons are priced per distinct product line, so adding/removing a
+  // product updates the discount too, not just changing quantities.
   const couponDiscount = useMemo(() => {
     if (!appliedCoupon || subtotal <= 0) return 0;
     if (subtotal < appliedCoupon.min_order_value) return 0;
-    const raw =
-      appliedCoupon.discount_type === 'percentage'
-        ? Math.round((subtotal * appliedCoupon.discount_value) / 100)
-        : Math.round(appliedCoupon.discount_value);
-    return Math.min(raw, subtotal);
-  }, [appliedCoupon, subtotal]);
+    return computeCouponDiscount(appliedCoupon, subtotal, state.items.length);
+  }, [appliedCoupon, subtotal, state.items.length]);
 
   const applyCoupon = useCallback(
     async (code: string): Promise<CouponResult> => {
-      const result = await validateCoupon(code, subtotal);
+      const result = await validateCoupon(code, subtotal, state.items.length);
       if (result.ok && result.coupon) {
         setAppliedCoupon(result.coupon);
       }
       return result;
     },
-    [subtotal]
+    [subtotal, state.items.length]
   );
 
   const removeCoupon = useCallback(() => setAppliedCoupon(null), []);

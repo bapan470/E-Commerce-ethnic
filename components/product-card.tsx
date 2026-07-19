@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import WishlistButton from '@/components/wishlist-button';
 import { blurDataURL } from '@/lib/utils';
-import { toast } from 'sonner';
 
 export default function ProductCard({
   product,
@@ -28,7 +27,6 @@ export default function ProductCard({
     e.stopPropagation();
     const size = product.sizes[0];
     addItem(product, size, 1);
-    toast.success(`${product.name} added to cart`);
   };
 
   const discount = discountPct(product.price, product.mrp);

@@ -10,7 +10,6 @@ import { useCart } from '@/lib/cart-context';
 import { fetchProductBundle } from '@/lib/bundles-api';
 import { fetchGrowthSettings } from '@/lib/growth-api';
 import { Button } from '@/components/ui/button';
-import { toast } from 'sonner';
 
 export default function FrequentlyBoughtTogether({ productId }: { productId: string }) {
   const [items, setItems] = useState<Product[]>([]);
@@ -55,7 +54,6 @@ export default function FrequentlyBoughtTogether({ productId }: { productId: str
   const addSelected = () => {
     if (selectedItems.length === 0) return;
     selectedItems.forEach((p) => addItem(p, p.sizes[0], 1));
-    toast.success(`${selectedItems.length} item(s) added to cart`);
   };
 
   return (
