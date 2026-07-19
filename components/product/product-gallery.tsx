@@ -14,7 +14,6 @@ interface ProductGalleryProps {
 
 const PLACEHOLDER = 'https://placehold.co/800x1000?text=No+Image';
 const SWIPE_THRESHOLD = 40; // px of horizontal drag needed to change image
-const TAP_THRESHOLD = 8; // px of total movement still counted as a "tap"
 
 /**
  * Product image gallery — main stage + thumbnail rail + full-screen zoom.
@@ -90,31 +89,15 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
     if (t.horizontal) {
       if (dx <= -SWIPE_THRESHOLD) goTo(active + 1);
       else if (dx >= SWIPE_THRESHOLD) goTo(active - 1);
-    } else if (Math.abs(dx) < TAP_THRESHOLD) {
-      const target = e.target as HTMLElement;
-      const hitButton = target?.closest('button');
-      if (!hitButton) {
-        // Plain tap on the image (not on a button) no longer opens zoom on
-        // mobile — only the magnifier icon button does. Stop the browser's
-        // synthetic "click" (which fires after touchend) so it doesn't fall
-        // through to the desktop click-to-zoom handler below.
-        e.preventDefault();
-      }
-      // If the tap landed on a button (magnifier, prev/next arrows), let the
-      // synthetic click through so that button's onClick actually fires.
     }
+    // A plain tap does nothing here — the stage itself has no click/zoom
+    // handler anymore. Only the magnifier button (its own onClick) opens
+    // the zoom lightbox.
+  };
   };
 
-  // Desktop: a plain click (no drag) opens the zoom view.
-  const mouseDownPos = useRef({ x: 0, y: 0 });
-  const onMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    mouseDownPos.current = { x: e.clientX, y: e.clientY };
-  };
-  const onClickStage = (e: React.MouseEvent<HTMLDivElement>) => {
-    const dx = e.clientX - mouseDownPos.current.x;
-    const dy = e.clientY - mouseDownPos.current.y;
-    if (Math.hypot(dx, dy) < TAP_THRESHOLD) setLightboxOpen(true);
-  };
+  // Zoom now only opens via the magnifier button — clicking/tapping
+  // anywhere else on the image does nothing.
 
   useEffect(() => {
     if (!lightboxOpen) return;
@@ -191,13 +174,11 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
 
         <div className="relative flex-1">
           <div
-            className="group/stage relative aspect-[4/5] w-full cursor-zoom-in overflow-hidden border border-border/60 bg-muted sm:rounded-xl"
+            className="group/stage relative aspect-[4/5] w-full overflow-hidden border border-border/60 bg-muted sm:rounded-xl"
             style={{ touchAction: 'pan-y' }}
             onTouchStart={onTouchStart}
             onTouchMove={onTouchMove}
             onTouchEnd={onTouchEnd}
-            onMouseDown={onMouseDown}
-            onClick={onClickStage}
           >
             {/* Only the active image is ever mounted — nothing preloads
                 silently in the background competing for bandwidth. */}
