@@ -11,7 +11,6 @@ import {
   Truck,
   ShieldCheck,
   RefreshCw,
-  ChevronRight,
 } from 'lucide-react';
 import { useProducts, useCart } from '@/lib/cart-context';
 import { fetchProductBySlug } from '@/lib/products-api';
@@ -188,21 +187,6 @@ export default function ProductDetail() {
 
   return (
     <div className="container-boutique py-8 pb-24 md:pb-8">
-      <nav className="mb-6 flex items-center gap-1 text-xs text-muted-foreground" aria-label="Breadcrumb">
-        <Link href="/" className="hover:text-primary">Home</Link>
-        <ChevronRight className="h-3 w-3" />
-        <Link href="/shop" className="hover:text-primary">Shop</Link>
-        <ChevronRight className="h-3 w-3" />
-        <Link
-          href={`/shop?category=${encodeURIComponent(product.category)}`}
-          className="hover:text-primary"
-        >
-          {product.category}
-        </Link>
-        <ChevronRight className="h-3 w-3" />
-        <span className="text-foreground">{product.name}</span>
-      </nav>
-
       <div className="grid gap-8 lg:grid-cols-2 lg:gap-12 lg:items-start">
         <div className="flex flex-col gap-4 lg:sticky lg:top-24 lg:self-start">
           <div className="-mx-4 sm:mx-0">
