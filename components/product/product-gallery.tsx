@@ -243,9 +243,19 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
               </span>
             )}
 
-            <span className="pointer-events-none absolute bottom-3 right-3 hidden items-center gap-1 rounded-full bg-background/80 px-2.5 py-1 text-[11px] font-medium text-foreground opacity-0 shadow-sm sm:flex sm:transition-opacity sm:duration-150 sm:group-hover/stage:opacity-100">
-              <ZoomIn className="h-3 w-3" /> Click to zoom
-            </span>
+            {/* Magnifier glass icon — always visible (mobile + desktop),
+                tap/click it directly to open the zoom lightbox. */}
+            <button
+              type="button"
+              aria-label="Zoom image"
+              onClick={(e) => {
+                e.stopPropagation();
+                setLightboxOpen(true);
+              }}
+              className="absolute bottom-3 right-3 flex h-9 w-9 items-center justify-center rounded-full bg-background/90 text-foreground shadow-md ring-1 ring-border/60 transition-transform hover:scale-110 hover:bg-background sm:h-10 sm:w-10"
+            >
+              <ZoomIn className="h-4 w-4 sm:h-5 sm:w-5" />
+            </button>
 
             {valid.length > 1 && (
               <div className="pointer-events-none absolute inset-x-0 bottom-3 flex items-center justify-center gap-1.5 sm:hidden">
