@@ -39,6 +39,8 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
 
   const [active, setActive] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [zooming, setZooming] = useState(false);
+  const [zoomPos, setZoomPos] = useState({ x: 50, y: 50 });
 
   const thumbColRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
@@ -101,7 +103,9 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
       if (movedSlides !== 0) goTo(active + movedSlides);
     } else {
       setDragOffset(0);
-      if (Math.abs(dx) < TAP_THRESHOLD) setLightboxOpen(true);
+      // A plain tap no longer opens the zoom viewer — only the magnifier
+      // button does. (A tiny tap-vs-drag threshold is still used above to
+      // decide whether this was a drag at all.)
     }
   };
 
@@ -112,8 +116,21 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
     setIsDragging(true);
   };
   const onMouseMoveStage = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Magnifier follows the cursor whenever the mouse is over the stage,
+    // whether or not a drag is in progress.
+    const rect = stageRef.current?.getBoundingClientRect();
+    if (rect) {
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      const y = ((e.clientY - rect.top) / rect.height) * 100;
+      setZoomPos({ x: Math.min(100, Math.max(0, x)), y: Math.min(100, Math.max(0, y)) });
+    }
     if (!mouseDownPos.current) return;
     setDragOffset(e.clientX - mouseDownPos.current.x);
+  };
+  const onMouseEnterStage = () => setZooming(true);
+  const onMouseLeaveStage = (e: React.MouseEvent<HTMLDivElement>) => {
+    setZooming(false);
+    if (mouseDownPos.current) endMouseDrag(e);
   };
   const endMouseDrag = (e: React.MouseEvent<HTMLDivElement>) => {
     const start = mouseDownPos.current;
@@ -123,12 +140,12 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
     const dx = e.clientX - start.x;
     const width = stageRef.current?.offsetWidth || 1;
     setDragOffset(0);
-    if (Math.abs(dx) < TAP_THRESHOLD) {
-      setLightboxOpen(true);
-    } else {
+    if (Math.abs(dx) >= TAP_THRESHOLD) {
       const movedSlides = Math.round(-dx / width);
       if (movedSlides !== 0) goTo(active + movedSlides);
     }
+    // A plain click no longer opens the zoom viewer — only the magnifier
+    // button does.
   };
 
   useEffect(() => {
@@ -215,9 +232,8 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
             onMouseDown={onMouseDown}
             onMouseMove={onMouseMoveStage}
             onMouseUp={endMouseDrag}
-            onMouseLeave={(e) => {
-              if (mouseDownPos.current) endMouseDrag(e);
-            }}
+            onMouseEnter={onMouseEnterStage}
+            onMouseLeave={onMouseLeaveStage}
           >
             {/* Every image sits side by side in one strip; only the transform
                 moves. Nothing swaps or remounts as you slide, so there's
@@ -242,38 +258,29 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
                     draggable={false}
                     sizes="(max-width: 1024px) 100vw, 50vw"
                     quality={80}
-                    className="select-none object-cover"
+                    className={cn(
+                      'select-none object-cover transition-opacity duration-150',
+                      idx === active && zooming && !isDragging ? 'sm:opacity-0' : 'opacity-100'
+                    )}
                   />
                 </div>
               ))}
             </div>
 
-            {/* Prev/next arrows */}
-            {valid.length > 1 && (
-              <>
-                <button
-                  type="button"
-                  aria-label="Previous image"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    goTo(active - 1);
-                  }}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-background/80 p-2 shadow-md hover:bg-background sm:opacity-0 sm:transition-opacity sm:duration-150 sm:group-hover/stage:opacity-100"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <button
-                  type="button"
-                  aria-label="Next image"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    goTo(active + 1);
-                  }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-background/80 p-2 shadow-md hover:bg-background sm:opacity-0 sm:transition-opacity sm:duration-150 sm:group-hover/stage:opacity-100"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </>
+            {/* Desktop hover-zoom magnifier: swaps in a scaled background image
+                that tracks the cursor — the "inspect the fabric" zoom. Only
+                mounted while actually hovering (and not mid-drag), so it costs
+                nothing until the user shows intent to zoom. */}
+            {zooming && !isDragging && (
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0 hidden bg-no-repeat sm:block"
+                style={{
+                  backgroundImage: `url(${valid[active]})`,
+                  backgroundSize: '220%',
+                  backgroundPosition: `${zoomPos.x}% ${zoomPos.y}%`,
+                }}
+              />
             )}
 
             {discount > 0 && (
@@ -288,9 +295,17 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
               </span>
             )}
 
-            <span className="pointer-events-none absolute bottom-3 right-3 hidden items-center gap-1 rounded-full bg-background/80 px-2.5 py-1 text-[11px] font-medium text-foreground opacity-0 shadow-sm sm:flex sm:transition-opacity sm:duration-150 sm:group-hover/stage:opacity-100">
-              <ZoomIn className="h-3 w-3" /> Click to zoom
-            </span>
+            <button
+              type="button"
+              aria-label="Zoom image"
+              onClick={(e) => {
+                e.stopPropagation();
+                setLightboxOpen(true);
+              }}
+              className="absolute bottom-3 right-3 flex items-center gap-1 rounded-full bg-background/90 px-2.5 py-1.5 text-[11px] font-medium text-foreground shadow-md hover:bg-background sm:opacity-0 sm:transition-opacity sm:duration-150 sm:group-hover/stage:opacity-100"
+            >
+              <ZoomIn className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Click to zoom</span>
+            </button>
 
             {valid.length > 1 && (
               <div className="pointer-events-none absolute inset-x-0 bottom-3 flex items-center justify-center gap-1.5 sm:hidden">
