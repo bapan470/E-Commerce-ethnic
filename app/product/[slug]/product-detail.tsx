@@ -31,6 +31,7 @@ import RecentlyViewedSection from '@/components/product/recently-viewed';
 import NotifyMeForm from '@/components/product/notify-me-form';
 import LowStockBadge from '@/components/growth/low-stock-badge';
 import CouponList from '@/components/product/coupon-list';
+import { Coupon } from '@/lib/coupons-api';
 import FrequentlyBoughtTogether from '@/components/product/frequently-bought-together';
 import { addRecentlyViewed } from '@/lib/recently-viewed';
 import { trackEvent } from '@/lib/track-api';
@@ -54,6 +55,8 @@ export default function ProductDetail() {
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [activeTab, setActiveTab] = useState('description');
+  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
+  const [couponDiscount, setCouponDiscount] = useState(0);
 
   // The URL slug might belong either to a base product or to one of its
   // colour variants (independent SEO pages). Try the product table first;
@@ -127,6 +130,11 @@ export default function ProductDetail() {
   useEffect(() => {
     if (product) setSelectedSize(product.sizes[0] ?? null);
   }, [product]);
+
+  useEffect(() => {
+    setAppliedCoupon(null);
+    setCouponDiscount(0);
+  }, [product?.id, product?.price]);
 
   useEffect(() => {
     if (baseProduct) addRecentlyViewed(baseProduct.id);
@@ -215,6 +223,16 @@ export default function ProductDetail() {
           setQuantity={setQuantity}
           onAdd={handleAddToCart}
           onReviewsClick={goToReviews}
+          appliedCoupon={appliedCoupon}
+          couponDiscount={couponDiscount}
+          onCouponApply={(c, d) => {
+            setAppliedCoupon(c);
+            setCouponDiscount(d);
+          }}
+          onCouponRemove={() => {
+            setAppliedCoupon(null);
+            setCouponDiscount(0);
+          }}
         />
       </div>
 
@@ -267,6 +285,8 @@ export default function ProductDetail() {
         mrp={product.mrp}
         inStock={product.inStock}
         onAdd={handleAddToCart}
+        couponCode={appliedCoupon?.code ?? null}
+        couponDiscount={couponDiscount}
       />
     </div>
   );
@@ -281,6 +301,10 @@ function ProductInfo({
   setQuantity,
   onAdd,
   onReviewsClick,
+  appliedCoupon,
+  couponDiscount,
+  onCouponApply,
+  onCouponRemove,
 }: {
   product: Product;
   selectedSize: string | null;
@@ -289,6 +313,10 @@ function ProductInfo({
   setQuantity: (n: number | ((q: number) => number)) => void;
   onAdd: () => void;
   onReviewsClick: () => void;
+  appliedCoupon: Coupon | null;
+  couponDiscount: number;
+  onCouponApply: (coupon: Coupon, discount: number) => void;
+  onCouponRemove: () => void;
 }) {
   const discount = discountPct(product.price, product.mrp);
   const [descExpanded, setDescExpanded] = useState(false);
@@ -341,7 +369,21 @@ function ProductInfo({
         )}
       </div>
 
-      <CouponList />
+      {appliedCoupon && (
+        <p className="-mt-3 font-serif text-xl font-bold text-green-600">
+          {formatINR(Math.max(0, product.price - couponDiscount))}{' '}
+          <span className="text-xs font-normal">
+            after coupon &quot;{appliedCoupon.code}&quot;
+          </span>
+        </p>
+      )}
+
+      <CouponList
+        productPrice={product.price}
+        appliedCode={appliedCoupon?.code ?? null}
+        onApply={onCouponApply}
+        onRemove={onCouponRemove}
+      />
 
       <LowStockBadge stockQuantity={product.stock_quantity} />
 
@@ -395,6 +437,12 @@ function ProductInfo({
             ))}
           </div>
         </div>
+      )}
+
+      {appliedCoupon && (
+        <p className="rounded-md bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
+          🎉 Congratulations! You saved {formatINR(couponDiscount)} with code &quot;{appliedCoupon.code}&quot;
+        </p>
       )}
 
       <div className="flex flex-wrap items-center gap-3">

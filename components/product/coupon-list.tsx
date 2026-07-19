@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Tag, Copy, Check } from 'lucide-react';
-import { fetchProductPageCoupons, Coupon } from '@/lib/coupons-api';
+import { Tag, Check } from 'lucide-react';
+import { fetchProductPageCoupons, validateCoupon, Coupon } from '@/lib/coupons-api';
 import { formatINR } from '@/lib/format';
 import { toast } from 'sonner';
 
@@ -10,10 +10,17 @@ function describeDiscount(c: Coupon) {
   return c.discount_type === 'percentage' ? `${c.discount_value}% OFF` : `${formatINR(c.discount_value)} OFF`;
 }
 
-export default function CouponList() {
+interface CouponListProps {
+  productPrice: number;
+  appliedCode: string | null;
+  onApply: (coupon: Coupon, discount: number) => void;
+  onRemove: () => void;
+}
+
+export default function CouponList({ productPrice, appliedCode, onApply, onRemove }: CouponListProps) {
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [loading, setLoading] = useState(true);
-  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [applying, setApplying] = useState<string | null>(null);
 
   useEffect(() => {
     fetchProductPageCoupons()
@@ -22,15 +29,23 @@ export default function CouponList() {
       .finally(() => setLoading(false));
   }, []);
 
-  const handleApply = async (code: string) => {
-    try {
-      await navigator.clipboard.writeText(code);
-    } catch {
-      // Clipboard access can fail (e.g. insecure context); still show the code was picked.
+  const handleClick = async (c: Coupon) => {
+    if (appliedCode === c.code) {
+      onRemove();
+      return;
     }
-    setCopiedCode(code);
-    toast.success(`Code "${code}" copied — paste it at checkout to apply`);
-    setTimeout(() => setCopiedCode((c) => (c === code ? null : c)), 2000);
+    setApplying(c.code);
+    try {
+      const result = await validateCoupon(c.code, productPrice);
+      if (!result.ok || !result.coupon) {
+        toast.error(result.error || 'Could not apply this coupon');
+        return;
+      }
+      onApply(result.coupon, result.discount || 0);
+      toast.success(`Coupon "${c.code}" applied`);
+    } finally {
+      setApplying(null);
+    }
   };
 
   if (loading || coupons.length === 0) return null;
@@ -42,41 +57,51 @@ export default function CouponList() {
         Available Coupons
       </div>
       <div className="flex flex-col gap-2">
-        {coupons.map((c) => (
-          <div
-            key={c.id}
-            className="relative flex items-center justify-between gap-3 overflow-hidden rounded-lg border border-dashed border-secondary/60 bg-secondary/10 px-3 py-2.5"
-          >
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-sm font-bold tracking-wide text-primary">{c.code}</span>
-                <span className="text-xs font-semibold text-secondary-foreground">
-                  {describeDiscount(c)}
-                </span>
-              </div>
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                {c.min_order_value > 0
-                  ? `On orders above ${formatINR(c.min_order_value)}`
-                  : 'No minimum order value'}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleApply(c.code)}
-              className="flex shrink-0 items-center gap-1 rounded-md border border-primary bg-background px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
+        {coupons.map((c) => {
+          const isApplied = appliedCode === c.code;
+          return (
+            <div
+              key={c.id}
+              className={`relative flex items-center justify-between gap-3 overflow-hidden rounded-lg border border-dashed px-3 py-2.5 transition-colors ${
+                isApplied ? 'border-green-600 bg-green-50' : 'border-secondary/60 bg-secondary/10'
+              }`}
             >
-              {copiedCode === c.code ? (
-                <>
-                  <Check className="h-3.5 w-3.5" /> Applied
-                </>
-              ) : (
-                <>
-                  <Copy className="h-3.5 w-3.5" /> Apply
-                </>
-              )}
-            </button>
-          </div>
-        ))}
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-sm font-bold tracking-wide text-primary">{c.code}</span>
+                  <span className="text-xs font-semibold text-secondary-foreground">
+                    {describeDiscount(c)}
+                  </span>
+                </div>
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {c.min_order_value > 0
+                    ? `On orders above ${formatINR(c.min_order_value)}`
+                    : 'No minimum order value'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleClick(c)}
+                disabled={applying === c.code}
+                className={`flex shrink-0 items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-60 ${
+                  isApplied
+                    ? 'border-green-600 bg-green-600 text-white hover:bg-green-700'
+                    : 'border-primary bg-background text-primary hover:bg-primary hover:text-primary-foreground'
+                }`}
+              >
+                {isApplied ? (
+                  <>
+                    <Check className="h-3.5 w-3.5" /> Applied
+                  </>
+                ) : applying === c.code ? (
+                  'Applying…'
+                ) : (
+                  'Apply'
+                )}
+              </button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
