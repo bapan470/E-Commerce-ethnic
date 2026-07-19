@@ -47,7 +47,36 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
   }, [images]);
 
   const clamp = useCallback((idx: number) => (idx + valid.length) % valid.length, [valid.length]);
-  const goTo = useCallback((idx: number) => setActive((_) => clamp(idx)), [clamp]);
+
+  // Track direction so the image slide always animates the same way
+  // (new image sliding in from the right, old one sliding out to the left)
+  // regardless of what triggered the change (swipe, arrow key, thumbnail).
+  const activeRef = useRef(active);
+  useEffect(() => {
+    activeRef.current = active;
+  }, [active]);
+
+  const [slideOffset, setSlideOffset] = useState(0);
+  const [slideAnimating, setSlideAnimating] = useState(false);
+
+  const goTo = useCallback(
+    (idx: number) => {
+      const cur = activeRef.current;
+      const nextIdx = clamp(idx);
+      if (nextIdx === cur) return;
+      const dir = idx > cur ? 1 : -1; // 1 = next image enters from the right
+      setActive(nextIdx);
+      setSlideOffset(dir * 100);
+      setSlideAnimating(false);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setSlideAnimating(true);
+          setSlideOffset(0);
+        });
+      });
+    },
+    [clamp]
+  );
 
   const scrollThumbCol = (dir: 1 | -1) => {
     thumbColRef.current?.scrollBy({ top: dir * 96, behavior: 'smooth' });
@@ -93,7 +122,6 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
     // A plain tap does nothing here — the stage itself has no click/zoom
     // handler anymore. Only the magnifier button (its own onClick) opens
     // the zoom lightbox.
-  };
   };
 
   // Zoom now only opens via the magnifier button — clicking/tapping
@@ -181,18 +209,27 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
             onTouchEnd={onTouchEnd}
           >
             {/* Only the active image is ever mounted — nothing preloads
-                silently in the background competing for bandwidth. */}
-            <Image
+                silently in the background competing for bandwidth. Each
+                change slides in from the right and settles into place. */}
+            <div
               key={active}
-              src={valid[active]}
-              alt={`${alt} - image ${active + 1}`}
-              fill
-              priority={active === 0}
-              draggable={false}
-              sizes="(max-width: 1024px) 100vw, 50vw"
-              quality={80}
-              className="select-none object-cover"
-            />
+              className="absolute inset-0"
+              style={{
+                transform: `translateX(${slideOffset}%)`,
+                transition: slideAnimating ? 'transform 320ms ease-out' : 'none',
+              }}
+            >
+              <Image
+                src={valid[active]}
+                alt={`${alt} - image ${active + 1}`}
+                fill
+                priority={active === 0}
+                draggable={false}
+                sizes="(max-width: 1024px) 100vw, 50vw"
+                quality={80}
+                className="select-none object-cover"
+              />
+            </div>
 
             {discount > 0 && (
               <Badge className="absolute left-4 top-4 bg-secondary text-secondary-foreground">
