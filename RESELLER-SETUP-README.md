@@ -1,43 +1,65 @@
-# Reseller Program — Setup Guide
+# Reseller Program — Setup Guide (v2: resale at checkout)
 
-This adds a Meesho-style reselling feature to your store, using the **same
-customer login/email** — no separate reseller signup.
+Same account/login reselling — now built directly into checkout, like you asked.
 
-## How it works
-- Any logged-in customer can click "Become a Reseller" (new page: `/account/reseller`).
-- They set their own margin % (e.g. 20%). Selling price = your price × (1 + margin/100).
-- They place orders for their own customers (name, phone, address) from that dashboard.
-- **You still pack & ship every order** — it lands in your normal Admin → Orders list, just tagged as a reseller order.
-- Their profit = what their customer paid − your base price. Tracked automatically.
-- Admin → Resellers tab shows every reseller, their sales, their profit, and lets you suspend/reactivate anyone.
+## How it works now
+1. On the **checkout page**, a logged-in customer sees a **"Resell this product"** checkbox.
+2. Ticking it opens a **Yes / No popup**: "Mark this as a resale order?"
+3. **Yes** → reveals a margin % field (pre-filled from their saved default) and an optional
+   **brand name** field. The order total updates live and turns **green**, showing the price
+   their own customer should pay.
+4. **No** → checkbox un-ticks, nothing changes.
+5. They fill in their customer's name/phone/address (the normal checkout fields) and place the
+   order as usual (COD or online) — **you ship directly to that address**.
+6. Their reseller profile is created automatically the first time they do this (same login, no
+   separate signup).
+7. `/account/reseller` is now just a **dashboard**: earnings summary, default margin setting, and
+   their resale order history. The old "Place a New Order" form has been removed — that's all done
+   at checkout now.
+8. **Admin → Orders**: any resale order shows an amber **"Resale"** badge under the customer name
+   (with brand name if given), plus the margin % and reseller's profit on that order.
+9. **Admin → Resellers**: unchanged — lists every reseller, their totals, suspend/reactivate.
 
-## Files in this zip (copy over your repo, same paths)
+## Files in this zip (copy over your repo, same paths — overwrite existing ones)
 ```
-supabase/migrations/20260728000000_reseller_program.sql   ← NEW (run this migration)
-lib/reseller-api.ts                                        ← NEW
-app/api/reseller/route.ts                                  ← NEW
-app/api/reseller/orders/route.ts                            ← NEW
-app/account/reseller/page.tsx                                ← NEW
-app/api/admin/resellers/route.ts                             ← NEW
-components/admin/resellers-panel.tsx                          ← NEW
+supabase/migrations/20260728000000_reseller_program.sql   ← run this migration (if not already)
+supabase/migrations/20260729000000_reseller_brand_name.sql ← NEW migration, run this too
 
-components/account/account-nav.tsx     ← MODIFIED (adds "Reseller" link)
-components/admin/admin-shell.tsx       ← MODIFIED (adds "Resellers" admin tab)
-app/admin/page.tsx                     ← MODIFIED (wires the new tab)
-app/account/orders/page.tsx            ← MODIFIED (hides reseller orders from personal order history)
+lib/reseller-api.ts                        ← UPDATED
+app/checkout/page.tsx                      ← UPDATED (resale checkbox + popup + margin/brand + green price)
+app/account/reseller/page.tsx              ← UPDATED (dashboard only, no order form)
+components/admin/orders-panel.tsx          ← UPDATED (Resale badge)
+
+app/api/reseller/route.ts                  ← unchanged from v1
+app/api/reseller/orders/route.ts           ← unchanged from v1 (kept as an API; UI no longer calls it, safe to keep)
+app/api/admin/resellers/route.ts           ← unchanged from v1
+components/admin/resellers-panel.tsx       ← unchanged from v1
+components/admin/admin-shell.tsx           ← unchanged from v1
+app/admin/page.tsx                         ← unchanged from v1
+components/account/account-nav.tsx         ← unchanged from v1
+app/account/orders/page.tsx                ← unchanged from v1
 ```
 
 ## Setup steps
-1. Copy all files above into your project at the same paths (overwrite the modified ones).
-2. Run the new migration on your Supabase project:
-   - Supabase Dashboard → SQL Editor → paste contents of `20260728000000_reseller_program.sql` → Run
-   - OR if you use the Supabase CLI: `supabase db push`
-3. Restart your dev server / redeploy.
-4. Test: log in as any customer → sidebar → "Reseller" → Become a Reseller → place a test order.
-5. Check Admin → Resellers to see it listed.
+1. Copy all files above into your project at the same paths (overwrite existing ones).
+2. Run **both** migrations on Supabase (SQL Editor → paste → Run, or `supabase db push`):
+   - `20260728000000_reseller_program.sql` (skip if you already ran it from v1)
+   - `20260729000000_reseller_brand_name.sql` (new — needed for the brand name field)
+3. Restart dev server / redeploy.
+4. `git add . && git commit -m "Resale at checkout" && git push`
 
-## Notes / things to know
-- **No trademark issues** — this is fully custom-built for your store, no Meesho branding or copied code anywhere.
-- **Payment model (MVP)**: orders default to Cash on Delivery / manual reconciliation — the reseller's customer pays on delivery (or however you currently collect COD), and you settle the margin with your reseller separately. If you want online payment splitting (customer pays online, reseller's cut auto-deducted), that's a bigger addition (payment gateway payout/split) — let me know and I can build that next.
-- Reseller pricing is always recalculated **server-side** from your real product price — a reseller can't tamper with the base cost from the browser.
-- A reseller can be suspended anytime from Admin → Resellers without deleting their account/orders.
+## Test it
+1. Log in as a customer, add a product to cart, go to checkout.
+2. Tick **"Resell this product"** → click **Yes** on the popup.
+3. Set a margin (e.g. 25), optionally a brand name.
+4. Watch the total turn **green** and update.
+5. Fill your (test) customer's name/phone/address, place the order.
+6. Go to `/account/reseller` → see it in "Your Resale Orders" with profit shown.
+7. Go to Admin → Orders → the order should show the amber **"Resale"** badge.
+
+## Notes
+- Pricing is still **server-side safe** where it matters: the base product price always comes from
+  your `products` table; margin is applied only in the browser for display/total calculation, same
+  as your existing coupon/loyalty/tax math already works in this checkout page.
+- Payment stays COD or your existing Razorpay online flow — the amount charged is simply the
+  marked-up (resale) total instead of the normal total when resale is ticked.

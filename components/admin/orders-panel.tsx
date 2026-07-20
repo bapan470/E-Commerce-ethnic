@@ -24,6 +24,10 @@ type Order = {
   customer_email?: string;
   customer_phone?: string;
   created_at?: string;
+  is_reseller_order?: boolean;
+  reseller_margin_percent?: number | null;
+  reseller_profit?: number | null;
+  reseller_brand_name?: string | null;
 };
 
 export default function OrdersPanel() {
@@ -206,6 +210,17 @@ function OrderRow({
         <td className="px-4 py-3 align-top">
           <div className="text-sm font-medium">{order.customer_name || 'Guest'}</div>
           <div className="text-xs text-muted-foreground">{order.customer_email || order.customer_phone}</div>
+          {order.is_reseller_order && (
+            <div className="mt-1 flex flex-col gap-0.5">
+              <span className="w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                Resale{order.reseller_brand_name ? ` · ${order.reseller_brand_name}` : ''}
+              </span>
+              <span className="text-[10px] text-muted-foreground">
+                {order.reseller_margin_percent}% margin
+                {typeof order.reseller_profit === 'number' ? ` · +${formatINR(order.reseller_profit)} profit` : ''}
+              </span>
+            </div>
+          )}
         </td>
         <td className="px-4 py-3 align-top">
           <div className="flex items-center gap-2">

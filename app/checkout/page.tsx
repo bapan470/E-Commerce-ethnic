@@ -4,12 +4,14 @@ import { useState, useEffect, FormEvent } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { Lock, Loader2, CreditCard, Tag, X, Wallet, Sparkles, Gift } from 'lucide-react';
+import { Lock, Loader2, CreditCard, Tag, X, Wallet, Sparkles, Gift, Store } from 'lucide-react';
 import { useCart } from '@/lib/cart-context';
+import { useAuth } from '@/lib/auth-context';
 import { formatINR } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import { getSupabaseBrowser } from '@/lib/supabase-browser';
 import { validateGiftCard, GiftCard } from '@/lib/giftcards-api';
+import { joinResellerProgram, fetchMyResellerOverview } from '@/lib/reseller-api';
 import {
   fetchLoyaltySettings,
   fetchMyLoyaltyBalance,
@@ -35,6 +37,16 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from '@/components/ui/alert-dialog';
 import TrustBadges from '@/components/checkout/trust-badges';
 import { toast } from 'sonner';
 
@@ -60,6 +72,22 @@ export default function CheckoutPage() {
   const [placing, setPlacing] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('online');
+  const { user } = useAuth();
+
+  // Resale — lets a logged-in customer mark this checkout as an order
+  // they're reselling to their own customer, with their own margin on top.
+  const [isResale, setIsResale] = useState(false);
+  const [showResaleConfirm, setShowResaleConfirm] = useState(false);
+  const [resaleMargin, setResaleMargin] = useState('20');
+  const [resaleBrandName, setResaleBrandName] = useState('');
+  useEffect(() => {
+    if (!user) return;
+    fetchMyResellerOverview()
+      .then((o) => {
+        if (o.profile) setResaleMargin(String(o.profile.default_margin_percent));
+      })
+      .catch(() => {});
+  }, [user]);
 
   const [couponInput, setCouponInput] = useState('');
   const [applyingCoupon, setApplyingCoupon] = useState(false);
@@ -203,6 +231,31 @@ export default function CheckoutPage() {
     discountedSubtotal - (discountedSubtotal * 100) / (100 + shippingSettings.gst_rate_percent)
   );
   const total = discountedSubtotal + shipping;
+
+  const resaleMarginNum = Math.max(0, Number(resaleMargin) || 0);
+  // What the reseller's own customer actually pays — the normal total,
+  // marked up by the reseller's margin. This is what gets charged/COD'd
+  // and stored as the order's total_amount when resale is on.
+  const payableTotal = isResale ? Math.round(total * (1 + resaleMarginNum / 100)) : total;
+  const resaleProfit = payableTotal - total;
+
+  const handleResaleCheckboxChange = (checked: boolean) => {
+    if (checked) {
+      setShowResaleConfirm(true);
+    } else {
+      setIsResale(false);
+    }
+  };
+
+  const confirmResaleYes = () => {
+    setIsResale(true);
+    setShowResaleConfirm(false);
+  };
+
+  const confirmResaleNo = () => {
+    setIsResale(false);
+    setShowResaleConfirm(false);
+  };
 
   const handleToggleRedeemPoints = (checked: boolean) => {
     setRedeemPoints(checked);
@@ -359,11 +412,32 @@ export default function CheckoutPage() {
         data: { user: loggedInUser },
       } = await getSupabaseBrowser().auth.getUser();
 
+      if (isResale && !loggedInUser) {
+        toast.error('Please log in to place a resale order');
+        setPlacing(false);
+        return;
+      }
+
+      // If reselling, make sure this account has a reseller profile
+      // (created silently on first resale checkout — same login, no
+      // separate signup) so the order can be linked to it.
+      let resellerId: string | null = null;
+      if (isResale) {
+        try {
+          const resellerProfile = await joinResellerProgram(resaleMarginNum);
+          resellerId = resellerProfile.id;
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : 'Failed to set up reseller account');
+          setPlacing(false);
+          return;
+        }
+      }
+
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
         .insert({
           items: orderItems,
-          total_amount: total,
+          total_amount: payableTotal,
           status: 'pending',
           payment_method: paymentMethod,
           shipping_address: shippingAddress,
@@ -381,6 +455,12 @@ export default function CheckoutPage() {
           gift_card_discount: clampedGiftCardDiscount,
           loyalty_points_redeemed: loyaltyDiscount > 0 ? pointsToRedeem : 0,
           loyalty_discount: loyaltyDiscount,
+          is_reseller_order: isResale,
+          reseller_id: resellerId,
+          reseller_margin_percent: isResale ? resaleMarginNum : null,
+          reseller_base_cost: isResale ? total : null,
+          reseller_profit: isResale ? resaleProfit : null,
+          reseller_brand_name: isResale ? resaleBrandName || null : null,
         })
         .select('id')
         .single();
@@ -403,7 +483,7 @@ export default function CheckoutPage() {
         trackEvent('purchase', {
           orderId: internalOrderId,
           userId: loggedInUser?.id ?? null,
-          metadata: { total, itemCount: items.length, paymentMethod: 'cod', email: customerEmail },
+          metadata: { total: payableTotal, itemCount: items.length, paymentMethod: 'cod', email: customerEmail },
         });
         toast.success('Order placed! Pay cash on delivery.');
         fetch('/api/order-confirm', {
@@ -420,7 +500,7 @@ export default function CheckoutPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          amount: total * 100, // convert to paise
+          amount: payableTotal * 100, // convert to paise
           internalOrderId,
         }),
       });
@@ -455,7 +535,7 @@ export default function CheckoutPage() {
       trackEvent('purchase', {
         orderId: internalOrderId,
         userId: loggedInUser?.id ?? null,
-        metadata: { total, itemCount: items.length, paymentMethod: 'online', email: customerEmail },
+        metadata: { total: payableTotal, itemCount: items.length, paymentMethod: 'online', email: customerEmail },
       });
       toast.success('Payment successful! Order confirmed.');
       fetch('/api/order-confirm', {
@@ -895,11 +975,86 @@ export default function CheckoutPage() {
               </div>
             )}
 
+            {user && (
+              <div className="mt-4 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3">
+                <label className="flex cursor-pointer items-start gap-3">
+                  <Checkbox
+                    className="mt-1"
+                    checked={isResale}
+                    onCheckedChange={(v) => handleResaleCheckboxChange(v === true)}
+                  />
+                  <div>
+                    <p className="flex items-center gap-1.5 text-sm font-semibold text-primary">
+                      <Store className="h-4 w-4" /> Resell this product
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Placing this order for your own customer? Add your margin and we&apos;ll ship
+                      directly to them.
+                    </p>
+                  </div>
+                </label>
+
+                {isResale && (
+                  <div className="mt-3 space-y-3 border-t border-dashed border-primary/30 pt-3">
+                    <div>
+                      <Label htmlFor="resale-margin" className="text-xs">
+                        Your margin (%)
+                      </Label>
+                      <Input
+                        id="resale-margin"
+                        type="number"
+                        min={0}
+                        value={resaleMargin}
+                        onChange={(e) => setResaleMargin(e.target.value)}
+                        className="mt-1 h-9 max-w-[140px]"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="resale-brand" className="text-xs">
+                        Brand name (optional)
+                      </Label>
+                      <Input
+                        id="resale-brand"
+                        value={resaleBrandName}
+                        onChange={(e) => setResaleBrandName(e.target.value)}
+                        placeholder="Shown on your invoice, if you have one"
+                        className="mt-1 h-9"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between rounded-md bg-white/60 px-3 py-2">
+                      <span className="text-xs text-muted-foreground">Selling price for your customer</span>
+                      <span className="font-serif text-lg font-bold text-green-600">
+                        {formatINR(payableTotal)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <AlertDialog open={showResaleConfirm} onOpenChange={setShowResaleConfirm}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Mark this as a resale order?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    We&apos;ll ship directly to the customer you enter below. You&apos;ll set your
+                    margin and we&apos;ll show the price your customer should pay.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel onClick={confirmResaleNo}>No</AlertDialogCancel>
+                  <AlertDialogAction onClick={confirmResaleYes}>Yes</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
             <Separator className="my-4" />
             <div className="flex items-center justify-between">
               <span className="font-serif text-base font-semibold">Total</span>
-              <span className="font-serif text-xl font-bold text-primary">
-                {formatINR(total)}
+              <span
+                className={`font-serif text-xl font-bold ${isResale ? 'text-green-600' : 'text-primary'}`}
+              >
+                {formatINR(payableTotal)}
               </span>
             </div>
             <Button
@@ -916,12 +1071,12 @@ export default function CheckoutPage() {
               ) : paymentMethod === 'cod' ? (
                 <>
                   <Wallet className="mr-2 h-4 w-4" />
-                  Place Order (COD) — {formatINR(total)}
+                  Place Order (COD) — {formatINR(payableTotal)}
                 </>
               ) : (
                 <>
                   <CreditCard className="mr-2 h-4 w-4" />
-                  Pay {formatINR(total)}
+                  Pay {formatINR(payableTotal)}
                 </>
               )}
             </Button>
