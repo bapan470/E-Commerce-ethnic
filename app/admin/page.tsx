@@ -6,7 +6,6 @@ import AdminShell, { type AdminSection } from '@/components/admin/admin-shell';
 import ProductsPanel from '@/components/admin/products-panel';
 import OrdersPanel from '@/components/admin/orders-panel';
 import CategoriesPanel from '@/components/admin/categories-panel';
-import VariantsPanel from '@/components/admin/variants-panel';
 import ReviewsPanel from '@/components/admin/reviews-panel';
 import CouponsPanel from '@/components/admin/coupons-panel';
 import SettingsPanel from '@/components/admin/settings-panel';
@@ -27,7 +26,6 @@ import GiftCardsPanel from '@/components/admin/giftcards-panel';
 const PANELS: Record<AdminSection, React.ComponentType> = {
   analytics: AnalyticsPanel,
   products: ProductsPanel,
-  variants: VariantsPanel,
   categories: CategoriesPanel,
   reviews: ReviewsPanel,
   orders: OrdersPanel,
@@ -59,9 +57,13 @@ function AdminPageInner() {
 
   // Initialize from the URL so a reload (or a shared link) lands on the
   // section the admin was actually looking at instead of always resetting
-  // to Analytics.
-  const initialSection = isAdminSection(searchParams.get('section'))
-    ? (searchParams.get('section') as AdminSection)
+  // to Analytics. Old "?section=variants" links (from before variants moved
+  // inside Products) fall back to Products instead of a blank panel.
+  const rawSection = searchParams.get('section');
+  const initialSection = isAdminSection(rawSection)
+    ? (rawSection as AdminSection)
+    : rawSection === 'variants'
+    ? 'products'
     : 'analytics';
 
   const [active, setActive] = useState<AdminSection>(initialSection);

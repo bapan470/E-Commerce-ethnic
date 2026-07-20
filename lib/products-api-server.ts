@@ -21,6 +21,8 @@ export function mapRowToProduct(row: ProductRow): Product {
     pattern: row.pattern ?? null,
     images: row.images ?? [],
     video_url: row.video_url ?? null,
+    sku: row.sku ?? null,
+    highlights: row.highlights ?? null,
     rating: Number(row.rating) || 4.5,
     reviews: row.reviews ?? 0,
     featured: row.featured,

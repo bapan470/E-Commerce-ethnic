@@ -7,6 +7,7 @@ export interface VariantSize {
   size: string;
   stock_quantity: number;
   price_override: number | null;
+  sku: string | null;
 }
 
 export interface ProductVariant {
@@ -19,6 +20,7 @@ export interface ProductVariant {
   meta_title: string | null;
   meta_description: string | null;
   is_default: boolean;
+  sku: string | null;
   created_at: string;
 }
 
@@ -84,7 +86,8 @@ export async function createVariant(input: {
   metaTitle?: string;
   metaDescription?: string;
   isDefault?: boolean;
-  sizes: { size: string; stockQuantity: number; priceOverride?: number | null }[];
+  sku?: string | null;
+  sizes: { size: string; stockQuantity: number; priceOverride?: number | null; sku?: string | null }[];
 }): Promise<ProductVariant> {
   const supabase = getSupabaseBrowser();
   const { data: variant, error } = await supabase
@@ -98,6 +101,7 @@ export async function createVariant(input: {
       meta_title: input.metaTitle ?? null,
       meta_description: input.metaDescription ?? null,
       is_default: input.isDefault ?? false,
+      sku: input.sku ?? null,
     })
     .select('*')
     .single();
@@ -110,6 +114,7 @@ export async function createVariant(input: {
         size: s.size,
         stock_quantity: s.stockQuantity,
         price_override: s.priceOverride ?? null,
+        sku: s.sku ?? null,
       }))
     );
     if (sizeError) throw sizeError;
@@ -143,6 +148,7 @@ export async function updateVariant(
     meta_title: string | null;
     meta_description: string | null;
     is_default: boolean;
+    sku: string | null;
   }>
 ): Promise<ProductVariant> {
   const supabase = getSupabaseBrowser();
@@ -186,6 +192,7 @@ export async function addVariantSize(input: {
   size: string;
   stockQuantity: number;
   priceOverride?: number | null;
+  sku?: string | null;
 }): Promise<VariantSize> {
   const supabase = getSupabaseBrowser();
   const { data, error } = await supabase
@@ -195,6 +202,7 @@ export async function addVariantSize(input: {
       size: input.size,
       stock_quantity: input.stockQuantity,
       price_override: input.priceOverride ?? null,
+      sku: input.sku ?? null,
     })
     .select('*')
     .single();
@@ -204,7 +212,7 @@ export async function addVariantSize(input: {
 
 export async function updateVariantSize(
   id: string,
-  input: Partial<{ size: string; stock_quantity: number; price_override: number | null }>
+  input: Partial<{ size: string; stock_quantity: number; price_override: number | null; sku: string | null }>
 ): Promise<VariantSize> {
   const supabase = getSupabaseBrowser();
   const { data, error } = await supabase

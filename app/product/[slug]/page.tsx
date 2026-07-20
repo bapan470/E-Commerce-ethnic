@@ -105,7 +105,7 @@ export default async function ProductPage({ params }: Params) {
               ? variant.images
               : product.images
             : undefined,
-        sku: variant?.id || product.id,
+        sku: variant?.sku || product.sku || variant?.id || product.id,
         brand: {
           '@type': 'Brand',
           name: 'Aruhi Handlooms',

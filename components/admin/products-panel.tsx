@@ -1,10 +1,9 @@
 "use client";
 
 import { useState, FormEvent, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles, Link2, Palette } from 'lucide-react';
+import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles, Link2, Palette, Wand2 } from 'lucide-react';
 import { useProducts } from '@/lib/cart-context';
 import {
   createProduct,
@@ -12,7 +11,9 @@ import {
   deleteProduct,
   uploadProductImage,
 } from '@/lib/products-api';
-import { Product, CategoryRow } from '@/lib/types';
+import { generateProductSku } from '@/lib/sku';
+import { Product, CategoryRow, ProductHighlights } from '@/lib/types';
+import ProductVariantsManager from '@/components/admin/product-variants-manager';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -88,6 +89,8 @@ interface FormState {
   pattern: string;
   images: string[];
   video_url: string;
+  sku: string;
+  highlights: ProductHighlights;
   stock_quantity: string;
   low_stock_threshold: string;
   rating: string;
@@ -95,6 +98,22 @@ interface FormState {
   featured: boolean;
   in_stock: boolean;
 }
+
+const emptyHighlights = (): ProductHighlights => ({
+  fit_shape: '',
+  length: '',
+  neck: '',
+  sleeve_length: '',
+  sleeve_styling: '',
+  surface_styling: '',
+  print_or_pattern_type: '',
+  net_quantity: '1',
+  add_on: '',
+  type: '',
+  generic_name: '',
+  country_of_origin: 'India',
+  transparency: '',
+});
 
 const emptyForm = (): FormState => ({
   name: '',
@@ -114,6 +133,8 @@ const emptyForm = (): FormState => ({
   pattern: '',
   images: [DEFAULT_IMAGE],
   video_url: '',
+  sku: '',
+  highlights: emptyHighlights(),
   stock_quantity: '0',
   low_stock_threshold: '5',
   rating: '4.5',
@@ -141,6 +162,8 @@ const fromProduct = (p: Product): FormState => ({
   pattern: p.pattern || '',
   images: p.images.length ? p.images : [DEFAULT_IMAGE],
   video_url: p.video_url || '',
+  sku: p.sku || '',
+  highlights: { ...emptyHighlights(), ...(p.highlights || {}) },
   stock_quantity: String(p.stock_quantity),
   low_stock_threshold: String(p.low_stock_threshold ?? 5),
   rating: String(p.rating),
@@ -150,7 +173,6 @@ const fromProduct = (p: Product): FormState => ({
 });
 
 export default function ProductsPanel() {
-  const router = useRouter();
   const { products, categories, loading, refresh } = useProducts();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
@@ -223,8 +245,11 @@ export default function ProductsPanel() {
         material: f.material || listing.material || f.material,
         pattern: f.pattern || listing.pattern || f.pattern,
         gender: f.gender !== 'female' ? f.gender : listing.gender || f.gender,
+        highlights: { ...f.highlights, ...(listing.highlights || {}) },
       }));
-      toast.success('AI listing generated — review and tweak before saving');
+      toast.success(
+        'AI listing generated — including Product Highlights. Review and tweak before saving'
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'AI generation failed');
     } finally {
@@ -309,6 +334,8 @@ export default function ProductsPanel() {
       pattern: form.pattern.trim() || null,
       images,
       video_url: form.video_url.trim() || null,
+      sku: form.sku.trim() || generateProductSku(form.name, form.category_name),
+      highlights: form.highlights,
       stock_quantity: newStockQty,
       low_stock_threshold: Number(form.low_stock_threshold) || 5,
       rating: Number(form.rating) || 4.5,
@@ -325,17 +352,21 @@ export default function ProductsPanel() {
         if (wasOutOfStock && newStockQty > 0) {
           triggerRestockNotifications(editing.id);
         }
+        setEditing({ ...editing, ...payload } as unknown as Product);
+        setForm((f) => ({ ...f, sku: payload.sku }));
+        await refresh();
       } else {
         const created = await createProduct(payload);
-        toast.success('Product added', {
-          action: {
-            label: 'Add colour/size variants',
-            onClick: () => router.push(`/admin?section=variants&product=${created.id}&new=1`),
-          },
-        });
+        toast.success('Product added — now add colour variants below, or close to finish.');
+        // Keep the dialog open, switched into "edit" mode for the product we
+        // just created, so colour/size variants can be added right here
+        // without hunting for a separate tab.
+        setEditing(created);
+        setForm(fromProduct(created));
+        await refresh();
+        return;
       }
       setOpen(false);
-      await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
@@ -433,12 +464,17 @@ export default function ProductsPanel() {
                       className="object-cover"
                     />
                   </div>
-                  <div className="min-w-0">
-                    <p className="line-clamp-1 text-sm font-semibold">{p.name}</p>
+                  <button
+                    type="button"
+                    onClick={() => openEdit(p)}
+                    className="min-w-0 text-left"
+                    title="Click to edit details or manage colour/size variants"
+                  >
+                    <p className="line-clamp-1 text-sm font-semibold hover:text-primary hover:underline">{p.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {p.fabric || '—'} · {p.origin || '—'}
+                      {p.fabric || '—'} · {p.origin || '—'} {p.sku ? `· SKU ${p.sku}` : ''}
                     </p>
-                  </div>
+                  </button>
                 </div>
                 <div className="col-span-1 text-sm sm:col-span-2">
                   <Badge variant="outline" className="font-normal">{p.category}</Badge>
@@ -477,9 +513,9 @@ export default function ProductsPanel() {
                   <Button
                     size="icon"
                     variant="ghost"
-                    onClick={() => router.push(`/admin?section=variants&product=${p.id}`)}
+                    onClick={() => openEdit(p)}
                     aria-label="Manage colour/size variants"
-                    title="Manage colour/size variants"
+                    title="Manage colour/size variants (inside product details)"
                   >
                     <Palette className="h-4 w-4" />
                   </Button>
@@ -557,20 +593,47 @@ export default function ProductsPanel() {
               </div>
             </div>
 
-            <div className="grid gap-1.5">
-              <Label htmlFor="name">Name *</Label>
-              <Input
-                id="name"
-                required
-                value={form.name}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    name: e.target.value,
-                    slug: f.slug || slugify(e.target.value),
-                  }))
-                }
-              />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-1.5">
+                <Label htmlFor="name">Name *</Label>
+                <Input
+                  id="name"
+                  required
+                  value={form.name}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      name: e.target.value,
+                      slug: f.slug || slugify(e.target.value),
+                    }))
+                  }
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="sku">SKU code</Label>
+                <div className="flex gap-1.5">
+                  <Input
+                    id="sku"
+                    value={form.sku}
+                    onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))}
+                    placeholder="auto-generated on save"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    title="Auto-generate SKU"
+                    onClick={() =>
+                      setForm((f) => ({
+                        ...f,
+                        sku: generateProductSku(f.name, f.category_name),
+                      }))
+                    }
+                  >
+                    <Wand2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-3">
@@ -764,6 +827,130 @@ export default function ProductsPanel() {
               </p>
             </div>
 
+            <div className="grid gap-2 rounded-lg border border-border/60 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-medium">Product Highlights (shown on the product page)</p>
+                  <p className="text-xs text-muted-foreground">
+                    &quot;Generate with AI&quot; above fills these in automatically from the name/photo
+                    &mdash; review and tweak. Blank fields just won&apos;t show on the storefront.
+                  </p>
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-fit-shape">Fit / Shape</Label>
+                  <Input
+                    id="h-fit-shape"
+                    value={form.highlights.fit_shape}
+                    onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, fit_shape: e.target.value } }))}
+                    placeholder="e.g. Fit and Flare"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-length">Length</Label>
+                  <Input
+                    id="h-length"
+                    value={form.highlights.length}
+                    onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, length: e.target.value } }))}
+                    placeholder="e.g. Calf-Length"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-neck">Neck</Label>
+                  <Input
+                    id="h-neck"
+                    value={form.highlights.neck}
+                    onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, neck: e.target.value } }))}
+                    placeholder="e.g. Shoulder Straps"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-print">Print or Pattern Type</Label>
+                  <Input
+                    id="h-print"
+                    value={form.highlights.print_or_pattern_type}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, highlights: { ...f.highlights, print_or_pattern_type: e.target.value } }))
+                    }
+                    placeholder="e.g. Solid"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-surface">Surface Styling</Label>
+                  <Input
+                    id="h-surface"
+                    value={form.highlights.surface_styling}
+                    onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, surface_styling: e.target.value } }))}
+                    placeholder="e.g. Smocking or Shirred"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-sleeve-length">Sleeve Length</Label>
+                  <Input
+                    id="h-sleeve-length"
+                    value={form.highlights.sleeve_length}
+                    onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, sleeve_length: e.target.value } }))}
+                    placeholder="e.g. Sleeveless"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-sleeve-styling">Sleeve Styling</Label>
+                  <Input
+                    id="h-sleeve-styling"
+                    value={form.highlights.sleeve_styling}
+                    onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, sleeve_styling: e.target.value } }))}
+                    placeholder="e.g. Shoulder Strap"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-net-qty">Net Quantity</Label>
+                  <Input
+                    id="h-net-qty"
+                    value={form.highlights.net_quantity}
+                    onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, net_quantity: e.target.value } }))}
+                    placeholder="e.g. 1"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-addon">Add On</Label>
+                  <Input
+                    id="h-addon"
+                    value={form.highlights.add_on}
+                    onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, add_on: e.target.value } }))}
+                    placeholder="e.g. Jacket"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-type">Type</Label>
+                  <Input
+                    id="h-type"
+                    value={form.highlights.type}
+                    onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, type: e.target.value } }))}
+                    placeholder="e.g. One Piece"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-generic">Generic Name</Label>
+                  <Input
+                    id="h-generic"
+                    value={form.highlights.generic_name}
+                    onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, generic_name: e.target.value } }))}
+                    placeholder="e.g. Dresses"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-country">Country of Origin</Label>
+                  <Input
+                    id="h-country"
+                    value={form.highlights.country_of_origin}
+                    onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, country_of_origin: e.target.value } }))}
+                    placeholder="e.g. India"
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* Image upload + URL list */}
             <div className="grid gap-1.5">
               <Label>Images</Label>
@@ -856,6 +1043,14 @@ export default function ProductsPanel() {
                 placeholder="One image URL per line"
               />
             </div>
+
+            {/* Colour/size variants -- managed inline, right inside this same dialog */}
+            <ProductVariantsManager
+              productId={editing?.id ?? null}
+              productName={form.name}
+              productSku={form.sku}
+              baseImage={form.images[0]}
+            />
 
             {/* Product video (shows as the first slide in the gallery, before photos) */}
             <div className="grid gap-1.5">

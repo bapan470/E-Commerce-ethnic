@@ -6,7 +6,6 @@ import { toast } from 'sonner';
 import {
   BarChart3,
   Package,
-  Layers,
   FolderTree,
   Star,
   ShoppingCart,
@@ -34,7 +33,6 @@ import NotificationBell from './notification-bell';
 export type AdminSection =
   | 'analytics'
   | 'products'
-  | 'variants'
   | 'categories'
   | 'reviews'
   | 'orders'
@@ -73,7 +71,6 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Catalog',
     items: [
       { value: 'products', label: 'Products', icon: Package },
-      { value: 'variants', label: 'Variants', icon: Layers },
       { value: 'categories', label: 'Categories', icon: FolderTree },
       { value: 'reviews', label: 'Reviews', icon: Star },
     ],

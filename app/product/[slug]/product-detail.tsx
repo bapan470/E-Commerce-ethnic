@@ -22,6 +22,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import ReviewsSection from '@/components/product/reviews-section';
 import PincodeChecker from '@/components/product/pincode-checker';
 import VariantSwatches from '@/components/product/variant-swatches';
+import ProductHighlights from '@/components/product/product-highlights';
 import ProductGallery from '@/components/product/product-gallery';
 import ProductVideo from '@/components/product/product-video';
 import MobileStickyCartBar from '@/components/product/mobile-sticky-cart-bar';
@@ -110,12 +111,7 @@ export default function ProductDetail() {
   // sizes (needed for stock accuracy) fill in a moment later in the background.
   const handleSelectVariant = (v: ProductVariant) => {
     setVariant((prev) => ({ ...v, sizes: prev?.slug === v.slug ? prev.sizes : [] }));
-    // router.replace (not raw window.history.replaceState) so Next's App
-    // Router keeps its own internal history stack in sync with the real
-    // browser URL. Bypassing it caused a mismatch where navigating away
-    // afterwards (e.g. Buy Now → /checkout) needed two presses of the
-    // browser Back button — the first just re-synced Next's router state.
-    router.replace(`/product/${v.slug}`, { scroll: false });
+    window.history.replaceState(null, '', `/product/${v.slug}`);
     fetchVariantBySlug(v.slug)
       .then((res) => {
         if (res) setVariant(res.variant);
@@ -388,6 +384,9 @@ export default function ProductDetail() {
               <li><strong className="text-foreground">Sizes:</strong> {product.sizes.join(', ')}</li>
               <li><strong className="text-foreground">Care:</strong> Dry clean only</li>
               <li><strong className="text-foreground">In stock:</strong> {product.stock_quantity} units</li>
+              {(variant?.sku || product.sku) && (
+                <li><strong className="text-foreground">SKU:</strong> {variant?.sku || product.sku}</li>
+              )}
             </ul>
           </TabsContent>
           <TabsContent value="shipping" className="max-w-3xl text-sm leading-relaxed text-foreground/80">
@@ -539,16 +538,7 @@ function ProductInfo({
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 text-sm">
-        <div className="rounded-lg bg-muted/50 p-3">
-          <p className="text-xs uppercase tracking-wider text-muted-foreground">Fabric</p>
-          <p className="mt-0.5 font-medium">{product.fabric}</p>
-        </div>
-        <div className="rounded-lg bg-muted/50 p-3">
-          <p className="text-xs uppercase tracking-wider text-muted-foreground">Origin</p>
-          <p className="mt-0.5 font-medium">{product.origin}</p>
-        </div>
-      </div>
+      <ProductHighlights product={product} />
 
       {product.sizes.length > 1 && (
         <div>

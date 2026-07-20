@@ -9,6 +9,22 @@ import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 const MODEL = 'meta/llama-3.2-90b-vision-instruct';
 const NIM_ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions';
 
+interface GeneratedHighlights {
+  fit_shape: string;
+  length: string;
+  neck: string;
+  sleeve_length: string;
+  sleeve_styling: string;
+  surface_styling: string;
+  print_or_pattern_type: string;
+  net_quantity: string;
+  add_on: string;
+  type: string;
+  generic_name: string;
+  country_of_origin: string;
+  transparency: string;
+}
+
 interface GeneratedListing {
   name: string;
   description: string;
@@ -19,6 +35,7 @@ interface GeneratedListing {
   pattern: string;
   gender: string;
   meta_description: string;
+  highlights: GeneratedHighlights;
 }
 
 function buildPrompt(input: {
@@ -61,8 +78,25 @@ Respond with ONLY a JSON object (no markdown fences, no preamble) with these exa
   "material": "single Google Shopping material value, e.g. 'Silk' — a plain fabric-family word, not a brand name. NOTE: this is your best visual estimate from the photo/notes, not a lab-verified fact — the store owner should confirm it.",
   "pattern": "single Google Shopping pattern value, e.g. 'Solid', 'Zari Border', 'Floral Print', 'Striped'",
   "gender": "one of exactly: female, male, unisex",
-  "meta_description": "a single SEO meta-description sentence, 140-160 characters, enticing and keyword-rich, ending without ellipsis"
-}`;
+  "meta_description": "a single SEO meta-description sentence, 140-160 characters, enticing and keyword-rich, ending without ellipsis",
+  "highlights": {
+    "fit_shape": "e.g. 'Fit and Flare', 'Straight', 'A-Line' — leave '' if not applicable to this product type",
+    "length": "e.g. 'Calf-Length', 'Ankle-Length', 'Saree Length (5.5 m)'",
+    "neck": "e.g. 'Round Neck', 'Shoulder Straps', 'Sweetheart' — leave '' if not applicable (e.g. a saree with no stitched neckline)",
+    "sleeve_length": "e.g. 'Sleeveless', 'Three-Quarter Sleeves', 'Full Sleeves' — leave '' if not applicable",
+    "sleeve_styling": "e.g. 'Shoulder Strap', 'Regular Sleeves', 'Puff Sleeves' — leave '' if not applicable",
+    "surface_styling": "e.g. 'Zari Woven', 'Embroidered', 'Smocking or Shirred', 'Plain'",
+    "print_or_pattern_type": "e.g. 'Solid', 'Floral Print', 'Zari Border'",
+    "net_quantity": "a plain number as a string, almost always '1'",
+    "add_on": "e.g. 'Jacket', 'Blouse Piece', 'Petticoat' — leave '' if nothing is bundled",
+    "type": "the product form factor, e.g. 'Saree', 'One Piece', 'Lehenga Set', 'Kurti'",
+    "generic_name": "the plain-English product category, e.g. 'Sarees', 'Dresses', 'Kurtis'",
+    "country_of_origin": "almost always 'India' for this store unless notes say otherwise",
+    "transparency": "e.g. 'Opaque', 'Semi-Sheer' — your best visual estimate, leave '' if unsure"
+  }
+}
+
+For the "highlights" object: look closely at the attached photo (if any) and infer these spec-sheet style details yourself the way an experienced merchandiser would — the store owner should not have to type these in by hand. Leave a field as an empty string '' rather than guessing wildly if it genuinely doesn't apply to this product type (e.g. a saree has no "neck" or "sleeve" of its own).`;
 }
 
 /** Fetches a product image and returns it as a base64 data: URI for NIM's image_url input. */
@@ -159,6 +193,29 @@ export async function POST(req: Request) {
                 pattern: { type: 'string' },
                 gender: { type: 'string', enum: ['female', 'male', 'unisex'] },
                 meta_description: { type: 'string' },
+                highlights: {
+                  type: 'object',
+                  properties: {
+                    fit_shape: { type: 'string' },
+                    length: { type: 'string' },
+                    neck: { type: 'string' },
+                    sleeve_length: { type: 'string' },
+                    sleeve_styling: { type: 'string' },
+                    surface_styling: { type: 'string' },
+                    print_or_pattern_type: { type: 'string' },
+                    net_quantity: { type: 'string' },
+                    add_on: { type: 'string' },
+                    type: { type: 'string' },
+                    generic_name: { type: 'string' },
+                    country_of_origin: { type: 'string' },
+                    transparency: { type: 'string' },
+                  },
+                  required: [
+                    'fit_shape', 'length', 'neck', 'sleeve_length', 'sleeve_styling',
+                    'surface_styling', 'print_or_pattern_type', 'net_quantity', 'add_on',
+                    'type', 'generic_name', 'country_of_origin', 'transparency',
+                  ],
+                },
               },
               required: [
                 'name',
@@ -170,6 +227,7 @@ export async function POST(req: Request) {
                 'pattern',
                 'gender',
                 'meta_description',
+                'highlights',
               ],
             },
           },

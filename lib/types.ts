@@ -6,6 +6,28 @@ export type Category =
   | 'Kurti'
   | 'Bridal';
 
+/**
+ * Extra "Product Highlights" attributes shown on the PDP in the Meesho-style
+ * collapsible spec block (Fit/Shape, Length up top; Neck, Sleeve, Net
+ * Quantity etc. under "Additional Details"). All optional — the AI listing
+ * generator fills these in from the name/photo, and the admin can edit them.
+ */
+export interface ProductHighlights {
+  fit_shape?: string;
+  length?: string;
+  neck?: string;
+  sleeve_length?: string;
+  sleeve_styling?: string;
+  surface_styling?: string;
+  print_or_pattern_type?: string;
+  net_quantity?: string;
+  add_on?: string;
+  type?: string;
+  generic_name?: string;
+  country_of_origin?: string;
+  transparency?: string;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -25,6 +47,8 @@ export interface Product {
   pattern: string | null;
   images: string[];
   video_url?: string | null;
+  sku?: string | null;
+  highlights?: ProductHighlights | null;
   rating: number;
   reviews: number;
   featured?: boolean;
@@ -129,6 +153,8 @@ export interface ProductRow {
   pattern: string | null;
   images: string[] | null;
   video_url: string | null;
+  sku: string | null;
+  highlights: ProductHighlights | null;
   stock_quantity: number;
   low_stock_threshold?: number;
   rating: number;
