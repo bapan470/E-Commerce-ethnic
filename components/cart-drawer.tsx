@@ -1,11 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Minus, Plus, Trash2, ShoppingBag, Tag } from 'lucide-react';
+import { Minus, Plus, Trash2, ShoppingBag, Tag, ArrowLeft, X, Loader2 } from 'lucide-react';
 import { useCart } from '@/lib/cart-context';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Sheet,
   SheetContent,
@@ -28,7 +30,32 @@ export default function CartDrawer() {
     count,
     appliedCoupon,
     couponDiscount,
+    applyCoupon,
+    removeCoupon,
   } = useCart();
+
+  const [couponInput, setCouponInput] = useState('');
+  const [applyingCoupon, setApplyingCoupon] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
+
+  const handleApplyCoupon = async () => {
+    if (!couponInput.trim()) return;
+    setCouponError(null);
+    setApplyingCoupon(true);
+    const result = await applyCoupon(couponInput);
+    setApplyingCoupon(false);
+    if (!result.ok) {
+      setCouponError(result.error || 'Invalid coupon');
+      return;
+    }
+    setCouponInput('');
+  };
+
+  const handleRemoveCoupon = () => {
+    removeCoupon();
+    setCouponInput('');
+    setCouponError(null);
+  };
 
   return (
     <Sheet open={isCartOpen} onOpenChange={setCartOpen}>
@@ -36,7 +63,15 @@ export default function CartDrawer() {
         side="right"
         className="flex w-full flex-col gap-0 bg-background p-0 sm:max-w-md"
       >
-        <SheetHeader className="border-b border-border/60 p-5">
+        <SheetHeader className="flex-row items-center gap-3 space-y-0 border-b border-border/60 p-5">
+          <button
+            type="button"
+            onClick={() => setCartOpen(false)}
+            aria-label="Back"
+            className="-ml-1 rounded-sm p-1 text-foreground/80 transition-colors hover:text-primary"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
           <SheetTitle className="font-serif text-xl text-primary">
             Your Cart ({count})
           </SheetTitle>
@@ -164,6 +199,46 @@ export default function CartDrawer() {
                   </div>
                 </>
               )}
+
+              <div className="mt-3">
+                {appliedCoupon ? (
+                  <div className="flex items-center justify-between rounded-md bg-secondary/10 px-3 py-2 text-sm">
+                    <span className="flex items-center gap-1.5 font-medium text-secondary-foreground">
+                      <Tag className="h-3.5 w-3.5" /> {appliedCoupon.code} applied
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleRemoveCoupon}
+                      aria-label="Remove coupon"
+                      className="text-muted-foreground hover:text-destructive"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Coupon code"
+                        value={couponInput}
+                        onChange={(e) => setCouponInput(e.target.value)}
+                        className="h-9"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-9 shrink-0"
+                        disabled={applyingCoupon || !couponInput.trim()}
+                        onClick={handleApplyCoupon}
+                      >
+                        {applyingCoupon ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}
+                      </Button>
+                    </div>
+                    {couponError && <p className="text-xs text-destructive">{couponError}</p>}
+                  </div>
+                )}
+              </div>
+
               <div className="mt-3">
                 <CartBump compact />
               </div>
