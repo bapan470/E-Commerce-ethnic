@@ -88,6 +88,10 @@ export default function CheckoutPage() {
   // can fill them in programmatically when one is picked.
   const [savedAddresses, setSavedAddresses] = useState<Address[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string>('new');
+  // When a logged-in customer has a saved/default address, we show a compact
+  // read-only summary instead of the full editable form. "Change address"
+  // flips this to true to reveal the picker + editable fields again.
+  const [showAddressForm, setShowAddressForm] = useState(false);
   const [email, setEmail] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -122,10 +126,14 @@ export default function CheckoutPage() {
       setCity('');
       setStateName('');
       setPincode('');
+      setShowAddressForm(true);
       return;
     }
     const addr = savedAddresses.find((a) => a.id === id);
-    if (addr) applySavedAddress(addr);
+    if (addr) {
+      applySavedAddress(addr);
+      setShowAddressForm(false);
+    }
   };
 
   useEffect(() => {
@@ -678,6 +686,13 @@ export default function CheckoutPage() {
     );
   }
 
+  // Show a compact read-only summary (name, phone, email, address) instead
+  // of the full form when the customer is logged in and has a saved
+  // address selected. "Change address" (rendered on the right) reveals the
+  // picker + editable fields again.
+  const hasSavedAddressSummary =
+    !!user && savedAddresses.length > 0 && !showAddressForm && selectedAddressId !== 'new';
+
   return (
     <div className="container-boutique py-8">
       <h1 className="mb-6 font-serif text-3xl font-bold text-primary sm:text-4xl">
@@ -696,11 +711,40 @@ export default function CheckoutPage() {
 
       <form onSubmit={onSubmit} className="grid gap-8 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          {/* Contact */}
-          <section className="rounded-lg border border-border/60 bg-card p-5">
-            <h2 className="mb-4 font-serif text-lg font-bold text-primary">
-              Contact Information
-            </h2>
+          {hasSavedAddressSummary ? (
+            <section className="rounded-lg border border-border/60 bg-card p-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="font-serif text-lg font-bold text-primary">
+                  Contact &amp; Shipping Address
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setShowAddressForm(true)}
+                  className="shrink-0 text-sm font-medium text-secondary underline underline-offset-2 hover:text-secondary/80"
+                >
+                  Change address
+                </button>
+              </div>
+              <div className="space-y-1 text-sm">
+                <p className="font-semibold text-foreground">
+                  {firstName} {lastName}
+                </p>
+                <p className="text-muted-foreground">{shipPhone}</p>
+                <p className="text-muted-foreground">{email}</p>
+                <p className="text-muted-foreground">
+                  {addressLine1}
+                  {addressLine2 ? `, ${addressLine2}` : ''}, {city}, {stateName} - {pincode}
+                  {country ? `, ${country}` : ''}
+                </p>
+              </div>
+            </section>
+          ) : (
+            <>
+              {/* Contact */}
+              <section className="rounded-lg border border-border/60 bg-card p-5">
+                <h2 className="mb-4 font-serif text-lg font-bold text-primary">
+                  Contact Information
+                </h2>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-1.5">
                 <Label htmlFor="firstName">First name *</Label>
@@ -847,6 +891,8 @@ export default function CheckoutPage() {
               </div>
             </div>
           </section>
+            </>
+          )}
 
           {/* Payment info */}
           <section className="mt-4 rounded-lg border border-border/60 bg-card p-5">
