@@ -10,6 +10,7 @@ interface MobileStickyCartBarProps {
   mrp?: number | null;
   inStock: boolean;
   onAdd: () => void;
+  onBuyNow: () => void;
   couponCode?: string | null;
   couponDiscount?: number;
 }
@@ -22,6 +23,7 @@ export default function MobileStickyCartBar({
   mrp,
   inStock,
   onAdd,
+  onBuyNow,
   couponCode,
   couponDiscount = 0,
 }: MobileStickyCartBarProps) {
@@ -57,14 +59,26 @@ export default function MobileStickyCartBar({
             )}
           </div>
         </div>
-        <Button
-          onClick={onAdd}
-          disabled={!inStock}
-          className="shrink-0 gap-2 bg-primary text-primary-foreground disabled:opacity-50"
-        >
-          <ShoppingBag className="h-4 w-4" />
-          {inStock ? 'Add to Cart' : 'Out of Stock'}
-        </Button>
+        {inStock ? (
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              onClick={onAdd}
+              variant="outline"
+              size="sm"
+              className="gap-1.5 border-primary px-3 text-primary"
+            >
+              <ShoppingBag className="h-4 w-4" />
+              Add to Cart
+            </Button>
+            <Button onClick={onBuyNow} size="sm" className="bg-primary px-4 text-primary-foreground">
+              Buy Now
+            </Button>
+          </div>
+        ) : (
+          <Button disabled className="shrink-0 opacity-50">
+            Out of Stock
+          </Button>
+        )}
       </div>
     </div>
   );

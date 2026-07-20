@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   Star,
@@ -46,6 +46,7 @@ const PRODUCT_COUPON_PREVIEW_KEY = 'saaj-product-coupon-preview-v1';
 
 export default function ProductDetail() {
   const params = useParams<{ slug: string }>();
+  const router = useRouter();
   const { getBySlug, products, loading } = useProducts();
   const { addItem, subtotal: cartSubtotal, applyCoupon: applyCartCoupon } = useCart();
   const { user } = useAuth();
@@ -290,6 +291,23 @@ export default function ProductDetail() {
     });
   };
 
+  const handleBuyNow = () => {
+    if (!selectedSize) {
+      toast.error('Please select a size');
+      return;
+    }
+    addItem(product, selectedSize, quantity);
+    if (appliedCoupon) {
+      setPendingCouponCode(appliedCoupon.code);
+    }
+    trackEvent('add_to_cart', {
+      productId: product.id,
+      userId: user?.id ?? null,
+      metadata: { size: selectedSize, quantity, color: product.colors?.[0] ?? null, via: 'buy_now' },
+    });
+    router.push('/checkout');
+  };
+
   return (
     <div className="container-boutique pt-0 pb-24 sm:pt-4 md:pb-8">
       <div className="grid gap-4 lg:grid-cols-2 lg:gap-8 lg:items-start">
@@ -384,6 +402,7 @@ export default function ProductDetail() {
         mrp={product.mrp}
         inStock={product.inStock}
         onAdd={handleAddToCart}
+        onBuyNow={handleBuyNow}
         couponCode={appliedCoupon?.code ?? null}
         couponDiscount={couponDiscount}
       />
