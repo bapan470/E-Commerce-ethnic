@@ -69,11 +69,20 @@ export default function ProductCard({
             className="absolute inset-0 object-cover opacity-0 transition-opacity duration-300 ease-out group-hover:opacity-100"
           />
         )}
-        {discount > 0 && (
-          <Badge className="absolute left-3 top-3 bg-secondary text-secondary-foreground shadow-sm">
-            {discount}% OFF
-          </Badge>
-        )}
+        <div className="absolute left-3 top-3 flex flex-col items-start gap-1.5">
+          {/* Admin toggles "Featured" per product in the dashboard — shown
+              here as a Bestseller tag, so it updates the moment they flip it. */}
+          {product.featured && (
+            <Badge className="bg-emerald-600 text-white shadow-sm hover:bg-emerald-600">
+              Bestseller
+            </Badge>
+          )}
+          {discount > 0 && (
+            <Badge className="bg-secondary text-secondary-foreground shadow-sm">
+              {discount}% OFF
+            </Badge>
+          )}
+        </div>
         <WishlistButton productId={product.id} className="absolute right-3 top-3" />
         {!product.inStock && (
           <div className="absolute inset-0 flex items-center justify-center bg-background/60">
@@ -117,6 +126,24 @@ export default function ProductCard({
             </span>
           )}
         </div>
+
+        {product.colors.length > 0 && (
+          <div className="mt-1 flex items-center gap-1">
+            {product.colors.slice(0, 4).map((c, i) => (
+              <span
+                key={i}
+                title={c}
+                className="h-3.5 w-3.5 rounded-full border border-border/70"
+                style={{ backgroundColor: c.toLowerCase().replace(/\s+/g, '') }}
+              />
+            ))}
+            {product.colors.length > 4 && (
+              <span className="text-[10px] text-muted-foreground">
+                +{product.colors.length - 4}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </Link>
   );

@@ -13,7 +13,7 @@ export default function MobileBottomNav() {
 
   const tabs = [
     { href: '/', label: 'Home', icon: Home, active: true },
-    { href: '/shop', label: 'Categories', icon: LayoutGrid, active: false },
+    { href: '/categories', label: 'Categories', icon: LayoutGrid, active: false },
     { href: '/shop?sort=price-drop', label: 'Offers', icon: Tag, active: false },
     {
       href: user ? '/account/orders' : '/login',
