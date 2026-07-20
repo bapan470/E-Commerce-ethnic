@@ -1,58 +1,17 @@
 // app/rss.xml/route.ts
 //
 // Pinterest-compatible RSS/product feed for auto-publish + shopping (price) tags.
-// After deploying, your feed URL will be:
-//   https://e-commerce-ethnic.vercel.app/rss.xml
+// Feed URL: https://www.aruhihandlooms.com/rss.xml
 //
-// ⚠️ IMPORTANT: Replace the `getProducts()` function below with however
-// YOUR project actually fetches products (Supabase query, API call, etc).
-// This file only assumes each product has: id, name/title, slug, description,
-// price, currency, image, and stock status. Rename fields to match your schema.
+// Uses the project's existing fetchProductsServer() (lib/products-api-server.ts),
+// the same helper sitemap.ts uses, so this stays in sync with your real Supabase
+// "products" table automatically — no manual edits needed when products change.
 
-export const dynamic = "force-dynamic"; // always fetch fresh data (remove if you prefer caching)
+import { fetchProductsServer } from "@/lib/products-api-server";
 
-// --- Product type — adjust fields to match your actual data ---
-interface Product {
-  id: string | number;
-  name: string;
-  slug: string;
-  description?: string;
-  price: number;          // e.g. 1499
-  currency?: string;      // e.g. "INR"
-  imageUrl: string;
-  inStock?: boolean;
-}
+export const dynamic = "force-dynamic"; // always fetch fresh data on each request
 
-// --- Replace this with your real data source ---
-// Example using Supabase (uncomment and adjust if you use supabase-js):
-//
-// import { createClient } from "@supabase/supabase-js";
-// const supabase = createClient(
-//   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-//   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-// );
-//
-// async function getProducts(): Promise<Product[]> {
-//   const { data, error } = await supabase.from("products").select("*");
-//   if (error) throw error;
-//   return data as Product[];
-// }
-
-// TEMP placeholder — swap this out for your real fetch logic
-async function getProducts(): Promise<Product[]> {
-  return [
-    {
-      id: 1,
-      name: "Sample Ethnic Kurta",
-      slug: "sample-ethnic-kurta",
-      description: "Handloom cotton kurta with traditional print.",
-      price: 1499,
-      currency: "INR",
-      imageUrl: "https://e-commerce-ethnic.vercel.app/images/sample.jpg",
-      inStock: true,
-    },
-  ];
-}
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://www.aruhihandlooms.com";
 
 function escapeXml(unsafe: string = ""): string {
   return unsafe
@@ -64,13 +23,12 @@ function escapeXml(unsafe: string = ""): string {
 }
 
 export async function GET() {
-  const siteUrl = "https://e-commerce-ethnic.vercel.app";
-  const products = await getProducts();
+  const products = await fetchProductsServer();
 
   const items = products
     .map((p) => {
-      const link = `${siteUrl}/products/${p.slug}`;
-      const currency = p.currency || "INR";
+      const link = `${SITE_URL}/product/${p.slug}`;
+      const image = p.images?.[0] || "";
 
       return `
     <item>
@@ -82,8 +40,8 @@ export async function GET() {
       <g:title>${escapeXml(p.name)}</g:title>
       <g:description>${escapeXml(p.description || "")}</g:description>
       <g:link>${link}</g:link>
-      <g:image_link>${p.imageUrl}</g:image_link>
-      <g:price>${p.price} ${currency}</g:price>
+      <g:image_link>${image}</g:image_link>
+      <g:price>${p.price} INR</g:price>
       <g:availability>${p.inStock ? "in stock" : "out of stock"}</g:availability>
       <g:condition>new</g:condition>
     </item>`;
@@ -94,7 +52,7 @@ export async function GET() {
 <rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">
   <channel>
     <title>Aruhi Handlooms</title>
-    <link>${siteUrl}</link>
+    <link>${SITE_URL}</link>
     <description>Latest products from Aruhi Handlooms</description>${items}
   </channel>
 </rss>`;

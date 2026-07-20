@@ -1,31 +1,38 @@
-HOW TO USE THIS FILE
-=====================
+WHAT CHANGED
+============
+This version replaces the placeholder/sample product with your REAL
+products, pulled live from Supabase using the same helper your
+sitemap.ts already uses (fetchProductsServer, from lib/products-api-server.ts).
 
-1. Copy the folder "app/rss.xml/route.ts" into your project's "app" folder,
-   at the same level as your other app routes (app/page.tsx, app/products, etc).
+No product data is hardcoded anymore — as soon as you add/edit/remove a
+product in Supabase, the feed updates automatically.
 
-   Final path in your repo should be:
+HOW TO INSTALL
+===============
+1. In your repo, replace the existing file at:
    app/rss.xml/route.ts
+   with the route.ts included in this zip (same path).
 
-2. Open route.ts and replace the getProducts() function with your real
-   product-fetching logic (Supabase query, API call, database, etc).
-   Since your repo has a "supabase/migrations" folder, you're most likely
-   using Supabase — an example (commented out) is included in the file.
+2. Commit and push to GitHub. Vercel will auto-redeploy.
 
-3. Make sure each product returns these fields (rename as needed to match
-   your schema): id, name, slug, description, price, currency, imageUrl,
-   inStock.
+3. Once deployed, open:
+   https://www.aruhihandlooms.com/rss.xml
 
-4. Commit + push + redeploy on Vercel.
+   You should see real products (sarees, lehenga, kurti, etc.) instead
+   of "Sample Ethnic Kurta".
 
-5. Your feed will be live at:
-   https://e-commerce-ethnic.vercel.app/rss.xml
+4. Validate the feed:
+   https://www.w3.org/feed/validate.php
 
-6. Paste that URL into Pinterest Settings > Import content > RSS Feed URL
-   (the box you screenshotted) and click Save.
+5. Paste the feed URL into Pinterest:
+   Settings > Import content > RSS Feed URL
+   https://www.aruhihandlooms.com/rss.xml
+   Click Save.
 
-7. Validate the feed opens correctly in a browser (should show XML, not an
-   error) before connecting it to Pinterest.
-
-If your product data source is different (not Supabase), just tell Claude
-what it is and ask for an updated route.ts.
+NOTES
+=====
+- Only products where images[0] exists will show a picture in the feed.
+  Make sure every product in Supabase has at least one image.
+- Price is pulled directly from the "price" column (INR, whole rupees).
+- Out-of-stock products still appear in the feed but marked
+  "out of stock" — Pinterest may not show pricing/buy options for those.
