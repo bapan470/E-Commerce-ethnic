@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Sparkles, Truck, ShieldCheck, Heart } from 'lucide-react';
+import { ArrowRight, Sparkles, Truck, ShieldCheck } from 'lucide-react';
 import { useProducts } from '@/lib/cart-context';
 import { fetchSiteBanner, SiteBanner } from '@/lib/settings-api';
 import ProductCard from '@/components/product-card';
@@ -73,26 +73,41 @@ export default function HomeClient() {
       ) : (
       <section className="relative overflow-hidden bg-gradient-to-br from-primary via-primary to-primary/80">
         <div className="absolute inset-0 opacity-20">
-          <div className="absolute -left-20 top-10 h-72 w-72 rounded-full bg-secondary/40 blur-3xl" />
-          <div className="absolute right-0 top-40 h-80 w-80 rounded-full bg-secondary/30 blur-3xl" />
+          <div className="animate-float absolute -left-20 top-10 h-72 w-72 rounded-full bg-secondary/40 blur-3xl" />
+          <div
+            className="animate-float absolute right-0 top-40 h-80 w-80 rounded-full bg-secondary/30 blur-3xl"
+            style={{ animationDelay: '1.5s' }}
+          />
         </div>
-        <div className="container-boutique relative grid items-center gap-8 py-16 md:grid-cols-2 md:py-24">
-          <div className="flex flex-col gap-6 text-primary-foreground animate-fade-in">
-            <span className="inline-flex w-fit items-center gap-2 rounded-full bg-secondary/20 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-secondary">
+        <div className="container-boutique relative grid items-center gap-6 py-8 pb-6 sm:gap-8 sm:py-12 sm:pb-10 md:grid-cols-2 md:py-24">
+          <div className="flex flex-col gap-5 text-primary-foreground sm:gap-6">
+            <span
+              className="animate-fade-in inline-flex w-fit items-center gap-2 rounded-full bg-secondary/20 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-secondary"
+              style={{ animationDelay: '0ms' }}
+            >
               <Sparkles className="h-3.5 w-3.5" /> Handwoven Heritage
             </span>
-            <h1 className="font-serif text-4xl font-bold leading-tight text-balance sm:text-5xl lg:text-6xl">
+            <h1
+              className="animate-fade-in font-serif text-3xl font-bold leading-tight text-balance sm:text-5xl lg:text-6xl"
+              style={{ animationDelay: '100ms' }}
+            >
               Drape Yourself in Stories Woven by Hand
             </h1>
-            <p className="max-w-md text-base text-primary-foreground/80 sm:text-lg">
+            <p
+              className="animate-fade-in max-w-md text-sm text-primary-foreground/80 sm:text-lg"
+              style={{ animationDelay: '200ms' }}
+            >
               Discover handpicked sarees, lehengas and ethnic wear from master
               weavers across India. Timeless craftsmanship, modern convenience.
             </p>
-            <div className="flex flex-wrap gap-3">
+            <div
+              className="animate-fade-in flex flex-col gap-3 sm:flex-row sm:flex-wrap"
+              style={{ animationDelay: '300ms' }}
+            >
               <Button
                 asChild
                 size="lg"
-                className="bg-secondary text-secondary-foreground hover:bg-secondary/90"
+                className="w-full justify-center bg-secondary text-secondary-foreground shadow-lg shadow-secondary/20 transition-all duration-300 hover:scale-[1.02] hover:bg-secondary/90 hover:shadow-xl hover:shadow-secondary/30 sm:w-auto"
               >
                 <Link href="/shop" className="gap-2">
                   Shop Collection <ArrowRight className="h-4 w-4" />
@@ -102,18 +117,21 @@ export default function HomeClient() {
                 asChild
                 size="lg"
                 variant="outline"
-                className="border-primary-foreground/30 bg-transparent text-primary-foreground hover:bg-primary-foreground/10"
+                className="w-full justify-center border-primary-foreground/30 bg-transparent text-primary-foreground transition-all duration-300 hover:scale-[1.02] hover:bg-primary-foreground/10 sm:w-auto"
               >
                 <Link href="/shop?category=Bridal">Explore Bridal</Link>
               </Button>
             </div>
-            <div className="mt-2 flex items-center gap-6 text-xs text-primary-foreground/70">
+            <div
+              className="animate-fade-in mt-1 flex items-center gap-6 text-xs text-primary-foreground/70"
+              style={{ animationDelay: '400ms' }}
+            >
               <span className="flex items-center gap-1.5"><ShieldCheck className="h-4 w-4 text-secondary" /> Authentic weaves</span>
               <span className="flex items-center gap-1.5"><Truck className="h-4 w-4 text-secondary" /> Free shipping over ₹2,000</span>
             </div>
           </div>
           <div className="relative hidden md:block">
-            <div className="relative aspect-[4/5] w-full overflow-hidden rounded-2xl border border-secondary/30 shadow-2xl">
+            <div className="animate-scale-in relative aspect-[4/5] w-full overflow-hidden rounded-2xl border border-secondary/30 shadow-2xl" style={{ animationDelay: '150ms' }}>
               <Image
                 src="https://images.pexels.com/photos/1043471/pexels-photo-1043471.jpeg?auto=compress&cs=tinysrgb&w=900&h=1125&fit=crop"
                 alt="Model wearing a handwoven embroidered Banarasi silk saree from Aruhi Handlooms"
@@ -135,27 +153,6 @@ export default function HomeClient() {
         </div>
       </section>
       )}
-
-      {/* Trust strip */}
-      <section className="border-b border-border/60 bg-card">
-        <div className="container-boutique grid gap-4 py-6 sm:grid-cols-3">
-          {[
-            { icon: ShieldCheck, title: 'Authentic Handloom', desc: 'Certified by Silk Mark' },
-            { icon: Truck, title: 'Free Shipping', desc: 'On orders above ₹2,000' },
-            { icon: Heart, title: 'Crafted with Care', desc: 'By master weavers' },
-          ].map((f) => (
-            <div key={f.title} className="flex items-center gap-3">
-              <div className="rounded-full bg-accent p-2.5">
-                <f.icon className="h-5 w-5 text-accent-foreground" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold">{f.title}</p>
-                <p className="text-xs text-muted-foreground">{f.desc}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
 
       {/* Categories */}
       <section className="container-boutique py-14">
