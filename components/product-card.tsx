@@ -41,7 +41,7 @@ export default function ProductCard({
   return (
     <Link
       href={`/product/${product.slug}`}
-      className="group relative flex flex-col overflow-hidden rounded-lg border border-border/60 bg-card product-card-hover"
+      className="group relative flex flex-col overflow-hidden rounded-2xl bg-card shadow-sm transition-shadow duration-300 hover:shadow-lg product-card-hover"
     >
       <div className="relative aspect-[4/5] overflow-hidden bg-muted">
         <Image
@@ -82,7 +82,7 @@ export default function ProductCard({
             </Badge>
           )}
           {discount > 0 && (
-            <Badge className="bg-secondary text-secondary-foreground shadow-sm">
+            <Badge className="border-transparent bg-rose-500 text-white shadow-sm hover:bg-rose-500">
               {discount}% OFF
             </Badge>
           )}
@@ -108,10 +108,10 @@ export default function ProductCard({
       </div>
 
       <div className={`flex flex-1 flex-col gap-1 ${compact ? 'p-2.5' : 'p-4'}`}>
-        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">
           {product.category}
         </p>
-        <h3 className={`line-clamp-1 font-serif font-semibold text-foreground ${compact ? 'text-xs' : 'text-sm'}`}>
+        <h3 className={`line-clamp-2 font-serif font-semibold leading-snug text-foreground ${compact ? 'text-xs' : 'text-sm'}`}>
           {product.name}
         </h3>
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -125,9 +125,14 @@ export default function ProductCard({
             {formatINR(product.price)}
           </span>
           {product.mrp && product.mrp > product.price && (
-            <span className="text-xs text-muted-foreground line-through">
-              {formatINR(product.mrp)}
-            </span>
+            <>
+              <span className="text-xs text-muted-foreground line-through">
+                {formatINR(product.mrp)}
+              </span>
+              <span className="text-xs font-semibold text-emerald-600">
+                {discount}% off
+              </span>
+            </>
           )}
         </div>
 
