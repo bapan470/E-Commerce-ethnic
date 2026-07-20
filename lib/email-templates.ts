@@ -50,6 +50,37 @@ export function signupVerificationEmail(user: { full_name?: string; verify_url: 
   return { subject, html };
 }
 
+export function otpLoginEmail(data: { email: string; code: string }) {
+  const subject = `${data.code} is your login code — ${SITE_NAME}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Your login code</h2>
+    <p>Use the code below to log in to your ${SITE_NAME} account. This code expires shortly and can only be used once.</p>
+    <p style="text-align:center; margin: 24px 0;">
+      <span style="display:inline-block; background:#fff; border:1px solid ${BRAND_COLOR}; color:${BRAND_COLOR}; font-size: 28px; font-weight: bold; letter-spacing: 0.3em; padding: 14px 20px; border-radius: 6px;">
+        ${data.code}
+      </span>
+    </p>
+    <p style="font-size:12px; color:#9a8f87;">If you didn't request this code, you can safely ignore this email — no one can access your account without it.</p>
+  `);
+  return { subject, html };
+}
+
+export function passwordResetEmail(user: { full_name?: string; reset_url: string }) {
+  const subject = `Reset your password — ${SITE_NAME}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Reset your password${user.full_name ? `, ${user.full_name}` : ''}</h2>
+    <p>We received a request to reset the password for your ${SITE_NAME} account. Click the button below to choose a new one.</p>
+    <p style="text-align:center; margin-top: 20px;">
+      <a href="${user.reset_url}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+        Reset my password
+      </a>
+    </p>
+    <p style="font-size:12px; color:#9a8f87;">If the button doesn't work, copy and paste this link into your browser:<br />${user.reset_url}</p>
+    <p style="font-size:12px; color:#9a8f87;">This link expires shortly. If you didn't request a password reset, you can ignore this email.</p>
+  `);
+  return { subject, html };
+}
+
 export function orderConfirmationEmail(order: {
   id: string;
   customer_name?: string;

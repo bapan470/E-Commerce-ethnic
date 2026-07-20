@@ -3,7 +3,6 @@
 import { useState, FormEvent } from 'react';
 import Link from 'next/link';
 import { Loader2, Mail } from 'lucide-react';
-import { getSupabaseBrowser } from '@/lib/supabase-browser';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,14 +18,16 @@ export default function ForgotPasswordPage() {
     const email = fd.get('email') as string;
 
     setLoading(true);
-    const supabase = getSupabaseBrowser();
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent('/reset-password')}`,
+    const res = await fetch('/api/auth/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, next: '/reset-password' }),
     });
     setLoading(false);
 
-    if (error) {
-      toast.error(error.message);
+    if (!res.ok) {
+      const result = await res.json().catch(() => ({}));
+      toast.error(result.error || 'Something went wrong. Please try again.');
       return;
     }
     setSent(true);

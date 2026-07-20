@@ -72,23 +72,27 @@ function LoginForm() {
   };
 
   // Step 1 of email-OTP login: send a one-time code to the given address.
-  // shouldCreateUser is on so a shopper logging in for the first time this
-  // way gets an account automatically, matching how Google login behaves.
+  // Goes through our own /api/auth/send-otp route (which emails via our
+  // configured ZeptoMail/Resend sender) instead of
+  // supabase.auth.signInWithOtp(), so it isn't limited by Supabase's
+  // built-in mailer rate limit. The user is still auto-created on first
+  // login this way, matching how Google login behaves.
   const onSendOtp = async (e: FormEvent) => {
     e.preventDefault();
     const fd = new FormData(e.target as HTMLFormElement);
     const email = (fd.get('otp-email') as string).trim();
 
     setOtpLoading(true);
-    const supabase = getSupabaseBrowser();
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { shouldCreateUser: true },
+    const res = await fetch('/api/auth/send-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
     });
+    const result = await res.json().catch(() => ({}));
     setOtpLoading(false);
 
-    if (error) {
-      toast.error(error.message);
+    if (!res.ok) {
+      toast.error(result.error || 'Could not send the login code. Please try again.');
       return;
     }
     setOtpEmail(email);
