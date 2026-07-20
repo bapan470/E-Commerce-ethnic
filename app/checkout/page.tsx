@@ -40,13 +40,6 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -900,22 +893,6 @@ export default function CheckoutPage() {
           <section className="mt-4 rounded-lg border border-border/60 bg-card p-5">
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="font-serif text-lg font-bold text-primary">Shipping Address</h2>
-              {user && savedAddresses.length > 0 && (
-                <Select value={selectedAddressId} onValueChange={handleSelectSavedAddress}>
-                  <SelectTrigger className="h-9 w-auto min-w-[180px] max-w-[220px] text-xs">
-                    <SelectValue placeholder="Select address" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {savedAddresses.map((addr) => (
-                      <SelectItem key={addr.id} value={addr.id}>
-                        {addr.full_name} — {addr.line1}, {addr.city}
-                        {addr.is_default ? ' (Default)' : ''}
-                      </SelectItem>
-                    ))}
-                    <SelectItem value="new">+ Use a new address</SelectItem>
-                  </SelectContent>
-                </Select>
-              )}
             </div>
             <div className="grid gap-4">
               <div className="grid gap-1.5">
