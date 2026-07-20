@@ -88,6 +88,7 @@ export default function CheckoutPage() {
   // can fill them in programmatically when one is picked.
   const [savedAddresses, setSavedAddresses] = useState<Address[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string>('new');
+  const [email, setEmail] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [shipPhone, setShipPhone] = useState('');
@@ -132,6 +133,7 @@ export default function CheckoutPage() {
       setSavedAddresses([]);
       return;
     }
+    setEmail(user.email ?? '');
     fetchAddresses()
       .then((list) => {
         setSavedAddresses(list);
@@ -470,10 +472,8 @@ export default function CheckoutPage() {
     e.preventDefault();
     if (items.length === 0) return;
 
-    const form = e.target as HTMLFormElement;
-    const fd = new FormData(form);
     const customerName = `${firstName} ${lastName}`.trim();
-    const customerEmail = (fd.get('email') as string) || '';
+    const customerEmail = email;
     const customerPhone = shipPhone;
     const shippingAddress = {
       address: addressLine1,
@@ -732,7 +732,11 @@ export default function CheckoutPage() {
                   type="email"
                   required
                   placeholder="aanya@example.com"
-                  onChange={(e) => setTrackingEmail(e.target.value)}
+                  value={email}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setTrackingEmail(e.target.value);
+                  }}
                 />
               </div>
               <div className="grid gap-1.5">
