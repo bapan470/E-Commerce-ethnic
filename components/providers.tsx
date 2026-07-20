@@ -9,6 +9,7 @@ import Header from './header';
 import Footer from './footer';
 import SiteBanner from './site-banner';
 import WhatsAppButton from './whatsapp-button';
+import LiveChatWidget from './live-chat-widget';
 import ActivityTracker from './activity-tracker';
 import UrgencyBanner from './growth/urgency-banner';
 import SaleCountdownBar from './growth/sale-countdown-bar';
@@ -30,6 +31,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
             <Footer />
             <CartDrawer />
             <WhatsAppButton />
+            <LiveChatWidget />
             <ExitIntentModal />
             <SocialProofToast />
           </div>
