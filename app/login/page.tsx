@@ -9,6 +9,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from '@/components/ui/input-otp';
 import { toast } from 'sonner';
 
 function GoogleIcon() {
@@ -35,6 +40,7 @@ function LoginForm() {
   const [method, setMethod] = useState<LoginMethod>('password');
   const [otpStep, setOtpStep] = useState<OtpStep>('enter-email');
   const [otpEmail, setOtpEmail] = useState('');
+  const [otpCode, setOtpCode] = useState('');
   const [otpLoading, setOtpLoading] = useState(false);
 
   const onSubmit = async (e: FormEvent) => {
@@ -96,6 +102,7 @@ function LoginForm() {
       return;
     }
     setOtpEmail(email);
+    setOtpCode('');
     setOtpStep('enter-code');
     toast.success(`OTP sent to ${email}`);
   };
@@ -103,8 +110,7 @@ function LoginForm() {
   // Step 2: verify the 6-digit code the shopper received by email.
   const onVerifyOtp = async (e: FormEvent) => {
     e.preventDefault();
-    const fd = new FormData(e.target as HTMLFormElement);
-    const token = (fd.get('otp-code') as string).trim();
+    const token = otpCode.trim();
 
     setOtpLoading(true);
     const supabase = getSupabaseBrowser();
@@ -228,27 +234,42 @@ function LoginForm() {
             </form>
           ) : (
             <form onSubmit={onVerifyOtp} className="space-y-4">
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="otp-code">Enter OTP sent to {otpEmail}</Label>
-                  <button
-                    type="button"
-                    onClick={() => setOtpStep('enter-email')}
-                    className="text-xs font-medium text-primary hover:underline"
-                  >
-                    Change email
-                  </button>
+              <div className="space-y-2">
+                <div>
+                  <Label htmlFor="otp-code">Enter the code sent to</Label>
+                  <p className="text-sm font-medium text-foreground break-all">{otpEmail}</p>
                 </div>
-                <Input
-                  id="otp-code"
-                  name="otp-code"
-                  inputMode="numeric"
-                  required
-                  placeholder="6-digit code"
-                  maxLength={6}
-                />
+                <div className="flex justify-center py-1">
+                  <InputOTP
+                    id="otp-code"
+                    maxLength={6}
+                    value={otpCode}
+                    onChange={setOtpCode}
+                    inputMode="numeric"
+                  >
+                    <InputOTPGroup>
+                      <InputOTPSlot index={0} />
+                      <InputOTPSlot index={1} />
+                      <InputOTPSlot index={2} />
+                      <InputOTPSlot index={3} />
+                      <InputOTPSlot index={4} />
+                      <InputOTPSlot index={5} />
+                    </InputOTPGroup>
+                  </InputOTP>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOtpStep('enter-email')}
+                  className="text-xs font-medium text-primary hover:underline"
+                >
+                  Change email
+                </button>
               </div>
-              <Button type="submit" className="w-full bg-primary" disabled={otpLoading}>
+              <Button
+                type="submit"
+                className="w-full bg-primary"
+                disabled={otpLoading || otpCode.length < 6}
+              >
                 {otpLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Verify &amp; Login
               </Button>

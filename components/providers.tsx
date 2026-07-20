@@ -21,6 +21,8 @@ import SocialProofToast from './growth/social-proof-toast';
 export default function Providers({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isHome = pathname === '/';
+  const hideChatWidget =
+    pathname === '/login' || pathname === '/signup' || pathname === '/forgot-password';
 
   return (
     <AuthProvider>
@@ -36,7 +38,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
             <Footer />
             <CartDrawer />
             <WhatsAppButton />
-            <LiveChatWidget />
+            {!hideChatWidget && <LiveChatWidget />}
             <ExitIntentModal />
             <SocialProofToast />
             {isHome && <MobileBottomNav />}
