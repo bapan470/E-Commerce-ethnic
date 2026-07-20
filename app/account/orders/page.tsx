@@ -23,6 +23,9 @@ export default async function OrdersPage() {
     .from('orders')
     .select('*')
     .or(`user_id.eq.${user!.id},customer_email.eq.${user!.email}`)
+    // Orders a reseller placed on behalf of their own customers show up
+    // in the Reseller dashboard instead, not mixed into personal orders.
+    .eq('is_reseller_order', false)
     .order('created_at', { ascending: false });
 
   return (

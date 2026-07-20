@@ -25,6 +25,7 @@ import {
   LogOut,
   Menu,
   X,
+  Store,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -45,6 +46,7 @@ export type AdminSection =
   | 'marketing'
   | 'loyalty'
   | 'referrals'
+  | 'resellers'
   | 'giftcards'
   | 'settings';
 
@@ -95,6 +97,7 @@ const NAV_GROUPS: NavGroup[] = [
       { value: 'marketing', label: 'Marketing', icon: Megaphone },
       { value: 'loyalty', label: 'Loyalty', icon: Gift },
       { value: 'referrals', label: 'Referrals', icon: Users2 },
+      { value: 'resellers', label: 'Resellers', icon: Store },
       { value: 'giftcards', label: 'Gift Cards', icon: CreditCard },
     ],
   },
