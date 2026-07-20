@@ -127,6 +127,49 @@ export function supportTicketConfirmationEmail(ticket: {
   return { subject, html };
 }
 
+export function contactMessageAdminNotification(msg: {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  subject: string;
+  message: string;
+}) {
+  const shortId = `#${msg.id.slice(0, 8).toUpperCase()}`;
+  const subject = `New contact message ${shortId} — ${msg.subject}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">New message from the Contact Us page</h2>
+    <div style="margin:16px 0; padding:14px 16px; background:#fff; border-left:3px solid ${BRAND_COLOR}; border-radius:4px;">
+      <p style="margin:0 0 6px;"><strong>From:</strong> ${msg.name} (${msg.email})</p>
+      ${msg.phone ? `<p style="margin:0 0 6px;"><strong>Phone:</strong> ${msg.phone}</p>` : ''}
+      <p style="margin:0 0 6px;"><strong>Subject:</strong> ${msg.subject}</p>
+      <p style="margin:0; color:#6b5f57; font-size:14px; white-space:pre-wrap;">${msg.message}</p>
+    </div>
+    <p style="font-size:13px; color:#6b5f57;">Reply from Admin &gt; Contact Messages.</p>
+  `);
+  return { subject, html };
+}
+
+export function contactMessageAutoReply(msg: { name?: string; subject: string }) {
+  const subject = `We've received your message — ${SITE_NAME}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Thanks${msg.name ? `, ${msg.name}` : ''} — we've got it</h2>
+    <p>Your message about "<strong>${msg.subject}</strong>" has reached our team. We usually reply within 24 hours.</p>
+    <p style="font-size:13px; color:#6b5f57;">Need to add more info? Just reply to this email or reach us on WhatsApp.</p>
+  `);
+  return { subject, html };
+}
+
+export function contactMessageReplyEmail(reply: { customer_name?: string; original_subject: string; reply_message: string }) {
+  const subject = `Re: ${reply.original_subject} — ${SITE_NAME}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Hi${reply.customer_name ? ` ${reply.customer_name}` : ''},</h2>
+    <p style="white-space:pre-wrap;">${reply.reply_message}</p>
+    <p style="font-size:13px; color:#6b5f57; margin-top:20px;">— Team ${SITE_NAME}</p>
+  `);
+  return { subject, html };
+}
+
 export function giftCardEmail(card: {
   code: string;
   amount: number;

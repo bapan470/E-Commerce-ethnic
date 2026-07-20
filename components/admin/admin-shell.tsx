@@ -15,6 +15,7 @@ import {
   ShoppingBag,
   PackageX,
   LifeBuoy,
+  MessageSquare,
   Building2,
   Tag,
   Megaphone,
@@ -39,6 +40,7 @@ export type AdminSection =
   | 'customers'
   | 'returns'
   | 'support-tickets'
+  | 'contact-messages'
   | 'abandoned-carts'
   | 'restock-alerts'
   | 'wholesale'
@@ -81,6 +83,7 @@ const NAV_GROUPS: NavGroup[] = [
       { value: 'orders', label: 'Orders', icon: ShoppingCart },
       { value: 'returns', label: 'Returns', icon: Undo2 },
       { value: 'support-tickets', label: 'Support Tickets', icon: LifeBuoy },
+      { value: 'contact-messages', label: 'Contact Messages', icon: MessageSquare },
       { value: 'abandoned-carts', label: 'Abandoned Carts', icon: ShoppingBag },
       { value: 'restock-alerts', label: 'Restock Alerts', icon: PackageX },
       { value: 'wholesale', label: 'Wholesale', icon: Building2 },
