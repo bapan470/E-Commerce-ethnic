@@ -11,6 +11,8 @@ import { formatINR } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import { getSupabaseBrowser } from '@/lib/supabase-browser';
 import { validateGiftCard, GiftCard } from '@/lib/giftcards-api';
+import { fetchAddresses } from '@/lib/addresses-api';
+import { Address } from '@/lib/types';
 import { joinResellerProgram, fetchMyResellerOverview } from '@/lib/reseller-api';
 import {
   fetchLoyaltySettings,
@@ -37,6 +39,13 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -73,6 +82,68 @@ export default function CheckoutPage() {
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('online');
   const { user } = useAuth();
+
+  // Saved addresses — lets a logged-in customer pick a previously saved
+  // address instead of retyping it. Shipping fields are controlled so we
+  // can fill them in programmatically when one is picked.
+  const [savedAddresses, setSavedAddresses] = useState<Address[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string>('new');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [shipPhone, setShipPhone] = useState('');
+  const [addressLine1, setAddressLine1] = useState('');
+  const [addressLine2, setAddressLine2] = useState('');
+  const [city, setCity] = useState('');
+  const [stateName, setStateName] = useState('');
+  const [pincode, setPincode] = useState('');
+  const [country, setCountry] = useState('India');
+
+  const applySavedAddress = (addr: Address) => {
+    const nameParts = (addr.full_name || '').trim().split(/\s+/);
+    setFirstName(nameParts[0] || '');
+    setLastName(nameParts.slice(1).join(' '));
+    setShipPhone(addr.phone || '');
+    setAddressLine1(addr.line1 || '');
+    setAddressLine2(addr.line2 || '');
+    setCity(addr.city || '');
+    setStateName(addr.state || '');
+    setPincode(addr.pincode || '');
+  };
+
+  const handleSelectSavedAddress = (id: string) => {
+    setSelectedAddressId(id);
+    if (id === 'new') {
+      setFirstName('');
+      setLastName('');
+      setShipPhone('');
+      setAddressLine1('');
+      setAddressLine2('');
+      setCity('');
+      setStateName('');
+      setPincode('');
+      return;
+    }
+    const addr = savedAddresses.find((a) => a.id === id);
+    if (addr) applySavedAddress(addr);
+  };
+
+  useEffect(() => {
+    if (!user) {
+      setSavedAddresses([]);
+      return;
+    }
+    fetchAddresses()
+      .then((list) => {
+        setSavedAddresses(list);
+        const preferred = list.find((a) => a.is_default) || list[0];
+        if (preferred) {
+          setSelectedAddressId(preferred.id);
+          applySavedAddress(preferred);
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   // Resale — lets a customer mark this checkout as an order they're
   // reselling to their own customer, at a price they set themselves.
@@ -401,16 +472,16 @@ export default function CheckoutPage() {
 
     const form = e.target as HTMLFormElement;
     const fd = new FormData(form);
-    const customerName = `${fd.get('firstName') || ''} ${fd.get('lastName') || ''}`.trim();
+    const customerName = `${firstName} ${lastName}`.trim();
     const customerEmail = (fd.get('email') as string) || '';
-    const customerPhone = (fd.get('phone') as string) || '';
+    const customerPhone = shipPhone;
     const shippingAddress = {
-      address: fd.get('address') || '',
-      address2: fd.get('address2') || '',
-      city: fd.get('city') || '',
-      state: fd.get('state') || '',
-      pincode: fd.get('pincode') || '',
-      country: fd.get('country') || 'India',
+      address: addressLine1,
+      address2: addressLine2,
+      city,
+      state: stateName,
+      pincode,
+      country: country || 'India',
     };
 
     setPlacing(true);
@@ -633,11 +704,25 @@ export default function CheckoutPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-1.5">
                 <Label htmlFor="firstName">First name *</Label>
-                <Input id="firstName" name="firstName" required placeholder="Aanya" />
+                <Input
+                  id="firstName"
+                  name="firstName"
+                  required
+                  placeholder="Aanya"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="lastName">Last name *</Label>
-                <Input id="lastName" name="lastName" required placeholder="Sharma" />
+                <Input
+                  id="lastName"
+                  name="lastName"
+                  required
+                  placeholder="Sharma"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="email">Email *</Label>
@@ -652,43 +737,108 @@ export default function CheckoutPage() {
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="phone">Phone *</Label>
-                <Input id="phone" name="phone" type="tel" required placeholder="+91 98765 43210" />
+                <Input
+                  id="phone"
+                  name="phone"
+                  type="tel"
+                  required
+                  placeholder="+91 98765 43210"
+                  value={shipPhone}
+                  onChange={(e) => setShipPhone(e.target.value)}
+                />
               </div>
             </div>
           </section>
 
           {/* Shipping */}
           <section className="mt-4 rounded-lg border border-border/60 bg-card p-5">
-            <h2 className="mb-4 font-serif text-lg font-bold text-primary">
-              Shipping Address
-            </h2>
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 className="font-serif text-lg font-bold text-primary">Shipping Address</h2>
+              {user && savedAddresses.length > 0 && (
+                <Select value={selectedAddressId} onValueChange={handleSelectSavedAddress}>
+                  <SelectTrigger className="h-9 w-auto min-w-[180px] max-w-[220px] text-xs">
+                    <SelectValue placeholder="Select address" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {savedAddresses.map((addr) => (
+                      <SelectItem key={addr.id} value={addr.id}>
+                        {addr.full_name} — {addr.line1}, {addr.city}
+                        {addr.is_default ? ' (Default)' : ''}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="new">+ Use a new address</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
             <div className="grid gap-4">
               <div className="grid gap-1.5">
                 <Label htmlFor="address">Street address *</Label>
-                <Input id="address" name="address" required placeholder="12, MG Road, Apt 304" />
+                <Input
+                  id="address"
+                  name="address"
+                  required
+                  placeholder="12, MG Road, Apt 304"
+                  value={addressLine1}
+                  onChange={(e) => setAddressLine1(e.target.value)}
+                />
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="address2">Apartment, suite, etc. (optional)</Label>
-                <Input id="address2" name="address2" placeholder="Bandra West" />
+                <Input
+                  id="address2"
+                  name="address2"
+                  placeholder="Bandra West"
+                  value={addressLine2}
+                  onChange={(e) => setAddressLine2(e.target.value)}
+                />
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="grid gap-1.5">
                   <Label htmlFor="city">City *</Label>
-                  <Input id="city" name="city" required placeholder="Mumbai" />
+                  <Input
+                    id="city"
+                    name="city"
+                    required
+                    placeholder="Mumbai"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                  />
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="state">State *</Label>
-                  <Input id="state" name="state" required placeholder="Maharashtra" />
+                  <Input
+                    id="state"
+                    name="state"
+                    required
+                    placeholder="Maharashtra"
+                    value={stateName}
+                    onChange={(e) => setStateName(e.target.value)}
+                  />
                 </div>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="grid gap-1.5">
                   <Label htmlFor="pincode">PIN code *</Label>
-                  <Input id="pincode" name="pincode" required placeholder="400050" inputMode="numeric" />
+                  <Input
+                    id="pincode"
+                    name="pincode"
+                    required
+                    placeholder="400050"
+                    inputMode="numeric"
+                    value={pincode}
+                    onChange={(e) => setPincode(e.target.value)}
+                  />
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="country">Country *</Label>
-                  <Input id="country" name="country" required defaultValue="India" />
+                  <Input
+                    id="country"
+                    name="country"
+                    required
+                    value={country}
+                    onChange={(e) => setCountry(e.target.value)}
+                  />
                 </div>
               </div>
             </div>
