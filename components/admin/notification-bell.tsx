@@ -13,7 +13,6 @@ import {
   Loader2,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import type { AdminSection } from './admin-shell';
 
@@ -133,7 +132,7 @@ export default function NotificationBell({ onNavigate }: NotificationBellProps) 
             You&apos;re all caught up 🎉
           </div>
         ) : (
-          <ScrollArea className="max-h-96">
+          <div className="max-h-96 overflow-y-auto overscroll-contain">
             <ul className="divide-y divide-border">
               {notifications.map((n) => {
                 const Icon = ICONS[n.type] || Bell;
@@ -170,7 +169,7 @@ export default function NotificationBell({ onNavigate }: NotificationBellProps) 
                 );
               })}
             </ul>
-          </ScrollArea>
+          </div>
         )}
       </PopoverContent>
     </Popover>
