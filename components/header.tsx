@@ -95,73 +95,75 @@ export default function Header() {
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/85 backdrop-blur-md">
-      <div className="container-boutique flex h-12 items-center justify-between gap-4">
-        {showBackButton ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="md:hidden"
-            aria-label="Go back"
-            onClick={() => router.back()}
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-        ) : (
-        <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="md:hidden" aria-label="Menu">
-              <Menu className="h-5 w-5" />
+      <div className="container-boutique flex h-12 items-center justify-between gap-2 sm:gap-4">
+        <div className="flex min-w-0 items-center gap-1 sm:gap-2">
+          {showBackButton ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="shrink-0 md:hidden"
+              aria-label="Go back"
+              onClick={() => router.back()}
+            >
+              <ArrowLeft className="h-5 w-5" />
             </Button>
-          </SheetTrigger>
-          <SheetContent
-            side="left"
-            className="w-72 bg-background"
-            onOpenAutoFocus={(e) => e.preventDefault()}
-          >
-            <div className="flex h-full flex-col gap-6 pt-8">
-              <Link
-                href="/"
-                onClick={() => setMobileOpen(false)}
-                className="font-serif text-2xl font-bold text-primary"
-              >
-                Aruhi
-              </Link>
-              <form onSubmit={onSearch} className="flex gap-2">
-                <Input
-                  placeholder="Search sarees..."
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  className="bg-muted"
-                />
-                <Button type="submit" size="icon" aria-label="Search">
-                  <Search className="h-4 w-4" />
-                </Button>
-              </form>
-              <nav className="flex flex-col gap-1">
-                {navLinks.map((l) => (
-                  <Link
-                    key={l.href}
-                    href={l.href}
-                    onClick={() => setMobileOpen(false)}
-                    className="rounded-md px-3 py-2 text-sm font-medium text-foreground/80 transition-colors hover:bg-accent hover:text-accent-foreground"
-                  >
-                    {l.label}
-                  </Link>
-                ))}
-              </nav>
-            </div>
-          </SheetContent>
-        </Sheet>
-        )}
+          ) : (
+          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="shrink-0 md:hidden" aria-label="Menu">
+                <Menu className="h-5 w-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent
+              side="left"
+              className="w-72 bg-background"
+              onOpenAutoFocus={(e) => e.preventDefault()}
+            >
+              <div className="flex h-full flex-col gap-6 pt-8">
+                <Link
+                  href="/"
+                  onClick={() => setMobileOpen(false)}
+                  className="font-serif text-2xl font-bold text-primary"
+                >
+                  Aruhi
+                </Link>
+                <form onSubmit={onSearch} className="flex gap-2">
+                  <Input
+                    placeholder="Search sarees..."
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    className="bg-muted"
+                  />
+                  <Button type="submit" size="icon" aria-label="Search">
+                    <Search className="h-4 w-4" />
+                  </Button>
+                </form>
+                <nav className="flex flex-col gap-1">
+                  {navLinks.map((l) => (
+                    <Link
+                      key={l.href}
+                      href={l.href}
+                      onClick={() => setMobileOpen(false)}
+                      className="rounded-md px-3 py-2 text-sm font-medium text-foreground/80 transition-colors hover:bg-accent hover:text-accent-foreground"
+                    >
+                      {l.label}
+                    </Link>
+                  ))}
+                </nav>
+              </div>
+            </SheetContent>
+          </Sheet>
+          )}
 
-        <Link href="/" className="flex items-center gap-2">
-          <span className="font-serif text-2xl font-bold tracking-tight text-primary">
-            Aruhi
-          </span>
-          <span className="hidden text-xs font-medium uppercase tracking-[0.2em] text-secondary sm:inline">
-            Handlooms
-          </span>
-        </Link>
+          <Link href="/" className="flex shrink-0 items-center gap-2">
+            <span className="whitespace-nowrap font-serif text-lg font-bold tracking-tight text-primary sm:text-2xl">
+              Aruhi
+            </span>
+            <span className="hidden text-xs font-medium uppercase tracking-[0.2em] text-secondary sm:inline">
+              Handlooms
+            </span>
+          </Link>
+        </div>
 
         <nav className="hidden items-center gap-6 md:flex">
           {navLinks.map((l) => (
