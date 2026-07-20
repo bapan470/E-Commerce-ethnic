@@ -1,0 +1,31 @@
+HOW TO USE THIS FILE
+=====================
+
+1. Copy the folder "app/rss.xml/route.ts" into your project's "app" folder,
+   at the same level as your other app routes (app/page.tsx, app/products, etc).
+
+   Final path in your repo should be:
+   app/rss.xml/route.ts
+
+2. Open route.ts and replace the getProducts() function with your real
+   product-fetching logic (Supabase query, API call, database, etc).
+   Since your repo has a "supabase/migrations" folder, you're most likely
+   using Supabase — an example (commented out) is included in the file.
+
+3. Make sure each product returns these fields (rename as needed to match
+   your schema): id, name, slug, description, price, currency, imageUrl,
+   inStock.
+
+4. Commit + push + redeploy on Vercel.
+
+5. Your feed will be live at:
+   https://e-commerce-ethnic.vercel.app/rss.xml
+
+6. Paste that URL into Pinterest Settings > Import content > RSS Feed URL
+   (the box you screenshotted) and click Save.
+
+7. Validate the feed opens correctly in a browser (should show XML, not an
+   error) before connecting it to Pinterest.
+
+If your product data source is different (not Supabase), just tell Claude
+what it is and ask for an updated route.ts.
