@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { Product } from '@/lib/types';
-import ProductCard from '@/components/product-card';
+import ProductCarousel from '@/components/product/product-carousel';
 
 /**
  * Scores every candidate against the current product and returns the best
@@ -25,7 +25,7 @@ function scoreCandidate(current: Product, candidate: Product): number {
 export default function RelatedProducts({
   current,
   allProducts,
-  limit = 4,
+  limit = 10,
   title = 'You may also like',
 }: {
   current: Product;
@@ -43,16 +43,11 @@ export default function RelatedProducts({
       .map((entry) => entry.product);
   }, [current, allProducts, limit]);
 
-  if (related.length === 0) return null;
-
   return (
-    <section className="mt-8">
-      <h2 className="mb-5 font-serif text-2xl font-bold text-primary">{title}</h2>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-        {related.map((p) => (
-          <ProductCard key={p.id} product={p} />
-        ))}
-      </div>
-    </section>
+    <ProductCarousel
+      title={title}
+      products={related}
+      viewAllHref={`/shop?category=${encodeURIComponent(current.category)}`}
+    />
   );
 }

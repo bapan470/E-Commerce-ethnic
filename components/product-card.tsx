@@ -14,11 +14,15 @@ import { blurDataURL } from '@/lib/utils';
 export default function ProductCard({
   product,
   priority = false,
+  compact = false,
 }: {
   product: Product;
   /** Set true for cards in the first visible row so their image gets
    *  preloaded instead of lazy-loaded — improves LCP on the shop/home grid. */
   priority?: boolean;
+  /** Smaller padding/type for horizontal carousels (Similar Products,
+   *  Recently Viewed) where cards sit in a narrower, scrollable strip. */
+  compact?: boolean;
 }) {
   const { addItem } = useCart();
 
@@ -44,7 +48,7 @@ export default function ProductCard({
           src={img}
           alt={altText}
           fill
-          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+          sizes={compact ? '(max-width: 640px) 38vw, 176px' : '(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw'}
           quality={78}
           priority={priority}
           loading={priority ? undefined : 'lazy'}
@@ -103,11 +107,11 @@ export default function ProductCard({
         </Button>
       </div>
 
-      <div className="flex flex-1 flex-col gap-1 p-4">
+      <div className={`flex flex-1 flex-col gap-1 ${compact ? 'p-2.5' : 'p-4'}`}>
         <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
           {product.category}
         </p>
-        <h3 className="line-clamp-1 font-serif text-sm font-semibold text-foreground">
+        <h3 className={`line-clamp-1 font-serif font-semibold text-foreground ${compact ? 'text-xs' : 'text-sm'}`}>
           {product.name}
         </h3>
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -117,7 +121,7 @@ export default function ProductCard({
           <span>{product.reviews} reviews</span>
         </div>
         <div className="mt-1 flex items-baseline gap-2">
-          <span className="font-serif text-base font-bold text-primary">
+          <span className={`font-serif font-bold text-primary ${compact ? 'text-sm' : 'text-base'}`}>
             {formatINR(product.price)}
           </span>
           {product.mrp && product.mrp > product.price && (

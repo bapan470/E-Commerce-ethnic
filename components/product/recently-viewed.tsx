@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useProducts } from '@/lib/cart-context';
 import { getRecentlyViewed } from '@/lib/recently-viewed';
 import { Product } from '@/lib/types';
-import ProductCard from '@/components/product-card';
+import ProductCarousel from '@/components/product/product-carousel';
 
 export default function RecentlyViewedSection({ excludeId }: { excludeId?: string }) {
   const { products } = useProducts();
@@ -21,18 +21,7 @@ export default function RecentlyViewedSection({ excludeId }: { excludeId?: strin
   const items = ids
     .map((id) => byId.get(id))
     .filter((p): p is Product => Boolean(p))
-    .slice(0, 8);
+    .slice(0, 10);
 
-  if (items.length === 0) return null;
-
-  return (
-    <section className="mt-8">
-      <h2 className="mb-5 font-serif text-2xl font-bold text-primary">Recently Viewed</h2>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-        {items.map((p) => (
-          <ProductCard key={p.id} product={p} />
-        ))}
-      </div>
-    </section>
-  );
+  return <ProductCarousel title="Recently Viewed" products={items} />;
 }
