@@ -47,6 +47,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import {
   AlertDialog,
   AlertDialogContent,
   AlertDialogHeader,
@@ -92,6 +99,10 @@ export default function CheckoutPage() {
   // read-only summary instead of the full editable form. "Change address"
   // flips this to true to reveal the picker + editable fields again.
   const [showAddressForm, setShowAddressForm] = useState(false);
+  // "Choose Address" opens a dialog with a radio list of saved addresses,
+  // a "+ New Address" option, and an "Edit" action for the highlighted one.
+  const [showAddressPicker, setShowAddressPicker] = useState(false);
+  const [pickerSelectedId, setPickerSelectedId] = useState<string>('new');
   const [email, setEmail] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -134,6 +145,35 @@ export default function CheckoutPage() {
       applySavedAddress(addr);
       setShowAddressForm(false);
     }
+  };
+
+  const openAddressPicker = () => {
+    setPickerSelectedId(selectedAddressId);
+    setShowAddressPicker(true);
+  };
+
+  const confirmPickerSelection = () => {
+    handleSelectSavedAddress(pickerSelectedId);
+    setShowAddressPicker(false);
+  };
+
+  const editPickerSelection = () => {
+    setSelectedAddressId(pickerSelectedId);
+    if (pickerSelectedId === 'new') {
+      setFirstName('');
+      setLastName('');
+      setShipPhone('');
+      setAddressLine1('');
+      setAddressLine2('');
+      setCity('');
+      setStateName('');
+      setPincode('');
+    } else {
+      const addr = savedAddresses.find((a) => a.id === pickerSelectedId);
+      if (addr) applySavedAddress(addr);
+    }
+    setShowAddressForm(true);
+    setShowAddressPicker(false);
   };
 
   useEffect(() => {
@@ -699,6 +739,64 @@ export default function CheckoutPage() {
         Checkout
       </h1>
 
+      <Dialog open={showAddressPicker} onOpenChange={setShowAddressPicker}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Choose Delivery Address</DialogTitle>
+          </DialogHeader>
+          <RadioGroup value={pickerSelectedId} onValueChange={setPickerSelectedId} className="gap-3">
+            {savedAddresses.map((addr) => (
+              <label
+                key={addr.id}
+                htmlFor={`picker-${addr.id}`}
+                className={`flex cursor-pointer items-start gap-3 rounded-md border p-3 text-sm transition-colors ${
+                  pickerSelectedId === addr.id
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border/60 hover:border-primary/40'
+                }`}
+              >
+                <RadioGroupItem value={addr.id} id={`picker-${addr.id}`} className="mt-0.5" />
+                <div>
+                  <p className="font-medium">
+                    {addr.full_name}
+                    {addr.is_default ? (
+                      <span className="ml-2 rounded bg-secondary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-secondary">
+                        Default
+                      </span>
+                    ) : null}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{addr.phone}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {addr.line1}
+                    {addr.line2 ? `, ${addr.line2}` : ''}, {addr.city}, {addr.state} -{' '}
+                    {addr.pincode}
+                  </p>
+                </div>
+              </label>
+            ))}
+            <label
+              htmlFor="picker-new"
+              className={`flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm transition-colors ${
+                pickerSelectedId === 'new'
+                  ? 'border-primary bg-primary/5'
+                  : 'border-border/60 hover:border-primary/40'
+              }`}
+            >
+              <RadioGroupItem value="new" id="picker-new" />
+              <span className="font-medium text-primary">+ Add a new address</span>
+            </label>
+          </RadioGroup>
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <Button type="button" variant="outline" onClick={editPickerSelection}>
+              Edit
+            </Button>
+            <Button type="button" className="bg-primary" onClick={confirmPickerSelection}>
+              Select this address
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {appliedCoupon && couponDiscount > 0 && (
         <div className="mb-6 flex items-center gap-2 rounded-md border border-secondary/30 bg-secondary/10 px-4 py-3 text-sm font-medium text-secondary-foreground">
           <Tag className="h-4 w-4 shrink-0" />
@@ -719,10 +817,10 @@ export default function CheckoutPage() {
                 </h2>
                 <button
                   type="button"
-                  onClick={() => setShowAddressForm(true)}
-                  className="shrink-0 text-sm font-medium text-secondary underline underline-offset-2 hover:text-secondary/80"
+                  onClick={openAddressPicker}
+                  className="shrink-0 rounded-md border border-secondary/60 px-3 py-1.5 text-sm font-medium text-secondary hover:bg-secondary/10"
                 >
-                  Change address
+                  Choose Address
                 </button>
               </div>
               <div className="space-y-1 text-sm">
