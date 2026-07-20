@@ -74,17 +74,19 @@ export default function CheckoutPage() {
   const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('online');
   const { user } = useAuth();
 
-  // Resale — lets a logged-in customer mark this checkout as an order
-  // they're reselling to their own customer, with their own margin on top.
+  // Resale — lets a customer mark this checkout as an order they're
+  // reselling to their own customer, at a price they set themselves.
   const [isResale, setIsResale] = useState(false);
   const [showResaleConfirm, setShowResaleConfirm] = useState(false);
-  const [resaleMargin, setResaleMargin] = useState('20');
+  const [showResaleLoginPrompt, setShowResaleLoginPrompt] = useState(false);
+  const [resaleSellingPrice, setResaleSellingPrice] = useState('');
   const [resaleBrandName, setResaleBrandName] = useState('');
+  const [defaultMarkup, setDefaultMarkup] = useState(100);
   useEffect(() => {
     if (!user) return;
     fetchMyResellerOverview()
       .then((o) => {
-        if (o.profile) setResaleMargin(String(o.profile.default_margin_percent));
+        if (o.profile) setDefaultMarkup(o.profile.default_markup_amount);
       })
       .catch(() => {});
   }, [user]);
@@ -232,15 +234,21 @@ export default function CheckoutPage() {
   );
   const total = discountedSubtotal + shipping;
 
-  const resaleMarginNum = Math.max(0, Number(resaleMargin) || 0);
-  // What the reseller's own customer actually pays — the normal total,
-  // marked up by the reseller's margin. This is what gets charged/COD'd
-  // and stored as the order's total_amount when resale is on.
-  const payableTotal = isResale ? Math.round(total * (1 + resaleMarginNum / 100)) : total;
+  const resaleSellingPriceNum = Math.max(0, Number(resaleSellingPrice) || 0);
+  // What the reseller's own customer actually pays — the price the reseller
+  // typed in themselves. This is what gets charged/COD'd and stored as the
+  // order's total_amount when resale is on. Falls back to cost if they
+  // haven't set a price yet (shouldn't normally happen — see validation below).
+  const payableTotal = isResale && resaleSellingPriceNum > 0 ? resaleSellingPriceNum : total;
   const resaleProfit = payableTotal - total;
+  const resalePriceTooLow = isResale && resaleSellingPriceNum > 0 && resaleSellingPriceNum < total;
 
   const handleResaleCheckboxChange = (checked: boolean) => {
     if (checked) {
+      if (!user) {
+        setShowResaleLoginPrompt(true);
+        return;
+      }
       setShowResaleConfirm(true);
     } else {
       setIsResale(false);
@@ -250,11 +258,22 @@ export default function CheckoutPage() {
   const confirmResaleYes = () => {
     setIsResale(true);
     setShowResaleConfirm(false);
+    setResaleSellingPrice((prev) => prev || String(total + defaultMarkup));
   };
 
   const confirmResaleNo = () => {
     setIsResale(false);
     setShowResaleConfirm(false);
+  };
+
+  const goToResaleLogin = () => {
+    setShowResaleLoginPrompt(false);
+    router.push('/login?next=/checkout');
+  };
+
+  const goToResaleSignup = () => {
+    setShowResaleLoginPrompt(false);
+    router.push('/signup?next=/checkout');
   };
 
   const handleToggleRedeemPoints = (checked: boolean) => {
@@ -418,13 +437,19 @@ export default function CheckoutPage() {
         return;
       }
 
+      if (isResale && (resaleSellingPriceNum <= 0 || resaleSellingPriceNum < total)) {
+        toast.error(`Selling price must be at least ${formatINR(total)} (your cost)`);
+        setPlacing(false);
+        return;
+      }
+
       // If reselling, make sure this account has a reseller profile
       // (created silently on first resale checkout — same login, no
       // separate signup) so the order can be linked to it.
       let resellerId: string | null = null;
       if (isResale) {
         try {
-          const resellerProfile = await joinResellerProgram(resaleMarginNum);
+          const resellerProfile = await joinResellerProgram(resaleProfit > 0 ? resaleProfit : defaultMarkup);
           resellerId = resellerProfile.id;
         } catch (err) {
           toast.error(err instanceof Error ? err.message : 'Failed to set up reseller account');
@@ -457,7 +482,7 @@ export default function CheckoutPage() {
           loyalty_discount: loyaltyDiscount,
           is_reseller_order: isResale,
           reseller_id: resellerId,
-          reseller_margin_percent: isResale ? resaleMarginNum : null,
+          reseller_margin_percent: isResale && total > 0 ? Number(((resaleProfit / total) * 100).toFixed(1)) : null,
           reseller_base_cost: isResale ? total : null,
           reseller_profit: isResale ? resaleProfit : null,
           reseller_brand_name: isResale ? resaleBrandName || null : null,
@@ -975,70 +1000,102 @@ export default function CheckoutPage() {
               </div>
             )}
 
-            {user && (
-              <div className="mt-4 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3">
-                <label className="flex cursor-pointer items-start gap-3">
-                  <Checkbox
-                    className="mt-1"
-                    checked={isResale}
-                    onCheckedChange={(v) => handleResaleCheckboxChange(v === true)}
-                  />
-                  <div>
-                    <p className="flex items-center gap-1.5 text-sm font-semibold text-primary">
-                      <Store className="h-4 w-4" /> Resell this product
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Placing this order for your own customer? Add your margin and we&apos;ll ship
-                      directly to them.
-                    </p>
-                  </div>
-                </label>
+            <div className="mt-4 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3">
+              <label className="flex cursor-pointer items-start gap-3">
+                <Checkbox
+                  className="mt-1"
+                  checked={isResale}
+                  onCheckedChange={(v) => handleResaleCheckboxChange(v === true)}
+                />
+                <div>
+                  <p className="flex items-center gap-1.5 text-sm font-semibold text-primary">
+                    <Store className="h-4 w-4" /> Resell this product
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Placing this order for your own customer? Set your selling price and
+                    we&apos;ll ship directly to them.
+                  </p>
+                </div>
+              </label>
 
-                {isResale && (
-                  <div className="mt-3 space-y-3 border-t border-dashed border-primary/30 pt-3">
-                    <div>
-                      <Label htmlFor="resale-margin" className="text-xs">
-                        Your margin (%)
-                      </Label>
-                      <Input
-                        id="resale-margin"
-                        type="number"
-                        min={0}
-                        value={resaleMargin}
-                        onChange={(e) => setResaleMargin(e.target.value)}
-                        className="mt-1 h-9 max-w-[140px]"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="resale-brand" className="text-xs">
-                        Brand name (optional)
-                      </Label>
-                      <Input
-                        id="resale-brand"
-                        value={resaleBrandName}
-                        onChange={(e) => setResaleBrandName(e.target.value)}
-                        placeholder="Shown on your invoice, if you have one"
-                        className="mt-1 h-9"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between rounded-md bg-white/60 px-3 py-2">
-                      <span className="text-xs text-muted-foreground">Selling price for your customer</span>
-                      <span className="font-serif text-lg font-bold text-green-600">
-                        {formatINR(payableTotal)}
-                      </span>
-                    </div>
+              {isResale && (
+                <div className="mt-3 space-y-3 border-t border-dashed border-primary/30 pt-3">
+                  <div className="flex items-center justify-between rounded-md bg-white/60 px-3 py-2 text-xs">
+                    <span className="text-muted-foreground">Your cost price</span>
+                    <span className="font-semibold">{formatINR(total)}</span>
                   </div>
-                )}
-              </div>
-            )}
+                  <div>
+                    <Label htmlFor="resale-price" className="text-xs">
+                      Selling price for your customer (₹)
+                    </Label>
+                    <Input
+                      id="resale-price"
+                      type="number"
+                      min={total}
+                      value={resaleSellingPrice}
+                      onChange={(e) => setResaleSellingPrice(e.target.value)}
+                      className="mt-1 h-9 max-w-[140px]"
+                    />
+                    {resalePriceTooLow && (
+                      <p className="mt-1 text-[11px] text-destructive">
+                        Must be at least {formatINR(total)} (your cost).
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="resale-brand" className="text-xs">
+                      Brand name (optional)
+                    </Label>
+                    <Input
+                      id="resale-brand"
+                      value={resaleBrandName}
+                      onChange={(e) => setResaleBrandName(e.target.value)}
+                      placeholder="Shown on your invoice, if you have one"
+                      className="mt-1 h-9"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between rounded-md bg-white/60 px-3 py-2">
+                    <span className="text-xs text-muted-foreground">Your profit</span>
+                    <span className="font-serif text-lg font-bold text-green-600">
+                      +{formatINR(Math.max(0, resaleProfit))}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <AlertDialog open={showResaleLoginPrompt} onOpenChange={setShowResaleLoginPrompt}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Log in to resell this product</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Reselling needs an account so we can track your orders and profit for you.
+                    Log in, or create a free account if you don&apos;t have one yet — your cart
+                    will still be here.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel onClick={() => setShowResaleLoginPrompt(false)}>
+                    Cancel
+                  </AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={goToResaleSignup}
+                    className="bg-secondary text-secondary-foreground hover:bg-secondary/90"
+                  >
+                    Create Account
+                  </AlertDialogAction>
+                  <AlertDialogAction onClick={goToResaleLogin}>Log In</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
 
             <AlertDialog open={showResaleConfirm} onOpenChange={setShowResaleConfirm}>
               <AlertDialogContent>
                 <AlertDialogHeader>
                   <AlertDialogTitle>Mark this as a resale order?</AlertDialogTitle>
                   <AlertDialogDescription>
-                    We&apos;ll ship directly to the customer you enter below. You&apos;ll set your
-                    margin and we&apos;ll show the price your customer should pay.
+                    We&apos;ll ship directly to the customer you enter below. You&apos;ll set the
+                    price your customer pays and we&apos;ll show your profit.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -1060,7 +1117,7 @@ export default function CheckoutPage() {
             <Button
               type="submit"
               size="lg"
-              disabled={placing}
+              disabled={placing || resalePriceTooLow || (isResale && resaleSellingPriceNum <= 0)}
               className="mt-5 w-full bg-primary"
             >
               {placing ? (

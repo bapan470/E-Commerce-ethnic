@@ -10,7 +10,8 @@ export interface ResellerProfile {
   id: string;
   user_id: string;
   status: 'active' | 'suspended';
-  default_margin_percent: number;
+  /** Flat rupee amount added on top of the base price, e.g. 100 (not a %). */
+  default_markup_amount: number;
   business_name: string | null;
   created_at: string;
 }
@@ -38,11 +39,11 @@ export async function fetchMyResellerOverview(): Promise<ResellerOverview> {
 }
 
 /** Joins the reseller program using the SAME logged-in account. */
-export async function joinResellerProgram(defaultMarginPercent = 20): Promise<ResellerProfile> {
+export async function joinResellerProgram(defaultMarkupAmount = 100): Promise<ResellerProfile> {
   const res = await fetch('/api/reseller', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ default_margin_percent: defaultMarginPercent }),
+    body: JSON.stringify({ default_markup_amount: defaultMarkupAmount }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -52,22 +53,22 @@ export async function joinResellerProgram(defaultMarginPercent = 20): Promise<Re
   return body.profile as ResellerProfile;
 }
 
-/** Updates the reseller's default margin %. */
-export async function updateResellerMargin(defaultMarginPercent: number): Promise<void> {
+/** Updates the reseller's default markup amount (flat rupees, not a %). */
+export async function updateResellerDefaultMarkup(defaultMarkupAmount: number): Promise<void> {
   const res = await fetch('/api/reseller', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ default_margin_percent: defaultMarginPercent }),
+    body: JSON.stringify({ default_markup_amount: defaultMarkupAmount }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || 'Failed to update margin');
+    throw new Error(body.error || 'Failed to update default markup');
   }
 }
 
-/** Given a base price and margin %, returns the price to charge the reseller's own customer. */
-export function resellerSellingPrice(basePrice: number, marginPercent: number): number {
-  return Math.round(basePrice * (1 + marginPercent / 100));
+/** Given a base price and a flat rupee markup, returns the price to charge the reseller's own customer. */
+export function resellerSellingPrice(basePrice: number, markupAmount: number): number {
+  return Math.round(basePrice + markupAmount);
 }
 
 // ---------------------------------------------------------------------
@@ -144,7 +145,7 @@ export interface AdminResellerRow {
   email: string | null;
   phone: string | null;
   status: 'active' | 'suspended';
-  defaultMarginPercent: number;
+  defaultMarkupAmount: number;
   createdAt: string;
   totalOrders: number;
   totalSales: number;

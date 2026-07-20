@@ -12,7 +12,7 @@ import {
   fetchMyResellerOverview,
   fetchMyResellerOrders,
   joinResellerProgram,
-  updateResellerMargin,
+  updateResellerDefaultMarkup,
   type ResellerProfile,
   type ResellerEarnings,
   type ResellerOrderRow,
@@ -29,8 +29,8 @@ export default function ResellerPage() {
   });
   const [orders, setOrders] = useState<ResellerOrderRow[]>([]);
   const [joining, setJoining] = useState(false);
-  const [marginInput, setMarginInput] = useState('20');
-  const [savingMargin, setSavingMargin] = useState(false);
+  const [markupInput, setMarkupInput] = useState('100');
+  const [savingMarkup, setSavingMarkup] = useState(false);
 
   const load = async () => {
     try {
@@ -38,7 +38,7 @@ export default function ResellerPage() {
       setProfile(overview.profile);
       setEarnings(overview.earnings);
       if (overview.profile) {
-        setMarginInput(String(overview.profile.default_margin_percent));
+        setMarkupInput(String(overview.profile.default_markup_amount));
         const myOrders = await fetchMyResellerOrders();
         setOrders(myOrders);
       }
@@ -57,9 +57,9 @@ export default function ResellerPage() {
   const handleJoin = async () => {
     setJoining(true);
     try {
-      const p = await joinResellerProgram(20);
+      const p = await joinResellerProgram(100);
       setProfile(p);
-      setMarginInput(String(p.default_margin_percent));
+      setMarkupInput(String(p.default_markup_amount));
       toast.success('Welcome! You are now a reseller.');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to join');
@@ -68,21 +68,21 @@ export default function ResellerPage() {
     }
   };
 
-  const handleSaveMargin = async () => {
-    const val = Number(marginInput);
+  const handleSaveMarkup = async () => {
+    const val = Number(markupInput);
     if (!Number.isFinite(val) || val < 0) {
-      toast.error('Enter a valid margin %');
+      toast.error('Enter a valid amount');
       return;
     }
-    setSavingMargin(true);
+    setSavingMarkup(true);
     try {
-      await updateResellerMargin(val);
-      setProfile((p) => (p ? { ...p, default_margin_percent: val } : p));
-      toast.success('Default margin updated');
+      await updateResellerDefaultMarkup(val);
+      setProfile((p) => (p ? { ...p, default_markup_amount: val } : p));
+      toast.success('Default profit amount updated');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update margin');
+      toast.error(err instanceof Error ? err.message : 'Failed to update');
     } finally {
-      setSavingMargin(false);
+      setSavingMarkup(false);
     }
   };
 
@@ -110,7 +110,7 @@ export default function ResellerPage() {
           </div>
           <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
             <li>Tick "Resell this product" at checkout on any order</li>
-            <li>Set your own profit margin right there, see it in green</li>
+            <li>Set your own selling price right there, see your profit in green</li>
             <li>We ship directly to your customer — no stock to hold</li>
             <li>Track every resale order and your earnings from this dashboard</li>
           </ul>
@@ -160,17 +160,17 @@ export default function ResellerPage() {
         </div>
       </div>
 
-      {/* Margin setting */}
+      {/* Default markup setting */}
       <div className="mt-6 rounded-lg border border-border/60 p-4">
-        <Label className="text-sm font-medium">Your default margin (%)</Label>
+        <Label className="text-sm font-medium">Your default profit amount (₹)</Label>
         <p className="text-xs text-muted-foreground">
-          Pre-filled at checkout whenever you tick "Resell this product" — you can still change it
-          per order. e.g. ₹1000 product + 20% = ₹1200.
+          Pre-filled at checkout whenever you tick "Resell this product" — you can still change the
+          selling price per order. e.g. ₹450 cost + ₹100 = ₹550 for your customer.
         </p>
         <div className="mt-2 flex max-w-xs gap-2">
-          <Input type="number" min={0} value={marginInput} onChange={(e) => setMarginInput(e.target.value)} />
-          <Button variant="outline" onClick={handleSaveMargin} disabled={savingMargin}>
-            {savingMargin ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+          <Input type="number" min={0} value={markupInput} onChange={(e) => setMarkupInput(e.target.value)} />
+          <Button variant="outline" onClick={handleSaveMarkup} disabled={savingMarkup}>
+            {savingMarkup ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
           </Button>
         </div>
       </div>

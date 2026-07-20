@@ -59,7 +59,7 @@ export async function GET() {
         email: emailByUser.get(r.user_id) || null,
         phone: profile?.phone || null,
         status: r.status,
-        defaultMarginPercent: r.default_margin_percent,
+        defaultMarkupAmount: r.default_markup_amount,
         createdAt: r.created_at,
         totalOrders,
         totalSales,

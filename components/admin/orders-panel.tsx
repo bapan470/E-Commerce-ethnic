@@ -25,7 +25,7 @@ type Order = {
   customer_phone?: string;
   created_at?: string;
   is_reseller_order?: boolean;
-  reseller_margin_percent?: number | null;
+  reseller_base_cost?: number | null;
   reseller_profit?: number | null;
   reseller_brand_name?: string | null;
 };
@@ -216,8 +216,12 @@ function OrderRow({
                 Resale{order.reseller_brand_name ? ` · ${order.reseller_brand_name}` : ''}
               </span>
               <span className="text-[10px] text-muted-foreground">
-                {order.reseller_margin_percent}% margin
-                {typeof order.reseller_profit === 'number' ? ` · +${formatINR(order.reseller_profit)} profit` : ''}
+                {typeof order.reseller_base_cost === 'number'
+                  ? `${formatINR(order.reseller_base_cost)} → ${formatINR(order.total_amount)}`
+                  : null}
+                {typeof order.reseller_profit === 'number' ? (
+                  <span className="font-semibold text-green-600"> · +{formatINR(order.reseller_profit)} profit</span>
+                ) : null}
               </span>
             </div>
           )}

@@ -88,7 +88,7 @@ export default function ResellersPanel() {
           <thead className="bg-muted/40 text-left text-xs uppercase tracking-wider text-muted-foreground">
             <tr>
               <th className="px-4 py-3">Reseller</th>
-              <th className="px-4 py-3">Margin</th>
+              <th className="px-4 py-3">Default Markup</th>
               <th className="px-4 py-3">Orders</th>
               <th className="px-4 py-3">Sales</th>
               <th className="px-4 py-3">Their Profit</th>
@@ -103,7 +103,7 @@ export default function ResellersPanel() {
                   <p className="font-medium">{r.name}</p>
                   <p className="text-xs text-muted-foreground">{r.email || r.phone || '—'}</p>
                 </td>
-                <td className="px-4 py-3 text-sm">{r.defaultMarginPercent}%</td>
+                <td className="px-4 py-3 text-sm">+{formatINR(r.defaultMarkupAmount)}</td>
                 <td className="px-4 py-3 text-sm">{r.totalOrders}</td>
                 <td className="px-4 py-3 text-sm">{formatINR(r.totalSales)}</td>
                 <td className="px-4 py-3 text-sm text-green-600">{formatINR(r.totalProfit)}</td>

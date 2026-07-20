@@ -57,8 +57,8 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json().catch(() => ({}));
-  const marginRaw = Number(body?.default_margin_percent);
-  const default_margin_percent = Number.isFinite(marginRaw) ? Math.min(Math.max(marginRaw, 0), 500) : 20;
+  const markupRaw = Number(body?.default_markup_amount);
+  const default_markup_amount = Number.isFinite(markupRaw) ? Math.max(markupRaw, 0) : 100;
 
   const supabase = getServerSupabase();
 
@@ -74,7 +74,7 @@ export async function POST(req: Request) {
 
     const { data: created, error } = await supabase
       .from('reseller_profiles')
-      .insert({ user_id: user.id, default_margin_percent, status: 'active' })
+      .insert({ user_id: user.id, default_markup_amount, status: 'active' })
       .select('*')
       .single();
     if (error) throw error;
@@ -94,23 +94,23 @@ export async function PUT(req: Request) {
   }
 
   const body = await req.json().catch(() => ({}));
-  const marginRaw = Number(body?.default_margin_percent);
-  if (!Number.isFinite(marginRaw) || marginRaw < 0) {
-    return NextResponse.json({ error: 'Invalid margin percent' }, { status: 400 });
+  const markupRaw = Number(body?.default_markup_amount);
+  if (!Number.isFinite(markupRaw) || markupRaw < 0) {
+    return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
   }
-  const default_margin_percent = Math.min(marginRaw, 500);
+  const default_markup_amount = markupRaw;
 
   const supabase = getServerSupabase();
 
   try {
     const { error } = await supabase
       .from('reseller_profiles')
-      .update({ default_margin_percent, updated_at: new Date().toISOString() })
+      .update({ default_markup_amount, updated_at: new Date().toISOString() })
       .eq('user_id', user.id);
     if (error) throw error;
     return NextResponse.json({ success: true });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to update margin';
+    const message = err instanceof Error ? err.message : 'Failed to update default markup';
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
