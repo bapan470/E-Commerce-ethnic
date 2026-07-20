@@ -29,6 +29,7 @@ import {
   Store,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import NotificationBell from './notification-bell';
 
 export type AdminSection =
   | 'analytics'
@@ -235,16 +236,18 @@ export default function AdminShell({ active, onChange, children }: AdminShellPro
 
       {/* Main content */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-border bg-card/95 px-4 py-3.5 backdrop-blur sm:px-6 lg:hidden">
+        <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-border bg-card/95 px-4 py-3.5 backdrop-blur sm:px-6">
           <button
             type="button"
             onClick={() => setMobileOpen(true)}
-            className="rounded-md p-2 text-foreground hover:bg-accent"
+            className="rounded-md p-2 text-foreground hover:bg-accent lg:hidden"
             aria-label="Open menu"
           >
             <Menu className="h-5 w-5" />
           </button>
-          <p className="font-serif text-base font-bold text-primary">{LABELS[active]}</p>
+          <p className="font-serif text-base font-bold text-primary lg:hidden">{LABELS[active]}</p>
+          <div className="flex-1" />
+          <NotificationBell onNavigate={onChange} />
         </header>
 
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
