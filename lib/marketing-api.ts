@@ -56,6 +56,7 @@ export async function saveLegalPages(pages: LegalPages) {
 
 export interface MarketingSettings {
   whatsapp_enabled: boolean;
+  whatsapp_chat_widget_enabled: boolean; // separate toggle: WhatsApp bar inside the on-site chat popup
   whatsapp_number: string; // digits only, with country code e.g. 919876543210
   whatsapp_message: string;
   merchant_feed_enabled: boolean;
@@ -65,6 +66,7 @@ export interface MarketingSettings {
 
 const DEFAULT_MARKETING_SETTINGS: MarketingSettings = {
   whatsapp_enabled: false,
+  whatsapp_chat_widget_enabled: false,
   whatsapp_number: '',
   whatsapp_message: 'Hi! I have a question about your products.',
   merchant_feed_enabled: true,

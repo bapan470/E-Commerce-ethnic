@@ -148,6 +148,11 @@ export default function LiveChatWidget() {
         )}`
       : null;
 
+  // Pinned "Prefer WhatsApp?" bar inside the chat popup — controlled by its
+  // OWN separate Admin > Marketing > WhatsApp toggle, independent of the
+  // floating WhatsApp button toggle used above for whatsappHref/quick-topic.
+  const showWhatsappBar = Boolean(marketing?.whatsapp_chat_widget_enabled && whatsappHref);
+
   function handleToggle() {
     setOpen((v) => !v);
     setHasOpenedOnce(true);
@@ -249,11 +254,11 @@ export default function LiveChatWidget() {
           </div>
 
           {/* Pinned WhatsApp quick-access — always visible regardless of
-              scroll position, not just after messages. Controlled by the
-              SAME Admin > Marketing > WhatsApp toggle/number as the
-              floating WhatsApp button, so turning it on/off in one place
-              updates both. */}
-          {whatsappHref && (
+              scroll position, not just after messages. Controlled by its
+              OWN separate Admin > Marketing > WhatsApp toggle
+              (whatsapp_chat_widget_enabled), independent from the floating
+              WhatsApp button toggle (whatsapp_enabled). */}
+          {showWhatsappBar && whatsappHref && (
             <a
               href={whatsappHref}
               target="_blank"

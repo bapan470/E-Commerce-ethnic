@@ -213,6 +213,20 @@ function WhatsAppTab() {
         />
       </div>
 
+      <div className="flex items-center justify-between rounded-lg border border-border p-3">
+        <div>
+          <Label htmlFor="wa-chat-widget-enabled">Show WhatsApp bar inside chat popup</Label>
+          <p className="text-xs text-muted-foreground">
+            Controls only the "Prefer WhatsApp?" bar inside the on-site chat popup, separate from the floating button above.
+          </p>
+        </div>
+        <Switch
+          id="wa-chat-widget-enabled"
+          checked={settings.whatsapp_chat_widget_enabled}
+          onCheckedChange={(checked) => setSettings({ ...settings, whatsapp_chat_widget_enabled: checked })}
+        />
+      </div>
+
       <div className="space-y-2">
         <Label htmlFor="wa-number">WhatsApp number (with country code, digits only)</Label>
         <Input
