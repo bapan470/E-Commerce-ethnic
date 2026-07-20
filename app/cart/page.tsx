@@ -28,6 +28,7 @@ export default function CartPage() {
     couponDiscount,
     applyCoupon,
     removeCoupon,
+    clearBuyNow,
   } = useCart();
   const [shippingSettings, setShippingSettings] = useState<ShippingSettings>(
     DEFAULT_SHIPPING_SETTINGS
@@ -270,7 +271,7 @@ export default function CartPage() {
                 {formatINR(total)}
               </span>
             </div>
-            <Button asChild size="lg" className="mt-5 w-full gap-2 bg-primary">
+            <Button asChild size="lg" className="mt-5 w-full gap-2 bg-primary" onClick={() => clearBuyNow()}>
               <Link href="/checkout">
                 Proceed to Checkout <ArrowRight className="h-4 w-4" />
               </Link>

@@ -32,6 +32,7 @@ export default function CartDrawer() {
     couponDiscount,
     applyCoupon,
     removeCoupon,
+    clearBuyNow,
   } = useCart();
 
   const [couponInput, setCouponInput] = useState('');
@@ -247,7 +248,14 @@ export default function CartDrawer() {
               </p>
               <Separator className="my-4" />
               <div className="flex flex-col gap-2">
-                <Button asChild className="bg-primary" onClick={() => setCartOpen(false)}>
+                <Button
+                  asChild
+                  className="bg-primary"
+                  onClick={() => {
+                    setCartOpen(false);
+                    clearBuyNow();
+                  }}
+                >
                   <Link href="/checkout">Checkout</Link>
                 </Button>
                 <Button

@@ -1,8 +1,12 @@
+'use client';
+
 import Link from 'next/link';
 import { Instagram, Facebook, Mail, Phone } from 'lucide-react';
 import NewsletterSignup from './newsletter-signup';
+import { useCart } from '@/lib/cart-context';
 
 export default function Footer() {
+  const { clearBuyNow } = useCart();
   return (
     <footer className="mt-16 border-t border-border/60 bg-primary text-primary-foreground">
       <div className="container-boutique grid gap-10 py-12 sm:grid-cols-2 lg:grid-cols-4">
@@ -31,7 +35,7 @@ export default function Footer() {
           </h4>
           <ul className="mt-3 space-y-2 text-sm text-primary-foreground/80">
             <li><Link href="/cart" className="hover:text-secondary">Cart</Link></li>
-            <li><Link href="/checkout" className="hover:text-secondary">Checkout</Link></li>
+            <li><Link href="/checkout" onClick={() => clearBuyNow()} className="hover:text-secondary">Checkout</Link></li>
             <li><Link href="/contact" className="hover:text-secondary">Contact Us</Link></li>
             {/* Admin link intentionally omitted for security */}
             <li><Link href="/legal/shipping-policy" className="hover:text-secondary">Shipping & Returns</Link></li>
