@@ -6,8 +6,6 @@ import Link from 'next/link';
 import {
   Star,
   ShoppingBag,
-  Minus,
-  Plus,
   Truck,
   ShieldCheck,
   RefreshCw,
@@ -549,24 +547,6 @@ function ProductInfo({
       )}
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center rounded-md border border-border">
-          <button
-            onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-            className="p-3 text-muted-foreground hover:text-primary"
-            aria-label="Decrease quantity"
-          >
-            <Minus className="h-4 w-4" />
-          </button>
-          <span className="w-10 text-center text-sm font-semibold">{quantity}</span>
-          <button
-            onClick={() => setQuantity((q) => Math.min(product.stock_quantity, q + 1))}
-            disabled={quantity >= product.stock_quantity}
-            className="p-3 text-muted-foreground hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
-            aria-label="Increase quantity"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
-        </div>
         {quantity >= product.stock_quantity && product.stock_quantity > 0 && (
           <p className="w-full text-xs text-muted-foreground">
             Only {product.stock_quantity} unit{product.stock_quantity > 1 ? 's' : ''} left in stock.
