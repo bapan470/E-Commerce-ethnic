@@ -57,6 +57,8 @@ export default function SettingsPanel() {
 
   const [aiChatForm, setAiChatForm] = useState<AiChatSettings | null>(null);
   const [savingAiChat, setSavingAiChat] = useState(false);
+  const [testingAiChat, setTestingAiChat] = useState(false);
+  const [aiTestResult, setAiTestResult] = useState<any>(null);
 
   useEffect(() => {
     fetchStoreInfo()
@@ -138,6 +140,28 @@ export default function SettingsPanel() {
       toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSavingAiChat(false);
+    }
+  };
+
+  const onTestAiChat = async () => {
+    setTestingAiChat(true);
+    setAiTestResult(null);
+    try {
+      const res = await fetch('/api/admin/ai-chat-test', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      setAiTestResult(data);
+      if (!data.keyPresent) {
+        toast.error('NVIDIA_API_KEY is missing on this deployment');
+      } else if (data.results?.every((r: any) => r.ok)) {
+        toast.success('AI connection is working');
+      } else {
+        toast.error('AI connection test found a problem — see details below');
+      }
+    } catch (err) {
+      toast.error('Could not run the test');
+      setAiTestResult({ keyPresent: null, results: [], summary: 'Request to /api/admin/ai-chat-test failed.' });
+    } finally {
+      setTestingAiChat(false);
     }
   };
 
@@ -630,9 +654,44 @@ export default function SettingsPanel() {
             </p>
           </div>
 
-          <Button type="submit" disabled={savingAiChat} className="mt-2 w-fit bg-primary">
-            <Save className="mr-1.5 h-4 w-4" /> {savingAiChat ? 'Saving…' : 'Save AI Chat Settings'}
-          </Button>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <Button type="submit" disabled={savingAiChat} className="w-fit bg-primary">
+              <Save className="mr-1.5 h-4 w-4" /> {savingAiChat ? 'Saving…' : 'Save AI Chat Settings'}
+            </Button>
+            <Button type="button" variant="outline" disabled={testingAiChat} onClick={onTestAiChat}>
+              {testingAiChat ? 'Testing…' : 'Test AI connection'}
+            </Button>
+          </div>
+
+          {aiTestResult && (
+            <div className="mt-2 grid gap-2 rounded-lg border border-border/60 bg-muted/40 p-4 text-sm">
+              {aiTestResult.summary && (
+                <p className="font-medium text-destructive">{aiTestResult.summary}</p>
+              )}
+              {aiTestResult.keyPresent && (
+                <p className="text-xs text-muted-foreground">
+                  Using key {aiTestResult.keyPreview} · AI chat enabled: {String(aiTestResult.aiChatEnabled)}
+                </p>
+              )}
+              {(aiTestResult.results || []).map((r: any) => (
+                <div
+                  key={r.model}
+                  className={`rounded border p-3 ${r.ok ? 'border-emerald-300 bg-emerald-50' : 'border-destructive/40 bg-destructive/5'}`}
+                >
+                  <p className="font-mono text-xs font-semibold">{r.model}</p>
+                  {r.ok ? (
+                    <p className="mt-1 text-xs text-emerald-800">
+                      ✅ Working ({r.ms}ms) — model replied: &quot;{r.reply}&quot;
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-xs text-destructive">
+                      ❌ HTTP {r.httpStatus || 'network error'} ({r.ms}ms) — {r.errorDetail}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </form>
       )}
 
