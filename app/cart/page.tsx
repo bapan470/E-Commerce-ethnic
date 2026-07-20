@@ -9,6 +9,8 @@ import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
+import CartBump from '@/components/cart/cart-bump';
+import LowStockBadge from '@/components/growth/low-stock-badge';
 import {
   ShippingSettings,
   DEFAULT_SHIPPING_SETTINGS,
@@ -123,6 +125,9 @@ export default function CartPage() {
                       <p className="mt-0.5 text-xs text-muted-foreground">
                         {item.product.category} · Size: {item.size}
                       </p>
+                      <div className="mt-1">
+                        <LowStockBadge stockQuantity={item.product.stock_quantity} />
+                      </div>
                     </div>
                     <button
                       onClick={() => removeItem(item.product.id, item.size)}
@@ -253,6 +258,11 @@ export default function CartPage() {
                 </p>
               )}
             </div>
+
+            <div className="mt-4">
+              <CartBump />
+            </div>
+
             <Separator className="my-4" />
             <div className="flex items-center justify-between">
               <span className="font-serif text-base font-semibold">Total</span>

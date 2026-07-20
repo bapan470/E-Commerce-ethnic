@@ -14,6 +14,8 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
+import CartBump from '@/components/cart/cart-bump';
+import LowStockBadge from '@/components/growth/low-stock-badge';
 
 export default function CartDrawer() {
   const {
@@ -100,6 +102,9 @@ export default function CartDrawer() {
                       <p className="text-xs text-muted-foreground">
                         Size: {item.size}
                       </p>
+                      <div className="mt-1">
+                        <LowStockBadge stockQuantity={item.product.stock_quantity} />
+                      </div>
                       <div className="mt-auto flex items-center justify-between pt-2">
                         <div className="flex items-center rounded-md border border-border">
                           <button
@@ -159,7 +164,10 @@ export default function CartDrawer() {
                   </div>
                 </>
               )}
-              <p className="mt-1 text-xs text-muted-foreground">
+              <div className="mt-3">
+                <CartBump compact />
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">
                 Shipping & taxes calculated at checkout.
               </p>
               <Separator className="my-4" />
