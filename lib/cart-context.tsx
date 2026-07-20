@@ -92,19 +92,28 @@ interface CartContextValue {
   appliedCoupon: Coupon | null;
   /** Rupee amount saved by the applied coupon, recalculated live against the current subtotal. */
   couponDiscount: number;
-  applyCoupon: (code: string) => Promise<CouponResult>;
+  applyCoupon: (code: string, overrideSubtotal?: number, overrideItemCount?: number) => Promise<CouponResult>;
   removeCoupon: () => void;
+  /** Single-item "Buy Now" checkout — set when the customer taps Buy Now on
+   * a product page, kept separate from the persistent cart so it doesn't
+   * pull in whatever else is already sitting in the cart. Checkout reads
+   * this (when present) instead of the full cart's items. */
+  buyNowItem: CartItem | null;
+  startBuyNow: (product: Product, size: string, quantity?: number) => void;
+  clearBuyNow: () => void;
 }
 
 const CartContext = createContext<CartContextValue | undefined>(undefined);
 const STORAGE_KEY = 'saaj-cart-v1';
 const COUPON_STORAGE_KEY = 'saaj-cart-coupon-v1';
+const BUY_NOW_STORAGE_KEY = 'saaj-buy-now-v1';
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(cartReducer, { items: [] });
   const [isCartOpen, setCartOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
+  const [buyNowItem, setBuyNowItem] = useState<CartItem | null>(null);
 
   useEffect(() => {
     try {
@@ -116,6 +125,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const rawCoupon = localStorage.getItem(COUPON_STORAGE_KEY);
       if (rawCoupon) {
         setAppliedCoupon(JSON.parse(rawCoupon) as Coupon);
+      }
+      // sessionStorage (not localStorage) — a Buy Now selection should only
+      // survive the current tab/session, e.g. a checkout page refresh, not
+      // linger around like the persistent cart does.
+      const rawBuyNow = sessionStorage.getItem(BUY_NOW_STORAGE_KEY);
+      if (rawBuyNow) {
+        setBuyNowItem(JSON.parse(rawBuyNow) as CartItem);
       }
     } catch {
       // ignore
@@ -205,8 +221,14 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, [appliedCoupon, subtotal, state.items.length]);
 
   const applyCoupon = useCallback(
-    async (code: string): Promise<CouponResult> => {
-      const result = await validateCoupon(code, subtotal, state.items.length);
+    async (
+      code: string,
+      overrideSubtotal?: number,
+      overrideItemCount?: number
+    ): Promise<CouponResult> => {
+      const effSubtotal = overrideSubtotal ?? subtotal;
+      const effItemCount = overrideItemCount ?? state.items.length;
+      const result = await validateCoupon(code, effSubtotal, effItemCount);
       if (result.ok && result.coupon) {
         setAppliedCoupon(result.coupon);
       }
@@ -216,6 +238,29 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   );
 
   const removeCoupon = useCallback(() => setAppliedCoupon(null), []);
+
+  const startBuyNow = useCallback(
+    (product: Product, size: string, quantity?: number) => {
+      const qty = quantity ?? 1;
+      const item: CartItem = { product, size, quantity: qty };
+      setBuyNowItem(item);
+      try {
+        sessionStorage.setItem(BUY_NOW_STORAGE_KEY, JSON.stringify(item));
+      } catch {
+        // ignore
+      }
+    },
+    []
+  );
+
+  const clearBuyNow = useCallback(() => {
+    setBuyNowItem(null);
+    try {
+      sessionStorage.removeItem(BUY_NOW_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const value: CartContextValue = {
     items: state.items,
@@ -231,6 +276,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     couponDiscount,
     applyCoupon,
     removeCoupon,
+    buyNowItem,
+    startBuyNow,
+    clearBuyNow,
   };
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

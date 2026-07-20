@@ -48,7 +48,7 @@ export default function ProductDetail() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
   const { getBySlug, products, loading } = useProducts();
-  const { addItem, subtotal: cartSubtotal, applyCoupon: applyCartCoupon } = useCart();
+  const { addItem, startBuyNow, subtotal: cartSubtotal, applyCoupon: applyCartCoupon } = useCart();
   const { user } = useAuth();
 
   const fromContext = useMemo(
@@ -296,9 +296,13 @@ export default function ProductDetail() {
       toast.error('Please select a size');
       return;
     }
-    addItem(product, selectedSize, quantity);
+    startBuyNow(product, selectedSize, quantity);
     if (appliedCoupon) {
-      setPendingCouponCode(appliedCoupon.code);
+      applyCartCoupon(appliedCoupon.code, product.price * quantity, 1).then((result) => {
+        if (!result.ok) {
+          toast.error(result.error || 'Could not apply this coupon to your order');
+        }
+      });
     }
     trackEvent('add_to_cart', {
       productId: product.id,

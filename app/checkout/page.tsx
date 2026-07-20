@@ -11,6 +11,7 @@ import { formatINR } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import { getSupabaseBrowser } from '@/lib/supabase-browser';
 import { validateGiftCard, GiftCard } from '@/lib/giftcards-api';
+import { computeCouponDiscount } from '@/lib/coupons-api';
 import { fetchAddresses } from '@/lib/addresses-api';
 import { Address } from '@/lib/types';
 import { joinResellerProgram, fetchMyResellerOverview } from '@/lib/reseller-api';
@@ -32,7 +33,7 @@ import {
   fetchCheckoutBumpSettings,
 } from '@/lib/checkout-bump-api';
 import { fetchProductById } from '@/lib/products-api';
-import { Product } from '@/lib/types';
+import { Product, CartItem } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -68,16 +69,33 @@ declare global {
 export default function CheckoutPage() {
   const router = useRouter();
   const {
-    items,
-    subtotal,
+    items: cartItems,
+    subtotal: cartSubtotal,
     clearCart,
     addItem,
     removeItem,
     appliedCoupon,
-    couponDiscount,
+    couponDiscount: cartCouponDiscount,
     applyCoupon,
     removeCoupon,
+    buyNowItem,
+    clearBuyNow,
   } = useCart();
+  // Buy Now sends the shopper straight here with just the one item, kept
+  // separate from whatever else is sitting in the persistent cart. Extra
+  // add-ons picked up on this page (currently just the checkout bump) are
+  // tracked locally here rather than going into the real cart.
+  const isBuyNow = !!buyNowItem;
+  const [buyNowExtras, setBuyNowExtras] = useState<CartItem[]>([]);
+  const items = buyNowItem ? [buyNowItem, ...buyNowExtras] : cartItems;
+  const subtotal = isBuyNow
+    ? items.reduce((sum, i) => sum + i.product.price * i.quantity, 0)
+    : cartSubtotal;
+  const couponDiscount = isBuyNow
+    ? appliedCoupon && subtotal >= appliedCoupon.min_order_value
+      ? computeCouponDiscount(appliedCoupon, subtotal, items.length)
+      : 0
+    : cartCouponDiscount;
   const [placing, setPlacing] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('online');
@@ -299,9 +317,31 @@ export default function CheckoutPage() {
       // Clone the product with the checkout-only bump price — cart totals,
       // the order summary and the final order_items row all read
       // item.product.price directly, so this is all that's needed.
-      addItem({ ...bumpProduct, price: bumpPrice }, bumpSize, 1);
+      if (isBuyNow) {
+        setBuyNowExtras((prev) => [
+          ...prev,
+          { product: { ...bumpProduct, price: bumpPrice }, size: bumpSize, quantity: 1 },
+        ]);
+      } else {
+        addItem({ ...bumpProduct, price: bumpPrice }, bumpSize, 1);
+      }
     } else {
-      removeItem(bumpProduct.id, bumpSize);
+      if (isBuyNow) {
+        setBuyNowExtras((prev) => prev.filter((i) => i.product.id !== bumpProduct.id));
+      } else {
+        removeItem(bumpProduct.id, bumpSize);
+      }
+    }
+  };
+
+  // Clears whichever mode produced this order — the single Buy Now item, or
+  // the full persistent cart — without touching the other.
+  const clearOrderedItems = () => {
+    if (isBuyNow) {
+      clearBuyNow();
+      setBuyNowExtras([]);
+    } else {
+      clearCart();
     }
   };
 
@@ -402,7 +442,7 @@ export default function CheckoutPage() {
   const handleApplyCoupon = async () => {
     setCouponError(null);
     setApplyingCoupon(true);
-    const result = await applyCoupon(couponInput);
+    const result = await applyCoupon(couponInput, subtotal, items.length);
     setApplyingCoupon(false);
     if (!result.ok || !result.coupon) {
       setCouponError(result.error || 'Invalid coupon');
@@ -616,7 +656,7 @@ export default function CheckoutPage() {
             .then(() => {});
         }
         setOrderPlaced(true);
-        clearCart();
+        clearOrderedItems();
         trackEvent('purchase', {
           orderId: internalOrderId,
           userId: loggedInUser?.id ?? null,
@@ -668,7 +708,7 @@ export default function CheckoutPage() {
           .then(() => {});
       }
       setOrderPlaced(true);
-      clearCart();
+      clearOrderedItems();
       trackEvent('purchase', {
         orderId: internalOrderId,
         userId: loggedInUser?.id ?? null,
