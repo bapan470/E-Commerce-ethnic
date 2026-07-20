@@ -1011,28 +1011,6 @@ export default function CheckoutPage() {
                 </div>
               </button>
             </div>
-
-            {paymentMethod === 'online' ? (
-              <div className="mt-3 flex items-center gap-3 rounded-md bg-muted/50 p-3 text-sm">
-                <CreditCard className="h-5 w-5 text-secondary" />
-                <div>
-                  <p className="font-medium">Razorpay Test Payment</p>
-                  <p className="text-xs text-muted-foreground">
-                    Use test card: 4111 1111 1111 1111, any expiry, any CVV
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="mt-3 flex items-center gap-3 rounded-md bg-muted/50 p-3 text-sm">
-                <Wallet className="h-5 w-5 text-secondary" />
-                <div>
-                  <p className="font-medium">Pay {formatINR(total)} on delivery</p>
-                  <p className="text-xs text-muted-foreground">
-                    Keep exact change ready for our delivery partner.
-                  </p>
-                </div>
-              </div>
-            )}
           </section>
         </div>
 
