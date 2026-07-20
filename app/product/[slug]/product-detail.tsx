@@ -32,6 +32,8 @@ import RecentlyViewedSection from '@/components/product/recently-viewed';
 import NotifyMeForm from '@/components/product/notify-me-form';
 import LowStockBadge from '@/components/growth/low-stock-badge';
 import CouponList from '@/components/product/coupon-list';
+import WishlistButton from '@/components/wishlist-button';
+import ShareButton from '@/components/share-button';
 import { Coupon, validateCoupon } from '@/lib/coupons-api';
 import FrequentlyBoughtTogether from '@/components/product/frequently-bought-together';
 import { addRecentlyViewed } from '@/lib/recently-viewed';
@@ -423,12 +425,20 @@ function ProductInfo({
   return (
     <div className="flex flex-col gap-3">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
-          {product.category}
-        </p>
-        <h1 className="mt-1 font-serif text-xl font-bold text-primary sm:text-2xl">
-          {product.name}
-        </h1>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
+              {product.category}
+            </p>
+            <h1 className="mt-1 font-serif text-base font-bold text-primary sm:text-xl">
+              {product.name}
+            </h1>
+          </div>
+          <div className="flex shrink-0 items-start gap-4 pt-1">
+            <WishlistButton productId={product.id} showLabel />
+            <ShareButton title={product.name} text={`Check out ${product.name} on Aruhi`} />
+          </div>
+        </div>
         <button
           type="button"
           onClick={onReviewsClick}

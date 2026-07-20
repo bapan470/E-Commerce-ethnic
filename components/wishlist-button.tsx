@@ -11,9 +11,11 @@ import { toast } from 'sonner';
 export default function WishlistButton({
   productId,
   className,
+  showLabel = false,
 }: {
   productId: string;
   className?: string;
+  showLabel?: boolean;
 }) {
   const { user } = useAuth();
   const router = useRouter();
@@ -56,6 +58,23 @@ export default function WishlistButton({
       setBusy(false);
     }
   };
+
+  if (showLabel) {
+    return (
+      <button
+        onClick={toggle}
+        disabled={busy}
+        aria-label={saved ? 'Remove from wishlist' : 'Add to wishlist'}
+        className={cn(
+          'flex flex-col items-center gap-1 text-muted-foreground transition-colors hover:text-primary',
+          className
+        )}
+      >
+        <Heart className={cn('h-5 w-5', saved ? 'fill-primary text-primary' : '')} />
+        <span className="text-[11px] font-medium leading-none">Wishlist</span>
+      </button>
+    );
+  }
 
   return (
     <button
