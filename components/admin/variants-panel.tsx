@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, FormEvent } from 'react';
+import { useEffect, useState, FormEvent, useRef } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Plus, Pencil, Trash2, Upload, Loader2, Star, Link2 } from 'lucide-react';
 import { useProducts } from '@/lib/cart-context';
@@ -72,9 +73,13 @@ const emptyVariantForm = (): VariantFormState => ({
 
 export default function VariantsPanel() {
   const { products, loading: productsLoading } = useProducts();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [selectedProductId, setSelectedProductId] = useState<string>('');
   const [variants, setVariants] = useState<VariantWithSizes[]>([]);
   const [loadingVariants, setLoadingVariants] = useState(false);
+  const appliedProductParam = useRef(false);
+  const appliedNewParam = useRef(false);
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<VariantWithSizes | null>(null);
@@ -103,11 +108,30 @@ export default function VariantsPanel() {
     }
   };
 
+  // Coming here from Products > "Manage variants" (or the "Add colour/size
+  // variants" toast after creating a product) — jump straight to that
+  // product instead of making the admin find it again in the dropdown.
   useEffect(() => {
-    if (!selectedProductId && products.length > 0) {
+    if (appliedProductParam.current || products.length === 0) return;
+    const paramProductId = searchParams.get('product');
+    if (paramProductId && products.some((p) => p.id === paramProductId)) {
+      setSelectedProductId(paramProductId);
+    } else if (!selectedProductId) {
       setSelectedProductId(products[0].id);
     }
-  }, [products, selectedProductId]);
+    appliedProductParam.current = true;
+  }, [products, searchParams, selectedProductId]);
+
+  useEffect(() => {
+    if (!appliedProductParam.current || appliedNewParam.current) return;
+    if (!selectedProduct) return;
+    if (searchParams.get('new') === '1' && searchParams.get('product') === selectedProduct.id) {
+      appliedNewParam.current = true;
+      openNew();
+      // Drop the params so a refresh doesn't reopen the form.
+      router.replace('/admin?section=variants');
+    }
+  }, [selectedProduct, searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadVariants(selectedProductId);

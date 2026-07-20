@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, FormEvent, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles, Link2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles, Link2, Palette } from 'lucide-react';
 import { useProducts } from '@/lib/cart-context';
 import {
   createProduct,
@@ -149,6 +150,7 @@ const fromProduct = (p: Product): FormState => ({
 });
 
 export default function ProductsPanel() {
+  const router = useRouter();
   const { products, categories, loading, refresh } = useProducts();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
@@ -324,8 +326,13 @@ export default function ProductsPanel() {
           triggerRestockNotifications(editing.id);
         }
       } else {
-        await createProduct(payload);
-        toast.success('Product added');
+        const created = await createProduct(payload);
+        toast.success('Product added', {
+          action: {
+            label: 'Add colour/size variants',
+            onClick: () => router.push(`/admin?section=variants&product=${created.id}&new=1`),
+          },
+        });
       }
       setOpen(false);
       await refresh();
@@ -467,6 +474,15 @@ export default function ProductsPanel() {
                   )}
                 </div>
                 <div className="col-span-2 flex justify-end gap-1 sm:col-span-1">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => router.push(`/admin?section=variants&product=${p.id}`)}
+                    aria-label="Manage colour/size variants"
+                    title="Manage colour/size variants"
+                  >
+                    <Palette className="h-4 w-4" />
+                  </Button>
                   <Button
                     size="icon"
                     variant="ghost"
