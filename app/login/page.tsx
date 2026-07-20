@@ -242,18 +242,20 @@ function LoginForm() {
                 <div className="flex justify-center py-1">
                   <InputOTP
                     id="otp-code"
-                    maxLength={6}
+                    maxLength={8}
                     value={otpCode}
                     onChange={setOtpCode}
                     inputMode="numeric"
                   >
                     <InputOTPGroup>
-                      <InputOTPSlot index={0} />
-                      <InputOTPSlot index={1} />
-                      <InputOTPSlot index={2} />
-                      <InputOTPSlot index={3} />
-                      <InputOTPSlot index={4} />
-                      <InputOTPSlot index={5} />
+                      <InputOTPSlot index={0} className="h-9 w-8 text-sm sm:h-10 sm:w-10 sm:text-base" />
+                      <InputOTPSlot index={1} className="h-9 w-8 text-sm sm:h-10 sm:w-10 sm:text-base" />
+                      <InputOTPSlot index={2} className="h-9 w-8 text-sm sm:h-10 sm:w-10 sm:text-base" />
+                      <InputOTPSlot index={3} className="h-9 w-8 text-sm sm:h-10 sm:w-10 sm:text-base" />
+                      <InputOTPSlot index={4} className="h-9 w-8 text-sm sm:h-10 sm:w-10 sm:text-base" />
+                      <InputOTPSlot index={5} className="h-9 w-8 text-sm sm:h-10 sm:w-10 sm:text-base" />
+                      <InputOTPSlot index={6} className="h-9 w-8 text-sm sm:h-10 sm:w-10 sm:text-base" />
+                      <InputOTPSlot index={7} className="h-9 w-8 text-sm sm:h-10 sm:w-10 sm:text-base" />
                     </InputOTPGroup>
                   </InputOTP>
                 </div>
@@ -268,7 +270,7 @@ function LoginForm() {
               <Button
                 type="submit"
                 className="w-full bg-primary"
-                disabled={otpLoading || otpCode.length < 6}
+                disabled={otpLoading || otpCode.length < 8}
               >
                 {otpLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Verify &amp; Login

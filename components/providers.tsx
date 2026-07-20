@@ -22,7 +22,12 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isHome = pathname === '/';
   const hideChatWidget =
-    pathname === '/login' || pathname === '/signup' || pathname === '/forgot-password';
+    pathname === '/login' ||
+    pathname === '/signup' ||
+    pathname === '/forgot-password' ||
+    pathname === '/reset-password' ||
+    pathname.startsWith('/cart') ||
+    pathname.startsWith('/checkout');
 
   return (
     <AuthProvider>
