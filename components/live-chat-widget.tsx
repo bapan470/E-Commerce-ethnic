@@ -141,8 +141,12 @@ export default function LiveChatWidget() {
 
   if (pathname?.startsWith('/admin')) return null;
 
+  // Only depends on a number being configured — NOT on the floating-button
+  // toggle (whatsapp_enabled). That way the chat-popup bar's own toggle
+  // (whatsapp_chat_widget_enabled, checked below) works fully independently,
+  // even when the floating button is switched off.
   const whatsappHref =
-    marketing?.whatsapp_enabled && marketing.whatsapp_number
+    marketing?.whatsapp_number
       ? `https://wa.me/${marketing.whatsapp_number.replace(/\D/g, '')}?text=${encodeURIComponent(
           marketing.whatsapp_message || 'Hi! I have a question about your products.'
         )}`
@@ -150,7 +154,7 @@ export default function LiveChatWidget() {
 
   // Pinned "Prefer WhatsApp?" bar inside the chat popup — controlled by its
   // OWN separate Admin > Marketing > WhatsApp toggle, independent of the
-  // floating WhatsApp button toggle used above for whatsappHref/quick-topic.
+  // floating WhatsApp button toggle.
   const showWhatsappBar = Boolean(marketing?.whatsapp_chat_widget_enabled && whatsappHref);
 
   function handleToggle() {
