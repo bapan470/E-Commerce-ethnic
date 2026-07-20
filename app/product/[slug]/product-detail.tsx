@@ -110,7 +110,12 @@ export default function ProductDetail() {
   // sizes (needed for stock accuracy) fill in a moment later in the background.
   const handleSelectVariant = (v: ProductVariant) => {
     setVariant((prev) => ({ ...v, sizes: prev?.slug === v.slug ? prev.sizes : [] }));
-    window.history.replaceState(null, '', `/product/${v.slug}`);
+    // router.replace (not raw window.history.replaceState) so Next's App
+    // Router keeps its own internal history stack in sync with the real
+    // browser URL. Bypassing it caused a mismatch where navigating away
+    // afterwards (e.g. Buy Now → /checkout) needed two presses of the
+    // browser Back button — the first just re-synced Next's router state.
+    router.replace(`/product/${v.slug}`, { scroll: false });
     fetchVariantBySlug(v.slug)
       .then((res) => {
         if (res) setVariant(res.variant);
