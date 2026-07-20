@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser, getSupabaseServer } from '@/lib/supabase-server-auth';
 import { fetchLegalPages } from '@/lib/marketing-api';
+import { fetchAiChatSettingsServer } from '@/lib/settings-api';
 
 // ---------------------------------------------------------------------
 // Live AI shopping assistant for the on-site chat widget.
@@ -29,9 +30,15 @@ import { fetchLegalPages } from '@/lib/marketing-api';
 // recommendations instead of talking to a stranger.
 // ---------------------------------------------------------------------
 
-const PRIMARY_MODEL = 'meta/llama-3.3-70b-instruct';
-const FALLBACK_MODEL = 'meta/llama-3.2-90b-vision-instruct';
+const DEFAULT_PRIMARY_MODEL = 'meta/llama-3.3-70b-instruct';
+const DEFAULT_FALLBACK_MODEL = 'meta/llama-3.2-90b-vision-instruct';
 const NIM_ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions';
+
+// A stuck/slow upstream call is the #1 cause of "quick reply isn't
+// working" — the widget just sits there spinning forever. Cap every
+// NIM call so the widget always gets a definitive answer (success or a
+// clear error to fall back on) within a few seconds.
+const NIM_TIMEOUT_MS = 12000;
 
 const MAX_HISTORY = 8;
 const MAX_MESSAGE_LEN = 600;
@@ -108,29 +115,44 @@ async function buildPolicyContext(): Promise<string> {
 }
 
 async function callNim(apiKey: string, model: string, systemPrompt: string, history: IncomingMessage[]) {
-  const res = await fetch(NIM_ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: 'system', content: systemPrompt }, ...history],
-      temperature: 0.6,
-      max_tokens: 350,
-    }),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), NIM_TIMEOUT_MS);
 
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '');
-    return { ok: false as const, status: res.status, errText };
+  try {
+    const res = await fetch(NIM_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'system', content: systemPrompt }, ...history],
+        temperature: 0.6,
+        max_tokens: 350,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      return { ok: false as const, status: res.status, errText };
+    }
+
+    const data = await res.json();
+    const reply: string | undefined = data?.choices?.[0]?.message?.content?.trim();
+    if (!reply) return { ok: false as const, status: 200, errText: 'Empty response body' };
+    return { ok: true as const, reply };
+  } catch (err) {
+    const timedOut = err instanceof Error && err.name === 'AbortError';
+    return {
+      ok: false as const,
+      status: timedOut ? 504 : 0,
+      errText: timedOut ? `Timed out after ${NIM_TIMEOUT_MS}ms` : String(err),
+    };
+  } finally {
+    clearTimeout(timer);
   }
-
-  const data = await res.json();
-  const reply: string | undefined = data?.choices?.[0]?.message?.content?.trim();
-  if (!reply) return { ok: false as const, status: 200, errText: 'Empty response body' };
-  return { ok: true as const, reply };
 }
 
 export async function POST(req: Request) {
@@ -141,6 +163,16 @@ export async function POST(req: Request) {
       { status: 200 }
     );
   }
+
+  const aiSettings = await fetchAiChatSettingsServer();
+  if (!aiSettings.enabled) {
+    return NextResponse.json(
+      { ok: false, error: 'AI chat is currently turned off by the store admin.' },
+      { status: 200 }
+    );
+  }
+  const primaryModel = aiSettings.primary_model || DEFAULT_PRIMARY_MODEL;
+  const fallbackModel = aiSettings.fallback_model || DEFAULT_FALLBACK_MODEL;
 
   const body = await req.json().catch(() => ({}));
   const rawMessages = Array.isArray(body?.messages) ? (body.messages as IncomingMessage[]) : [];
@@ -181,19 +213,20 @@ ${policyContext}
 ${page ? `\nShopper is currently on: ${page}` : ''}`;
 
   try {
-    let result = await callNim(apiKey, PRIMARY_MODEL, systemPrompt, history);
+    let result = await callNim(apiKey, primaryModel, systemPrompt, history);
 
     if (!result.ok) {
-      console.error('[chat/ai] primary model failed:', PRIMARY_MODEL, result.status, result.errText);
+      console.error('[chat/ai] primary model failed:', primaryModel, result.status, result.errText);
       // Automatic fallback to the model this project already has
       // confirmed working with this NVIDIA_API_KEY, in case the
       // primary model isn't enabled on the account or is momentarily
-      // unavailable.
-      result = await callNim(apiKey, FALLBACK_MODEL, systemPrompt, history);
+      // unavailable. Admin can change either model in
+      // Admin > Settings > AI Chat Assistant without a redeploy.
+      result = await callNim(apiKey, fallbackModel, systemPrompt, history);
     }
 
     if (!result.ok) {
-      console.error('[chat/ai] fallback model also failed:', FALLBACK_MODEL, result.status, result.errText);
+      console.error('[chat/ai] fallback model also failed:', fallbackModel, result.status, result.errText);
       return NextResponse.json(
         {
           ok: false,

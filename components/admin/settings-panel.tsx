@@ -13,6 +13,10 @@ import {
   SiteBanner,
   fetchSiteBanner,
   saveSiteBanner,
+  AiChatSettings,
+  fetchAiChatSettings,
+  saveAiChatSettings,
+  AI_CHAT_MODEL_OPTIONS,
 } from '@/lib/settings-api';
 import { uploadProductImage } from '@/lib/products-api';
 import {
@@ -51,6 +55,9 @@ export default function SettingsPanel() {
   const [savingBanner, setSavingBanner] = useState(false);
   const [uploadingBanner, setUploadingBanner] = useState(false);
 
+  const [aiChatForm, setAiChatForm] = useState<AiChatSettings | null>(null);
+  const [savingAiChat, setSavingAiChat] = useState(false);
+
   useEffect(() => {
     fetchStoreInfo()
       .then(setForm)
@@ -72,6 +79,10 @@ export default function SettingsPanel() {
     fetchSiteBanner()
       .then(setBannerForm)
       .catch(() => toast.error('Failed to load site banner'));
+
+    fetchAiChatSettings()
+      .then(setAiChatForm)
+      .catch(() => toast.error('Failed to load AI chat settings'));
   }, []);
 
   const onSubmit = async (e: FormEvent) => {
@@ -113,6 +124,20 @@ export default function SettingsPanel() {
       toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSavingDelhivery(false);
+    }
+  };
+
+  const onSubmitAiChat = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!aiChatForm) return;
+    setSavingAiChat(true);
+    try {
+      await saveAiChatSettings(aiChatForm);
+      toast.success('AI chat settings saved');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSavingAiChat(false);
     }
   };
 
@@ -538,6 +563,75 @@ export default function SettingsPanel() {
           <Button type="submit" disabled={savingDelhivery} className="mt-2 w-fit bg-primary">
             <Save className="mr-1.5 h-4 w-4" />{' '}
             {savingDelhivery ? 'Saving…' : 'Save Delhivery Settings'}
+          </Button>
+        </form>
+      )}
+
+      <div className="mt-8">
+        <h2 className="font-serif text-2xl font-bold text-primary">AI Chat Assistant</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Powers the free-text "Ask me anything" box in the on-site chat widget (order tracking,
+          sizing, delivery, returns questions). If replies stop working or feel slow, switching the
+          model here usually fixes it — no redeploy needed.
+        </p>
+      </div>
+
+      {!aiChatForm ? (
+        <p className="py-4 text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <form
+          onSubmit={onSubmitAiChat}
+          className="mt-4 grid max-w-xl gap-4 rounded-lg border border-border/60 bg-card p-5"
+        >
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={aiChatForm.enabled}
+              onChange={(e) => setAiChatForm((f) => f && { ...f, enabled: e.target.checked })}
+            />
+            Enable free-text AI chat (quick-reply topic buttons always stay on regardless)
+          </label>
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="ai-primary-model">Primary model</Label>
+            <select
+              id="ai-primary-model"
+              value={aiChatForm.primary_model}
+              onChange={(e) => setAiChatForm((f) => f && { ...f, primary_model: e.target.value })}
+              className="rounded border px-3 py-2 text-sm"
+            >
+              {AI_CHAT_MODEL_OPTIONS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="ai-fallback-model">Fallback model</Label>
+            <select
+              id="ai-fallback-model"
+              value={aiChatForm.fallback_model}
+              onChange={(e) => setAiChatForm((f) => f && { ...f, fallback_model: e.target.value })}
+              className="rounded border px-3 py-2 text-sm"
+            >
+              {AI_CHAT_MODEL_OPTIONS.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Used automatically if the primary model errors, times out, or is rate-limited on your
+              NVIDIA_API_KEY account. Even if both fail, order tracking questions still get a real
+              answer — the widget's "Track my order" button reads live order/courier data directly,
+              without needing the AI at all.
+            </p>
+          </div>
+
+          <Button type="submit" disabled={savingAiChat} className="mt-2 w-fit bg-primary">
+            <Save className="mr-1.5 h-4 w-4" /> {savingAiChat ? 'Saving…' : 'Save AI Chat Settings'}
           </Button>
         </form>
       )}

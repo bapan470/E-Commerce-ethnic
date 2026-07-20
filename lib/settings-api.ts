@@ -98,3 +98,63 @@ export async function saveEmailSettings(settings: EmailSettings) {
     .upsert({ key: 'email_provider', value: settings }, { onConflict: 'key' });
   if (error) throw error;
 }
+
+// Models this project has confirmed working against the free NVIDIA
+// NIM API key that also powers Admin > Products > "Generate with AI".
+// Swap here any time NVIDIA enables/retires a model on your account —
+// no redeploy needed.
+export const AI_CHAT_MODEL_OPTIONS = [
+  { value: 'meta/llama-3.3-70b-instruct', label: 'Llama 3.3 70B Instruct (recommended)' },
+  { value: 'meta/llama-3.1-70b-instruct', label: 'Llama 3.1 70B Instruct' },
+  { value: 'meta/llama-3.2-90b-vision-instruct', label: 'Llama 3.2 90B Vision Instruct' },
+  { value: 'mistralai/mixtral-8x22b-instruct-v0.1', label: 'Mixtral 8x22B Instruct' },
+  { value: 'qwen/qwen2.5-7b-instruct', label: 'Qwen 2.5 7B Instruct (fastest)' },
+] as const;
+
+export interface AiChatSettings {
+  enabled: boolean;
+  primary_model: string;
+  fallback_model: string;
+}
+
+export const DEFAULT_AI_CHAT_SETTINGS: AiChatSettings = {
+  enabled: true,
+  primary_model: 'meta/llama-3.3-70b-instruct',
+  fallback_model: 'meta/llama-3.2-90b-vision-instruct',
+};
+
+export async function fetchAiChatSettings(): Promise<AiChatSettings> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'ai_chat')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_AI_CHAT_SETTINGS;
+  return { ...DEFAULT_AI_CHAT_SETTINGS, ...(data.value as Partial<AiChatSettings>) };
+}
+
+export async function saveAiChatSettings(settings: AiChatSettings) {
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ key: 'ai_chat', value: settings }, { onConflict: 'key' });
+  if (error) throw error;
+}
+
+/**
+ * Server-only variant (used inside API routes where we don't have a
+ * browser session). Importing the client `supabase` singleton from a
+ * route handler works fine at runtime, but this keeps the pattern
+ * consistent with delhivery-api.ts / other server-side settings reads
+ * and avoids depending on a 'use client' module from server code.
+ */
+export async function fetchAiChatSettingsServer(): Promise<AiChatSettings> {
+  const { getServerSupabase } = await import('./supabase-server');
+  const serverSupabase = getServerSupabase();
+  const { data, error } = await serverSupabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'ai_chat')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_AI_CHAT_SETTINGS;
+  return { ...DEFAULT_AI_CHAT_SETTINGS, ...(data.value as Partial<AiChatSettings>) };
+}

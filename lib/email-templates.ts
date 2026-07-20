@@ -71,6 +71,62 @@ export function orderConfirmationEmail(order: {
   return { subject, html };
 }
 
+export function orderTrackingSummaryEmail(order: {
+  id: string;
+  customer_name?: string;
+  status: string;
+  courier_name?: string | null;
+  tracking_number?: string | null;
+  current_location?: string | null;
+  expected_delivery_date?: string | null;
+  items: any[];
+  total_amount: number;
+}) {
+  const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
+  const subject = `Your order ${shortId} — current status`;
+  const expected = order.expected_delivery_date
+    ? new Date(order.expected_delivery_date).toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      })
+    : null;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Hi${order.customer_name ? ` ${order.customer_name}` : ''}, here's your order status</h2>
+    <p>Order <strong>${shortId}</strong> is currently: <strong style="color:${BRAND_COLOR};">${order.status}</strong></p>
+    ${
+      order.tracking_number
+        ? `<p style="font-size:14px;">Courier: <strong>${order.courier_name || 'Assigned courier'}</strong><br />Tracking number: <strong>${order.tracking_number}</strong>${order.current_location ? `<br />Last known location: <strong>${order.current_location}</strong>` : ''}</p>`
+        : `<p style="font-size:14px; color:#6b5f57;">A tracking number will be shared here as soon as your order ships.</p>`
+    }
+    ${expected ? `<p style="font-size:14px;">Expected delivery: <strong>${expected}</strong></p>` : ''}
+    ${itemsTable(order.items)}
+    <p style="text-align:right; font-size:16px; font-weight:bold;">Total: ${formatINR(order.total_amount)}</p>
+    <p style="font-size:13px; color:#6b5f57;">You can also check live status anytime from My Account &gt; Orders.</p>
+  `);
+  return { subject, html };
+}
+
+export function supportTicketConfirmationEmail(ticket: {
+  id: string;
+  subject: string;
+  message: string;
+  customer_name?: string;
+}) {
+  const shortId = `#${ticket.id.slice(0, 8).toUpperCase()}`;
+  const subject = `We've received your request ${shortId} — ${SITE_NAME}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Thanks${ticket.customer_name ? `, ${ticket.customer_name}` : ''} — we've got it</h2>
+    <p>Your support request <strong>${shortId}</strong> has been raised and our team will get back to you shortly.</p>
+    <div style="margin:16px 0; padding:14px 16px; background:#fff; border-left:3px solid ${BRAND_COLOR}; border-radius:4px;">
+      <p style="margin:0 0 6px; font-weight:bold;">${ticket.subject}</p>
+      <p style="margin:0; color:#6b5f57; font-size:14px;">${ticket.message}</p>
+    </div>
+    <p style="font-size:13px; color:#6b5f57;">Need to add more info? Just reply to this email or reach us on WhatsApp.</p>
+  `);
+  return { subject, html };
+}
+
 export function giftCardEmail(card: {
   code: string;
   amount: number;

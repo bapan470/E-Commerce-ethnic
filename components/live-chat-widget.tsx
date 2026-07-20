@@ -2,7 +2,18 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { MessageSquareText, MessageCircle, X, ChevronRight, ArrowLeft, Send, Sparkles } from 'lucide-react';
+import {
+  MessageSquareText,
+  MessageCircle,
+  X,
+  ChevronRight,
+  ArrowLeft,
+  Send,
+  Sparkles,
+  PackageSearch,
+  Mail,
+  LifeBuoy,
+} from 'lucide-react';
 import { fetchMarketingSettings, fetchLegalPages, MarketingSettings, LegalPages } from '@/lib/marketing-api';
 
 // ---------------------------------------------------------------------
@@ -12,21 +23,25 @@ import { fetchMarketingSettings, fetchLegalPages, MarketingSettings, LegalPages 
 // a lehenga/saree (fit, fabric, delivery time, COD, returns) instantly,
 // in-page, instead of making them leave to WhatsApp for every question.
 //
-// Two layers:
+// Layers:
 // 1. Quick-topic buttons — instant, scripted answers, always available,
 //    zero dependency on any external service.
-// 2. Free-text box — routes to a live AI model (app/api/chat/ai/route.ts,
-//    NVIDIA's free NIM API) that can hold a real conversation and, for
-//    logged-in shoppers, is quietly primed with their own order history
-//    so it can nudge relevant recommendations instead of talking to a
-//    stranger. If the AI call fails for any reason (no API key, rate
-//    limit, network), the widget says so plainly and falls back to
-//    "Continue on WhatsApp" so a real person can pick it up — the
-//    shopper is never left stuck.
-//
-// No new backend/table required beyond the new API route: it reads the
-// settings that already exist (marketing_settings, legal_pages) so
-// scripted answers stay in sync with whatever the admin edits.
+// 2. "Track my order" — a real, deterministic lookup (app/api/chat/
+//    order-lookup) that reads live order + Delhivery courier data.
+//    Logged-in shoppers get their own orders automatically; guests are
+//    asked for their Order ID + checkout email first. Once an order is
+//    found, the shopper can email themselves the details or raise a
+//    support ticket straight from the chat — both hit real backend
+//    routes and show up in Admin > Support Tickets.
+// 3. Free-text box — routes to a live AI model (app/api/chat/ai/route.ts,
+//    NVIDIA's free NIM API, model configurable from Admin > Settings >
+//    AI Chat Assistant). For logged-in shoppers it's quietly primed with
+//    their own order history. If the AI call fails or times out AND the
+//    question looks order/tracking related, the widget automatically
+//    falls back to the same real order-lookup as (2) instead of just
+//    showing an error — so "where's my order" always gets a real
+//    answer, AI or not. Otherwise it falls back to "Continue on
+//    WhatsApp" so a real person can pick it up.
 // ---------------------------------------------------------------------
 
 type Sender = 'bot' | 'user';
@@ -44,7 +59,7 @@ interface Topic {
   answer: (ctx: { legal: LegalPages | null; whatsappHref: string | null }) => string;
 }
 
-const TOPICS: Topic[] = [
+const SCRIPTED_TOPICS: Topic[] = [
   {
     key: 'sizing',
     label: 'Sizing & fit help',
@@ -74,17 +89,16 @@ const TOPICS: Topic[] = [
         : 'We accept returns and exchanges within 7 days of delivery on unworn items with original tags and packaging intact. Customized or stitched pieces are usually final sale — check the product page for specifics.',
   },
   {
-    key: 'order',
-    label: 'Track my order',
-    answer: () =>
-      "You can track your order anytime from My Account > Orders once you're logged in — it shows live courier status. If you checked out as a guest, use the tracking link from your confirmation email.",
-  },
-  {
     key: 'human',
     label: 'Talk to a real person',
     answer: () => '__whatsapp__',
   },
 ];
+
+// Questions that should get a real, data-backed order lookup even when
+// they come through the free-text AI box and the AI call fails.
+const ORDER_INTENT_RE =
+  /\b(order|track|tracking|delivery|deliver|shipment|shipped|parcel|courier|waybill|kaha|kaha hai|kab|kab tak|mera order|status)\b/i;
 
 function summarize(policyText: string, fallback: string): string {
   const plain = policyText.replace(/\s+/g, ' ').trim();
@@ -96,6 +110,55 @@ function uid() {
   return Math.random().toString(36).slice(2, 10);
 }
 
+function formatExpectedDate(iso?: string | null) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+interface LookedUpOrder {
+  id: string;
+  shortId: string;
+  status: string;
+  liveStatus?: string | null;
+  createdAt: string;
+  totalAmount: number;
+  items: Array<{ name?: string; quantity?: number }>;
+  courierName?: string | null;
+  trackingNumber?: string | null;
+  currentLocation?: string | null;
+  expectedDeliveryDate?: string | null;
+}
+
+function orderToChatText(order: LookedUpOrder): string {
+  const lines: string[] = [];
+  lines.push(`Order ${order.shortId} — status: ${order.liveStatus || order.status}`);
+  lines.push(`Placed on ${new Date(order.createdAt).toLocaleDateString('en-IN')}`);
+  if (order.trackingNumber) {
+    lines.push(`Courier: ${order.courierName || 'Assigned courier'} · Tracking #: ${order.trackingNumber}`);
+    if (order.currentLocation) lines.push(`Last known location: ${order.currentLocation}`);
+  } else {
+    lines.push('A tracking number will appear here as soon as the order ships.');
+  }
+  const expected = formatExpectedDate(order.expectedDeliveryDate);
+  if (expected) lines.push(`Expected delivery: ${expected}`);
+  const itemNames = order.items.map((i) => `${i.name || 'Item'}${i.quantity ? ` x${i.quantity}` : ''}`).join(', ');
+  if (itemNames) lines.push(`Items: ${itemNames}`);
+  return lines.join('\n');
+}
+
+// What the widget needs to know to email/raise-a-ticket for the order
+// that's currently on screen — set right after a successful lookup.
+interface ActiveOrderContext {
+  orderId: string;
+  shortId: string;
+  guestEmail?: string; // only set for guests who verified via order-lookup
+}
+
+type GuestStep = null | 'orderId' | 'email';
+type TicketStep = null | 'message' | 'email';
+
 export default function LiveChatWidget() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -106,12 +169,29 @@ export default function LiveChatWidget() {
     {
       id: uid(),
       sender: 'bot',
-      text: "Hi! I'm here to help with quick questions before you order — sizing, fabric, delivery, returns, anything. Pick a topic below, or type your own question and I'll answer directly.",
+      text: "Hi! I'm here to help with quick questions before you order — sizing, fabric, delivery, returns, or tracking an existing order. Pick a topic below, or type your own question and I'll answer directly.",
     },
   ]);
   const [input, setInput] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Guest order-lookup mini flow ("Track my order" when not logged in).
+  const [guestStep, setGuestStep] = useState<GuestStep>(null);
+  const [guestOrderId, setGuestOrderId] = useState('');
+  const [guestEmail, setGuestEmail] = useState('');
+  const [orderLookupLoading, setOrderLookupLoading] = useState(false);
+
+  // Whatever order is currently on screen — powers "Email me this" /
+  // "Raise a support ticket" action chips.
+  const [activeOrder, setActiveOrder] = useState<ActiveOrderContext | null>(null);
+  const [emailSending, setEmailSending] = useState(false);
+
+  // Raise-a-ticket mini flow.
+  const [ticketStep, setTicketStep] = useState<TicketStep>(null);
+  const [ticketMessage, setTicketMessage] = useState('');
+  const [ticketEmail, setTicketEmail] = useState('');
+  const [ticketSending, setTicketSending] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -137,14 +217,10 @@ export default function LiveChatWidget() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, open]);
+  }, [messages, open, guestStep, ticketStep]);
 
   if (pathname?.startsWith('/admin')) return null;
 
-  // Only depends on a number being configured — NOT on the floating-button
-  // toggle (whatsapp_enabled). That way the chat-popup bar's own toggle
-  // (whatsapp_chat_widget_enabled, checked below) works fully independently,
-  // even when the floating button is switched off.
   const whatsappHref =
     marketing?.whatsapp_number
       ? `https://wa.me/${marketing.whatsapp_number.replace(/\D/g, '')}?text=${encodeURIComponent(
@@ -152,15 +228,190 @@ export default function LiveChatWidget() {
         )}`
       : null;
 
-  // Pinned "Prefer WhatsApp?" bar inside the chat popup — controlled by its
-  // OWN separate Admin > Marketing > WhatsApp toggle, independent of the
-  // floating WhatsApp button toggle.
   const showWhatsappBar = Boolean(marketing?.whatsapp_chat_widget_enabled && whatsappHref);
 
   function handleToggle() {
     setOpen((v) => !v);
     setHasOpenedOnce(true);
   }
+
+  function addBot(text: string, isError = false) {
+    setMessages((prev) => [...prev, { id: uid(), sender: 'bot', text, isError }]);
+  }
+
+  function addUser(text: string) {
+    setMessages((prev) => [...prev, { id: uid(), sender: 'user', text }]);
+  }
+
+  // -------------------------------------------------------------------
+  // Order tracking — logged-in shoppers resolve instantly; guests are
+  // asked for Order ID + checkout email first.
+  // -------------------------------------------------------------------
+
+  async function runOrderLookup(params: { orderId?: string; email?: string }) {
+    setOrderLookupLoading(true);
+    try {
+      const res = await fetch('/api/chat/order-lookup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+      const data = await res.json().catch(() => ({ ok: false }));
+
+      if (!data?.ok) {
+        addBot(data?.error || "Couldn't fetch your order right now — please try again shortly, or use WhatsApp above.", true);
+        return;
+      }
+
+      if (data.loggedIn) {
+        if (!data.orders || data.orders.length === 0) {
+          addBot("I don't see any orders on your account yet — once you place one, I can track it right here!");
+          setActiveOrder(null);
+          return;
+        }
+        const [top, ...rest] = data.orders as LookedUpOrder[];
+        let text = orderToChatText(top);
+        if (rest.length > 0) {
+          text += `\n\nYou also have ${rest.length} more order${rest.length > 1 ? 's' : ''} — ask me about a specific order ID if you'd like details on those.`;
+        }
+        addBot(text);
+        setActiveOrder({ orderId: top.id, shortId: top.shortId });
+        return;
+      }
+
+      // Guest path
+      if (data.needsDetails) {
+        addBot(data.message || 'Please share your Order ID and the email used at checkout.');
+        setGuestStep('orderId');
+        return;
+      }
+
+      if (!data.orders || data.orders.length === 0) {
+        addBot(data.message || "I couldn't find a matching order. Double-check the Order ID and email, or continue on WhatsApp.", true);
+        setGuestStep(null);
+        return;
+      }
+
+      const order = data.orders[0] as LookedUpOrder;
+      addBot(orderToChatText(order));
+      setActiveOrder({ orderId: order.id, shortId: order.shortId, guestEmail: params.email });
+      setGuestStep(null);
+    } catch {
+      addBot("Couldn't reach our order system right now — please try again shortly, or use WhatsApp above.", true);
+    } finally {
+      setOrderLookupLoading(false);
+    }
+  }
+
+  function handleTrackOrder() {
+    addUser('Track my order');
+    setActiveOrder(null);
+    runOrderLookup({});
+  }
+
+  function submitGuestOrderId() {
+    const val = guestOrderId.trim();
+    if (!val) return;
+    addUser(val);
+    setGuestStep('email');
+  }
+
+  function submitGuestEmail() {
+    const val = guestEmail.trim();
+    if (!val) return;
+    addUser(val);
+    runOrderLookup({ orderId: guestOrderId.trim(), email: val });
+  }
+
+  // -------------------------------------------------------------------
+  // Email me this order / raise a support ticket — act on whatever
+  // order is currently on screen.
+  // -------------------------------------------------------------------
+
+  async function handleEmailOrder() {
+    if (!activeOrder) return;
+    setEmailSending(true);
+    try {
+      const res = await fetch('/api/chat/email-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: activeOrder.orderId, email: activeOrder.guestEmail }),
+      });
+      const data = await res.json().catch(() => ({ ok: false }));
+      if (data?.ok) {
+        addBot(`Sent! Check ${data.sentTo} for the full order and tracking details.`);
+      } else {
+        addBot(data?.error || "Couldn't send that email right now — please try again shortly.", true);
+      }
+    } catch {
+      addBot("Couldn't send that email right now — please try again shortly.", true);
+    } finally {
+      setEmailSending(false);
+    }
+  }
+
+  function handleStartTicket() {
+    addUser('Raise a support ticket');
+    addBot("Sure — in a line or two, what's the issue?");
+    setTicketStep('message');
+  }
+
+  function submitTicketMessage() {
+    const val = ticketMessage.trim();
+    if (!val) return;
+    addUser(val);
+    if (activeOrder?.guestEmail) {
+      raiseTicket(val, activeOrder.guestEmail);
+    } else {
+      addBot("What's the best email to follow up on this?");
+      setTicketStep('email');
+    }
+  }
+
+  function submitTicketEmail() {
+    const val = ticketEmail.trim();
+    if (!val) return;
+    addUser(val);
+    raiseTicket(ticketMessage.trim(), val);
+  }
+
+  async function raiseTicket(message: string, email: string) {
+    setTicketSending(true);
+    try {
+      const res = await fetch('/api/chat/raise-ticket', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: activeOrder?.orderId,
+          email,
+          subject: activeOrder ? `Order ${activeOrder.shortId} — support request` : 'Support request from chat',
+          message,
+        }),
+      });
+      const data = await res.json().catch(() => ({ ok: false }));
+      if (data?.ok) {
+        addBot(`Done — ticket ${data.shortId} raised. Our team will follow up on ${email} shortly.`);
+      } else if (data?.needsEmail) {
+        addBot('What email should we follow up on?');
+        setTicketStep('email');
+        setTicketSending(false);
+        return;
+      } else {
+        addBot(data?.error || "Couldn't raise a ticket right now — please try WhatsApp instead.", true);
+      }
+    } catch {
+      addBot("Couldn't raise a ticket right now — please try WhatsApp instead.", true);
+    } finally {
+      setTicketStep(null);
+      setTicketMessage('');
+      setTicketEmail('');
+      setTicketSending(false);
+    }
+  }
+
+  // -------------------------------------------------------------------
+  // Free-text AI box
+  // -------------------------------------------------------------------
 
   async function handleAskAi() {
     const question = input.trim();
@@ -186,32 +437,45 @@ export default function LiveChatWidget() {
 
       if (data?.ok && data.reply) {
         setMessages((prev) => [...prev, { id: uid(), sender: 'bot', text: data.reply }]);
-      } else {
-        const reason: string = data?.error || '';
-        let text: string;
-        if (reason.includes('not configured')) {
-          text = "AI chat isn't set up yet on this site (missing API key) — tap the WhatsApp bar above and our team can help you directly.";
-        } else if (reason.includes('rate-limited')) {
-          text = "Our AI is getting a lot of questions right now (free-tier limit) — please try again in a minute, or tap WhatsApp above.";
-        } else if (reason.includes('key was rejected')) {
-          text = 'The AI assistant is misconfigured on our end — tap the WhatsApp bar above and our team can help you directly.';
-        } else {
-          text = "Our AI assistant is having trouble right now — tap the WhatsApp bar above and our team will take it from here.";
-        }
-        setMessages((prev) => [...prev, { id: uid(), sender: 'bot', isError: true, text }]);
+        setAiLoading(false);
+        return;
       }
+
+      // AI didn't answer — if this looks like an order/tracking
+      // question, fall back to the real, deterministic order lookup
+      // instead of just showing an error. This is what makes "where's
+      // my order" always resolve, AI outage or not.
+      if (ORDER_INTENT_RE.test(question)) {
+        setAiLoading(false);
+        await runOrderLookup({});
+        return;
+      }
+
+      const reason: string = data?.error || '';
+      let text: string;
+      if (reason.includes('not configured')) {
+        text = "AI chat isn't set up yet on this site (missing API key) — tap the WhatsApp bar above and our team can help you directly.";
+      } else if (reason.includes('turned off')) {
+        text = "Free-text AI chat is switched off right now — tap the WhatsApp bar above and our team can help you directly.";
+      } else if (reason.includes('rate-limited')) {
+        text = "Our AI is getting a lot of questions right now (free-tier limit) — please try again in a minute, or tap WhatsApp above.";
+      } else if (reason.includes('key was rejected')) {
+        text = 'The AI assistant is misconfigured on our end — tap the WhatsApp bar above and our team can help you directly.';
+      } else {
+        text = "Our AI assistant is having trouble right now — tap the WhatsApp bar above and our team will take it from here.";
+      }
+      addBot(text, true);
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: uid(),
-          sender: 'bot',
-          isError: true,
-          text: whatsappHref
+      if (ORDER_INTENT_RE.test(question)) {
+        await runOrderLookup({});
+      } else {
+        addBot(
+          whatsappHref
             ? "Couldn't reach our AI assistant. Tap the WhatsApp bar above and our team will help directly."
             : "Couldn't reach our AI assistant right now — please try again shortly.",
-        },
-      ]);
+          true
+        );
+      }
     } finally {
       setAiLoading(false);
     }
@@ -219,21 +483,19 @@ export default function LiveChatWidget() {
 
   function handleTopic(topic: Topic) {
     const answer = topic.answer({ legal, whatsappHref });
-    setMessages((prev) => [
-      ...prev,
-      { id: uid(), sender: 'user', text: topic.label },
-      {
-        id: uid(),
-        sender: 'bot',
-        text:
-          answer === '__whatsapp__'
-            ? whatsappHref
-              ? "Sure — tap the WhatsApp bar at the top of this chat and our team will pick it up from here."
-              : "Our team isn't set up on WhatsApp chat right now, but you can reach us from the Contact page and we'll get back to you."
-            : answer,
-      },
-    ]);
+    addUser(topic.label);
+    addBot(
+      answer === '__whatsapp__'
+        ? whatsappHref
+          ? "Sure — tap the WhatsApp bar at the top of this chat and our team will pick it up from here."
+          : "Our team isn't set up on WhatsApp chat right now, but you can reach us from the Contact page and we'll get back to you."
+        : answer
+    );
   }
+
+  const inGuestFlow = guestStep !== null;
+  const inTicketFlow = ticketStep !== null;
+  const busy = aiLoading || orderLookupLoading || emailSending || ticketSending;
 
   return (
     <>
@@ -257,11 +519,6 @@ export default function LiveChatWidget() {
             </button>
           </div>
 
-          {/* Pinned WhatsApp quick-access — always visible regardless of
-              scroll position, not just after messages. Controlled by its
-              OWN separate Admin > Marketing > WhatsApp toggle
-              (whatsapp_chat_widget_enabled), independent from the floating
-              WhatsApp button toggle (whatsapp_enabled). */}
           {showWhatsappBar && whatsappHref && (
             <a
               href={whatsappHref}
@@ -281,7 +538,7 @@ export default function LiveChatWidget() {
             {messages.map((m) => (
               <div key={m.id} className={`flex ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
-                  className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed shadow-sm ${
+                  className={`max-w-[85%] whitespace-pre-line rounded-2xl px-3 py-2 text-sm leading-relaxed shadow-sm ${
                     m.sender === 'user'
                       ? 'rounded-br-sm bg-primary text-primary-foreground'
                       : m.isError
@@ -294,7 +551,27 @@ export default function LiveChatWidget() {
               </div>
             ))}
 
-            {aiLoading && (
+            {/* Action chips for the order currently on screen. */}
+            {activeOrder && !inGuestFlow && !inTicketFlow && (
+              <div className="flex flex-wrap justify-start gap-1.5 pl-1">
+                <button
+                  onClick={handleEmailOrder}
+                  disabled={busy}
+                  className="flex items-center gap-1 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary hover:text-primary disabled:opacity-50"
+                >
+                  <Mail className="h-3 w-3" /> Email me these details
+                </button>
+                <button
+                  onClick={handleStartTicket}
+                  disabled={busy}
+                  className="flex items-center gap-1 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary hover:text-primary disabled:opacity-50"
+                >
+                  <LifeBuoy className="h-3 w-3" /> Raise a support ticket
+                </button>
+              </div>
+            )}
+
+            {busy && (
               <div className="flex justify-start">
                 <div className="flex items-center gap-1 rounded-2xl rounded-bl-sm border border-border bg-card px-3 py-2.5 shadow-sm">
                   <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:-0.3s]" />
@@ -306,48 +583,123 @@ export default function LiveChatWidget() {
           </div>
 
           <div className="border-t border-border bg-card p-3">
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleAskAi();
-              }}
-              className="mb-3 flex items-center gap-2"
-            >
-              <div className="relative flex-1">
-                <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                <input
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Ask me anything..."
-                  disabled={aiLoading}
-                  maxLength={600}
-                  className="w-full rounded-full border border-border bg-background py-2 pl-8 pr-3 text-base outline-none transition-colors focus:border-primary disabled:opacity-60 sm:text-sm"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={aiLoading || !input.trim()}
-                aria-label="Send"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity disabled:opacity-40"
+            {inGuestFlow ? (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (guestStep === 'orderId') submitGuestOrderId();
+                  else submitGuestEmail();
+                }}
+                className="mb-3 flex items-center gap-2"
               >
-                <Send className="h-4 w-4" />
-              </button>
-            </form>
-
-            <p className="mb-2 flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              <ArrowLeft className="h-3 w-3" /> Or pick a quick question
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {TOPICS.map((topic) => (
+                <PackageSearch className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <input
+                  autoFocus
+                  value={guestStep === 'orderId' ? guestOrderId : guestEmail}
+                  onChange={(e) =>
+                    guestStep === 'orderId' ? setGuestOrderId(e.target.value) : setGuestEmail(e.target.value)
+                  }
+                  placeholder={guestStep === 'orderId' ? 'Order ID, e.g. A1B2C3D4' : 'Email used at checkout'}
+                  type={guestStep === 'email' ? 'email' : 'text'}
+                  disabled={busy}
+                  className="w-full rounded-full border border-border bg-background py-2 px-3 text-base outline-none transition-colors focus:border-primary disabled:opacity-60 sm:text-sm"
+                />
                 <button
-                  key={topic.key}
-                  onClick={() => handleTopic(topic)}
-                  className="rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary hover:text-primary"
+                  type="submit"
+                  disabled={busy}
+                  aria-label="Submit"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity disabled:opacity-40"
                 >
-                  {topic.label}
+                  <Send className="h-4 w-4" />
                 </button>
-              ))}
-            </div>
+              </form>
+            ) : inTicketFlow ? (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (ticketStep === 'message') submitTicketMessage();
+                  else submitTicketEmail();
+                }}
+                className="mb-3 flex items-center gap-2"
+              >
+                <LifeBuoy className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <input
+                  autoFocus
+                  value={ticketStep === 'message' ? ticketMessage : ticketEmail}
+                  onChange={(e) =>
+                    ticketStep === 'message' ? setTicketMessage(e.target.value) : setTicketEmail(e.target.value)
+                  }
+                  placeholder={ticketStep === 'message' ? 'Describe the issue briefly' : 'Email for follow-up'}
+                  type={ticketStep === 'email' ? 'email' : 'text'}
+                  maxLength={ticketStep === 'message' ? 300 : undefined}
+                  disabled={busy}
+                  className="w-full rounded-full border border-border bg-background py-2 px-3 text-base outline-none transition-colors focus:border-primary disabled:opacity-60 sm:text-sm"
+                />
+                <button
+                  type="submit"
+                  disabled={busy}
+                  aria-label="Submit"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity disabled:opacity-40"
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+              </form>
+            ) : (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleAskAi();
+                }}
+                className="mb-3 flex items-center gap-2"
+              >
+                <div className="relative flex-1">
+                  <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder="Ask me anything..."
+                    disabled={busy}
+                    maxLength={600}
+                    className="w-full rounded-full border border-border bg-background py-2 pl-8 pr-3 text-base outline-none transition-colors focus:border-primary disabled:opacity-60 sm:text-sm"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={busy || !input.trim()}
+                  aria-label="Send"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity disabled:opacity-40"
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+              </form>
+            )}
+
+            {!inGuestFlow && !inTicketFlow && (
+              <>
+                <p className="mb-2 flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <ArrowLeft className="h-3 w-3" /> Or pick a quick question
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    onClick={handleTrackOrder}
+                    disabled={busy}
+                    className="flex items-center gap-1 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary hover:text-primary disabled:opacity-50"
+                  >
+                    <PackageSearch className="h-3 w-3" /> Track my order
+                  </button>
+                  {SCRIPTED_TOPICS.map((topic) => (
+                    <button
+                      key={topic.key}
+                      onClick={() => handleTopic(topic)}
+                      disabled={busy}
+                      className="rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary hover:text-primary disabled:opacity-50"
+                    >
+                      {topic.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

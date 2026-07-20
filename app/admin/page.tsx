@@ -10,6 +10,7 @@ import ReviewsPanel from '@/components/admin/reviews-panel';
 import CouponsPanel from '@/components/admin/coupons-panel';
 import SettingsPanel from '@/components/admin/settings-panel';
 import ReturnsPanel from '@/components/admin/returns-panel';
+import SupportTicketsPanel from '@/components/admin/support-tickets-panel';
 import AbandonedCartsPanel from '@/components/admin/abandoned-carts-panel';
 import MarketingPanel from '@/components/admin/marketing-panel';
 import StockNotificationsPanel from '@/components/admin/stock-notifications-panel';
@@ -29,6 +30,7 @@ const PANELS: Record<AdminSection, React.ComponentType> = {
   orders: OrdersPanel,
   customers: CustomersPanel,
   returns: ReturnsPanel,
+  'support-tickets': SupportTicketsPanel,
   'abandoned-carts': AbandonedCartsPanel,
   'restock-alerts': StockNotificationsPanel,
   wholesale: WholesalePanel,
