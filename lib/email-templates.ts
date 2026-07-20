@@ -44,7 +44,6 @@ export function signupVerificationEmail(user: { full_name?: string; verify_url: 
         Confirm my email
       </a>
     </p>
-    <p style="font-size:12px; color:#9a8f87;">If the button doesn't work, copy and paste this link into your browser:<br />${user.verify_url}</p>
     <p style="font-size:12px; color:#9a8f87;">This link expires shortly. If you didn't create this account, you can ignore this email.</p>
   `);
   return { subject, html };
@@ -75,7 +74,6 @@ export function passwordResetEmail(user: { full_name?: string; reset_url: string
         Reset my password
       </a>
     </p>
-    <p style="font-size:12px; color:#9a8f87;">If the button doesn't work, copy and paste this link into your browser:<br />${user.reset_url}</p>
     <p style="font-size:12px; color:#9a8f87;">This link expires shortly. If you didn't request a password reset, you can ignore this email.</p>
   `);
   return { subject, html };
