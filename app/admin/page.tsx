@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import AdminShell, { type AdminSection } from '@/components/admin/admin-shell';
 import ProductsPanel from '@/components/admin/products-panel';
 import OrdersPanel from '@/components/admin/orders-panel';
@@ -46,13 +47,57 @@ const PANELS: Record<AdminSection, React.ComponentType> = {
   settings: SettingsPanel,
 };
 
-export default function AdminPage() {
-  const [active, setActive] = useState<AdminSection>('analytics');
+const VALID_SECTIONS = Object.keys(PANELS) as AdminSection[];
+
+function isAdminSection(value: string | null): value is AdminSection {
+  return !!value && (VALID_SECTIONS as string[]).includes(value);
+}
+
+function AdminPageInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Initialize from the URL so a reload (or a shared link) lands on the
+  // section the admin was actually looking at instead of always resetting
+  // to Analytics.
+  const initialSection = isAdminSection(searchParams.get('section'))
+    ? (searchParams.get('section') as AdminSection)
+    : 'analytics';
+
+  const [active, setActive] = useState<AdminSection>(initialSection);
+
+  // If the user navigates with back/forward, or the URL changes externally,
+  // keep the panel in sync with it.
+  useEffect(() => {
+    const fromUrl = searchParams.get('section');
+    if (isAdminSection(fromUrl) && fromUrl !== active) {
+      setActive(fromUrl);
+    }
+  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleChange = useCallback(
+    (section: AdminSection) => {
+      setActive(section);
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('section', section);
+      router.replace(`/admin?${params.toString()}`, { scroll: false });
+    },
+    [router, searchParams]
+  );
+
   const ActivePanel = PANELS[active];
 
   return (
-    <AdminShell active={active} onChange={setActive}>
+    <AdminShell active={active} onChange={handleChange}>
       <ActivePanel />
     </AdminShell>
+  );
+}
+
+export default function AdminPage() {
+  return (
+    <Suspense fallback={null}>
+      <AdminPageInner />
+    </Suspense>
   );
 }
