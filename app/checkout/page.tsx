@@ -22,11 +22,19 @@ import {
   fetchShippingSettings,
 } from '@/lib/pincode-api';
 import { trackEvent, getSessionId } from '@/lib/track-api';
+import {
+  CheckoutBumpSettings,
+  DEFAULT_CHECKOUT_BUMP_SETTINGS,
+  fetchCheckoutBumpSettings,
+} from '@/lib/checkout-bump-api';
+import { fetchProductById } from '@/lib/products-api';
+import { Product } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
+import { Checkbox } from '@/components/ui/checkbox';
 import TrustBadges from '@/components/checkout/trust-badges';
 import { toast } from 'sonner';
 
@@ -42,6 +50,8 @@ export default function CheckoutPage() {
     items,
     subtotal,
     clearCart,
+    addItem,
+    removeItem,
     appliedCoupon,
     couponDiscount,
     applyCoupon,
@@ -111,6 +121,45 @@ export default function CheckoutPage() {
       .then((bal) => setPointsBalance(bal))
       .catch(() => setPointsBalance(0));
   }, []);
+
+  // Checkout order bump — single admin-picked add-on product, independent
+  // of whatever's already in the cart. Loaded once; if the customer already
+  // has this exact product in cart, we don't show the bump for it again.
+  const [bumpSettings, setBumpSettings] = useState<CheckoutBumpSettings>(
+    DEFAULT_CHECKOUT_BUMP_SETTINGS
+  );
+  const [bumpProduct, setBumpProduct] = useState<Product | null>(null);
+  const BUMP_SIZE = 'Free Size';
+
+  useEffect(() => {
+    fetchCheckoutBumpSettings()
+      .then(async (s) => {
+        setBumpSettings(s);
+        if (s.enabled && s.product_id) {
+          const p = await fetchProductById(s.product_id).catch(() => null);
+          setBumpProduct(p);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const bumpSize = bumpProduct?.sizes?.[0] || BUMP_SIZE;
+  const bumpPrice = bumpProduct
+    ? Math.round(bumpProduct.price * (1 - bumpSettings.discount_percent / 100))
+    : 0;
+  const bumpInCart = !!bumpProduct && items.some((i) => i.product.id === bumpProduct.id);
+
+  const toggleBump = (checked: boolean) => {
+    if (!bumpProduct) return;
+    if (checked) {
+      // Clone the product with the checkout-only bump price — cart totals,
+      // the order summary and the final order_items row all read
+      // item.product.price directly, so this is all that's needed.
+      addItem({ ...bumpProduct, price: bumpPrice }, bumpSize, 1);
+    } else {
+      removeItem(bumpProduct.id, bumpSize);
+    }
+  };
 
   // Log the funnel step once — used by Admin > Analytics for conversion rate.
   useEffect(() => {
@@ -809,6 +858,43 @@ export default function CheckoutPage() {
                 <span>{formatINR(tax)}</span>
               </div>
             </div>
+
+            {bumpSettings.enabled && bumpProduct && !bumpInCart && (
+              <div className="mt-4 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3">
+                <p className="text-sm font-semibold text-primary">{bumpSettings.headline}</p>
+                <label className="mt-2 flex cursor-pointer items-start gap-3">
+                  <Checkbox
+                    className="mt-1"
+                    checked={bumpInCart}
+                    onCheckedChange={(v) => toggleBump(v === true)}
+                  />
+                  <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-md bg-muted">
+                    <Image
+                      src={bumpProduct.images[0] || 'https://placehold.co/48x56?text=No+Image'}
+                      alt={bumpProduct.name}
+                      fill
+                      sizes="48px"
+                      className="object-cover"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium leading-tight">{bumpProduct.name}</p>
+                    <p className="mt-0.5 text-sm">
+                      <span className="font-semibold text-primary">{formatINR(bumpPrice)}</span>
+                      {bumpSettings.discount_percent > 0 && (
+                        <span className="ml-1.5 text-xs text-muted-foreground line-through">
+                          {formatINR(bumpProduct.price)}
+                        </span>
+                      )}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      {bumpSettings.subtext}
+                    </p>
+                  </div>
+                </label>
+              </div>
+            )}
+
             <Separator className="my-4" />
             <div className="flex items-center justify-between">
               <span className="font-serif text-base font-semibold">Total</span>

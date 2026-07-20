@@ -53,6 +53,18 @@ export async function fetchProductBySlug(slug: string): Promise<Product | null> 
   return mapRowToProduct(data as ProductRow);
 }
 
+/** Used by the checkout order-bump (settings store a product id, not a slug). */
+export async function fetchProductById(id: string): Promise<Product | null> {
+  const { data, error } = await supabase
+    .from('products')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return mapRowToProduct(data as ProductRow);
+}
+
 export async function fetchCategories(): Promise<CategoryRow[]> {
   const { data, error } = await supabase
     .from('categories')

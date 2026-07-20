@@ -27,11 +27,26 @@ import {
   fetchGrowthSettings,
   saveGrowthSettings,
 } from '@/lib/growth-api';
+import {
+  CheckoutBumpSettings,
+  DEFAULT_CHECKOUT_BUMP_SETTINGS,
+  fetchCheckoutBumpSettings,
+  saveCheckoutBumpSettings,
+} from '@/lib/checkout-bump-api';
+import { fetchProducts } from '@/lib/products-api';
+import { Product } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
@@ -50,6 +65,7 @@ export default function MarketingPanel() {
             <TabsTrigger value="legal">Legal Pages</TabsTrigger>
             <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
             <TabsTrigger value="growth">Growth Tools</TabsTrigger>
+            <TabsTrigger value="checkout-bump">Checkout Bump</TabsTrigger>
             <TabsTrigger value="newsletter">Newsletter</TabsTrigger>
             <TabsTrigger value="feed">Merchant Feed</TabsTrigger>
             <TabsTrigger value="seo">SEO</TabsTrigger>
@@ -59,6 +75,7 @@ export default function MarketingPanel() {
           <TabsContent value="legal"><LegalPagesTab /></TabsContent>
           <TabsContent value="whatsapp"><WhatsAppTab /></TabsContent>
           <TabsContent value="growth"><GrowthTab /></TabsContent>
+          <TabsContent value="checkout-bump"><CheckoutBumpTab /></TabsContent>
           <TabsContent value="newsletter"><NewsletterTab /></TabsContent>
           <TabsContent value="feed"><MerchantFeedTab /></TabsContent>
           <TabsContent value="seo"><SeoTab /></TabsContent>
@@ -782,6 +799,151 @@ function GrowthTab() {
       <Button type="submit" disabled={saving} className="gap-2 bg-primary">
         <Save className="h-4 w-4" />
         {saving ? 'Saving...' : 'Save Growth Settings'}
+      </Button>
+    </form>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Checkout Order Bump
+// ---------------------------------------------------------------------
+
+function CheckoutBumpTab() {
+  const [settings, setSettings] = useState<CheckoutBumpSettings | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetchCheckoutBumpSettings()
+      .then(setSettings)
+      .catch(() => toast.error('Failed to load checkout bump settings'));
+    fetchProducts()
+      .then(setProducts)
+      .catch(() => toast.error('Failed to load products'));
+  }, []);
+
+  const selectedProduct = products.find((p) => p.id === settings?.product_id) || null;
+  const bumpPrice = selectedProduct
+    ? Math.round(selectedProduct.price * (1 - (settings?.discount_percent ?? 0) / 100))
+    : null;
+
+  const onSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!settings) return;
+    if (settings.enabled && !settings.product_id) {
+      toast.error('Pick a product first, or turn the bump off');
+      return;
+    }
+    setSaving(true);
+    try {
+      await saveCheckoutBumpSettings(settings);
+      toast.success('Checkout bump settings saved');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!settings) return <p className="py-6 text-sm text-muted-foreground">Loading...</p>;
+
+  return (
+    <form onSubmit={onSubmit} className="space-y-6 py-4">
+      <p className="max-w-2xl text-sm text-muted-foreground">
+        Ek chota, discounted add-on product jo checkout page par har customer ko dikhta hai —
+        cart mein jo bhi ho, iska koi lena-dena nahi. One-click "Add" karte hi order total mein
+        turant jud jata hai. Isse average order value badhta hai (classic "order bump" — jaise
+        ₹99 ka pouch/scarf add karna).
+      </p>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-medium">Enable checkout bump</p>
+            <p className="text-sm text-muted-foreground">
+              Order Summary ke andar, "Place Order" button ke upar dikhega.
+            </p>
+          </div>
+          <Switch
+            checked={settings.enabled}
+            onCheckedChange={(v) => setSettings({ ...settings, enabled: v })}
+          />
+        </div>
+      </section>
+
+      <section className="space-y-3 border-t border-border pt-6">
+        <div>
+          <Label>Product</Label>
+          <Select
+            value={settings.product_id ?? ''}
+            onValueChange={(v) => setSettings({ ...settings, product_id: v })}
+          >
+            <SelectTrigger className="max-w-sm">
+              <SelectValue placeholder="Choose a product" />
+            </SelectTrigger>
+            <SelectContent>
+              {products.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name} — ₹{p.price}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Kuch sasta, high-margin, sabke liye relevant product chuno (pouch, scarf, jewellery
+            box, styling accessory) — kapde ka size/fit nahi hona chahiye, kyunki checkout par
+            size select karne ka option nahi hoga.
+          </p>
+        </div>
+
+        <div className="max-w-xs">
+          <Label>Discount on checkout (%)</Label>
+          <Input
+            type="number"
+            min={0}
+            max={90}
+            value={settings.discount_percent}
+            onChange={(e) =>
+              setSettings({ ...settings, discount_percent: Number(e.target.value) })
+            }
+          />
+        </div>
+
+        {selectedProduct && bumpPrice !== null && (
+          <div className="rounded-md bg-muted/50 p-3 text-sm">
+            <p>
+              Customer ko dikhega: <strong>{selectedProduct.name}</strong> — normal price ₹
+              {selectedProduct.price}, checkout price{' '}
+              <strong className="text-primary">₹{bumpPrice}</strong>
+              {settings.discount_percent > 0 ? ` (${settings.discount_percent}% off)` : ''}.
+            </p>
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3 border-t border-border pt-6">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <Label>Headline</Label>
+            <Input
+              value={settings.headline}
+              onChange={(e) => setSettings({ ...settings, headline: e.target.value })}
+            />
+          </div>
+        </div>
+        <div>
+          <Label>Subtext</Label>
+          <Textarea
+            rows={2}
+            value={settings.subtext}
+            onChange={(e) => setSettings({ ...settings, subtext: e.target.value })}
+          />
+        </div>
+      </section>
+
+      <Button type="submit" disabled={saving} className="gap-2 bg-primary">
+        <Save className="h-4 w-4" />
+        {saving ? 'Saving...' : 'Save Checkout Bump'}
       </Button>
     </form>
   );
