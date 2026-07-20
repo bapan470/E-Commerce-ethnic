@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
-import { MessageSquareText, X, ChevronRight, ArrowLeft, Send, Sparkles } from 'lucide-react';
+import { MessageSquareText, MessageCircle, X, ChevronRight, ArrowLeft, Send, Sparkles } from 'lucide-react';
 import { fetchMarketingSettings, fetchLegalPages, MarketingSettings, LegalPages } from '@/lib/marketing-api';
 
 // ---------------------------------------------------------------------
@@ -178,17 +178,18 @@ export default function LiveChatWidget() {
       if (data?.ok && data.reply) {
         setMessages((prev) => [...prev, { id: uid(), sender: 'bot', text: data.reply }]);
       } else {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: uid(),
-            sender: 'bot',
-            isError: true,
-            text: whatsappHref
-              ? "Our AI assistant is having trouble right now. Tap 'Continue on WhatsApp' below and our team will take it from here."
-              : "Our AI assistant is having trouble right now — please try again in a moment, or reach us from the Contact page.",
-          },
-        ]);
+        const reason: string = data?.error || '';
+        let text: string;
+        if (reason.includes('not configured')) {
+          text = "AI chat isn't set up yet on this site (missing API key) — tap the WhatsApp bar above and our team can help you directly.";
+        } else if (reason.includes('rate-limited')) {
+          text = "Our AI is getting a lot of questions right now (free-tier limit) — please try again in a minute, or tap WhatsApp above.";
+        } else if (reason.includes('key was rejected')) {
+          text = 'The AI assistant is misconfigured on our end — tap the WhatsApp bar above and our team can help you directly.';
+        } else {
+          text = "Our AI assistant is having trouble right now — tap the WhatsApp bar above and our team will take it from here.";
+        }
+        setMessages((prev) => [...prev, { id: uid(), sender: 'bot', isError: true, text }]);
       }
     } catch {
       setMessages((prev) => [
@@ -198,7 +199,7 @@ export default function LiveChatWidget() {
           sender: 'bot',
           isError: true,
           text: whatsappHref
-            ? "Couldn't reach our AI assistant. Tap 'Continue on WhatsApp' below and our team will help directly."
+            ? "Couldn't reach our AI assistant. Tap the WhatsApp bar above and our team will help directly."
             : "Couldn't reach our AI assistant right now — please try again shortly.",
         },
       ]);
@@ -218,7 +219,7 @@ export default function LiveChatWidget() {
         text:
           answer === '__whatsapp__'
             ? whatsappHref
-              ? "Sure — tap 'Continue on WhatsApp' below and our team will pick it up from here."
+              ? "Sure — tap the WhatsApp bar at the top of this chat and our team will pick it up from here."
               : "Our team isn't set up on WhatsApp chat right now, but you can reach us from the Contact page and we'll get back to you."
             : answer,
       },
@@ -247,6 +248,26 @@ export default function LiveChatWidget() {
             </button>
           </div>
 
+          {/* Pinned WhatsApp quick-access — always visible regardless of
+              scroll position, not just after messages. Controlled by the
+              SAME Admin > Marketing > WhatsApp toggle/number as the
+              floating WhatsApp button, so turning it on/off in one place
+              updates both. */}
+          {whatsappHref && (
+            <a
+              href={whatsappHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-[#25D366]/10 px-4 py-2 text-xs font-medium text-[#128C4A] transition-colors hover:bg-[#25D366]/20"
+            >
+              <span className="flex items-center gap-1.5">
+                <MessageCircle className="h-3.5 w-3.5" fill="#25D366" strokeWidth={0} />
+                Prefer WhatsApp? Chat with our team directly
+              </span>
+              <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+            </a>
+          )}
+
           <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto bg-muted/40 px-3 py-4">
             {messages.map((m) => (
               <div key={m.id} className={`flex ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -273,20 +294,6 @@ export default function LiveChatWidget() {
                 </div>
               </div>
             )}
-
-            {whatsappHref && (
-              <div className="flex justify-start">
-                <a
-                  href={whatsappHref}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 rounded-full bg-[#25D366] px-3 py-2 text-xs font-medium text-white shadow-sm transition-transform hover:scale-[1.02]"
-                >
-                  Continue on WhatsApp
-                  <ChevronRight className="h-3.5 w-3.5" />
-                </a>
-              </div>
-            )}
           </div>
 
           <div className="border-t border-border bg-card p-3">
@@ -305,7 +312,7 @@ export default function LiveChatWidget() {
                   placeholder="Ask me anything..."
                   disabled={aiLoading}
                   maxLength={600}
-                  className="w-full rounded-full border border-border bg-background py-2 pl-8 pr-3 text-sm outline-none transition-colors focus:border-primary disabled:opacity-60"
+                  className="w-full rounded-full border border-border bg-background py-2 pl-8 pr-3 text-base outline-none transition-colors focus:border-primary disabled:opacity-60 sm:text-sm"
                 />
               </div>
               <button
