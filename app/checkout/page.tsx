@@ -4,7 +4,7 @@ import { useState, useEffect, FormEvent } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { Lock, Loader2, CreditCard, Tag, X, Wallet, Sparkles, Gift, Store } from 'lucide-react';
+import { Lock, Loader2, CreditCard, Tag, X, Wallet, Sparkles, Gift, Store, Minus, Plus } from 'lucide-react';
 import { useCart } from '@/lib/cart-context';
 import { useAuth } from '@/lib/auth-context';
 import { formatINR } from '@/lib/format';
@@ -74,11 +74,13 @@ export default function CheckoutPage() {
     clearCart,
     addItem,
     removeItem,
+    updateQuantity,
     appliedCoupon,
     couponDiscount: cartCouponDiscount,
     applyCoupon,
     removeCoupon,
     buyNowItem,
+    updateBuyNowQuantity,
     clearBuyNow,
   } = useCart();
   // Buy Now sends the shopper straight here with just the one item, kept
@@ -343,6 +345,31 @@ export default function CheckoutPage() {
     } else {
       clearCart();
     }
+  };
+
+  // +/- stepper in the order summary. Routes to whichever store actually
+  // holds this line item: the Buy Now slot, a locally-tracked bump add-on,
+  // or the real persistent cart.
+  const changeItemQuantity = (item: CartItem, delta: number) => {
+    const stock = item.product.stock_quantity ?? Infinity;
+    const nextQty = Math.min(Math.max(1, item.quantity + delta), stock);
+    if (nextQty === item.quantity) return;
+
+    if (buyNowItem && item.product.id === buyNowItem.product.id && item.size === buyNowItem.size) {
+      updateBuyNowQuantity(nextQty);
+      return;
+    }
+    if (isBuyNow) {
+      setBuyNowExtras((prev) =>
+        prev.map((i) =>
+          i.product.id === item.product.id && i.size === item.size
+            ? { ...i, quantity: nextQty }
+            : i
+        )
+      );
+      return;
+    }
+    updateQuantity(item.product.id, item.size, nextQty);
   };
 
   // Log the funnel step once — used by Admin > Analytics for conversion rate.
@@ -1060,36 +1087,66 @@ export default function CheckoutPage() {
             <h2 className="font-serif text-lg font-bold text-primary">Order Summary</h2>
             <Separator className="my-4" />
             <ul className="flex max-h-72 flex-col gap-3 overflow-y-auto">
-              {items.map((item) => (
-                <li
-                  key={`${item.product.id}-${item.size}`}
-                  className="flex gap-3"
-                >
-                  <div className="relative h-16 w-14 shrink-0 overflow-hidden rounded-md bg-muted">
-                    <Image
-                      src={item.product.images[0] || 'https://placehold.co/56x64?text=No+Image'}
-                      alt={`${item.product.name} - ${item.product.fabric} ${item.product.category}`}
-                      fill
-                      sizes="56px"
-                      className="object-cover"
-                    />
-                    <span className="absolute -right-1 -top-1 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
-                      {item.quantity}
+              {items.map((item) => {
+                const isBumpItem = !!bumpProduct && item.product.id === bumpProduct.id;
+                return (
+                  <li
+                    key={`${item.product.id}-${item.size}`}
+                    className="flex gap-3"
+                  >
+                    <div className="relative h-16 w-14 shrink-0 overflow-hidden rounded-md bg-muted">
+                      <Image
+                        src={item.product.images[0] || 'https://placehold.co/56x64?text=No+Image'}
+                        alt={`${item.product.name} - ${item.product.fabric} ${item.product.category}`}
+                        fill
+                        sizes="56px"
+                        className="object-cover"
+                      />
+                      {isBumpItem && (
+                        <span className="absolute -right-1 -top-1 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                          {item.quantity}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-1 flex-col justify-center gap-1">
+                      <p className="line-clamp-1 text-xs font-medium">
+                        {item.product.name}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Size: {item.size}
+                      </p>
+                      {!isBumpItem && (
+                        <div className="mt-0.5 flex items-center gap-2">
+                          <button
+                            type="button"
+                            aria-label="Decrease quantity"
+                            onClick={() => changeItemQuantity(item, -1)}
+                            disabled={item.quantity <= 1}
+                            className="flex h-5 w-5 items-center justify-center rounded border border-border/60 text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <Minus className="h-3 w-3" />
+                          </button>
+                          <span className="w-4 text-center text-xs font-semibold">
+                            {item.quantity}
+                          </span>
+                          <button
+                            type="button"
+                            aria-label="Increase quantity"
+                            onClick={() => changeItemQuantity(item, 1)}
+                            disabled={item.quantity >= (item.product.stock_quantity ?? Infinity)}
+                            className="flex h-5 w-5 items-center justify-center rounded border border-border/60 text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <Plus className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <span className="self-center text-xs font-semibold">
+                      {formatINR(item.product.price * item.quantity)}
                     </span>
-                  </div>
-                  <div className="flex flex-1 flex-col justify-center">
-                    <p className="line-clamp-1 text-xs font-medium">
-                      {item.product.name}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">
-                      Size: {item.size}
-                    </p>
-                  </div>
-                  <span className="self-center text-xs font-semibold">
-                    {formatINR(item.product.price * item.quantity)}
-                  </span>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
             <Separator className="my-4" />
 

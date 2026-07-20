@@ -100,6 +100,7 @@ interface CartContextValue {
    * this (when present) instead of the full cart's items. */
   buyNowItem: CartItem | null;
   startBuyNow: (product: Product, size: string, quantity?: number) => void;
+  updateBuyNowQuantity: (quantity: number) => void;
   clearBuyNow: () => void;
 }
 
@@ -262,6 +263,20 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const updateBuyNowQuantity = useCallback((quantity: number) => {
+    setBuyNowItem((prev) => {
+      if (!prev) return prev;
+      const stock = prev.product.stock_quantity ?? Infinity;
+      const next = { ...prev, quantity: Math.min(Math.max(1, quantity), stock) };
+      try {
+        sessionStorage.setItem(BUY_NOW_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  }, []);
+
   const value: CartContextValue = {
     items: state.items,
     count,
@@ -278,6 +293,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     removeCoupon,
     buyNowItem,
     startBuyNow,
+    updateBuyNowQuantity,
     clearBuyNow,
   };
 
