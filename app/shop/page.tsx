@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { SlidersHorizontal } from 'lucide-react';
+import { SlidersHorizontal, TrendingDown, Flame, Gift } from 'lucide-react';
 import { useProducts } from '@/lib/cart-context';
 import { Product, Category } from '@/lib/types';
 import ProductCard from '@/components/product-card';
@@ -31,7 +31,13 @@ import { Separator } from '@/components/ui/separator';
 
 const ALL_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size'];
 
-type SortKey = 'featured' | 'price-asc' | 'price-desc' | 'rating' | 'newest';
+type SortKey = 'featured' | 'price-asc' | 'price-desc' | 'rating' | 'newest' | 'price-drop' | 'most-gifted';
+
+const QUICK_FILTERS: { key: SortKey; label: string; icon: typeof TrendingDown }[] = [
+  { key: 'price-drop', label: 'Price Drop', icon: TrendingDown },
+  { key: 'rating', label: 'Bestseller', icon: Flame },
+  { key: 'most-gifted', label: 'Most Gifted', icon: Gift },
+];
 
 function ShopContent() {
   const { products, categories, loading } = useProducts();
@@ -47,8 +53,9 @@ function ShopContent() {
   const [selectedFabrics, setSelectedFabrics] = useState<string[]>([]);
   const [selectedOccasions, setSelectedOccasions] = useState<string[]>([]);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 35000]);
+  const initialSort = (params.get('sort') as SortKey) || 'featured';
   const [query, setQuery] = useState(initialQuery);
-  const [sort, setSort] = useState<SortKey>('featured');
+  const [sort, setSort] = useState<SortKey>(initialSort);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Filter option lists are derived from whatever products/admin have
@@ -113,6 +120,14 @@ function ShopContent() {
         break;
       case 'newest':
         list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+        break;
+      case 'price-drop':
+        list.sort(
+          (a, b) => ((b.mrp ?? 0) - b.price || 0) - ((a.mrp ?? 0) - a.price || 0)
+        );
+        break;
+      case 'most-gifted':
+        list.sort((a, b) => b.reviews - a.reviews);
         break;
       default:
         list.sort((a, b) => Number(!!b.featured) - Number(!!a.featured));
@@ -273,7 +288,7 @@ function ShopContent() {
   );
 
   return (
-    <div className="container-boutique py-8">
+    <div className="container-boutique py-8 pb-24 md:pb-8">
       <div className="mb-6">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
           The Collection
@@ -284,6 +299,23 @@ function ShopContent() {
         <p className="mt-2 text-sm text-muted-foreground">
           {loading ? 'Loading…' : `${filtered.length} ${filtered.length === 1 ? 'piece' : 'pieces'} found`}
         </p>
+
+        <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+          {QUICK_FILTERS.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setSort((prev) => (prev === f.key ? 'featured' : f.key))}
+              className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                sort === f.key
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : 'border-border bg-background text-foreground/80 hover:border-primary/50'
+              }`}
+            >
+              <f.icon className="h-3.5 w-3.5" />
+              {f.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="flex gap-8">
@@ -294,7 +326,10 @@ function ShopContent() {
         </aside>
 
         <div className="flex-1">
-          <div className="mb-5 flex items-center justify-between gap-3">
+          <div
+            className="fixed inset-x-0 bottom-0 z-30 mb-5 flex items-center justify-between gap-3 border-t border-border bg-background/95 px-4 py-3 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] backdrop-blur-sm md:static md:mb-5 md:border-0 md:bg-transparent md:px-0 md:py-0 md:shadow-none md:backdrop-blur-none"
+            style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
+          >
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
               <SheetTrigger asChild>
                 <Button variant="outline" className="lg:hidden">

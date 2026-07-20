@@ -2,9 +2,9 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useState, useMemo, useRef, useEffect, FormEvent } from 'react';
-import { Search, ShoppingBag, Menu, User, Heart } from 'lucide-react';
+import { Search, ShoppingBag, Menu, User, Heart, ArrowLeft } from 'lucide-react';
 import { useCart, useProducts } from '@/lib/cart-context';
 import { useAuth } from '@/lib/auth-context';
 import { formatINR } from '@/lib/format';
@@ -29,12 +29,19 @@ export default function Header() {
   const { products } = useProducts();
   const { user } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const [query, setQuery] = useState('');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const searchWrapRef = useRef<HTMLDivElement>(null);
   const mobileSearchInputRef = useRef<HTMLInputElement>(null);
+
+  // On these sub-pages, mobile shows a back arrow (left of the logo)
+  // instead of the hamburger menu — matches how shopping apps let you
+  // step back to the previous screen instead of opening the full nav.
+  const showBackButton =
+    pathname === '/shop' || pathname.startsWith('/cart') || pathname.startsWith('/checkout');
 
   const suggestions = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -86,6 +93,17 @@ export default function Header() {
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/85 backdrop-blur-md">
       <div className="container-boutique flex h-12 items-center justify-between gap-4">
+        {showBackButton ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            aria-label="Go back"
+            onClick={() => router.back()}
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+        ) : (
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetTrigger asChild>
             <Button variant="ghost" size="icon" className="md:hidden" aria-label="Menu">
@@ -131,6 +149,7 @@ export default function Header() {
             </div>
           </SheetContent>
         </Sheet>
+        )}
 
         <Link href="/" className="flex items-center gap-2">
           <span className="font-serif text-2xl font-bold tracking-tight text-primary">

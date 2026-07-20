@@ -560,7 +560,7 @@ function ProductInfo({
           <Button
             onClick={onAdd}
             size="lg"
-            className="flex-1 gap-2 bg-primary text-base"
+            className="hidden flex-1 gap-2 bg-primary text-base md:flex"
           >
             <ShoppingBag className="h-4 w-4" />
             Add to Cart
@@ -570,7 +570,7 @@ function ProductInfo({
             disabled
             size="lg"
             variant="outline"
-            className="flex-1 gap-2 text-base"
+            className="hidden flex-1 gap-2 text-base md:flex"
           >
             Out of Stock
           </Button>
