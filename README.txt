@@ -1,36 +1,58 @@
-DESIGN CHANGES — how to apply
-==============================
+DESIGN + FUNCTIONALITY CHANGES — how to apply
+================================================
 
-Replace these 5 files in your repo with the ones in this zip (same folder paths):
+This zip has the COMPLETE current version of every changed/new file — it
+includes everything from before (bottom nav, back button, quick filters,
+sticky Add to Cart) PLUS this round's changes below. Just copy all 7 files
+into your repo at the same paths, overwriting the existing ones.
 
-1. components/header.tsx
-   - Shop, Cart, and Checkout pages now show a back arrow (top-left, mobile
-     only) instead of the hamburger menu, so users can step back easily.
+Files in this zip:
+  components/header.tsx
+  components/mobile-bottom-nav.tsx   [new]
+  components/providers.tsx
+  app/shop/page.tsx
+  app/product/[slug]/product-detail.tsx
+  app/login/page.tsx
+  lib/cart-context.tsx
 
-2. components/mobile-bottom-nav.tsx   [NEW FILE]
-   - Bottom tab bar (Home / Categories / Offers / Account), shown only on
-     the home page, mobile only — like the Nykaa-style bottom nav.
+What's NEW in this round
+-------------------------
 
-3. components/providers.tsx
-   - Wires the new bottom nav in, only on the home page ("/").
+1. Back button on the product page too (components/header.tsx)
+   - showBackButton now also matches /product/* routes, so product pages
+     get the same left-of-logo back arrow as shop/cart/checkout.
 
-4. app/shop/page.tsx
-   - Added "Price Drop / Bestseller / Most Gifted" quick-filter chips right
-     under the page heading (tap to sort by that).
-   - The Filters + Sort row is now a sticky bar fixed to the bottom of the
-     screen on mobile (goes back to its normal inline position on desktop).
+2. Fixed the gap under the sticky Filters/Sort bar (app/shop/page.tsx)
+   - The bar had a stray margin-bottom left over from before it became a
+     fixed bottom bar — margin doesn't apply cleanly to a fixed bottom-0
+     element, so it was leaving a visible empty strip below it. Removed
+     the margin on mobile (kept only for the static desktop layout).
+   - Same fix applies to every /shop view, including filtered category
+     views (?category=...), since they're all the same page component.
 
-5. app/product/[slug]/product-detail.tsx
-   - The regular inline "Add to Cart" button is now hidden on mobile —
-     only the existing sticky bottom Add to Cart bar shows there.
-   - Desktop is unchanged (no sticky bar there, so the regular button stays).
+3. Login page redesigned + Email OTP added (app/login/page.tsx)
+   - On mobile it now shows as a bottom sheet (rounded top card anchored
+     to the bottom, brand panel behind it) like the reference screenshots.
+     Desktop keeps the previous centered-card layout, unchanged.
+   - Added a "Password" / "Email OTP" toggle. Email OTP sends a one-time
+     code to the shopper's email (Supabase's signInWithOtp) and verifies
+     it (verifyOtp) — no password needed. Google login and the existing
+     email/password login both still work exactly as before.
+   - Note: this is EMAIL OTP, not mobile-number/SMS OTP. Phone OTP needs
+     an SMS provider (e.g. Twilio) configured on the Supabase project
+     itself — that's an account-level setup on Supabase's side, not
+     something a code change alone can turn on. Email OTP works out of
+     the box with your existing Supabase project.
 
-Nothing else was touched — no other files, no styling tokens, no logic
-outside what's described above.
-
-How to apply:
-- Just copy these 5 files into your project at the same paths, overwriting
-  the existing ones (mobile-bottom-nav.tsx is new, just add it).
-- Run `npm install` if you haven't, then `npm run dev` / `npm run build` as usual.
+4. Stock-aware quantity limits (lib/cart-context.tsx + product-detail.tsx)
+   - Cart quantity (product page, cart page, cart drawer) is now capped at
+     the product's actual stock_quantity. If only 1 is in stock, a second
+     one can't be added or incremented to — the shopper gets a toast
+     ("Only 1 unit in stock") and the + button disables at the limit.
+   - This is centralized in the cart context, so it applies everywhere
+     quantity can change (product page, cart page, cart drawer) from one
+     change, not three separate ones.
 
 Verified with `npx tsc --noEmit` — no type errors.
+Nothing else was touched — no other files, no styling tokens, no logic
+outside what's described above.

@@ -12,6 +12,7 @@ import React, {
 import { CartItem, Product, CategoryRow } from './types';
 import { fetchProducts, fetchCategories } from './products-api';
 import { validateCoupon, computeCouponDiscount, Coupon, CouponResult } from './coupons-api';
+import { toast } from 'sonner';
 
 /* ---------------- Cart ---------------- */
 
@@ -20,9 +21,9 @@ interface CartState {
 }
 
 type CartAction =
-  | { type: 'ADD'; product: Product; size: string; quantity?: number }
+  | { type: 'ADD'; product: Product; size: string; quantity?: number; maxStock?: number }
   | { type: 'REMOVE'; productId: string; size: string }
-  | { type: 'UPDATE_QTY'; productId: string; size: string; quantity: number }
+  | { type: 'UPDATE_QTY'; productId: string; size: string; quantity: number; maxStock?: number }
   | { type: 'CLEAR' }
   | { type: 'HYDRATE'; items: CartItem[] };
 
@@ -30,6 +31,7 @@ function cartReducer(state: CartState, action: CartAction): CartState {
   switch (action.type) {
     case 'ADD': {
       const qty = action.quantity ?? 1;
+      const cap = action.maxStock ?? Infinity;
       const existing = state.items.find(
         (i) => i.product.id === action.product.id && i.size === action.size
       );
@@ -37,13 +39,16 @@ function cartReducer(state: CartState, action: CartAction): CartState {
         return {
           items: state.items.map((i) =>
             i.product.id === action.product.id && i.size === action.size
-              ? { ...i, quantity: i.quantity + qty }
+              ? { ...i, quantity: Math.min(i.quantity + qty, cap) }
               : i
           ),
         };
       }
       return {
-        items: [...state.items, { product: action.product, size: action.size, quantity: qty }],
+        items: [
+          ...state.items,
+          { product: action.product, size: action.size, quantity: Math.min(qty, cap) },
+        ],
       };
     }
     case 'REMOVE':
@@ -52,16 +57,18 @@ function cartReducer(state: CartState, action: CartAction): CartState {
           (i) => !(i.product.id === action.productId && i.size === action.size)
         ),
       };
-    case 'UPDATE_QTY':
+    case 'UPDATE_QTY': {
+      const cap = action.maxStock ?? Infinity;
       return {
         items: state.items
           .map((i) =>
             i.product.id === action.productId && i.size === action.size
-              ? { ...i, quantity: Math.max(0, action.quantity) }
+              ? { ...i, quantity: Math.min(Math.max(0, action.quantity), cap) }
               : i
           )
           .filter((i) => i.quantity > 0),
       };
+    }
     case 'CLEAR':
       return { items: [] };
     case 'HYDRATE':
@@ -140,19 +147,37 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const addItem = useCallback(
     (product: Product, size: string, quantity?: number) => {
-      dispatch({ type: 'ADD', product, size, quantity });
+      const qty = quantity ?? 1;
+      const stock = product.stock_quantity ?? Infinity;
+      const existing = state.items.find(
+        (i) => i.product.id === product.id && i.size === size
+      );
+      const desired = (existing?.quantity ?? 0) + qty;
+      if (stock < Infinity && desired > stock) {
+        toast.error(
+          stock <= 0
+            ? 'Out of stock'
+            : `Only ${stock} unit${stock > 1 ? 's' : ''} in stock`
+        );
+      }
+      dispatch({ type: 'ADD', product, size, quantity: qty, maxStock: stock });
       setCartOpen(true);
     },
-    []
+    [state.items]
   );
   const removeItem = useCallback((productId: string, size: string) => {
     dispatch({ type: 'REMOVE', productId, size });
   }, []);
   const updateQuantity = useCallback(
     (productId: string, size: string, quantity: number) => {
-      dispatch({ type: 'UPDATE_QTY', productId, size, quantity });
+      const item = state.items.find((i) => i.product.id === productId && i.size === size);
+      const stock = item?.product.stock_quantity ?? Infinity;
+      if (stock < Infinity && quantity > stock) {
+        toast.error(`Only ${stock} unit${stock > 1 ? 's' : ''} in stock`);
+      }
+      dispatch({ type: 'UPDATE_QTY', productId, size, quantity, maxStock: stock });
     },
-    []
+    [state.items]
   );
   const clearCart = useCallback(() => {
     dispatch({ type: 'CLEAR' });

@@ -41,7 +41,10 @@ export default function Header() {
   // instead of the hamburger menu — matches how shopping apps let you
   // step back to the previous screen instead of opening the full nav.
   const showBackButton =
-    pathname === '/shop' || pathname.startsWith('/cart') || pathname.startsWith('/checkout');
+    pathname === '/shop' ||
+    pathname.startsWith('/cart') ||
+    pathname.startsWith('/checkout') ||
+    pathname.startsWith('/product/');
 
   const suggestions = useMemo(() => {
     const q = query.trim().toLowerCase();

@@ -22,12 +22,20 @@ function GoogleIcon() {
   );
 }
 
+type LoginMethod = 'password' | 'otp';
+type OtpStep = 'enter-email' | 'enter-code';
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get('next') || '/account';
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+
+  const [method, setMethod] = useState<LoginMethod>('password');
+  const [otpStep, setOtpStep] = useState<OtpStep>('enter-email');
+  const [otpEmail, setOtpEmail] = useState('');
+  const [otpLoading, setOtpLoading] = useState(false);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -63,52 +71,188 @@ function LoginForm() {
     }
   };
 
+  // Step 1 of email-OTP login: send a one-time code to the given address.
+  // shouldCreateUser is on so a shopper logging in for the first time this
+  // way gets an account automatically, matching how Google login behaves.
+  const onSendOtp = async (e: FormEvent) => {
+    e.preventDefault();
+    const fd = new FormData(e.target as HTMLFormElement);
+    const email = (fd.get('otp-email') as string).trim();
+
+    setOtpLoading(true);
+    const supabase = getSupabaseBrowser();
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: true },
+    });
+    setOtpLoading(false);
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    setOtpEmail(email);
+    setOtpStep('enter-code');
+    toast.success(`OTP sent to ${email}`);
+  };
+
+  // Step 2: verify the 6-digit code the shopper received by email.
+  const onVerifyOtp = async (e: FormEvent) => {
+    e.preventDefault();
+    const fd = new FormData(e.target as HTMLFormElement);
+    const token = (fd.get('otp-code') as string).trim();
+
+    setOtpLoading(true);
+    const supabase = getSupabaseBrowser();
+    const { error } = await supabase.auth.verifyOtp({
+      email: otpEmail,
+      token,
+      type: 'email',
+    });
+    setOtpLoading(false);
+
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    router.push(next);
+    router.refresh();
+  };
+
   return (
-    <div className="container-boutique flex min-h-[70vh] items-center justify-center py-16">
-      <div className="w-full max-w-sm space-y-6">
+    <div className="relative min-h-[70vh] overflow-hidden bg-gradient-to-br from-primary via-primary to-primary/80 md:flex md:min-h-[70vh] md:items-center md:justify-center md:bg-none md:py-16">
+      {/* Decorative brand panel — mobile only, sits behind the sheet below */}
+      <div className="flex flex-col items-center gap-2 px-6 pb-44 pt-16 text-center text-primary-foreground md:hidden">
+        <span className="font-serif text-3xl font-bold text-secondary">Aruhi</span>
+        <p className="text-sm text-primary-foreground/80">
+          Get personalised suggestions, offers &amp; more
+        </p>
+      </div>
+
+      {/* Login card — fixed bottom sheet on mobile, centered card on desktop */}
+      <div className="fixed inset-x-0 bottom-0 z-10 max-h-[85vh] overflow-y-auto rounded-t-2xl bg-background p-6 shadow-[0_-8px_24px_rgba(0,0,0,0.12)] md:static md:z-auto md:max-h-none md:w-full md:max-w-sm md:rounded-2xl md:border md:border-border/60 md:p-8 md:shadow-none">
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-border md:hidden" />
+
         <div className="text-center">
-          <h1 className="font-serif text-3xl font-bold text-primary">Welcome back</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Login to your Aruhi Handlooms account</p>
+          <h1 className="font-serif text-2xl font-bold text-primary md:text-3xl">
+            Login or Signup
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Login to your Aruhi Handlooms account
+          </p>
         </div>
 
-        <Button
-          type="button"
-          variant="outline"
-          className="w-full gap-2"
-          onClick={onGoogle}
-          disabled={googleLoading}
-        >
-          {googleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleIcon />}
-          Continue with Google
-        </Button>
-
-        <div className="flex items-center gap-3">
-          <div className="h-px flex-1 bg-border" />
-          <span className="text-xs uppercase text-muted-foreground">or</span>
-          <div className="h-px flex-1 bg-border" />
+        <div className="mt-5 flex gap-2">
+          <button
+            type="button"
+            onClick={() => setMethod('password')}
+            className={`flex-1 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+              method === 'password'
+                ? 'border-primary bg-primary text-primary-foreground'
+                : 'border-border bg-background text-foreground/80 hover:border-primary/50'
+            }`}
+          >
+            Password
+          </button>
+          <button
+            type="button"
+            onClick={() => setMethod('otp')}
+            className={`flex-1 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+              method === 'otp'
+                ? 'border-primary bg-primary text-primary-foreground'
+                : 'border-border bg-background text-foreground/80 hover:border-primary/50'
+            }`}
+          >
+            Email OTP
+          </button>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" name="email" type="email" required placeholder="you@example.com" />
-          </div>
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="password">Password</Label>
-              <Link href="/forgot-password" className="text-xs font-medium text-primary hover:underline">
-                Forgot password?
-              </Link>
-            </div>
-            <PasswordInput id="password" name="password" required minLength={6} />
-          </div>
-          <Button type="submit" className="w-full bg-primary" disabled={loading}>
-            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Login
+        <div className="mt-5 space-y-5">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full gap-2"
+            onClick={onGoogle}
+            disabled={googleLoading}
+          >
+            {googleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleIcon />}
+            Continue with Google
           </Button>
-        </form>
 
-        <p className="text-center text-sm text-muted-foreground">
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs uppercase text-muted-foreground">or</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+
+          {method === 'password' ? (
+            <form onSubmit={onSubmit} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="email">Email</Label>
+                <Input id="email" name="email" type="email" required placeholder="you@example.com" />
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="password">Password</Label>
+                  <Link href="/forgot-password" className="text-xs font-medium text-primary hover:underline">
+                    Forgot password?
+                  </Link>
+                </div>
+                <PasswordInput id="password" name="password" required minLength={6} />
+              </div>
+              <Button type="submit" className="w-full bg-primary" disabled={loading}>
+                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Login
+              </Button>
+            </form>
+          ) : otpStep === 'enter-email' ? (
+            <form onSubmit={onSendOtp} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="otp-email">Email</Label>
+                <Input
+                  id="otp-email"
+                  name="otp-email"
+                  type="email"
+                  required
+                  placeholder="you@example.com"
+                />
+              </div>
+              <Button type="submit" className="w-full bg-primary" disabled={otpLoading}>
+                {otpLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Get OTP
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={onVerifyOtp} className="space-y-4">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="otp-code">Enter OTP sent to {otpEmail}</Label>
+                  <button
+                    type="button"
+                    onClick={() => setOtpStep('enter-email')}
+                    className="text-xs font-medium text-primary hover:underline"
+                  >
+                    Change email
+                  </button>
+                </div>
+                <Input
+                  id="otp-code"
+                  name="otp-code"
+                  inputMode="numeric"
+                  required
+                  placeholder="6-digit code"
+                  maxLength={6}
+                />
+              </div>
+              <Button type="submit" className="w-full bg-primary" disabled={otpLoading}>
+                {otpLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Verify &amp; Login
+              </Button>
+            </form>
+          )}
+        </div>
+
+        <p className="mt-5 text-center text-sm text-muted-foreground">
           New to Aruhi Handlooms?{' '}
           <Link href="/signup" className="font-medium text-primary hover:underline">
             Create an account

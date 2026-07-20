@@ -549,13 +549,19 @@ function ProductInfo({
           </button>
           <span className="w-10 text-center text-sm font-semibold">{quantity}</span>
           <button
-            onClick={() => setQuantity((q) => q + 1)}
-            className="p-3 text-muted-foreground hover:text-primary"
+            onClick={() => setQuantity((q) => Math.min(product.stock_quantity, q + 1))}
+            disabled={quantity >= product.stock_quantity}
+            className="p-3 text-muted-foreground hover:text-primary disabled:cursor-not-allowed disabled:opacity-30"
             aria-label="Increase quantity"
           >
             <Plus className="h-4 w-4" />
           </button>
         </div>
+        {quantity >= product.stock_quantity && product.stock_quantity > 0 && (
+          <p className="w-full text-xs text-muted-foreground">
+            Only {product.stock_quantity} unit{product.stock_quantity > 1 ? 's' : ''} left in stock.
+          </p>
+        )}
         {product.inStock ? (
           <Button
             onClick={onAdd}
