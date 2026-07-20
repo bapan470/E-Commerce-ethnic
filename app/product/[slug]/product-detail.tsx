@@ -61,7 +61,7 @@ export default function ProductDetail() {
   const [variant, setVariant] = useState<VariantWithSizes | null>(null);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
-  const [activeTab, setActiveTab] = useState('description');
+  const [activeTab, setActiveTab] = useState('reviews');
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [couponDiscount, setCouponDiscount] = useState(0);
   const [couponHydrated, setCouponHydrated] = useState(false);

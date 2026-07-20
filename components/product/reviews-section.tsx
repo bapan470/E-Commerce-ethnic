@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Star, CheckCircle2, MessageSquareOff, ImagePlus, X, Loader2 } from 'lucide-react';
+import { Star, CheckCircle2, MessageSquareOff, ImagePlus, X, Loader2, ThumbsUp } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import {
   Review,
@@ -75,6 +75,20 @@ function StarPicker({
   );
 }
 
+const RATING_LABELS: Record<1 | 2 | 3 | 4 | 5, string> = {
+  5: 'Excellent',
+  4: 'Very Good',
+  3: 'Good',
+  2: 'Average',
+  1: 'Poor',
+};
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase();
+}
+
 export default function ReviewsSection({
   productId,
   productSlug,
@@ -97,8 +111,21 @@ export default function ReviewsSection({
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [helpfulVotes, setHelpfulVotes] = useState<Record<string, number>>({});
+  const [markedHelpful, setMarkedHelpful] = useState<Record<string, boolean>>({});
 
   const MAX_PHOTOS = 4;
+
+  const toggleHelpful = (reviewId: string) => {
+    setMarkedHelpful((prev) => {
+      const next = { ...prev, [reviewId]: !prev[reviewId] };
+      setHelpfulVotes((v) => ({
+        ...v,
+        [reviewId]: (v[reviewId] ?? 0) + (next[reviewId] ? 1 : -1),
+      }));
+      return next;
+    });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -187,27 +214,37 @@ export default function ReviewsSection({
   return (
     <div className="grid gap-8 lg:grid-cols-[280px_1fr]">
       <div className="flex flex-col gap-4">
-        <div>
-          <p className="font-serif text-4xl font-bold text-primary">
+        <div className="flex items-center gap-3">
+          <p className="font-serif text-4xl font-bold text-emerald-600">
             {summary.total > 0 ? summary.average.toFixed(1) : '—'}
+            <span className="ml-1 align-middle text-lg text-secondary">★</span>
           </p>
-          <StarRow value={summary.average} size="h-5 w-5" />
-          <p className="mt-1 text-sm text-muted-foreground">
-            Based on {summary.total} review{summary.total === 1 ? '' : 's'}
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-foreground">
+            {summary.total.toLocaleString('en-IN')} Ratings
+          </p>
+          <p className="text-sm text-muted-foreground">
+            {summary.total.toLocaleString('en-IN')} Review{summary.total === 1 ? '' : 's'}
           </p>
         </div>
 
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-2">
           {([5, 4, 3, 2, 1] as const).map((star) => {
             const count = summary.breakdown[star];
             const pct = summary.total > 0 ? (count / summary.total) * 100 : 0;
             return (
               <div key={star} className="flex items-center gap-2 text-xs">
-                <span className="w-8 text-muted-foreground">{star} star</span>
+                <span className="w-20 shrink-0 text-muted-foreground">{RATING_LABELS[star]}</span>
                 <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                  <div className="h-full bg-secondary" style={{ width: `${pct}%` }} />
+                  <div
+                    className={`h-full ${
+                      star >= 4 ? 'bg-emerald-500' : star === 3 ? 'bg-lime-500' : star === 2 ? 'bg-amber-500' : 'bg-red-500'
+                    }`}
+                    style={{ width: `${pct}%` }}
+                  />
                 </div>
-                <span className="w-6 text-right text-muted-foreground">{count}</span>
+                <span className="w-8 text-right text-muted-foreground">{count}</span>
               </div>
             );
           })}
@@ -329,42 +366,73 @@ export default function ReviewsSection({
           <ul className="flex flex-col divide-y divide-border/60">
             {reviews.map((r) => (
               <li key={r.id} className="py-4">
-                <div className="flex items-center justify-between">
-                  <StarRow value={r.rating} />
-                  <span className="text-xs text-muted-foreground">
-                    {new Date(r.created_at).toLocaleDateString('en-IN', {
-                      day: 'numeric',
-                      month: 'short',
-                      year: 'numeric',
-                    })}
-                  </span>
-                </div>
-                {r.title && <p className="mt-1.5 text-sm font-semibold">{r.title}</p>}
-                {r.comment && (
-                  <p className="mt-1 text-sm leading-relaxed text-foreground/80">{r.comment}</p>
-                )}
-                {r.photos && r.photos.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {r.photos.map((src, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setLightboxSrc(src)}
-                        className="h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border/60"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={src}
-                          alt={`Photo from ${r.customer_name}'s review`}
-                          className="h-full w-full object-cover"
-                        />
-                      </button>
-                    ))}
+                <div className="flex items-start gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                    {initials(r.customer_name)}
                   </div>
-                )}
-                <p className="mt-1.5 text-xs font-medium text-muted-foreground">
-                  {r.customer_name} · Verified Purchase
-                </p>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold text-foreground">{r.customer_name}</span>
+                      <span className="inline-flex items-center gap-1 rounded bg-emerald-600 px-1.5 py-0.5 text-xs font-semibold text-white">
+                        {r.rating.toFixed(1)}
+                        <Star className="h-3 w-3 fill-white" />
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Posted on{' '}
+                      {new Date(r.created_at).toLocaleDateString('en-IN', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                    </p>
+
+                    {r.title && <p className="mt-2 text-sm font-semibold">{r.title}</p>}
+                    {r.comment && (
+                      <p className="mt-1 text-sm leading-relaxed text-foreground/80">{r.comment}</p>
+                    )}
+
+                    {r.photos && r.photos.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {r.photos.map((src, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setLightboxSrc(src)}
+                            className="h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border/60"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={src}
+                              alt={`Photo from ${r.customer_name}'s review`}
+                              className="h-full w-full object-cover"
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="mt-3 flex items-center gap-4">
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {r.customer_name} · Verified Purchase
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => toggleHelpful(r.id)}
+                        className={`inline-flex items-center gap-1.5 text-xs font-medium transition-colors ${
+                          markedHelpful[r.id]
+                            ? 'text-primary'
+                            : 'text-muted-foreground hover:text-primary'
+                        }`}
+                      >
+                        <ThumbsUp
+                          className={`h-3.5 w-3.5 ${markedHelpful[r.id] ? 'fill-primary' : ''}`}
+                        />
+                        Helpful{helpfulVotes[r.id] ? ` (${helpfulVotes[r.id]})` : ''}
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </li>
             ))}
           </ul>
