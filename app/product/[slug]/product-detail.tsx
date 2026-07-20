@@ -25,6 +25,7 @@ import ReviewsSection from '@/components/product/reviews-section';
 import PincodeChecker from '@/components/product/pincode-checker';
 import VariantSwatches from '@/components/product/variant-swatches';
 import ProductGallery from '@/components/product/product-gallery';
+import ProductVideo from '@/components/product/product-video';
 import MobileStickyCartBar from '@/components/product/mobile-sticky-cart-bar';
 import RelatedProducts from '@/components/product/related-products';
 import RecentlyViewedSection from '@/components/product/recently-viewed';
@@ -296,6 +297,15 @@ export default function ProductDetail() {
           <div className="-mx-4 sm:mx-0">
             <ProductGallery images={product.images} alt={product.name} discount={discount} />
           </div>
+          {product.video_url && (
+            <div className="px-4 sm:px-0">
+              <ProductVideo
+                videoUrl={product.video_url}
+                posterUrl={product.images[0]}
+                alt={product.name}
+              />
+            </div>
+          )}
           <div className="px-4 sm:px-0">
             <VariantSwatches
               productId={baseProduct.id}

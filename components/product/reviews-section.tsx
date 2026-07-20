@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Star, CheckCircle2, MessageSquareOff } from 'lucide-react';
+import { Star, CheckCircle2, MessageSquareOff, ImagePlus, X, Loader2 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import {
   Review,
@@ -11,6 +11,7 @@ import {
   hasPurchasedProduct,
   submitReview,
   summarizeReviews,
+  uploadReviewPhoto,
 } from '@/lib/reviews-api';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -93,6 +94,11 @@ export default function ReviewsSection({
   const [title, setTitle] = useState('');
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [photoFiles, setPhotoFiles] = useState<File[]>([]);
+  const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
+  const MAX_PHOTOS = 4;
 
   useEffect(() => {
     let cancelled = false;
@@ -120,6 +126,29 @@ export default function ReviewsSection({
 
   const summary = summarizeReviews(reviews);
 
+  const onPickPhotos = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    if (picked.length === 0) return;
+    setPhotoFiles((prev) => {
+      const combined = [...prev, ...picked].slice(0, MAX_PHOTOS);
+      if (prev.length + picked.length > MAX_PHOTOS) {
+        toast.info(`You can attach up to ${MAX_PHOTOS} photos`);
+      }
+      return combined;
+    });
+  };
+
+  useEffect(() => {
+    const urls = photoFiles.map((f) => URL.createObjectURL(f));
+    setPhotoPreviews(urls);
+    return () => urls.forEach((u) => URL.revokeObjectURL(u));
+  }, [photoFiles]);
+
+  const removePhoto = (idx: number) => {
+    setPhotoFiles((prev) => prev.filter((_, i) => i !== idx));
+  };
+
   const handleSubmit = async () => {
     if (rating === 0) {
       toast.error('Please select a star rating');
@@ -127,12 +156,17 @@ export default function ReviewsSection({
     }
     setSubmitting(true);
     try {
-      const review = await submitReview({ productId, rating, title, comment });
+      let photos: string[] = [];
+      if (photoFiles.length > 0) {
+        photos = await Promise.all(photoFiles.map(uploadReviewPhoto));
+      }
+      const review = await submitReview({ productId, rating, title, comment, photos });
       setMyReview(review);
       setFormOpen(false);
       setRating(0);
       setTitle('');
       setComment('');
+      setPhotoFiles([]);
       toast.success('Thanks! Your review will appear after a quick moderation check.');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not submit review');
@@ -223,9 +257,55 @@ export default function ReviewsSection({
               rows={4}
               maxLength={1000}
             />
+
+            <div className="mt-3">
+              <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                Add photos (optional) — {photoFiles.length}/{MAX_PHOTOS}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {photoPreviews.map((src, idx) => (
+                  <div
+                    key={idx}
+                    className="relative h-16 w-16 overflow-hidden rounded-md border border-border/60"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={src} alt={`Attached photo ${idx + 1}`} className="h-full w-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => removePhoto(idx)}
+                      className="absolute right-0.5 top-0.5 rounded-full bg-background/90 p-0.5 text-destructive shadow-sm hover:bg-background"
+                      aria-label="Remove photo"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+                {photoFiles.length < MAX_PHOTOS && (
+                  <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border text-muted-foreground hover:border-primary/40 hover:text-primary">
+                    <ImagePlus className="h-5 w-5" />
+                    <span className="text-[10px]">Add</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={onPickPhotos}
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+
             <div className="mt-3 flex gap-2">
               <Button onClick={handleSubmit} disabled={submitting} className="bg-primary">
-                {submitting ? 'Submitting...' : 'Submit Review'}
+                {submitting ? (
+                  <>
+                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  'Submit Review'
+                )}
               </Button>
               <Button variant="ghost" onClick={() => setFormOpen(false)}>
                 Cancel
@@ -263,6 +343,25 @@ export default function ReviewsSection({
                 {r.comment && (
                   <p className="mt-1 text-sm leading-relaxed text-foreground/80">{r.comment}</p>
                 )}
+                {r.photos && r.photos.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {r.photos.map((src, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setLightboxSrc(src)}
+                        className="h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border/60"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={src}
+                          alt={`Photo from ${r.customer_name}'s review`}
+                          className="h-full w-full object-cover"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <p className="mt-1.5 text-xs font-medium text-muted-foreground">
                   {r.customer_name} · Verified Purchase
                 </p>
@@ -271,6 +370,29 @@ export default function ReviewsSection({
           </ul>
         )}
       </div>
+
+      {lightboxSrc && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+          onClick={() => setLightboxSrc(null)}
+        >
+          <button
+            type="button"
+            aria-label="Close photo"
+            onClick={() => setLightboxSrc(null)}
+            className="absolute right-4 top-4 rounded-full bg-background/20 p-2 text-white hover:bg-background/30"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightboxSrc}
+            alt="Customer review photo enlarged"
+            className="max-h-[85vh] max-w-full rounded-lg object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }

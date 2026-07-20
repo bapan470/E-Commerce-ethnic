@@ -86,6 +86,7 @@ interface FormState {
   material: string;
   pattern: string;
   images: string[];
+  video_url: string;
   stock_quantity: string;
   low_stock_threshold: string;
   rating: string;
@@ -111,6 +112,7 @@ const emptyForm = (): FormState => ({
   material: '',
   pattern: '',
   images: [DEFAULT_IMAGE],
+  video_url: '',
   stock_quantity: '0',
   low_stock_threshold: '5',
   rating: '4.5',
@@ -137,6 +139,7 @@ const fromProduct = (p: Product): FormState => ({
   material: p.material || '',
   pattern: p.pattern || '',
   images: p.images.length ? p.images : [DEFAULT_IMAGE],
+  video_url: p.video_url || '',
   stock_quantity: String(p.stock_quantity),
   low_stock_threshold: String(p.low_stock_threshold ?? 5),
   rating: String(p.rating),
@@ -303,6 +306,7 @@ export default function ProductsPanel() {
       material: form.material.trim() || null,
       pattern: form.pattern.trim() || null,
       images,
+      video_url: form.video_url.trim() || null,
       stock_quantity: newStockQty,
       low_stock_threshold: Number(form.low_stock_threshold) || 5,
       rating: Number(form.rating) || 4.5,
@@ -835,6 +839,21 @@ export default function ProductsPanel() {
                 }
                 placeholder="One image URL per line"
               />
+            </div>
+
+            {/* Product video (shows as the first slide in the gallery, before photos) */}
+            <div className="grid gap-1.5">
+              <Label htmlFor="video_url">Product Video URL (optional)</Label>
+              <Input
+                id="video_url"
+                value={form.video_url}
+                onChange={(e) => setForm((f) => ({ ...f, video_url: e.target.value }))}
+                placeholder="https://... (.mp4 or .webm, hosted anywhere public)"
+              />
+              <p className="text-xs text-muted-foreground">
+                Short fabric/drape video. Shows as the first slide on the product page gallery,
+                before the photos — helps buyers see texture and movement.
+              </p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-4">

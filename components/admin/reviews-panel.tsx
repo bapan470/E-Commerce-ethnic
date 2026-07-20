@@ -174,6 +174,20 @@ export default function ReviewsPanel() {
                   )}
                   {r.title && <p className="mt-2 text-sm font-medium">{r.title}</p>}
                   {r.comment && <p className="mt-1 text-sm text-muted-foreground">{r.comment}</p>}
+                  {r.photos && r.photos.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {r.photos.map((url, idx) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <a key={idx} href={url} target="_blank" rel="noopener noreferrer">
+                          <img
+                            src={url}
+                            alt={`${r.customer_name} review photo ${idx + 1}`}
+                            className="h-14 w-14 rounded-md border border-border/60 object-cover"
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  )}
                   <p className="mt-2 text-xs text-muted-foreground">
                     {new Date(r.created_at).toLocaleString()}
                   </p>

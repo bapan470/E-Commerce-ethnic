@@ -27,6 +27,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
+import TrustBadges from '@/components/checkout/trust-badges';
 import { toast } from 'sonner';
 
 declare global {
@@ -841,6 +842,7 @@ export default function CheckoutPage() {
             <p className="mt-3 text-center text-[11px] text-muted-foreground">
               By placing your order, you agree to our Terms & Privacy Policy.
             </p>
+            <TrustBadges />
           </div>
         </aside>
       </form>

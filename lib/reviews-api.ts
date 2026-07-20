@@ -8,6 +8,7 @@ export interface Review {
   rating: number;
   title: string | null;
   comment: string | null;
+  photos: string[];
   is_approved: boolean;
   created_at: string;
 }
@@ -39,7 +40,7 @@ export async function fetchApprovedReviews(productId: string): Promise<Review[]>
     .eq('is_approved', true)
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []) as Review[];
+  return (data ?? []).map((r: any) => ({ ...r, photos: r.photos ?? [] })) as Review[];
 }
 
 /** Has the current logged-in user already reviewed this product? */
@@ -57,7 +58,7 @@ export async function fetchMyReviewForProduct(productId: string): Promise<Review
     .eq('user_id', user.id)
     .maybeSingle();
   if (error) throw error;
-  return (data as Review) ?? null;
+  return data ? ({ ...data, photos: (data as any).photos ?? [] } as Review) : null;
 }
 
 export interface AdminReview extends Review {
@@ -122,11 +123,25 @@ export async function hasPurchasedProduct(productId: string): Promise<boolean> {
   return (data ?? []).length > 0;
 }
 
+/** Upload one review photo to the public `review-images` bucket, returns its public URL. */
+export async function uploadReviewPhoto(file: File): Promise<string> {
+  const supabase = getSupabaseBrowser();
+  const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+  const path = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
+  const { error } = await supabase.storage
+    .from('review-images')
+    .upload(path, file, { cacheControl: '3600', upsert: false });
+  if (error) throw error;
+  const { data } = supabase.storage.from('review-images').getPublicUrl(path);
+  return data.publicUrl;
+}
+
 export async function submitReview(input: {
   productId: string;
   rating: number;
   title?: string;
   comment?: string;
+  photos?: string[];
 }): Promise<Review> {
   const supabase = getSupabaseBrowser();
   const {
@@ -148,6 +163,7 @@ export async function submitReview(input: {
       rating: input.rating,
       title: input.title || null,
       comment: input.comment || null,
+      photos: input.photos ?? [],
       is_approved: false,
     })
     .select('*')
