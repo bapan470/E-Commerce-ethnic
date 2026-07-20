@@ -2,9 +2,13 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Sparkles, Truck, ShieldCheck, Heart } from 'lucide-react';
 import { useProducts } from '@/lib/cart-context';
+import { fetchSiteBanner, SiteBanner } from '@/lib/settings-api';
 import ProductCard from '@/components/product-card';
+import CouponStrip from '@/components/home/coupon-strip';
+import PromoSlider from '@/components/home/promo-slider';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -13,9 +17,60 @@ export default function HomeClient() {
   const featured = products.filter((p) => p.featured).slice(0, 8);
   const newArrivals = products.slice(0, 4);
 
+  // Admin > Settings > Store Banner — same image shown storewide, but on
+  // the homepage it takes over the hero slot entirely (like a clearance
+  // banner) instead of stacking on top of the marketing copy below. Falls
+  // back to the default hero until the admin uploads one.
+  const [banner, setBanner] = useState<SiteBanner | null>(null);
+  useEffect(() => {
+    fetchSiteBanner()
+      .then((b) => setBanner(b.image_url ? b : null))
+      .catch(() => setBanner(null));
+  }, []);
+
+  // Each category row's circle is pulled live from that category's own
+  // products — the admin's Featured pick first, else just the newest —
+  // so adding/removing/replacing products updates these automatically.
+  const categoryThumbs = useMemo(() => {
+    const map = new Map<string, string | undefined>();
+    for (const c of categories) {
+      const inCat = products.filter((p) => p.category === c.name);
+      const best = inCat.find((p) => p.featured) || inCat[0];
+      map.set(c.id, best?.images?.[0]);
+    }
+    return map;
+  }, [categories, products]);
+
   return (
     <div className="flex flex-col">
       {/* Hero */}
+      {banner ? (
+        <section className="w-full">
+          {banner.link_url ? (
+            <Link href={banner.link_url} className="relative block aspect-[4/5] w-full sm:aspect-[16/6]">
+              <Image
+                src={banner.image_url}
+                alt="Current promotion"
+                fill
+                priority
+                sizes="100vw"
+                className="object-cover"
+              />
+            </Link>
+          ) : (
+            <div className="relative aspect-[4/5] w-full sm:aspect-[16/6]">
+              <Image
+                src={banner.image_url}
+                alt="Current promotion"
+                fill
+                priority
+                sizes="100vw"
+                className="object-cover"
+              />
+            </div>
+          )}
+        </section>
+      ) : (
       <section className="relative overflow-hidden bg-gradient-to-br from-primary via-primary to-primary/80">
         <div className="absolute inset-0 opacity-20">
           <div className="absolute -left-20 top-10 h-72 w-72 rounded-full bg-secondary/40 blur-3xl" />
@@ -79,6 +134,7 @@ export default function HomeClient() {
           </div>
         </div>
       </section>
+      )}
 
       {/* Trust strip */}
       <section className="border-b border-border/60 bg-card">
@@ -119,34 +175,49 @@ export default function HomeClient() {
             View all <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-4 gap-x-3 gap-y-6 sm:grid-cols-6 lg:grid-cols-8">
           {loading
-            ? Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="aspect-[3/4] rounded-lg" />
+            ? Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} className="flex flex-col items-center gap-2">
+                  <Skeleton className="h-16 w-16 rounded-full sm:h-20 sm:w-20" />
+                  <Skeleton className="h-3 w-12 rounded" />
+                </div>
               ))
-            : categories.map((c) => (
-                <Link
-                  key={c.id}
-                  href={`/shop?category=${encodeURIComponent(c.name)}`}
-                  className="group relative aspect-[3/4] overflow-hidden rounded-lg border border-border/60"
-                >
-                  <Image
-                    src="https://images.pexels.com/photos/1191349/pexels-photo-1191349.jpeg?auto=compress&cs=tinysrgb&w=600&h=700&fit=crop"
-                    alt={`${c.name} - handwoven Indian ethnic wear collection at Aruhi Handlooms`}
-                    fill
-                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
-                    className="object-cover transition-transform duration-500 group-hover:scale-110"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-primary/80 via-primary/20 to-transparent" />
-                  <div className="absolute bottom-0 left-0 right-0 p-3 text-primary-foreground">
-                    <p className="font-serif text-sm font-semibold leading-tight">
+            : categories.map((c) => {
+                const thumb = categoryThumbs.get(c.id);
+                return (
+                  <Link
+                    key={c.id}
+                    href={`/shop?category=${encodeURIComponent(c.name)}`}
+                    className="group flex flex-col items-center gap-2 text-center"
+                  >
+                    <div className="relative h-16 w-16 overflow-hidden rounded-full border border-border/60 bg-muted shadow-sm transition-transform duration-300 group-hover:scale-105 sm:h-20 sm:w-20">
+                      {thumb ? (
+                        <Image
+                          src={thumb}
+                          alt={`${c.name} - handwoven Indian ethnic wear collection at Aruhi Handlooms`}
+                          fill
+                          sizes="80px"
+                          className="object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground">
+                          {c.name.slice(0, 1)}
+                        </div>
+                      )}
+                    </div>
+                    <p className="line-clamp-2 font-serif text-xs font-semibold leading-tight text-foreground sm:text-sm">
                       {c.name}
                     </p>
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                );
+              })}
         </div>
       </section>
+
+      <PromoSlider />
+
+      <CouponStrip />
 
       {/* Featured */}
       <section className="bg-muted/40 py-14">

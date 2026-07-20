@@ -80,6 +80,68 @@ export async function setCouponShowOnProductPage(id: string, show_on_product_pag
 }
 
 // ---------------------------------------------------------------------
+// Storefront display (homepage promo strip)
+// ---------------------------------------------------------------------
+
+/**
+ * Picks one coupon to headline on the homepage: must be active, not
+ * expired, and not past its usage limit. Percentage coupons are preferred
+ * (they read as a bigger, more attention-grabbing offer), then the highest
+ * value. Returns null when nothing qualifies, so the homepage section can
+ * simply not render rather than show a stale offer.
+ */
+export async function fetchHomepageCoupon(): Promise<Coupon | null> {
+  const { data, error } = await supabase
+    .from('coupons')
+    .select('*')
+    .eq('is_active', true);
+  if (error) throw error;
+
+  const now = Date.now();
+  const eligible = ((data ?? []) as Coupon[]).filter(
+    (c) =>
+      (!c.expires_at || new Date(c.expires_at).getTime() > now) &&
+      (c.usage_limit === null || c.times_used < c.usage_limit)
+  );
+  if (eligible.length === 0) return null;
+
+  eligible.sort((a, b) => {
+    if (a.discount_type !== b.discount_type) {
+      return a.discount_type === 'percentage' ? -1 : 1;
+    }
+    return b.discount_value - a.discount_value;
+  });
+  return eligible[0];
+}
+
+/**
+ * Every coupon currently eligible to be shown to shoppers (active, not
+ * expired, under its usage limit) — used by the homepage coupon strip so
+ * ALL live offers show up, not just one. Sorted highest-value first.
+ */
+export async function fetchAllActiveCoupons(): Promise<Coupon[]> {
+  const { data, error } = await supabase
+    .from('coupons')
+    .select('*')
+    .eq('is_active', true);
+  if (error) throw error;
+
+  const now = Date.now();
+  const eligible = ((data ?? []) as Coupon[]).filter(
+    (c) =>
+      (!c.expires_at || new Date(c.expires_at).getTime() > now) &&
+      (c.usage_limit === null || c.times_used < c.usage_limit)
+  );
+  eligible.sort((a, b) => {
+    if (a.discount_type !== b.discount_type) {
+      return a.discount_type === 'percentage' ? -1 : 1;
+    }
+    return b.discount_value - a.discount_value;
+  });
+  return eligible;
+}
+
+// ---------------------------------------------------------------------
 // Storefront display (product page "Available Coupons" list)
 // ---------------------------------------------------------------------
 
