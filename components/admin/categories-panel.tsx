@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, FormEvent } from 'react';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState, FormEvent } from 'react';
+import { Plus, Pencil, Trash2, Search, X } from 'lucide-react';
 import { useProducts } from '@/lib/cart-context';
 import {
   createCategory,
@@ -43,6 +43,18 @@ export default function CategoriesPanel() {
   const [saving, setSaving] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<CategoryRow | null>(null);
   const [confirmCount, setConfirmCount] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredCategories = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return categories;
+    return categories.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        c.slug.toLowerCase().includes(q) ||
+        (c.description ?? '').toLowerCase().includes(q)
+    );
+  }, [categories, searchQuery]);
 
   useEffect(() => {
     refresh();
@@ -124,12 +136,36 @@ export default function CategoriesPanel() {
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">Admin</p>
           <h1 className="mt-1 font-serif text-3xl font-bold text-primary sm:text-4xl">Categories</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {loading ? 'Loading…' : `${categories.length} categor${categories.length === 1 ? 'y' : 'ies'}`}
+            {loading
+              ? 'Loading…'
+              : searchQuery
+              ? `${filteredCategories.length} of ${categories.length} categor${categories.length === 1 ? 'y' : 'ies'}`
+              : `${categories.length} categor${categories.length === 1 ? 'y' : 'ies'}`}
           </p>
         </div>
         <Button onClick={openNew} className="bg-primary">
           <Plus className="mr-1 h-4 w-4" /> Add Category
         </Button>
+      </div>
+
+      <div className="mb-4 relative w-full sm:max-w-xs">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search name, slug, description…"
+          className="pl-9 pr-8"
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={() => setSearchQuery('')}
+            aria-label="Clear search"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       <div className="overflow-hidden rounded-lg border border-border/60 bg-card">
@@ -143,7 +179,7 @@ export default function CategoriesPanel() {
             </tr>
           </thead>
           <tbody>
-            {categories.map((c) => (
+            {filteredCategories.map((c) => (
               <tr key={c.id} className="border-t">
                 <td className="px-4 py-3 text-sm font-medium">{c.name}</td>
                 <td className="px-4 py-3 text-sm text-muted-foreground">{c.slug}</td>
@@ -165,6 +201,13 @@ export default function CategoriesPanel() {
                 </td>
               </tr>
             ))}
+            {!loading && categories.length > 0 && filteredCategories.length === 0 && (
+              <tr>
+                <td colSpan={4} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  No categories match your search.
+                </td>
+              </tr>
+            )}
             {!loading && categories.length === 0 && (
               <tr>
                 <td colSpan={4} className="px-4 py-8 text-center text-sm text-muted-foreground">
