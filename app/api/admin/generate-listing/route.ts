@@ -14,7 +14,12 @@ export const maxDuration = 60;
 // Get a free API key (nvapi-...) at https://build.nvidia.com — no credit card,
 // ~1,000 free inference credits on signup. Swap this string for any other
 // vision-capable model in the NIM catalog if you want to try alternatives.
-const MODEL = 'meta/llama-3.2-90b-vision-instruct';
+//
+// Using the 11B model instead of 90B: the 90B model was regularly taking
+// 55s+ on the free tier, which blows past Vercel Hobby's 60s hard timeout
+// ceiling. 11B is noticeably faster while still handling this task
+// (extracting fabric/color/pattern details from a product photo) well.
+const MODEL = 'meta/llama-3.2-11b-vision-instruct';
 const NIM_ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions';
 
 interface GeneratedHighlights {
