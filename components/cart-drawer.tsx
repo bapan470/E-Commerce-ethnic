@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Minus, Plus, Trash2, ShoppingBag, Tag, ArrowLeft, X, Loader2 } from 'lucide-react';
@@ -40,6 +40,83 @@ export default function CartDrawer() {
   const [applyingCoupon, setApplyingCoupon] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
 
+  // Swipe-to-close for the side cart on mobile — drag the panel toward the
+  // right edge (the side it slides in from) to dismiss it, same gesture
+  // shoppers already expect from apps like this. Kept as plain touch
+  // handlers + direct style writes on the panel DOM node (not React state
+  // per move) so dragging feels immediate with no re-render lag. Only
+  // engages once a touch clearly moves more horizontally than vertically,
+  // so scrolling the item list up/down is never hijacked.
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{
+    startX: number;
+    startY: number;
+    lastX: number;
+    lastT: number;
+    velocity: number;
+    mode: 'undecided' | 'horizontal' | 'vertical';
+  } | null>(null);
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    dragRef.current = {
+      startX: t.clientX,
+      startY: t.clientY,
+      lastX: t.clientX,
+      lastT: Date.now(),
+      velocity: 0,
+      mode: 'undecided',
+    };
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const t = e.touches[0];
+    const dx = t.clientX - drag.startX;
+    const dy = t.clientY - drag.startY;
+
+    if (drag.mode === 'undecided') {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      drag.mode = Math.abs(dx) > Math.abs(dy) && dx > 0 ? 'horizontal' : 'vertical';
+    }
+    if (drag.mode !== 'horizontal') return;
+
+    e.preventDefault();
+    const now = Date.now();
+    const dt = now - drag.lastT;
+    if (dt > 0) drag.velocity = (t.clientX - drag.lastX) / dt;
+    drag.lastX = t.clientX;
+    drag.lastT = now;
+
+    const translate = Math.max(0, dx);
+    if (panelRef.current) {
+      panelRef.current.style.transition = 'none';
+      panelRef.current.style.transform = `translateX(${translate}px)`;
+    }
+  };
+
+  const onTouchEnd = () => {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    if (!drag || drag.mode !== 'horizontal' || !panelRef.current) return;
+
+    const dx = Math.max(0, drag.lastX - drag.startX);
+    const panelWidth = panelRef.current.offsetWidth || 1;
+    const shouldClose = dx > panelWidth * 0.3 || drag.velocity > 0.5;
+
+    if (shouldClose) {
+      // Hand off to Radix's own close animation instead of fighting it
+      // with our inline transform.
+      panelRef.current.style.transition = '';
+      panelRef.current.style.transform = '';
+      setCartOpen(false);
+    } else {
+      panelRef.current.style.transition = 'transform 200ms ease';
+      panelRef.current.style.transform = 'translateX(0px)';
+    }
+  };
+
   const handleApplyCoupon = async () => {
     if (!couponInput.trim()) return;
     setCouponError(null);
@@ -60,10 +137,24 @@ export default function CartDrawer() {
   };
 
   return (
-    <Sheet open={isCartOpen} onOpenChange={setCartOpen}>
+    <Sheet
+      open={isCartOpen}
+      onOpenChange={(open) => {
+        if (open && panelRef.current) {
+          panelRef.current.style.transition = '';
+          panelRef.current.style.transform = '';
+        }
+        setCartOpen(open);
+      }}
+    >
       <SheetContent
+        ref={panelRef}
         side="right"
         className="flex w-full flex-col gap-0 bg-background p-0 sm:max-w-md"
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onTouchCancel={onTouchEnd}
       >
         <SheetHeader className="flex-row items-center gap-3 space-y-0 border-b border-border/60 p-5">
           <button

@@ -83,8 +83,23 @@ tumhara khud ka main item (chahe wahi product admin ne bump ke liye bhi
 select kar rakha ho) kabhi galti se hide nahi hoga.
 
 --------------------------------
-Verify kiya hai
+NAYA: Side cart (mobile) ab swipe se bhi close ho sakta hai
 --------------------------------
+File: components/cart-drawer.tsx
+
+Pehle side cart drawer sirf X (cross) tap karne se ya overlay pe tap
+karne se band hota tha. Ab mobile pe panel ko finger se right side
+(jis taraf se wo aaya tha) ki taraf drag/swipe karne se bhi close ho
+jaata hai — jaise finger chhodo, panel wapas snap ho jaata hai agar
+kaafi dur tak nahi khincha, ya poora slide-out ho jaata hai agar
+threshold (~30% width) cross kiya ya fling jaisi speed thi.
+
+Item list ko upar-neeche scroll karna is se affect nahi hota — swipe
+sirf tabhi "close" gesture maana jaata hai jab horizontal movement
+vertical se zyada ho; warna normal vertical scroll hi hota hai. X
+button bhi pehle jaisa hi kaam karta hai, ye sirf ek extra tareeka hai.
+
+
   - npx tsc --noEmit  -> koi type error nahi
   - npx next lint      -> sirf pre-existing (mere changes se pehle wale,
     unrelated) warnings/errors hain, jo pehle se repo mein the
