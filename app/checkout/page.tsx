@@ -33,6 +33,7 @@ import {
   fetchCheckoutBumpSettings,
 } from '@/lib/checkout-bump-api';
 import { fetchProductById } from '@/lib/products-api';
+import { decrementStockForOrder } from '@/lib/stock-api';
 import { Product, CartItem } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -684,6 +685,7 @@ export default function CheckoutPage() {
         }
         setOrderPlaced(true);
         clearOrderedItems();
+        decrementStockForOrder(orderItems).catch(() => {});
         trackEvent('purchase', {
           orderId: internalOrderId,
           userId: loggedInUser?.id ?? null,
@@ -736,6 +738,7 @@ export default function CheckoutPage() {
       }
       setOrderPlaced(true);
       clearOrderedItems();
+      decrementStockForOrder(orderItems).catch(() => {});
       trackEvent('purchase', {
         orderId: internalOrderId,
         userId: loggedInUser?.id ?? null,

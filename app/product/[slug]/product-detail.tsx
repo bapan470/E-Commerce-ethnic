@@ -75,11 +75,21 @@ export default function ProductDetail() {
   // it twice — declared up here with the other hooks since this component
   // has early returns further down while data is still loading.
   const buyNowNavigatingRef = useRef(false);
+  // Set right before handleSelectVariant updates the URL, so the slug-fetch
+  // effect below (which reacts to params.slug) knows this particular slug
+  // change was a colour swap it already has data for, not a real navigation
+  // — otherwise it would re-fetch and flash a loading skeleton on every
+  // colour tap, exactly what that effect exists to avoid.
+  const variantUrlSwapRef = useRef(false);
 
   // The URL slug might belong either to a base product or to one of its
   // colour variants (independent SEO pages). Try the product table first;
   // if nothing matches, fall back to a variant lookup.
   useEffect(() => {
+    if (variantUrlSwapRef.current) {
+      variantUrlSwapRef.current = false;
+      return;
+    }
     if (fromContext) {
       setVariant(null);
       return;
@@ -116,7 +126,18 @@ export default function ProductDetail() {
   // sizes (needed for stock accuracy) fill in a moment later in the background.
   const handleSelectVariant = (v: ProductVariant) => {
     setVariant((prev) => ({ ...v, sizes: prev?.slug === v.slug ? prev.sizes : [] }));
-    window.history.replaceState(null, '', `/product/${v.slug}`);
+    // Using router.replace here (instead of a raw window.history.replaceState)
+    // matters: a raw history call changes the address bar without telling
+    // Next.js's own router, so its internal idea of "current route" stays on
+    // the old slug while the visible URL shows the new one. That mismatch is
+    // what made the checkout back button (and native back/swipe in general)
+    // need two taps after switching colour — Next's router had to catch up
+    // on the first tap before back navigation could work correctly. `scroll:
+    // false` keeps this from jumping the page, and because the component
+    // stays mounted and only its state changes, no data re-fetch or reload
+    // happens — same instant swap as before.
+    variantUrlSwapRef.current = true;
+    router.replace(`/product/${v.slug}`, { scroll: false });
     fetchVariantBySlug(v.slug)
       .then((res) => {
         if (res) setVariant(res.variant);

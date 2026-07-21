@@ -48,36 +48,39 @@ export default function Header() {
     pathname.startsWith('/product/');
 
   // Browser history depth isn't reliable enough to build a "one tap always
-  // works" back button on — prefetching, redirects, and how a page was
-  // first opened can all change how many entries are really on the stack,
-  // which is what made this button sometimes need two taps. On /checkout
-  // specifically, we instead use the exact page markCheckoutEntry()
-  // recorded when the shopper navigated here (see lib/checkout-return.ts)
-  // and push straight to it — no history stack involved, so it's always
-  // exactly one tap. Everywhere else, native history.back() is still used
-  // since next/navigation's router.back() can lag a tap behind its own
-  // route cache.
+  // works" back button on — prefetching, redirects, colour-swatch URL swaps
+  // (see handleSelectVariant in product-detail.tsx, which updates the URL
+  // with a raw history.replaceState so switching colour never reloads the
+  // page) can all leave Next.js's own idea of "current route" out of sync
+  // with the real browser history stack. That mismatch is what made native
+  // back (hardware back button, edge-swipe gesture, or the browser's own
+  // back button) sometimes need two taps to actually leave /checkout —
+  // especially on a colour-variant page. So on /checkout specifically, we
+  // don't trust history depth at all: we use the exact page
+  // markCheckoutEntry() recorded when the shopper navigated here (see
+  // lib/checkout-return.ts) and push straight to it.
   //
   // Buy Now is special: it's a single-item express checkout that never
-  // touches the real cart. If the shopper backs out of it, we don't want
-  // that item to just vanish — so we drop it into the real cart and pop
-  // open the side cart drawer instead of silently landing back on the
-  // product page with nothing to show for it.
+  // touches the real cart. If the shopper backs out of it (by any method),
+  // we don't want that item to just vanish, so we drop it into the real
+  // cart — but we don't force the side cart drawer open; the shopper just
+  // lands back on the page they were on, same as any other back nav.
+  const recoverFromCheckout = (returnPath: string | null) => {
+    if (isCheckoutReturnFromBuyNow()) {
+      if (buyNowItem) {
+        addItem(buyNowItem.product, buyNowItem.size, buyNowItem.quantity);
+      }
+      clearBuyNow();
+      clearCheckoutReturnBuyNowFlag();
+    }
+    return returnPath;
+  };
+
   const handleBack = () => {
     if (pathname.startsWith('/checkout')) {
-      const returnPath = getCheckoutReturnPath();
-      if (isCheckoutReturnFromBuyNow() && buyNowItem) {
-        addItem(buyNowItem.product, buyNowItem.size, buyNowItem.quantity);
-        clearBuyNow();
-        clearCheckoutReturnBuyNowFlag();
-        router.push(returnPath || '/');
-        setCartOpen(true);
-        return;
-      }
-      if (returnPath) {
-        router.push(returnPath);
-        return;
-      }
+      const returnPath = recoverFromCheckout(getCheckoutReturnPath());
+      router.push(returnPath || '/');
+      return;
     }
     if (typeof window !== 'undefined' && window.history.length > 1) {
       window.history.back();
@@ -85,6 +88,30 @@ export default function Header() {
       router.back();
     }
   };
+
+  // Tapping our own arrow above is one way off /checkout — but the shopper
+  // can just as easily leave it with the phone's hardware back button, an
+  // edge-swipe gesture, or the browser's native back button. None of those
+  // call handleBack, so without this they'd skip the Buy Now recovery above
+  // and could land wherever the (unreliable) history stack happened to
+  // point, which is exactly the "needs two taps" bug. This watches for the
+  // route actually changing away from /checkout — however it happened —
+  // and replays the same recovery, correcting the landing page to the
+  // exact page markCheckoutEntry() recorded if native back didn't land
+  // there itself.
+  const pathnameRef = useRef(pathname);
+  useEffect(() => {
+    const wasOnCheckout = pathnameRef.current?.startsWith('/checkout');
+    const nowOnCheckout = pathname.startsWith('/checkout');
+    if (wasOnCheckout && !nowOnCheckout) {
+      const returnPath = recoverFromCheckout(getCheckoutReturnPath());
+      if (returnPath && returnPath !== pathname + window.location.search) {
+        router.replace(returnPath);
+      }
+    }
+    pathnameRef.current = pathname;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   const suggestions = useMemo(() => {
     const q = query.trim().toLowerCase();
