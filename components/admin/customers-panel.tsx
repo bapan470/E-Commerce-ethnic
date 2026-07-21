@@ -1,9 +1,18 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronUp, Eye, ShoppingCart, CheckCircle2, XCircle } from 'lucide-react';
+import { ChevronDown, ChevronUp, Eye, ShoppingCart, CheckCircle2, XCircle, Search, X } from 'lucide-react';
 import { fetchCustomers, CustomerRow } from '@/lib/customers-api';
 import { formatINR } from '@/lib/format';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
 
 export default function CustomersPanel() {
@@ -11,6 +20,8 @@ export default function CustomersPanel() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [registrationFilter, setRegistrationFilter] = useState<'all' | 'registered' | 'guest'>('all');
+  const [orderedFilter, setOrderedFilter] = useState<'all' | 'ordered' | 'no_order'>('all');
 
   useEffect(() => {
     fetchCustomers()
@@ -21,14 +32,26 @@ export default function CustomersPanel() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return customers;
-    return customers.filter(
-      (c) =>
+    return customers.filter((c) => {
+      const matchesQuery =
+        !q ||
         c.name.toLowerCase().includes(q) ||
         (c.email ?? '').toLowerCase().includes(q) ||
-        (c.phone ?? '').toLowerCase().includes(q)
-    );
-  }, [customers, search]);
+        (c.phone ?? '').toLowerCase().includes(q);
+
+      const matchesRegistration =
+        registrationFilter === 'all' ||
+        (registrationFilter === 'registered' ? c.isRegistered : !c.isRegistered);
+
+      const matchesOrdered =
+        orderedFilter === 'all' ||
+        (orderedFilter === 'ordered' ? c.behavior.converted : !c.behavior.converted);
+
+      return matchesQuery && matchesRegistration && matchesOrdered;
+    });
+  }, [customers, search, registrationFilter, orderedFilter]);
+
+  const filtersActive = !!search || registrationFilter !== 'all' || orderedFilter !== 'all';
 
   return (
     <div className="grid gap-6">
@@ -37,16 +60,72 @@ export default function CustomersPanel() {
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">Admin</p>
           <h1 className="mt-1 font-serif text-3xl font-bold text-primary sm:text-4xl">Customers</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {loading ? 'Loading…' : `${customers.length} customer${customers.length === 1 ? '' : 's'}`} — built
-            from order history and site activity
+            {loading
+              ? 'Loading…'
+              : filtersActive
+              ? `${filtered.length} of ${customers.length} customers`
+              : `${customers.length} customer${customers.length === 1 ? '' : 's'}`}{' '}
+            — built from order history and site activity
           </p>
         </div>
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search name, email or phone…"
-          className="w-full max-w-xs rounded-md border border-input bg-background px-3 py-2 text-sm"
-        />
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative w-full max-w-xs">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search name, email or phone…"
+              className="pl-9 pr-8"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+
+          <Select value={registrationFilter} onValueChange={(v) => setRegistrationFilter(v as typeof registrationFilter)}>
+            <SelectTrigger className="w-[130px]">
+              <SelectValue placeholder="All Customers" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Customers</SelectItem>
+              <SelectItem value="registered">Registered</SelectItem>
+              <SelectItem value="guest">Guest</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={orderedFilter} onValueChange={(v) => setOrderedFilter(v as typeof orderedFilter)}>
+            <SelectTrigger className="w-[130px]">
+              <SelectValue placeholder="All Behavior" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Behavior</SelectItem>
+              <SelectItem value="ordered">Ordered</SelectItem>
+              <SelectItem value="no_order">No order</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {filtersActive && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSearch('');
+                setRegistrationFilter('all');
+                setOrderedFilter('all');
+              }}
+            >
+              Reset
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-lg border border-border/60 bg-card">

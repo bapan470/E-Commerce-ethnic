@@ -1,9 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Loader2, ShoppingCart, Mail, CheckCircle2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Loader2, ShoppingCart, Mail, CheckCircle2, Search, X } from 'lucide-react';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
 
 type AbandonedCart = {
@@ -21,6 +29,8 @@ export default function AbandonedCartsPanel() {
   const [carts, setCarts] = useState<AbandonedCart[]>([]);
   const [loading, setLoading] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'recovered' | 'sent' | 'not_contacted'>('all');
 
   const load = async () => {
     setLoading(true);
@@ -65,6 +75,22 @@ export default function AbandonedCartsPanel() {
   const recoveredCount = carts.filter((c) => c.recovered).length;
   const potentialValue = carts.filter((c) => !c.recovered).reduce((s, c) => s + (c.cart_value || 0), 0);
 
+  const filteredCarts = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return carts.filter((c) => {
+      const matchesQuery = !q || (c.email ?? '').toLowerCase().includes(q);
+      const matchesStatus =
+        statusFilter === 'all'
+          ? true
+          : statusFilter === 'recovered'
+          ? c.recovered
+          : statusFilter === 'sent'
+          ? !c.recovered && c.recovery_email_sent
+          : !c.recovered && !c.recovery_email_sent;
+      return matchesQuery && matchesStatus;
+    });
+  }, [carts, searchQuery, statusFilter]);
+
   return (
     <div className="grid gap-6">
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
@@ -82,6 +108,56 @@ export default function AbandonedCartsPanel() {
         </div>
       </div>
 
+      {!loading && carts.length > 0 && (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative w-full sm:max-w-xs">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by email…"
+              className="pl-9 pr-8"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
+              <SelectTrigger className="w-[170px]">
+                <SelectValue placeholder="All Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="recovered">Recovered</SelectItem>
+                <SelectItem value="sent">Email Sent</SelectItem>
+                <SelectItem value="not_contacted">Not Contacted</SelectItem>
+              </SelectContent>
+            </Select>
+            {(searchQuery || statusFilter !== 'all') && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSearchQuery('');
+                  setStatusFilter('all');
+                }}
+              >
+                Reset
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center py-16 text-muted-foreground">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading...
@@ -93,6 +169,10 @@ export default function AbandonedCartsPanel() {
           <p className="text-sm">
             Carts show up here once a shopper enters their email at checkout but doesn't complete the order.
           </p>
+        </div>
+      ) : filteredCarts.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border/60 bg-card px-4 py-12 text-center text-sm text-muted-foreground">
+          No abandoned carts match your search or filter.
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-border/60 bg-card">
@@ -108,7 +188,7 @@ export default function AbandonedCartsPanel() {
               </tr>
             </thead>
             <tbody>
-              {carts.map((c) => (
+              {filteredCarts.map((c) => (
                 <tr key={c.id} className="border-t">
                   <td className="px-4 py-3 align-top text-sm">{c.email || '—'}</td>
                   <td className="px-4 py-3 align-top text-sm text-muted-foreground">
