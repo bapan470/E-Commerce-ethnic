@@ -187,10 +187,11 @@ export default function ProductVariantsManager({ productId, productName, product
     }
     setDetectingColor(true);
     try {
+      const existingColors = variants.filter((v) => v.id !== editing?.id).map((v) => v.color);
       const res = await fetch('/api/admin/detect-variant-color', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageUrl }),
+        body: JSON.stringify({ imageUrl, existingColors }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -283,6 +284,15 @@ export default function ProductVariantsManager({ productId, productName, product
     }
     if (!form.color.trim()) {
       toast.error('Colour name is required');
+      return;
+    }
+    const nameTaken = variants.some(
+      (v) => v.id !== editing?.id && v.color.trim().toLowerCase() === form.color.trim().toLowerCase()
+    );
+    if (nameTaken) {
+      toast.error(
+        `"${form.color.trim()}" is already used by another colour on this product. Give this shade a more specific name (e.g. "Steel Blue" instead of "Blue") so it saves as its own variant.`
+      );
       return;
     }
     if (form.images.length === 0) {

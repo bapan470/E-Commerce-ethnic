@@ -31,15 +31,21 @@ async function fetchImageAsDataUri(imageUrl: string) {
   return `data:${mimeType};base64,${buffer.toString('base64')}`;
 }
 
-function buildPrompt() {
+function buildPrompt(existingColors: string[]) {
   const presetNames = COLOR_PRESETS.map((c) => c.name).join(', ');
+  const existingBlock =
+    existingColors.length > 0
+      ? `\n\nThis specific product already has these colour variants: ${existingColors.join(', ')}. Do NOT reuse any of these exact names for a different photo — if this shade is close to one of them, pick a more precise, distinguishing name instead (e.g. if "Blue" is taken, call a different blue shade "Steel Blue" or "Cobalt Blue", whichever actually matches what you see).`
+      : '';
   return `You are a merchandiser for an Indian ethnic-wear store (sarees, lehengas, kurtis). Look at the attached product photo and identify the main garment's dominant colour — ignore the background, model's skin tone, and any props.
 
-Our colour library (pick the closest match if one fits well): ${presetNames}.
+Our colour library (for reference/inspiration only — you are NOT limited to it): ${presetNames}.
+
+Be precise, not generic. A store often stocks several distinct shades of the same base colour (e.g. Navy Blue, Sky Blue, Royal Blue, Steel Blue, Denim Blue, Cobalt Blue are all "blue" but must stay distinguishable as separate products). If the photo's shade is clearly a specific, more precise variant of a library colour, use that more precise two-word name (e.g. "Steel Blue", not just "Blue") instead of defaulting to the broad/generic library name. Only use a bare, one-word library name like "Blue", "Green" or "Pink" when the shade genuinely is that plain, unremarkable, textbook colour with no distinct undertone worth naming. When unsure between a generic and a specific name, prefer the specific one.${existingBlock}
 
 Respond with ONLY a JSON object (no markdown fences, no preamble) with these exact keys:
 {
-  "color": "the closest matching name from the colour library above, OR a short natural colour name (1-2 words, e.g. 'Peacock Blue') if nothing in the library is a good match",
+  "color": "the most precise natural colour name for this exact shade (1-3 words, e.g. 'Peacock Blue', 'Steel Blue', 'Coral Pink') — favour specificity over matching the library exactly, and never reuse a name already listed above",
   "colorHex": "a precise hex code (e.g. '#6D071A') for the exact shade you see in the photo"
 }
 
@@ -63,6 +69,9 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}));
   const imageUrl = (body?.imageUrl as string | undefined)?.trim() || '';
+  const existingColors = Array.isArray(body?.existingColors)
+    ? (body.existingColors as unknown[]).filter((c): c is string => typeof c === 'string' && c.trim().length > 0)
+    : [];
   if (!imageUrl) {
     return NextResponse.json({ error: 'Give a variant photo to detect the colour from.' }, { status: 400 });
   }
@@ -74,7 +83,7 @@ export async function POST(req: Request) {
     }
 
     const userContent = [
-      { type: 'text', text: buildPrompt() },
+      { type: 'text', text: buildPrompt(existingColors) },
       { type: 'image_url', image_url: { url: imageDataUri } },
     ];
 
