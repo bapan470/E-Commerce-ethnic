@@ -46,6 +46,21 @@ export default function Header() {
     pathname.startsWith('/checkout') ||
     pathname.startsWith('/product/');
 
+  // next/navigation's router.back() goes through Next's client-side route
+  // cache (App Router, Next 13.5), which sometimes needs a second tap
+  // before it actually pops the page — the first click just re-resolves
+  // the cache silently. Falling back to the browser's native history.back()
+  // avoids that layer entirely, so one tap reliably goes back. We only
+  // reach for router.back() if there's truly nowhere for native history to
+  // go (e.g. this tab was opened directly on this page).
+  const handleBack = () => {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      window.history.back();
+    } else {
+      router.back();
+    }
+  };
+
   const suggestions = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (q.length < 2) return [];
@@ -103,7 +118,7 @@ export default function Header() {
               size="icon"
               className="shrink-0 md:hidden"
               aria-label="Go back"
-              onClick={() => router.back()}
+              onClick={handleBack}
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>

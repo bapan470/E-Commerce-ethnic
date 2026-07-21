@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -70,6 +70,10 @@ export default function ProductDetail() {
   // into the shared cart coupon (lib/cart-context.tsx) once Add to Cart is
   // clicked and the item — and therefore the real cart subtotal — exists.
   const [pendingCouponCode, setPendingCouponCode] = useState<string | null>(null);
+  // Guards handleBuyNow (defined below) against a fast double-tap firing
+  // it twice — declared up here with the other hooks since this component
+  // has early returns further down while data is still loading.
+  const buyNowNavigatingRef = useRef(false);
 
   // The URL slug might belong either to a base product or to one of its
   // colour variants (independent SEO pages). Try the product table first;
@@ -297,6 +301,11 @@ export default function ProductDetail() {
       toast.error('Please select a size');
       return;
     }
+    // Guard against a fast double-tap firing this twice — that would push
+    // /checkout onto history twice, and the back button would then need
+    // an extra click to actually leave the checkout page.
+    if (buyNowNavigatingRef.current) return;
+    buyNowNavigatingRef.current = true;
     startBuyNow(product, selectedSize, quantity);
     if (appliedCoupon) {
       applyCartCoupon(appliedCoupon.code, product.price * quantity, 1).then((result) => {
