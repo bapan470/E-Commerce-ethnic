@@ -2,6 +2,14 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 
+// Vercel kills serverless functions after 10s by default (Hobby plan).
+// The NVIDIA vision model + image fetch routinely takes longer than that on
+// the free tier, which was silently truncating this request before it could
+// respond — the admin panel would spin forever then fail with an empty form
+// and no real error message. This tells Vercel to allow up to 60s (the max
+// on Hobby; Pro/Enterprise can go higher).
+export const maxDuration = 60;
+
 // Free-tier NVIDIA NIM vision-language model (build.nvidia.com).
 // Get a free API key (nvapi-...) at https://build.nvidia.com — no credit card,
 // ~1,000 free inference credits on signup. Swap this string for any other
@@ -101,7 +109,14 @@ For the "highlights" object: look closely at the attached photo (if any) and inf
 
 /** Fetches a product image and returns it as a base64 data: URI for NIM's image_url input. */
 async function fetchImageAsDataUri(imageUrl: string) {
-  const res = await fetch(imageUrl);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  let res: Response;
+  try {
+    res = await fetch(imageUrl, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
   if (!res.ok) return null;
   const mimeType = res.headers.get('content-type') || 'image/jpeg';
   const buffer = Buffer.from(await res.arrayBuffer());
@@ -163,13 +178,19 @@ export async function POST(req: Request) {
         ]
       : promptText;
 
-    const res = await fetch(NIM_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
+    const nimController = new AbortController();
+    const nimTimeout = setTimeout(() => nimController.abort(), 55_000);
+
+    let res: Response;
+    try {
+      res = await fetch(NIM_ENDPOINT, {
+        method: 'POST',
+        signal: nimController.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
         model: MODEL,
         messages: [{ role: 'user', content: userContent }],
         temperature: 0.4,
@@ -233,7 +254,10 @@ export async function POST(req: Request) {
           },
         },
       }),
-    });
+      });
+    } finally {
+      clearTimeout(nimTimeout);
+    }
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
@@ -269,9 +293,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ listing: parsed });
   } catch (err) {
     console.error('[generate-listing] error:', err);
+    const timedOut = err instanceof Error && err.name === 'AbortError';
     return NextResponse.json(
-      { error: 'Could not generate a listing right now. Please try again.' },
-      { status: 500 }
+      {
+        error: timedOut
+          ? 'AI is taking too long to respond (free tier can be slow). Please try again in a minute.'
+          : 'Could not generate a listing right now. Please try again.',
+      },
+      { status: timedOut ? 504 : 500 }
     );
   }
 }

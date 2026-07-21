@@ -228,7 +228,17 @@ export default function ProductsPanel() {
           imageUrl: referenceImage || undefined,
         }),
       });
-      const data = await res.json();
+      let data: any;
+      try {
+        data = await res.json();
+      } catch {
+        toast.error(
+          res.status === 504 || res.status === 502
+            ? 'AI took too long to respond. Please try again.'
+            : `AI generation failed (server returned an unexpected response, status ${res.status}).`
+        );
+        return;
+      }
       if (!res.ok) {
         toast.error(data.error || 'AI generation failed');
         return;
