@@ -232,7 +232,7 @@ export async function POST(req: Request) {
     const text: string = data?.choices?.[0]?.message?.content ?? '';
     const cleaned = text.replace(/^```(json)?/i, '').replace(/```$/, '').trim();
 
-    let parsed: GeneratedListing;
+    let parsed: GeneratedListing | undefined;
     try {
       parsed = JSON.parse(cleaned);
     } catch {
@@ -245,18 +245,19 @@ export async function POST(req: Request) {
         try {
           parsed = JSON.parse(match[0]);
         } catch {
-          parsed = undefined as any;
+          parsed = undefined;
         }
       }
-      if (!parsed) {
-        // Log the raw model output so we can see exactly what came back
-        // (e.g. a markdown-formatted refusal) instead of just "not valid JSON".
-        console.error('[generate-listing] Non-JSON model response:', text.slice(0, 500));
-        return NextResponse.json(
-          { error: 'AI returned an unexpected response format. Please try again.' },
-          { status: 502 }
-        );
-      }
+    }
+
+    if (!parsed) {
+      // Log the raw model output so we can see exactly what came back
+      // (e.g. a markdown-formatted refusal) instead of just "not valid JSON".
+      console.error('[generate-listing] Non-JSON model response:', text.slice(0, 500));
+      return NextResponse.json(
+        { error: 'AI returned an unexpected response format. Please try again.' },
+        { status: 502 }
+      );
     }
 
     return NextResponse.json({ listing: parsed });
