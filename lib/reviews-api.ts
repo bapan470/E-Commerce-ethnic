@@ -15,19 +15,29 @@ export interface Review {
 
 export interface RatingSummary {
   average: number;
-  total: number;
+  /** Everyone who left a star rating (writing text is optional, so this is
+   *  every approved review row). */
+  totalRatings: number;
+  /** Subset of totalRatings who also wrote something -- a title or a
+   *  comment. Photos-only, no text, still counts as a rating only. */
+  totalReviews: number;
   breakdown: Record<1 | 2 | 3 | 4 | 5, number>;
 }
 
+const hasWrittenContent = (r: Review) =>
+  Boolean(r.title?.trim()) || Boolean(r.comment?.trim());
+
 export function summarizeReviews(reviews: Review[]): RatingSummary {
   const breakdown: RatingSummary['breakdown'] = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  let totalReviews = 0;
   for (const r of reviews) {
     breakdown[r.rating as 1 | 2 | 3 | 4 | 5] = (breakdown[r.rating as 1 | 2 | 3 | 4 | 5] || 0) + 1;
+    if (hasWrittenContent(r)) totalReviews += 1;
   }
-  const total = reviews.length;
+  const totalRatings = reviews.length;
   const average =
-    total === 0 ? 0 : reviews.reduce((sum, r) => sum + r.rating, 0) / total;
-  return { average: Math.round(average * 10) / 10, total, breakdown };
+    totalRatings === 0 ? 0 : reviews.reduce((sum, r) => sum + r.rating, 0) / totalRatings;
+  return { average: Math.round(average * 10) / 10, totalRatings, totalReviews, breakdown };
 }
 
 /** Approved reviews for a product, newest first. Public — no auth required. */

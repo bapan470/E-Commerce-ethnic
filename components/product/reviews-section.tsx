@@ -216,23 +216,23 @@ export default function ReviewsSection({
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-3">
           <p className="font-serif text-4xl font-bold text-emerald-600">
-            {summary.total > 0 ? summary.average.toFixed(1) : '—'}
+            {summary.totalRatings > 0 ? summary.average.toFixed(1) : '—'}
             <span className="ml-1 align-middle text-lg text-secondary">★</span>
           </p>
         </div>
         <div>
           <p className="text-sm font-semibold text-foreground">
-            {summary.total.toLocaleString('en-IN')} Ratings
+            {summary.totalRatings.toLocaleString('en-IN')} Rating{summary.totalRatings === 1 ? '' : 's'}
           </p>
           <p className="text-sm text-muted-foreground">
-            {summary.total.toLocaleString('en-IN')} Review{summary.total === 1 ? '' : 's'}
+            {summary.totalReviews.toLocaleString('en-IN')} Review{summary.totalReviews === 1 ? '' : 's'}
           </p>
         </div>
 
         <div className="flex flex-col gap-2">
           {([5, 4, 3, 2, 1] as const).map((star) => {
             const count = summary.breakdown[star];
-            const pct = summary.total > 0 ? (count / summary.total) * 100 : 0;
+            const pct = summary.totalRatings > 0 ? (count / summary.totalRatings) * 100 : 0;
             return (
               <div key={star} className="flex items-center gap-2 text-xs">
                 <span className="w-20 shrink-0 text-muted-foreground">{RATING_LABELS[star]}</span>

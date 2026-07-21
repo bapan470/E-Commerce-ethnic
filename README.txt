@@ -1,37 +1,36 @@
-Colour name autosuggest — what changed
-=======================================
+Ratings vs Reviews — separate counts (product page review box)
+================================================================
 
-3 files, replace them at the same paths in your project:
+2 files, replace at the same paths:
 
-  lib/color-presets.ts
-  components/admin/product-variants-manager.tsx   ("Add Colour Variant" popup)
-  components/admin/products-panel.tsx             (product form "Colors (comma-separated)" field)
+  lib/reviews-api.ts
+  components/product/reviews-section.tsx
 
-What it does
+What changed
 ------------
-1. "Add Colour Variant" popup (Colour name field):
-   - As you type, a dropdown appears suggesting matching colours from the
-     library (e.g. typing "marr" suggests "Maroon").
-   - Click a suggestion (or arrow keys + Enter) to pick it — name and hex
-     swatch both fill in automatically.
-   - If you keep typing something that's NOT in the library, nothing blocks
-     you — a small note appears saying it'll be saved as a new custom
-     colour, and it saves fine on submit (this already worked before, it
-     was just silent).
+Pehle: "Ratings" aur "Reviews" dono same number dikhate the (summary.total),
+kyunki har review row me rating hamesha hoti thi.
 
-2. Product form "Colors (comma-separated)" field:
-   - Same idea, but works per comma-separated entry. Typing after a comma
-     (e.g. "Maroon, go") suggests "Gold" for the segment you're currently
-     typing. Picking it inserts "Maroon, Gold, " and leaves your cursor
-     ready for the next colour.
-   - Typing a name not in the library is fine too — it's just saved as-is.
+Ab: automatic split, real submitted reviews se hi -- koi naya DB column
+ya admin field nahi chahiye:
 
-Nothing else changed — no new dependencies, no database/schema changes.
+  - RATINGS = saare approved reviews jinme sirf star diya gaya (comment ho
+    ya na ho) -- summary.totalRatings
+  - REVIEWS = un me se jinhone title ya comment likha (likha hua text hai)
+    -- summary.totalReviews
+
+Star breakdown bars (Excellent/Very Good/Good/Average/Poor) still totalRatings
+ke against calculate hote hain -- kyunki wo distribution har rating ka hai,
+sirf likhe hue reviews ka nahi.
+
+Note: agar future me photos-only (bina text) submissions ko bhi "Review" me
+count karna ho, to lib/reviews-api.ts me `hasWrittenContent` function me
+`|| r.photos.length > 0` add kar dena -- abhi sirf title/comment text ko
+"written review" mana gaya hai.
 
 How to apply
 ------------
-1. Unzip and copy these 3 files into your project at the same relative
-   paths, overwriting the existing ones.
-2. git add -A && git commit -m "Add colour name autosuggest" && git push
+1. Unzip, copy these 2 files into your project at the same relative paths.
+2. git add -A && git commit -m "Split ratings vs reviews count" && git push
 
-Verified: `npx tsc --noEmit` and `next lint` both pass clean on these files.
+Verified: `npx tsc --noEmit` and `next lint` both pass clean.
