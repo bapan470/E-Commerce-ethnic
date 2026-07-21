@@ -76,7 +76,7 @@ const emptyVariantForm = (): VariantFormState => ({
   isDefault: false,
   rating: '',
   reviews: '',
-  sizes: [{ size: 'Free Size', stockQuantity: '0', sku: '' }],
+  sizes: [{ size: 'Free Size', stockQuantity: '3', sku: '' }],
 });
 
 interface Props {
@@ -152,7 +152,7 @@ export default function ProductVariantsManager({ productId, productName, product
       reviews: v.reviews != null ? String(v.reviews) : '',
       sizes: v.sizes.length
         ? v.sizes.map((s) => ({ size: s.size, stockQuantity: String(s.stock_quantity), sku: s.sku ?? '' }))
-        : [{ size: 'Free Size', stockQuantity: '0', sku: '' }],
+        : [{ size: 'Free Size', stockQuantity: '3', sku: '' }],
     });
     setOpen(true);
   };
@@ -269,7 +269,7 @@ export default function ProductVariantsManager({ productId, productName, product
   };
 
   const addSizeRow = () => {
-    setForm((f) => ({ ...f, sizes: [...f.sizes, { size: '', stockQuantity: '0', sku: '' }] }));
+    setForm((f) => ({ ...f, sizes: [...f.sizes, { size: '', stockQuantity: '3', sku: '' }] }));
   };
 
   const removeSizeRow = (idx: number) => {
