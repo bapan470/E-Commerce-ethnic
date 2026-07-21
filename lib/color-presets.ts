@@ -54,3 +54,22 @@ export function findPresetByName(name: string): ColorPreset | undefined {
   if (!needle) return undefined;
   return COLOR_PRESETS.find((c) => c.name.toLowerCase() === needle);
 }
+
+/** Case-insensitive "starts with" / "contains" search used to power the
+ *  autosuggest dropdown while an admin is typing a colour name. Names that
+ *  start with the query are ranked above names that merely contain it, so
+ *  typing "re" surfaces "Red" before "Turquoise". Returns [] for an empty
+ *  query so the dropdown doesn't show every colour before the admin types
+ *  anything. */
+export function searchPresets(query: string, limit = 8): ColorPreset[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [];
+  const startsWith: ColorPreset[] = [];
+  const contains: ColorPreset[] = [];
+  for (const c of COLOR_PRESETS) {
+    const lower = c.name.toLowerCase();
+    if (lower.startsWith(needle)) startsWith.push(c);
+    else if (lower.includes(needle)) contains.push(c);
+  }
+  return [...startsWith, ...contains].slice(0, limit);
+}

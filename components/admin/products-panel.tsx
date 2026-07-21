@@ -12,6 +12,7 @@ import {
   uploadProductImage,
 } from '@/lib/products-api';
 import { generateProductSku } from '@/lib/sku';
+import { searchPresets, ColorPreset } from '@/lib/color-presets';
 import { Product, CategoryRow, ProductHighlights } from '@/lib/types';
 import ProductVariantsManager from '@/components/admin/product-variants-manager';
 import { formatINR } from '@/lib/format';
@@ -98,6 +99,19 @@ interface FormState {
   featured: boolean;
   in_stock: boolean;
 }
+
+/** For a comma-separated field like "Maroon, Go", returns the in-progress
+ *  last segment ("Go") so suggestions can be matched against just that. */
+const lastCsvToken = (value: string) => value.split(',').pop()?.trim() ?? '';
+
+/** Replaces the in-progress last segment of a comma-separated field with a
+ *  picked preset name, keeping earlier entries untouched, and leaves a
+ *  trailing ", " so the admin can keep typing the next colour. */
+const applyCsvSuggestion = (value: string, pickedName: string) => {
+  const parts = value.split(',').map((p) => p.trim());
+  parts[parts.length - 1] = pickedName;
+  return parts.filter((p) => p.length > 0).join(', ') + ', ';
+};
 
 const emptyHighlights = (): ProductHighlights => ({
   border: '',
@@ -189,6 +203,8 @@ export default function ProductsPanel() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
+  const [colorSuggestions, setColorSuggestions] = useState<ColorPreset[]>([]);
+  const [showColorSuggestions, setShowColorSuggestions] = useState(false);
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [aiHint, setAiHint] = useState('');
@@ -745,16 +761,60 @@ export default function ProductsPanel() {
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="grid gap-1.5">
+              <div className="relative grid gap-1.5">
                 <Label htmlFor="colors">Colors (comma-separated)</Label>
                 <Input
                   id="colors"
                   value={form.colors}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, colors: e.target.value }))
-                  }
+                  autoComplete="off"
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setForm((f) => ({ ...f, colors: value }));
+                    setColorSuggestions(searchPresets(lastCsvToken(value)));
+                    setShowColorSuggestions(true);
+                  }}
+                  onFocus={(e) => {
+                    setColorSuggestions(searchPresets(lastCsvToken(e.target.value)));
+                    setShowColorSuggestions(true);
+                  }}
+                  onBlur={() => {
+                    // Delay so a click on a suggestion registers before the list unmounts.
+                    setTimeout(() => setShowColorSuggestions(false), 150);
+                  }}
                   placeholder="Maroon, Gold"
                 />
+                {showColorSuggestions && colorSuggestions.length > 0 && (
+                  <ul
+                    role="listbox"
+                    className="absolute left-0 top-full z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-border bg-popover shadow-md"
+                  >
+                    {colorSuggestions.map((c) => (
+                      <li key={c.name}>
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={false}
+                          // onMouseDown fires before the input's onBlur, so the click still registers.
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setForm((f) => ({ ...f, colors: applyCsvSuggestion(f.colors, c.name) }));
+                            setShowColorSuggestions(false);
+                          }}
+                          className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-accent/60"
+                        >
+                          <span
+                            className="h-3.5 w-3.5 shrink-0 rounded-full border border-border/70"
+                            style={{ backgroundColor: c.hex }}
+                          />
+                          {c.name}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Typing a name that isn&apos;t in the library is fine — it&apos;s saved as-is, no need to pick a suggestion.
+                </p>
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="sizes">Sizes (comma-separated)</Label>

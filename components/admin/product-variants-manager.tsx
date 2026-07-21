@@ -16,7 +16,7 @@ import {
   VariantWithSizes,
 } from '@/lib/variants-api';
 import { generateVariantSku, generateSizeSku } from '@/lib/sku';
-import { COLOR_PRESETS, findPresetByName } from '@/lib/color-presets';
+import { COLOR_PRESETS, findPresetByName, searchPresets, ColorPreset } from '@/lib/color-presets';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -97,6 +97,9 @@ export default function ProductVariantsManager({ productId, productName, product
   const [importUrl, setImportUrl] = useState('');
   const [importing, setImporting] = useState(false);
   const [confirmVariant, setConfirmVariant] = useState<VariantWithSizes | null>(null);
+  const [colorSuggestions, setColorSuggestions] = useState<ColorPreset[]>([]);
+  const [showColorSuggestions, setShowColorSuggestions] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(-1);
 
   const loadVariants = async (id: string) => {
     setLoading(true);
@@ -491,19 +494,86 @@ export default function ProductVariantsManager({ productId, productName, product
             </div>
 
             <div className="grid gap-4 sm:grid-cols-[1fr_auto_1fr]">
-              <div className="grid gap-1.5">
+              <div className="relative grid gap-1.5">
                 <Label htmlFor="v-color">Colour name *</Label>
                 <Input
                   id="v-color"
                   value={form.color}
+                  autoComplete="off"
                   onChange={(e) => {
                     const value = e.target.value;
                     const preset = findPresetByName(value);
                     setForm((f) => ({ ...f, color: value, colorHex: preset ? preset.hex : f.colorHex }));
+                    setColorSuggestions(searchPresets(value));
+                    setShowColorSuggestions(true);
+                    setActiveSuggestion(-1);
+                  }}
+                  onFocus={(e) => {
+                    setColorSuggestions(searchPresets(e.target.value));
+                    setShowColorSuggestions(true);
+                  }}
+                  onBlur={() => {
+                    // Delay so a click on a suggestion registers before the list unmounts.
+                    setTimeout(() => setShowColorSuggestions(false), 150);
+                  }}
+                  onKeyDown={(e) => {
+                    if (!showColorSuggestions || colorSuggestions.length === 0) return;
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      setActiveSuggestion((i) => (i + 1) % colorSuggestions.length);
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setActiveSuggestion((i) => (i <= 0 ? colorSuggestions.length - 1 : i - 1));
+                    } else if (e.key === 'Enter' && activeSuggestion >= 0) {
+                      e.preventDefault();
+                      const picked = colorSuggestions[activeSuggestion];
+                      setForm((f) => ({ ...f, color: picked.name, colorHex: picked.hex }));
+                      setShowColorSuggestions(false);
+                      setActiveSuggestion(-1);
+                    } else if (e.key === 'Escape') {
+                      setShowColorSuggestions(false);
+                    }
                   }}
                   placeholder="e.g. Maroon, or type a new/custom colour"
                   required
                 />
+                {showColorSuggestions && colorSuggestions.length > 0 && (
+                  <ul
+                    role="listbox"
+                    className="absolute left-0 top-full z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-border bg-popover shadow-md"
+                  >
+                    {colorSuggestions.map((c, i) => (
+                      <li key={c.name}>
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={i === activeSuggestion}
+                          // onMouseDown fires before the input's onBlur, so the click still registers.
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setForm((f) => ({ ...f, color: c.name, colorHex: c.hex }));
+                            setShowColorSuggestions(false);
+                            setActiveSuggestion(-1);
+                          }}
+                          className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm ${
+                            i === activeSuggestion ? 'bg-accent' : 'hover:bg-accent/60'
+                          }`}
+                        >
+                          <span
+                            className="h-3.5 w-3.5 shrink-0 rounded-full border border-border/70"
+                            style={{ backgroundColor: c.hex }}
+                          />
+                          {c.name}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {form.color.trim() && !findPresetByName(form.color) && (
+                  <p className="text-xs text-muted-foreground">
+                    &quot;{form.color.trim()}&quot; isn&apos;t in the colour library yet — it&apos;ll be saved as a new custom colour.
+                  </p>
+                )}
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="v-color-hex">Colour type</Label>
