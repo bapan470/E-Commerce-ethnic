@@ -23,6 +23,18 @@ const MODEL = 'meta/llama-3.2-11b-vision-instruct';
 const NIM_ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions';
 
 interface GeneratedHighlights {
+  border: string;
+  border_width: string;
+  blouse: string;
+  saree_fabric: string;
+  saree_pattern: string;
+  ornamentation: string;
+  blouse_fabric: string;
+  pallu_details: string;
+  blouse_pattern: string;
+  blouse_color: string;
+  brand: string;
+  loom_type: string;
   fit_shape: string;
   length: string;
   neck: string;
@@ -93,6 +105,18 @@ Respond with ONLY a JSON object (no markdown fences, no preamble) with these exa
   "gender": "one of exactly: female, male, unisex",
   "meta_description": "a single SEO meta-description sentence, 140-160 characters, enticing and keyword-rich, ending without ellipsis",
   "highlights": {
+    "border": "e.g. 'Lace', 'Zari', 'Temple Border', 'Woven Design' — leave '' if not applicable (e.g. a kurti with no saree-style border)",
+    "border_width": "e.g. 'Small Border', 'Broad Border', 'No Border' — leave '' if not applicable",
+    "blouse": "e.g. 'Separate Blouse Piece', 'Attached Blouse', 'Without Blouse' — leave '' if not applicable (e.g. a kurti)",
+    "saree_fabric": "short fabric name for the saree itself, e.g. 'Georgette' — leave '' if this isn't a saree",
+    "saree_pattern": "the overall pattern/technique, e.g. 'Dyed / Washed', 'Handloom Woven', 'Printed' — leave '' if not applicable",
+    "ornamentation": "e.g. 'Lace Border', 'Zari Work', 'Sequin Work', 'Plain' — leave '' if none",
+    "blouse_fabric": "e.g. 'Bangalori Silk' — leave '' if no blouse piece included",
+    "pallu_details": "e.g. 'Same as Saree', 'Contrast Pallu', 'Zari Pallu' — leave '' if not applicable",
+    "blouse_pattern": "e.g. 'Solid', 'Printed' — leave '' if no blouse piece included",
+    "blouse_color": "e.g. 'Black' — leave '' if no blouse piece included",
+    "brand": "the store's own brand name for this listing, e.g. 'Aruhi Handlooms' — leave '' if unsure, don't invent an unrelated brand",
+    "loom_type": "e.g. 'Handloom', 'Powerloom' — your best estimate from the photo/notes, leave '' if genuinely unclear",
     "fit_shape": "e.g. 'Fit and Flare', 'Straight', 'A-Line' — leave '' if not applicable to this product type",
     "length": "e.g. 'Calf-Length', 'Ankle-Length', 'Saree Length (5.5 m)'",
     "neck": "e.g. 'Round Neck', 'Shoulder Straps', 'Sweetheart' — leave '' if not applicable (e.g. a saree with no stitched neckline)",

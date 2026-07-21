@@ -8,11 +8,32 @@ export type Category =
 
 /**
  * Extra "Product Highlights" attributes shown on the PDP in the Meesho-style
- * collapsible spec block (Fit/Shape, Length up top; Neck, Sleeve, Net
- * Quantity etc. under "Additional Details"). All optional — the AI listing
- * generator fills these in from the name/photo, and the admin can edit them.
+ * collapsible spec block (Occasion/Border/Border Width/Blouse up top; the
+ * rest under "Additional Details"). All optional — the AI listing generator
+ * fills these in from the name/photo, and the admin can edit them.
  */
 export interface ProductHighlights {
+  // Primary — always visible on the PDP
+  border?: string;
+  border_width?: string;
+  blouse?: string;
+
+  // Saree / fabric specifics
+  saree_fabric?: string;
+  saree_pattern?: string;
+  ornamentation?: string;
+
+  // Blouse specifics
+  blouse_fabric?: string;
+  pallu_details?: string;
+  blouse_pattern?: string;
+  blouse_color?: string;
+
+  // Brand / manufacturing
+  brand?: string;
+  loom_type?: string;
+
+  // Existing spec-sheet fields (still used, esp. for kurtis/lehengas)
   fit_shape?: string;
   length?: string;
   neck?: string;

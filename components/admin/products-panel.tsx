@@ -100,6 +100,18 @@ interface FormState {
 }
 
 const emptyHighlights = (): ProductHighlights => ({
+  border: '',
+  border_width: '',
+  blouse: '',
+  saree_fabric: '',
+  saree_pattern: '',
+  ornamentation: '',
+  blouse_fabric: '',
+  pallu_details: '',
+  blouse_pattern: '',
+  blouse_color: '',
+  brand: '',
+  loom_type: '',
   fit_shape: '',
   length: '',
   neck: '',
@@ -848,6 +860,123 @@ export default function ProductsPanel() {
                 </div>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-border">Border</Label>
+                  <Input
+                    id="h-border"
+                    value={form.highlights.border}
+                    onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, border: e.target.value } }))}
+                    placeholder="e.g. Lace"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-border-width">Border Width</Label>
+                  <Input
+                    id="h-border-width"
+                    value={form.highlights.border_width}
+                    onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, border_width: e.target.value } }))}
+                    placeholder="e.g. Small Border"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-blouse">Blouse</Label>
+                  <Input
+                    id="h-blouse"
+                    value={form.highlights.blouse}
+                    onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, blouse: e.target.value } }))}
+                    placeholder="e.g. Separate Blouse Piece / Without Blouse"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-saree-fabric">Saree Fabric</Label>
+                  <Input
+                    id="h-saree-fabric"
+                    value={form.highlights.saree_fabric}
+                    onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, saree_fabric: e.target.value } }))}
+                    placeholder="e.g. Georgette"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-saree-pattern">Pattern</Label>
+                  <Input
+                    id="h-saree-pattern"
+                    value={form.highlights.saree_pattern}
+                    onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, saree_pattern: e.target.value } }))}
+                    placeholder="e.g. Dyed / Washed"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-ornamentation">Ornamentation</Label>
+                  <Input
+                    id="h-ornamentation"
+                    value={form.highlights.ornamentation}
+                    onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, ornamentation: e.target.value } }))}
+                    placeholder="e.g. Lace Border"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-blouse-fabric">Blouse Fabric</Label>
+                  <Input
+                    id="h-blouse-fabric"
+                    value={form.highlights.blouse_fabric}
+                    onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, blouse_fabric: e.target.value } }))}
+                    placeholder="e.g. Bangalori Silk"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-pallu">Pallu Details</Label>
+                  <Input
+                    id="h-pallu"
+                    value={form.highlights.pallu_details}
+                    onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, pallu_details: e.target.value } }))}
+                    placeholder="e.g. Same as Saree"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-blouse-pattern">Blouse Pattern</Label>
+                  <Input
+                    id="h-blouse-pattern"
+                    value={form.highlights.blouse_pattern}
+                    onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, blouse_pattern: e.target.value } }))}
+                    placeholder="e.g. Solid"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-blouse-color">Blouse Color</Label>
+                  <Input
+                    id="h-blouse-color"
+                    value={form.highlights.blouse_color}
+                    onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, blouse_color: e.target.value } }))}
+                    placeholder="e.g. Black"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-brand">Brand</Label>
+                  <Input
+                    id="h-brand"
+                    value={form.highlights.brand}
+                    onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, brand: e.target.value } }))}
+                    placeholder="e.g. Aruhi Handlooms"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-loom-type">Loom Type</Label>
+                  <Input
+                    id="h-loom-type"
+                    value={form.highlights.loom_type}
+                    onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, loom_type: e.target.value } }))}
+                    placeholder="e.g. Handloom"
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="h-transparency">Transparency</Label>
+                  <Input
+                    id="h-transparency"
+                    value={form.highlights.transparency}
+                    onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, transparency: e.target.value } }))}
+                    placeholder="e.g. Opaque"
+                  />
+                </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="h-fit-shape">Fit / Shape</Label>
                   <Input
