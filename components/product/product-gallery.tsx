@@ -212,7 +212,7 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
                       sizes="(max-width: 1024px) 100vw, 50vw"
                       quality={80}
                       className={cn(
-                        'select-none object-cover transition-opacity duration-150',
+                        'select-none object-contain transition-opacity duration-150',
                         idx === active && zooming ? 'sm:opacity-0' : 'opacity-100'
                       )}
                     />
