@@ -351,3 +351,59 @@ export function winbackEmail(user: { full_name?: string; coupon_code?: string })
   `);
   return { subject, html };
 }
+
+// ---------------------------------------------------------------------
+// Vendor sourcing (internal — vendor is never customer-facing)
+// ---------------------------------------------------------------------
+
+/** Sent when the admin approves or rejects a /sell-with-us application. */
+export function vendorApplicationStatusEmail(vendor: {
+  business_name: string;
+  status: 'approved' | 'rejected';
+  admin_note?: string | null;
+}) {
+  const approved = vendor.status === 'approved';
+  const subject = approved
+    ? `You're approved as a vendor — ${SITE_NAME}`
+    : `Update on your vendor application — ${SITE_NAME}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">${approved ? 'Application approved!' : 'Application update'}</h2>
+    <p>Hi ${vendor.business_name},</p>
+    ${
+      approved
+        ? `<p>Good news — your vendor application with ${SITE_NAME} has been approved. You can now log in to your vendor dashboard to start listing products.</p>`
+        : `<p>Thanks for applying to sell with ${SITE_NAME}. After reviewing your application, we're not able to move ahead at this time.</p>`
+    }
+    ${vendor.admin_note ? `<p style="padding:12px; background:#fff; border-left:3px solid ${BRAND_COLOR}; font-size:14px;">${vendor.admin_note}</p>` : ''}
+    ${
+      approved
+        ? `<p style="text-align:center; margin-top: 20px;">
+            <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/vendor/dashboard" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+              Go to vendor dashboard
+            </a>
+          </p>`
+        : ''
+    }
+  `);
+  return { subject, html };
+}
+
+/** Sent to the vendor once the admin approves/rejects their bank-detail change request. */
+export function vendorBankUpdateStatusEmail(vendor: {
+  business_name: string;
+  approved: boolean;
+}) {
+  const subject = `Bank detail update ${vendor.approved ? 'approved' : 'rejected'} — ${SITE_NAME}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Bank detail change ${vendor.approved ? 'approved' : 'rejected'}</h2>
+    <p>Hi ${vendor.business_name},</p>
+    <p>
+      ${
+        vendor.approved
+          ? 'Your requested bank account change has been verified and applied to your vendor profile.'
+          : "Your requested bank account change could not be verified, so it wasn't applied. Please contact us or try again with correct details."
+      }
+    </p>
+  `);
+  return { subject, html };
+}

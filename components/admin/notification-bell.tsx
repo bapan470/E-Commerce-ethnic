@@ -11,6 +11,8 @@ import {
   PackageX,
   ShoppingBag,
   Loader2,
+  Truck,
+  Landmark,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -18,7 +20,15 @@ import type { AdminSection } from './admin-shell';
 
 interface AdminNotification {
   id: string;
-  type: 'order' | 'contact_message' | 'support_ticket' | 'return' | 'restock' | 'abandoned_cart';
+  type:
+    | 'order'
+    | 'contact_message'
+    | 'support_ticket'
+    | 'return'
+    | 'restock'
+    | 'abandoned_cart'
+    | 'vendor_application'
+    | 'vendor_bank_update';
   title: string;
   message: string;
   section: string;
@@ -32,6 +42,8 @@ const ICONS: Record<AdminNotification['type'], typeof Bell> = {
   return: Undo2,
   restock: PackageX,
   abandoned_cart: ShoppingBag,
+  vendor_application: Truck,
+  vendor_bank_update: Landmark,
 };
 
 const LAST_SEEN_KEY = 'admin_notifications_last_seen';

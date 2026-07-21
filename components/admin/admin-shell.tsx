@@ -26,6 +26,7 @@ import {
   Menu,
   X,
   Store,
+  Truck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import NotificationBell from './notification-bell';
@@ -49,6 +50,7 @@ export type AdminSection =
   | 'referrals'
   | 'resellers'
   | 'giftcards'
+  | 'vendors'
   | 'settings';
 
 interface NavItem {
@@ -86,6 +88,10 @@ const NAV_GROUPS: NavGroup[] = [
       { value: 'restock-alerts', label: 'Restock Alerts', icon: PackageX },
       { value: 'wholesale', label: 'Wholesale', icon: Building2 },
     ],
+  },
+  {
+    label: 'Sourcing',
+    items: [{ value: 'vendors', label: 'Vendors', icon: Truck }],
   },
   {
     label: 'People',
