@@ -20,6 +20,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import ReviewsSection from '@/components/product/reviews-section';
+import { fetchApprovedReviews, summarizeReviews, RatingSummary } from '@/lib/reviews-api';
 import PincodeChecker from '@/components/product/pincode-checker';
 import VariantSwatches from '@/components/product/variant-swatches';
 import ProductHighlights from '@/components/product/product-highlights';
@@ -109,6 +110,34 @@ export default function ProductDetail() {
 
   const baseProduct = fromContext ?? directProduct;
   const isLoading = loading || directLoading;
+
+  // Live rating/review split for this product -- a star-only submission
+  // (no title/comment) counts toward `totalRatings` but NOT `totalReviews`.
+  // Falls back to the admin-set seed numbers (product.rating / product.reviews)
+  // until the product has at least one real approved rating, so brand-new
+  // listings still show their seeded social-proof numbers.
+  const [liveSummary, setLiveSummary] = useState<RatingSummary | null>(null);
+  useEffect(() => {
+    if (!baseProduct?.id) {
+      setLiveSummary(null);
+      return;
+    }
+    let cancelled = false;
+    fetchApprovedReviews(baseProduct.id)
+      .then((reviews) => {
+        if (!cancelled) setLiveSummary(summarizeReviews(reviews));
+      })
+      .catch(() => {
+        if (!cancelled) setLiveSummary(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [baseProduct?.id]);
+
+  const displayRating = liveSummary && liveSummary.totalRatings > 0 ? liveSummary.average : baseProduct?.rating ?? 0;
+  const displayRatingsCount = liveSummary && liveSummary.totalRatings > 0 ? liveSummary.totalRatings : baseProduct?.reviews ?? 0;
+  const displayReviewsCount = liveSummary && liveSummary.totalRatings > 0 ? liveSummary.totalReviews : baseProduct?.reviews ?? 0;
 
   // If the URL is the base product's own slug (not a colour's dedicated
   // SEO page) and that product has colour variants, silently switch to its
@@ -417,6 +446,9 @@ export default function ProductDetail() {
         </div>
         <ProductInfo
           product={product}
+          displayRating={displayRating}
+          displayRatingsCount={displayRatingsCount}
+          displayReviewsCount={displayReviewsCount}
           selectedSize={selectedSize}
           setSelectedSize={setSelectedSize}
           selectedSizeStock={selectedSizeStock}
@@ -440,7 +472,7 @@ export default function ProductDetail() {
       <div id="product-tabs" className="mt-8 scroll-mt-24">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="w-full justify-start">
-            <TabsTrigger value="reviews">Reviews ({product.reviews})</TabsTrigger>
+            <TabsTrigger value="reviews">Reviews ({displayRatingsCount})</TabsTrigger>
             <TabsTrigger value="description">Description</TabsTrigger>
             <TabsTrigger value="details">Details</TabsTrigger>
             <TabsTrigger value="shipping">Shipping & Returns</TabsTrigger>
@@ -500,6 +532,9 @@ export default function ProductDetail() {
 
 function ProductInfo({
   product,
+  displayRating,
+  displayRatingsCount,
+  displayReviewsCount,
   selectedSize,
   setSelectedSize,
   selectedSizeStock,
@@ -513,6 +548,9 @@ function ProductInfo({
   onCouponRemove,
 }: {
   product: Product;
+  displayRating: number;
+  displayRatingsCount: number;
+  displayReviewsCount: number;
   selectedSize: string | null;
   setSelectedSize: (s: string) => void;
   selectedSizeStock: number;
@@ -555,16 +593,19 @@ function ProductInfo({
               <Star
                 key={i}
                 className={`h-4 w-4 ${
-                  i < Math.round(product.rating)
+                  i < Math.round(displayRating)
                     ? 'fill-secondary text-secondary'
                     : 'text-muted-foreground/40'
                 }`}
               />
             ))}
           </div>
-          <span className="font-medium">{product.rating.toFixed(1)}</span>
+          <span className="font-medium">{displayRating.toFixed(1)}</span>
           <span className="text-muted-foreground">&middot;</span>
-          <span className="text-muted-foreground">{product.reviews} reviews</span>
+          <span className="text-muted-foreground">
+            {displayRatingsCount} rating{displayRatingsCount === 1 ? '' : 's'}
+            {displayReviewsCount > 0 ? ` \u00b7 ${displayReviewsCount} review${displayReviewsCount === 1 ? '' : 's'}` : ''}
+          </span>
         </button>
       </div>
 
