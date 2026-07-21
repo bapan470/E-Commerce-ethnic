@@ -109,7 +109,9 @@ Respond with ONLY a JSON object (no markdown fences, no preamble) with these exa
   }
 }
 
-For the "highlights" object: look closely at the attached photo (if any) and infer these spec-sheet style details yourself the way an experienced merchandiser would — the store owner should not have to type these in by hand. Leave a field as an empty string '' rather than guessing wildly if it genuinely doesn't apply to this product type (e.g. a saree has no "neck" or "sleeve" of its own).`;
+For the "highlights" object: look closely at the attached photo (if any) and infer these spec-sheet style details yourself the way an experienced merchandiser would — the store owner should not have to type these in by hand. Leave a field as an empty string '' rather than guessing wildly if it genuinely doesn't apply to this product type (e.g. a saree has no "neck" or "sleeve" of its own).
+
+CRITICAL OUTPUT RULE: Reply with the raw JSON object ONLY. Do not use markdown formatting, headers (e.g. "**Product Listing**"), bullet points, or any text before or after the JSON. Your entire reply must start with { and end with }.`;
 }
 
 /** Fetches a product image and returns it as a base64 data: URI for NIM's image_url input. */
@@ -196,69 +198,17 @@ export async function POST(req: Request) {
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
-        model: MODEL,
-        messages: [{ role: 'user', content: userContent }],
-        temperature: 0.4,
-        max_tokens: 1024,
-        // Forces the model to always emit valid, schema-matching JSON instead
-        // of occasionally replying with a plain-text sentence (which used to
-        // crash JSON.parse below).
-        response_format: {
-          type: 'json_schema',
-          json_schema: {
-            name: 'ProductListing',
-            schema: {
-              type: 'object',
-              properties: {
-                name: { type: 'string' },
-                description: { type: 'string' },
-                fabric: { type: 'string' },
-                origin: { type: 'string' },
-                occasion: { type: 'array', items: { type: 'string' } },
-                material: { type: 'string' },
-                pattern: { type: 'string' },
-                gender: { type: 'string', enum: ['female', 'male', 'unisex'] },
-                meta_description: { type: 'string' },
-                highlights: {
-                  type: 'object',
-                  properties: {
-                    fit_shape: { type: 'string' },
-                    length: { type: 'string' },
-                    neck: { type: 'string' },
-                    sleeve_length: { type: 'string' },
-                    sleeve_styling: { type: 'string' },
-                    surface_styling: { type: 'string' },
-                    print_or_pattern_type: { type: 'string' },
-                    net_quantity: { type: 'string' },
-                    add_on: { type: 'string' },
-                    type: { type: 'string' },
-                    generic_name: { type: 'string' },
-                    country_of_origin: { type: 'string' },
-                    transparency: { type: 'string' },
-                  },
-                  required: [
-                    'fit_shape', 'length', 'neck', 'sleeve_length', 'sleeve_styling',
-                    'surface_styling', 'print_or_pattern_type', 'net_quantity', 'add_on',
-                    'type', 'generic_name', 'country_of_origin', 'transparency',
-                  ],
-                },
-              },
-              required: [
-                'name',
-                'description',
-                'fabric',
-                'origin',
-                'occasion',
-                'material',
-                'pattern',
-                'gender',
-                'meta_description',
-                'highlights',
-              ],
-            },
-          },
-        },
-      }),
+          model: MODEL,
+          messages: [{ role: 'user', content: userContent }],
+          temperature: 0.4,
+          max_tokens: 1024,
+          // The 90B model handled the full nested json_schema mode fine, but
+          // the faster 11B model doesn't reliably honor it and would reply
+          // with markdown prose instead of JSON. json_object is a simpler,
+          // more widely-supported mode — exact field names/types come from
+          // the strict instructions in the prompt itself instead.
+          response_format: { type: 'json_object' },
+        }),
       });
     } finally {
       clearTimeout(nimTimeout);
@@ -285,14 +235,28 @@ export async function POST(req: Request) {
     let parsed: GeneratedListing;
     try {
       parsed = JSON.parse(cleaned);
-    } catch (parseErr) {
-      // Log the raw model output so we can see exactly what came back
-      // (e.g. a refusal sentence) instead of just "not valid JSON".
-      console.error('[generate-listing] Non-JSON model response:', text.slice(0, 500));
-      return NextResponse.json(
-        { error: 'AI returned an unexpected response. Please try again.' },
-        { status: 502 }
-      );
+    } catch {
+      // Smaller/faster vision models (e.g. 11B) don't always honor
+      // response_format and sometimes reply in markdown/prose with the JSON
+      // object embedded inside (or not at all). Try to salvage a JSON object
+      // from anywhere in the text before giving up.
+      const match = cleaned.match(/\{[\s\S]*\}/);
+      if (match) {
+        try {
+          parsed = JSON.parse(match[0]);
+        } catch {
+          parsed = undefined as any;
+        }
+      }
+      if (!parsed) {
+        // Log the raw model output so we can see exactly what came back
+        // (e.g. a markdown-formatted refusal) instead of just "not valid JSON".
+        console.error('[generate-listing] Non-JSON model response:', text.slice(0, 500));
+        return NextResponse.json(
+          { error: 'AI returned an unexpected response format. Please try again.' },
+          { status: 502 }
+        );
+      }
     }
 
     return NextResponse.json({ listing: parsed });
