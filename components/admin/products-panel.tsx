@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, FormEvent, useEffect } from 'react';
+import { useState, FormEvent, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles, Link2, Palette, Wand2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles, Link2, Palette, Wand2, Search, X } from 'lucide-react';
 import { useProducts } from '@/lib/cart-context';
 import {
   createProduct,
@@ -200,6 +200,35 @@ const fromProduct = (p: Product): FormState => ({
 
 export default function ProductsPanel() {
   const { products, categories, loading, refresh } = useProducts();
+
+  const filteredProducts = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return products.filter((p) => {
+      const matchesQuery =
+        !q ||
+        p.name.toLowerCase().includes(q) ||
+        (p.sku ?? '').toLowerCase().includes(q) ||
+        (p.fabric ?? '').toLowerCase().includes(q) ||
+        (p.origin ?? '').toLowerCase().includes(q) ||
+        p.category.toLowerCase().includes(q);
+
+      const matchesCategory =
+        categoryFilter === 'all' || p.category === categoryFilter;
+
+      const matchesStock =
+        stockFilter === 'all'
+          ? true
+          : stockFilter === 'out'
+          ? !p.inStock || p.stock_quantity <= 0
+          : stockFilter === 'low'
+          ? p.inStock &&
+            p.stock_quantity > 0 &&
+            p.stock_quantity <= (p.low_stock_threshold ?? 5)
+          : p.inStock && p.stock_quantity > 0;
+
+      return matchesQuery && matchesCategory && matchesStock;
+    });
+  }, [products, searchQuery, categoryFilter, stockFilter]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
@@ -212,6 +241,9 @@ export default function ProductsPanel() {
   const [importUrl, setImportUrl] = useState('');
   const [importing, setImporting] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [stockFilter, setStockFilter] = useState<'all' | 'in' | 'out' | 'low'>('all');
 
   useEffect(() => {
     refresh();
@@ -463,6 +495,8 @@ export default function ProductsPanel() {
           <p className="mt-1 text-sm text-muted-foreground">
             {loading
               ? 'Loading…'
+              : searchQuery || categoryFilter !== 'all' || stockFilter !== 'all'
+              ? `${filteredProducts.length} of ${products.length} products · stored in Supabase`
               : `${products.length} products · stored in Supabase`}
           </p>
         </div>
@@ -471,11 +505,81 @@ export default function ProductsPanel() {
         </Button>
       </div>
 
+      {!loading && (
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative w-full sm:max-w-xs">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by name, SKU, fabric…"
+              className="pl-9 pr-8"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="All Categories" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Categories</SelectItem>
+                {categories.map((c) => (
+                  <SelectItem key={c.id} value={c.name}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={stockFilter} onValueChange={(v) => setStockFilter(v as typeof stockFilter)}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder="All Stock" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Stock</SelectItem>
+                <SelectItem value="in">In Stock</SelectItem>
+                <SelectItem value="low">Low Stock</SelectItem>
+                <SelectItem value="out">Out of Stock</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {(searchQuery || categoryFilter !== 'all' || stockFilter !== 'all') && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSearchQuery('');
+                  setCategoryFilter('all');
+                  setStockFilter('all');
+                }}
+              >
+                Reset
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex flex-col gap-3">
           {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-20 w-full rounded-lg" />
           ))}
+        </div>
+      ) : filteredProducts.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border/60 bg-card px-4 py-12 text-center text-sm text-muted-foreground">
+          No products match your search or filters.
         </div>
       ) : (
         <div className="overflow-hidden rounded-lg border border-border/60 bg-card">
@@ -487,7 +591,7 @@ export default function ProductsPanel() {
             <div className="col-span-1 text-right">Actions</div>
           </div>
           <ul className="flex flex-col divide-y divide-border/60">
-            {products.map((p) => (
+            {filteredProducts.map((p) => (
               <li
                 key={p.id}
                 className="grid grid-cols-2 gap-3 px-4 py-3 sm:grid-cols-12 sm:items-center"
