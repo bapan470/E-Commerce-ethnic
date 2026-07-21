@@ -96,7 +96,7 @@ export default function FrequentlyBoughtTogether({ productId }: { productId: str
           <span className="font-serif text-lg font-bold text-primary">{formatINR(total)}</span>
         </p>
         <Button onClick={addSelected} disabled={selectedItems.length === 0}>
-          Add selected to cart
+          Add selected to bag
         </Button>
       </div>
     </section>

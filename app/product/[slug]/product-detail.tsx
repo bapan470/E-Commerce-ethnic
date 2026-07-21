@@ -627,7 +627,7 @@ function ProductInfo({
             className="hidden flex-1 gap-2 bg-primary text-base md:flex"
           >
             <ShoppingBag className="h-4 w-4" />
-            Add to Cart
+            Add to Bag
           </Button>
         ) : (
           <Button

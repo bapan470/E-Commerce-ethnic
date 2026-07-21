@@ -3,10 +3,23 @@
 import { useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Minus, Plus, Trash2, ShoppingBag, Tag, ArrowLeft, X, Loader2 } from 'lucide-react';
+import {
+  Minus,
+  Plus,
+  Trash2,
+  ShoppingBag,
+  Tag,
+  ArrowLeft,
+  X,
+  Loader2,
+  ChevronDown,
+  ChevronRight,
+  Info,
+} from 'lucide-react';
 import { useCart } from '@/lib/cart-context';
+import { useAuth } from '@/lib/auth-context';
 import { markCheckoutEntry } from '@/lib/checkout-return';
-import { formatINR } from '@/lib/format';
+import { formatINR, discountPct } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -35,10 +48,13 @@ export default function CartDrawer() {
     removeCoupon,
     clearBuyNow,
   } = useCart();
+  const { user } = useAuth();
 
   const [couponInput, setCouponInput] = useState('');
   const [applyingCoupon, setApplyingCoupon] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
+  const [couponPanelOpen, setCouponPanelOpen] = useState(false);
+  const [priceDetailsOpen, setPriceDetailsOpen] = useState(false);
 
   // Swipe-to-close for the side cart on mobile — drag the panel toward the
   // right edge (the side it slides in from) to dismiss it, same gesture
@@ -128,6 +144,7 @@ export default function CartDrawer() {
       return;
     }
     setCouponInput('');
+    setCouponPanelOpen(false);
   };
 
   const handleRemoveCoupon = () => {
@@ -135,6 +152,15 @@ export default function CartDrawer() {
     setCouponInput('');
     setCouponError(null);
   };
+
+  // Total rupee amount the shopper is saving on this bag — MRP discount on
+  // every line item, plus whatever the applied coupon knocks off. Drives
+  // the green savings strip pinned above the Checkout button.
+  const mrpSavings = items.reduce((sum, i) => {
+    const mrp = i.product.mrp ?? i.product.price;
+    return sum + Math.max(0, mrp - i.product.price) * i.quantity;
+  }, 0);
+  const totalSavings = mrpSavings + couponDiscount;
 
   return (
     <Sheet
@@ -165,11 +191,16 @@ export default function CartDrawer() {
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
-          <SheetTitle className="font-serif text-xl text-primary">
-            Your Cart ({count})
-          </SheetTitle>
+          <div className="flex items-baseline gap-2">
+            <SheetTitle className="font-serif text-xl font-bold text-primary">
+              Bag
+            </SheetTitle>
+            <span className="text-sm text-muted-foreground">
+              {count} item{count === 1 ? '' : 's'}
+            </span>
+          </div>
           <SheetDescription className="sr-only">
-            Review the items in your shopping cart
+            Review the items in your shopping bag
           </SheetDescription>
         </SheetHeader>
 
@@ -179,7 +210,7 @@ export default function CartDrawer() {
               <ShoppingBag className="h-8 w-8 text-muted-foreground" />
             </div>
             <div>
-              <p className="font-serif text-lg font-semibold">Your cart is empty</p>
+              <p className="font-serif text-lg font-semibold">Your bag is empty</p>
               <p className="mt-1 text-sm text-muted-foreground">
                 Add some beautiful pieces to get started.
               </p>
@@ -190,50 +221,78 @@ export default function CartDrawer() {
           </div>
         ) : (
           <>
-            <div className="flex-1 overflow-y-auto p-5">
-              <ul className="flex flex-col gap-4">
-                {items.map((item) => (
-                  <li
-                    key={`${item.product.id}-${item.size}`}
-                    className="flex gap-3"
+            <div className="flex flex-1 flex-col gap-3 overflow-y-auto bg-muted/40 p-4">
+              {!user && (
+                <div className="rounded-lg border border-border/60 bg-card p-4">
+                  <p className="text-sm font-medium text-foreground">
+                    Get Started &amp; grab best offers!
+                  </p>
+                  <Link
+                    href="/login"
+                    onClick={() => setCartOpen(false)}
+                    className="mt-3 block rounded-full border border-primary/40 py-2 text-center text-sm font-semibold text-primary transition-colors hover:bg-primary/5"
                   >
-                    <Link
-                      href={`/product/${item.product.slug}`}
-                      onClick={() => setCartOpen(false)}
-                      className="relative h-24 w-20 shrink-0 overflow-hidden rounded-md bg-muted"
+                    Login / Register
+                  </Link>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-3">
+                {items.map((item) => {
+                  const discount = discountPct(item.product.price, item.product.mrp);
+                  const mrp = item.product.mrp ?? item.product.price;
+                  return (
+                    <div
+                      key={`${item.product.id}-${item.size}-${item.product.colors?.[0] ?? ''}`}
+                      className="rounded-lg border border-border/60 bg-card p-4"
                     >
-                      <Image
-                        src={item.product.images[0] || 'https://placehold.co/80x100?text=No+Image'}
-                        alt={`${item.product.name} - ${item.product.fabric} ${item.product.category}`}
-                        fill
-                        sizes="80px"
-                        className="object-cover"
-                      />
-                    </Link>
-                    <div className="flex flex-1 flex-col">
-                      <div className="flex items-start justify-between gap-2">
+                      <div className="flex gap-3">
                         <Link
                           href={`/product/${item.product.slug}`}
                           onClick={() => setCartOpen(false)}
-                          className="line-clamp-2 text-sm font-medium hover:text-primary"
+                          className="relative h-20 w-16 shrink-0 overflow-hidden rounded-md bg-muted"
                         >
-                          {item.product.name}
+                          <Image
+                            src={item.product.images[0] || 'https://placehold.co/64x80?text=No+Image'}
+                            alt={`${item.product.name} - ${item.product.fabric} ${item.product.category}`}
+                            fill
+                            sizes="64px"
+                            className="object-cover"
+                          />
                         </Link>
-                        <button
-                          onClick={() => removeItem(item.product.id, item.size, item.product.colors?.[0] ?? null)}
-                          className="text-muted-foreground transition-colors hover:text-destructive"
-                          aria-label="Remove item"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+                        <div className="flex flex-1 flex-col">
+                          <div className="flex items-start justify-between gap-2">
+                            <Link
+                              href={`/product/${item.product.slug}`}
+                              onClick={() => setCartOpen(false)}
+                              className="line-clamp-2 text-sm font-medium hover:text-primary"
+                            >
+                              {item.product.name}
+                            </Link>
+                            <button
+                              onClick={() =>
+                                removeItem(item.product.id, item.size, item.product.colors?.[0] ?? null)
+                              }
+                              className="shrink-0 text-muted-foreground transition-colors hover:text-destructive"
+                              aria-label="Remove item"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            Size: {item.size}
+                            {item.product.colors?.[0] ? ` · ${item.product.colors[0]}` : ''}
+                          </p>
+                          <div className="mt-1">
+                            <LowStockBadge stockQuantity={item.product.stock_quantity} />
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        Size: {item.size}
-                      </p>
-                      <div className="mt-1">
-                        <LowStockBadge stockQuantity={item.product.stock_quantity} />
-                      </div>
-                      <div className="mt-auto flex items-center justify-between pt-2">
+
+                      <Separator className="my-3" />
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Quantity :</span>
                         <div className="flex items-center rounded-md border border-border">
                           <button
                             onClick={() =>
@@ -257,46 +316,40 @@ export default function CartDrawer() {
                             <Plus className="h-3.5 w-3.5" />
                           </button>
                         </div>
-                        <span className="font-serif text-sm font-bold text-primary">
-                          {formatINR(item.product.price * item.quantity)}
+                      </div>
+
+                      <Separator className="my-3" />
+
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="flex items-center gap-1 text-muted-foreground">
+                          You Pay <Info className="h-3.5 w-3.5" />
+                        </span>
+                        <span className="flex items-center gap-2">
+                          <span className="font-serif text-base font-bold text-primary">
+                            {formatINR(item.product.price * item.quantity)}
+                          </span>
+                          {mrp > item.product.price && (
+                            <span className="text-xs text-muted-foreground line-through">
+                              {formatINR(mrp * item.quantity)}
+                            </span>
+                          )}
+                          {discount > 0 && (
+                            <span className="text-xs font-semibold text-green-600">
+                              {discount}% off
+                            </span>
+                          )}
                         </span>
                       </div>
                     </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="border-t border-border/60 p-5">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">Subtotal</span>
-                <span className={couponDiscount > 0 ? 'text-sm font-medium line-through text-muted-foreground' : 'font-serif text-lg font-bold text-primary'}>
-                  {formatINR(subtotal)}
-                </span>
+                  );
+                })}
               </div>
-              {appliedCoupon && couponDiscount > 0 && (
-                <>
-                  <div className="mt-1 flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-1.5 text-secondary-foreground">
-                      <Tag className="h-3.5 w-3.5" /> {appliedCoupon.code}
-                    </span>
-                    <span className="text-secondary-foreground">
-                      -{formatINR(couponDiscount)}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex items-center justify-between text-sm">
-                    <span className="font-medium">Estimated total</span>
-                    <span className="font-serif text-lg font-bold text-primary">
-                      {formatINR(Math.max(0, subtotal - couponDiscount))}
-                    </span>
-                  </div>
-                </>
-              )}
 
-              <div className="mt-3">
+              {/* Coupons */}
+              <div className="rounded-lg border border-border/60 bg-card">
                 {appliedCoupon ? (
-                  <div className="flex items-center justify-between rounded-md bg-secondary/10 px-3 py-2 text-sm">
-                    <span className="flex items-center gap-1.5 font-medium text-secondary-foreground">
+                  <div className="flex items-center justify-between p-4">
+                    <span className="flex items-center gap-1.5 text-sm font-medium text-secondary-foreground">
                       <Tag className="h-3.5 w-3.5" /> {appliedCoupon.code} applied
                     </span>
                     <button
@@ -309,55 +362,132 @@ export default function CartDrawer() {
                     </button>
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-1.5">
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Coupon code"
-                        value={couponInput}
-                        onChange={(e) => setCouponInput(e.target.value)}
-                        className="h-9"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="h-9 shrink-0"
-                        disabled={applyingCoupon || !couponInput.trim()}
-                        onClick={handleApplyCoupon}
-                      >
-                        {applyingCoupon ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}
-                      </Button>
+                  <button
+                    type="button"
+                    onClick={() => setCouponPanelOpen((o) => !o)}
+                    className="flex w-full items-center justify-between gap-2 p-4 text-left"
+                  >
+                    <span className="flex items-center gap-3">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-primary">
+                        <Tag className="h-4 w-4" />
+                      </span>
+                      <span>
+                        <span className="block text-sm font-semibold">Coupons</span>
+                        <span className="block text-xs text-primary">
+                          Apply now and save extra!
+                        </span>
+                      </span>
+                    </span>
+                    {couponPanelOpen ? (
+                      <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    )}
+                  </button>
+                )}
+                {!appliedCoupon && couponPanelOpen && (
+                  <div className="border-t border-border/60 p-4">
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Coupon code"
+                          value={couponInput}
+                          onChange={(e) => setCouponInput(e.target.value)}
+                          className="h-9"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-9 shrink-0"
+                          disabled={applyingCoupon || !couponInput.trim()}
+                          onClick={handleApplyCoupon}
+                        >
+                          {applyingCoupon ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}
+                        </Button>
+                      </div>
+                      {couponError && <p className="text-xs text-destructive">{couponError}</p>}
                     </div>
-                    {couponError && <p className="text-xs text-destructive">{couponError}</p>}
                   </div>
                 )}
               </div>
 
-              <div className="mt-3">
-                <CartBump compact />
+              {/* Price details */}
+              <div className="rounded-lg border border-border/60 bg-card">
+                <button
+                  type="button"
+                  onClick={() => setPriceDetailsOpen((o) => !o)}
+                  className="flex w-full items-center justify-between p-4 text-left"
+                >
+                  <span className="flex items-center gap-2 text-sm font-semibold">
+                    <ShoppingBag className="h-4 w-4 text-muted-foreground" /> Price details
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-sm font-semibold">
+                      {formatINR(Math.max(0, subtotal - couponDiscount))}
+                    </span>
+                    {priceDetailsOpen ? (
+                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    )}
+                  </span>
+                </button>
+                {priceDetailsOpen && (
+                  <div className="flex flex-col gap-2 border-t border-border/60 p-4 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Subtotal</span>
+                      <span>{formatINR(subtotal)}</span>
+                    </div>
+                    {appliedCoupon && couponDiscount > 0 && (
+                      <div className="flex items-center justify-between text-secondary-foreground">
+                        <span className="flex items-center gap-1.5">
+                          <Tag className="h-3.5 w-3.5" /> {appliedCoupon.code}
+                        </span>
+                        <span>-{formatINR(couponDiscount)}</span>
+                      </div>
+                    )}
+                    <Separator />
+                    <div className="flex items-center justify-between font-serif text-base font-bold text-primary">
+                      <span>Total</span>
+                      <span>{formatINR(Math.max(0, subtotal - couponDiscount))}</span>
+                    </div>
+                  </div>
+                )}
               </div>
-              <p className="mt-3 text-xs text-muted-foreground">
-                Shipping & taxes calculated at checkout.
-              </p>
-              <Separator className="my-4" />
-              <div className="flex flex-col gap-2">
-                <Button
-                  asChild
-                  className="bg-primary"
-                  onClick={() => {
-                    setCartOpen(false);
-                    clearBuyNow();
-                    markCheckoutEntry();
-                  }}
-                >
-                  <Link href="/checkout">Checkout</Link>
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setCartOpen(false)}
-                  asChild
-                >
-                  <Link href="/cart">View Cart</Link>
-                </Button>
+
+              <CartBump compact />
+            </div>
+
+            <div className="border-t border-border/60">
+              {totalSavings > 0 && (
+                <p className="bg-secondary/15 px-5 py-2 text-center text-sm font-medium text-secondary-foreground">
+                  You are saving {formatINR(totalSavings)} on this order
+                </p>
+              )}
+              <div className="p-5">
+                <p className="mb-3 text-xs text-muted-foreground">
+                  Shipping &amp; taxes calculated at checkout.
+                </p>
+                <div className="flex flex-col gap-2">
+                  <Button
+                    asChild
+                    className="bg-primary"
+                    onClick={() => {
+                      setCartOpen(false);
+                      clearBuyNow();
+                      markCheckoutEntry();
+                    }}
+                  >
+                    <Link href="/checkout">Checkout</Link>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setCartOpen(false)}
+                    asChild
+                  >
+                    <Link href="/cart">View Bag</Link>
+                  </Button>
+                </div>
               </div>
             </div>
           </>

@@ -68,7 +68,7 @@ export default function MobileStickyCartBar({
               className="gap-1.5 border-primary px-3 text-primary"
             >
               <ShoppingBag className="h-4 w-4" />
-              Add to Cart
+              Add to Bag
             </Button>
             <Button onClick={onBuyNow} size="sm" className="bg-primary px-4 text-primary-foreground">
               Buy Now
