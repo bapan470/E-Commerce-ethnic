@@ -103,6 +103,30 @@ export async function approveReview(id: string): Promise<void> {
   if (error) throw error;
 }
 
+const AUTO_PUBLISH_DELAY_MS = 5000;
+
+/**
+ * Auto-publish: 5 seconds after a customer submits a rating/review, it goes
+ * live automatically without needing manual admin approval. Admins can still
+ * hide it any time afterwards from the moderation panel (that's what the
+ * Hide button is for). If the browser tab closes before the 5 seconds are
+ * up, the review simply stays pending until an admin approves or hides it
+ * manually -- nothing breaks either way.
+ *
+ * `onPublished` (optional) lets the caller update local UI state the moment
+ * the auto-publish fires, without needing a page refresh.
+ */
+export function scheduleAutoPublish(id: string, onPublished?: () => void): void {
+  setTimeout(() => {
+    approveReview(id)
+      .then(() => onPublished?.())
+      .catch(() => {
+        // Silent -- if this fails (e.g. the review was deleted or hidden by
+        // an admin in the meantime), there's nothing useful to surface here.
+      });
+  }, AUTO_PUBLISH_DELAY_MS);
+}
+
 /** Reject/unpublish — keeps the review row (and its author) but hides it storefront-side. */
 export async function unapproveReview(id: string): Promise<void> {
   const supabase = getSupabaseBrowser();

@@ -7,6 +7,7 @@ import {
   Review,
   fetchMyReviewForProduct,
   hasWrittenContent,
+  scheduleAutoPublish,
   submitReview,
   updateMyReview,
   uploadReviewPhoto,
@@ -109,6 +110,9 @@ export default function DeliveredItemReview({
     try {
       const review = await submitReview({ productId, rating: n });
       setMyReview(review);
+      scheduleAutoPublish(review.id, () => {
+        setMyReview((prev) => (prev && prev.id === review.id ? { ...prev, is_approved: true } : prev));
+      });
     } catch {
       // Quiet failure (e.g. not yet eligible) -- the widget just won't
       // update; this inline prompt isn't the place for a toast per star tap.
@@ -138,6 +142,9 @@ export default function DeliveredItemReview({
       }
       const updated = await updateMyReview(myReview.id, { title, comment, photos });
       setMyReview(updated);
+      scheduleAutoPublish(updated.id, () => {
+        setMyReview((prev) => (prev && prev.id === updated.id ? { ...prev, is_approved: true } : prev));
+      });
       setDetailsOpen(false);
       setTitle('');
       setComment('');

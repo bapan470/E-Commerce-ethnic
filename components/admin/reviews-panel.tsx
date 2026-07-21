@@ -2,16 +2,18 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Check, X, Trash2, Star } from 'lucide-react';
+import { Check, EyeOff, Trash2, Star, Search } from 'lucide-react';
 import {
   fetchAllReviewsAdmin,
   approveReview,
   unapproveReview,
   deleteReviewAdmin,
+  hasWrittenContent,
   AdminReview,
 } from '@/lib/reviews-api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -19,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Dialog,
   DialogContent,
@@ -31,12 +34,15 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 
-type Filter = 'all' | 'pending' | 'approved';
+type StatusFilter = 'all' | 'pending' | 'approved';
+type Section = 'reviews' | 'ratings';
 
 export default function ReviewsPanel() {
   const [reviews, setReviews] = useState<AdminReview[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<Filter>('pending');
+  const [section, setSection] = useState<Section>('reviews');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [search, setSearch] = useState('');
   const [confirmTarget, setConfirmTarget] = useState<AdminReview | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -56,19 +62,41 @@ export default function ReviewsPanel() {
     load();
   }, []);
 
-  const filtered = useMemo(() => {
-    if (filter === 'pending') return reviews.filter((r) => !r.is_approved);
-    if (filter === 'approved') return reviews.filter((r) => r.is_approved);
-    return reviews;
-  }, [reviews, filter]);
+  // Reviews = wrote a title/comment. Ratings = star only, no text.
+  const writtenReviews = useMemo(() => reviews.filter(hasWrittenContent), [reviews]);
+  const ratingsOnly = useMemo(() => reviews.filter((r) => !hasWrittenContent(r)), [reviews]);
 
-  const pendingCount = reviews.filter((r) => !r.is_approved).length;
+  const applyFilters = (list: AdminReview[]) => {
+    let out = list;
+    if (statusFilter === 'pending') out = out.filter((r) => !r.is_approved);
+    if (statusFilter === 'approved') out = out.filter((r) => r.is_approved);
+    const q = search.trim().toLowerCase();
+    if (q) {
+      out = out.filter((r) =>
+        [r.customer_name, r.product_name, r.title, r.comment]
+          .filter(Boolean)
+          .some((field) => field!.toLowerCase().includes(q))
+      );
+    }
+    return out;
+  };
+
+  const sectionSource = section === 'reviews' ? writtenReviews : ratingsOnly;
+  const filtered = useMemo(
+    () => applyFilters(sectionSource),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sectionSource, statusFilter, search]
+  );
+
+  const pendingCount = (section === 'reviews' ? writtenReviews : ratingsOnly).filter(
+    (r) => !r.is_approved
+  ).length;
 
   const handleApprove = async (r: AdminReview) => {
     setBusyId(r.id);
     try {
       await approveReview(r.id);
-      toast.success('Review approved — now live on the product page');
+      toast.success('Published — now live on the product page');
       await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to approve');
@@ -77,11 +105,11 @@ export default function ReviewsPanel() {
     }
   };
 
-  const handleUnapprove = async (r: AdminReview) => {
+  const handleHide = async (r: AdminReview) => {
     setBusyId(r.id);
     try {
       await unapproveReview(r.id);
-      toast.success('Review hidden from the storefront');
+      toast.success('Hidden from the storefront');
       await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update');
@@ -95,7 +123,7 @@ export default function ReviewsPanel() {
     setBusyId(confirmTarget.id);
     try {
       await deleteReviewAdmin(confirmTarget.id);
-      toast.success('Review deleted');
+      toast.success('Deleted');
       await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Delete failed');
@@ -103,6 +131,111 @@ export default function ReviewsPanel() {
       setBusyId(null);
       setConfirmTarget(null);
     }
+  };
+
+  const renderList = (list: AdminReview[], emptyLabel: string) => {
+    if (loading) {
+      return (
+        <div className="grid gap-3">
+          {[...Array(3)].map((_, i) => (
+            <Skeleton key={i} className="h-28 rounded-lg" />
+          ))}
+        </div>
+      );
+    }
+    if (list.length === 0) {
+      return (
+        <div className="rounded-lg border border-dashed border-border/60 bg-card p-8 text-center text-sm text-muted-foreground">
+          {emptyLabel}
+        </div>
+      );
+    }
+    return (
+      <div className="grid gap-3">
+        {list.map((r) => (
+          <div key={r.id} className="rounded-lg border border-border/60 bg-card p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold">{r.customer_name}</p>
+                  <div className="flex items-center gap-0.5 text-amber-500">
+                    {[...Array(5)].map((_, i) => (
+                      <Star
+                        key={i}
+                        className={`h-3.5 w-3.5 ${i < r.rating ? 'fill-current' : ''}`}
+                      />
+                    ))}
+                  </div>
+                  <Badge variant={r.is_approved ? 'default' : 'outline'} className="text-xs">
+                    {r.is_approved ? 'Published' : 'Pending'}
+                  </Badge>
+                </div>
+                {r.product_slug ? (
+                  <Link
+                    href={`/product/${r.product_slug}`}
+                    target="_blank"
+                    className="text-xs text-secondary hover:underline"
+                  >
+                    {r.product_name}
+                  </Link>
+                ) : (
+                  <p className="text-xs text-muted-foreground">{r.product_name}</p>
+                )}
+                {r.title && <p className="mt-2 text-sm font-medium">{r.title}</p>}
+                {r.comment && <p className="mt-1 text-sm text-muted-foreground">{r.comment}</p>}
+                {r.photos && r.photos.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {r.photos.map((url, idx) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <a key={idx} href={url} target="_blank" rel="noopener noreferrer">
+                        <img
+                          src={url}
+                          alt={`${r.customer_name} review photo ${idx + 1}`}
+                          className="h-14 w-14 rounded-md border border-border/60 object-cover"
+                        />
+                      </a>
+                    ))}
+                  </div>
+                )}
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {new Date(r.created_at).toLocaleString()}
+                </p>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                {!r.is_approved ? (
+                  <Button
+                    size="sm"
+                    onClick={() => handleApprove(r)}
+                    disabled={busyId === r.id}
+                    className="bg-primary"
+                  >
+                    <Check className="mr-1 h-3.5 w-3.5" /> Publish
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleHide(r)}
+                    disabled={busyId === r.id}
+                  >
+                    <EyeOff className="mr-1 h-3.5 w-3.5" /> Hide
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-destructive hover:bg-destructive/10"
+                  onClick={() => setConfirmTarget(r)}
+                  disabled={busyId === r.id}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
   };
 
   return (
@@ -116,122 +249,75 @@ export default function ReviewsPanel() {
           <p className="mt-1 text-sm text-muted-foreground">
             {loading
               ? 'Loading…'
-              : `${pendingCount} pending · ${reviews.length} total`}
+              : `${pendingCount} pending · ${sectionSource.length} in this section · ${reviews.length} total`}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            New ratings/reviews publish automatically 5 seconds after submission — use Hide to
+            take one down.
           </p>
         </div>
-        <Select value={filter} onValueChange={(v) => setFilter(v as Filter)}>
-          <SelectTrigger className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="pending">Pending</SelectItem>
-            <SelectItem value="approved">Approved</SelectItem>
-            <SelectItem value="all">All</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
 
-      {loading ? (
-        <div className="grid gap-3">
-          {[...Array(3)].map((_, i) => (
-            <Skeleton key={i} className="h-28 rounded-lg" />
-          ))}
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border/60 bg-card p-8 text-center text-sm text-muted-foreground">
-          {filter === 'pending' ? 'No reviews waiting for moderation.' : 'No reviews here.'}
-        </div>
-      ) : (
-        <div className="grid gap-3">
-          {filtered.map((r) => (
-            <div key={r.id} className="rounded-lg border border-border/60 bg-card p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold">{r.customer_name}</p>
-                    <div className="flex items-center gap-0.5 text-amber-500">
-                      {[...Array(5)].map((_, i) => (
-                        <Star
-                          key={i}
-                          className={`h-3.5 w-3.5 ${i < r.rating ? 'fill-current' : ''}`}
-                        />
-                      ))}
-                    </div>
-                    <Badge variant={r.is_approved ? 'default' : 'outline'} className="text-xs">
-                      {r.is_approved ? 'Approved' : 'Pending'}
-                    </Badge>
-                  </div>
-                  {r.product_slug ? (
-                    <Link
-                      href={`/product/${r.product_slug}`}
-                      target="_blank"
-                      className="text-xs text-secondary hover:underline"
-                    >
-                      {r.product_name}
-                    </Link>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">{r.product_name}</p>
-                  )}
-                  {r.title && <p className="mt-2 text-sm font-medium">{r.title}</p>}
-                  {r.comment && <p className="mt-1 text-sm text-muted-foreground">{r.comment}</p>}
-                  {r.photos && r.photos.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {r.photos.map((url, idx) => (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <a key={idx} href={url} target="_blank" rel="noopener noreferrer">
-                          <img
-                            src={url}
-                            alt={`${r.customer_name} review photo ${idx + 1}`}
-                            className="h-14 w-14 rounded-md border border-border/60 object-cover"
-                          />
-                        </a>
-                      ))}
-                    </div>
-                  )}
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    {new Date(r.created_at).toLocaleString()}
-                  </p>
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  {!r.is_approved ? (
-                    <Button
-                      size="sm"
-                      onClick={() => handleApprove(r)}
-                      disabled={busyId === r.id}
-                      className="bg-primary"
-                    >
-                      <Check className="mr-1 h-3.5 w-3.5" /> Approve
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleUnapprove(r)}
-                      disabled={busyId === r.id}
-                    >
-                      <X className="mr-1 h-3.5 w-3.5" /> Unpublish
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-destructive hover:bg-destructive/10"
-                    onClick={() => setConfirmTarget(r)}
-                    disabled={busyId === r.id}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
+      <Tabs value={section} onValueChange={(v) => setSection(v as Section)}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <TabsList>
+            <TabsTrigger value="reviews">
+              Reviews
+              <Badge variant="secondary" className="ml-2">
+                {writtenReviews.length}
+              </Badge>
+            </TabsTrigger>
+            <TabsTrigger value="ratings">
+              Ratings
+              <Badge variant="secondary" className="ml-2">
+                {ratingsOnly.length}
+              </Badge>
+            </TabsTrigger>
+          </TabsList>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search customer, product, text..."
+                className="w-64 pl-8"
+              />
             </div>
-          ))}
+            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+              <SelectTrigger className="w-36">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="approved">Published</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-      )}
+
+        <TabsContent value="reviews">
+          {renderList(
+            filtered,
+            search
+              ? 'No written reviews match your search.'
+              : 'No written reviews here yet.'
+          )}
+        </TabsContent>
+        <TabsContent value="ratings">
+          {renderList(
+            filtered,
+            search ? 'No ratings match your search.' : 'No star-only ratings here yet.'
+          )}
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={!!confirmTarget} onOpenChange={(o) => !o && setConfirmTarget(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="font-serif text-xl text-primary">Delete this review?</DialogTitle>
+            <DialogTitle className="font-serif text-xl text-primary">Delete this entry?</DialogTitle>
             <DialogDescription>This action cannot be undone.</DialogDescription>
           </DialogHeader>
           <DialogFooter>

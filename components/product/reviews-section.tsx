@@ -10,6 +10,7 @@ import {
   fetchMyReviewForProduct,
   hasPurchasedProduct,
   hasWrittenContent,
+  scheduleAutoPublish,
   submitReview,
   summarizeReviews,
   updateMyReview,
@@ -189,6 +190,10 @@ export default function ReviewsSection({
       const review = await submitReview({ productId, rating });
       setMyReview(review);
       setStep('details');
+      scheduleAutoPublish(review.id, () => {
+        setMyReview((prev) => (prev && prev.id === review.id ? { ...prev, is_approved: true } : prev));
+        fetchApprovedReviews(productId).then(setReviews).catch(() => {});
+      });
       toast.success('Thanks for rating! Add a written review below, or come back anytime.');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not submit rating');
@@ -207,11 +212,15 @@ export default function ReviewsSection({
       }
       const updated = await updateMyReview(myReview.id, { title, comment, photos });
       setMyReview(updated);
+      scheduleAutoPublish(updated.id, () => {
+        setMyReview((prev) => (prev && prev.id === updated.id ? { ...prev, is_approved: true } : prev));
+        fetchApprovedReviews(productId).then(setReviews).catch(() => {});
+      });
       setFormOpen(false);
       setTitle('');
       setComment('');
       setPhotoFiles([]);
-      toast.success('Thanks! Your review will appear after a quick moderation check.');
+      toast.success('Thanks! Your review will go live within a few seconds.');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not submit review');
     } finally {
