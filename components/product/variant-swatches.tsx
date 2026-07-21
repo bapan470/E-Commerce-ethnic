@@ -66,6 +66,8 @@ export default function VariantSwatches({
                     quality={60}
                     className="select-none object-cover"
                   />
+                ) : v.color_hex ? (
+                  <span className="block h-full w-full" style={{ backgroundColor: v.color_hex }} />
                 ) : (
                   <span className="flex h-full w-full items-center justify-center text-[10px] font-semibold uppercase text-muted-foreground">
                     {v.color.slice(0, 2)}

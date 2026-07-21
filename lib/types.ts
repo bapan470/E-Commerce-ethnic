@@ -70,6 +70,14 @@ export interface Product {
   video_url?: string | null;
   sku?: string | null;
   highlights?: ProductHighlights | null;
+  /** Slug of this product's default colour variant (if any) -- product
+   *  cards on shop/category/home should link here instead of the base
+   *  product slug, so shoppers land straight on the colour that's meant
+   *  to be shown first. */
+  default_variant_slug?: string | null;
+  /** First image of the default colour variant, used as the card thumbnail
+   *  in place of the base product's own photos when variants exist. */
+  default_variant_image?: string | null;
   rating: number;
   reviews: number;
   featured?: boolean;
@@ -182,6 +190,9 @@ export interface ProductRow {
   video_url: string | null;
   sku: string | null;
   highlights: ProductHighlights | null;
+  /** Embedded via `product_variants(slug, images, is_default)` in the list
+   *  queries -- used to resolve the default colour variant for cards. */
+  product_variants?: { slug: string; images: string[] | null; is_default: boolean }[] | null;
   stock_quantity: number;
   low_stock_threshold?: number;
   rating: number;

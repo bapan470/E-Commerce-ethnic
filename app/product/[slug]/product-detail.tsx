@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { useProducts, useCart } from '@/lib/cart-context';
 import { fetchProductBySlug } from '@/lib/products-api';
-import { fetchVariantBySlug, ProductVariant, VariantWithSizes } from '@/lib/variants-api';
+import { fetchVariantBySlug, fetchVariantsForProduct, ProductVariant, VariantWithSizes } from '@/lib/variants-api';
 import { Product } from '@/lib/types';
 import { formatINR, discountPct } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -110,6 +110,36 @@ export default function ProductDetail() {
   const baseProduct = fromContext ?? directProduct;
   const isLoading = loading || directLoading;
 
+  // If the URL is the base product's own slug (not a colour's dedicated
+  // SEO page) and that product has colour variants, silently switch to its
+  // default colour on load -- same variant that shop/category cards show
+  // and link to, so opening the product any way always lands on the same
+  // colour. Uses replaceState (like handleSelectVariant below) so it
+  // doesn't add a back-button entry or trigger a full reload.
+  const defaultVariantAppliedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!baseProduct) return;
+    if (variant) return;
+    if (params.slug !== baseProduct.slug) return;
+    if (defaultVariantAppliedForRef.current === baseProduct.id) return;
+    defaultVariantAppliedForRef.current = baseProduct.id;
+    let cancelled = false;
+    fetchVariantsForProduct(baseProduct.id)
+      .then((variants) => {
+        if (cancelled || variants.length === 0) return;
+        const def = variants.find((v) => v.is_default) ?? variants[0];
+        return fetchVariantBySlug(def.slug).then((res) => {
+          if (cancelled || !res) return;
+          setVariant(res.variant);
+          window.history.replaceState(window.history.state, '', `/product/${def.slug}`);
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [baseProduct, variant, params.slug]);
+
   // Switching colour never navigates — it just swaps state on the page
   // that's already mounted, so nothing reloads or re-fetches the product.
   // The thumbnail/price/colour change instantly using data we already have;
@@ -147,6 +177,7 @@ export default function ProductDetail() {
       ...baseProduct,
       price: variant.price_override ?? baseProduct.price,
       images: variant.images.length > 0 ? variant.images : baseProduct.images,
+      video_url: variant.video || baseProduct.video_url,
       colors: [variant.color],
       sizes: hasSizeData ? variant.sizes.map((s) => s.size) : baseProduct.sizes,
       stock_quantity: hasSizeData ? variantStockQty : baseProduct.stock_quantity,

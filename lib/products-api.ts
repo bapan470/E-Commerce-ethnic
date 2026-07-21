@@ -3,7 +3,17 @@
 import { supabase } from './supabase';
 import { Product, ProductRow, CategoryRow, Category } from './types';
 
+/** Pick the default colour variant off the embedded `product_variants` list
+ *  (falls back to the first variant if none is explicitly marked default),
+ *  so cards/listings can show and link to it instead of the base product. */
+function resolveDefaultVariant(row: ProductRow) {
+  const variants = row.product_variants ?? [];
+  if (variants.length === 0) return null;
+  return variants.find((v) => v.is_default) ?? variants[0];
+}
+
 export function mapRowToProduct(row: ProductRow): Product {
+  const defaultVariant = resolveDefaultVariant(row);
   return {
     id: row.id,
     name: row.name,
@@ -25,6 +35,8 @@ export function mapRowToProduct(row: ProductRow): Product {
     video_url: row.video_url ?? null,
     sku: row.sku ?? null,
     highlights: row.highlights ?? null,
+    default_variant_slug: defaultVariant?.slug ?? null,
+    default_variant_image: defaultVariant?.images?.[0] ?? null,
     rating: Number(row.rating) || 4.5,
     reviews: row.reviews ?? 0,
     featured: row.featured,
@@ -38,7 +50,7 @@ export function mapRowToProduct(row: ProductRow): Product {
 export async function fetchProducts(): Promise<Product[]> {
   const { data, error } = await supabase
     .from('products')
-    .select('*')
+    .select('*, product_variants(slug, images, is_default)')
     .order('created_at', { ascending: false });
   if (error) throw error;
   return (data as ProductRow[]).map(mapRowToProduct);
@@ -47,7 +59,7 @@ export async function fetchProducts(): Promise<Product[]> {
 export async function fetchProductBySlug(slug: string): Promise<Product | null> {
   const { data, error } = await supabase
     .from('products')
-    .select('*')
+    .select('*, product_variants(slug, images, is_default)')
     .eq('slug', slug)
     .maybeSingle();
   if (error) throw error;

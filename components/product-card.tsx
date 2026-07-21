@@ -34,13 +34,17 @@ export default function ProductCard({
   };
 
   const discount = discountPct(product.price, product.mrp);
-  const img = product.images[0] || 'https://placehold.co/800x1000?text=No+Image';
+  // When this product has colour variants, the card should show and link to
+  // the default one -- shoppers land straight on that colour, and clicking
+  // through from shop/category always opens that exact variant.
+  const href = `/product/${product.default_variant_slug || product.slug}`;
+  const img = product.default_variant_image || product.images[0] || 'https://placehold.co/800x1000?text=No+Image';
   const hoverImg = product.images[1];
   const altText = `${product.name} - ${product.fabric} ${product.category} from ${product.origin}`;
 
   return (
     <Link
-      href={`/product/${product.slug}`}
+      href={href}
       className="group relative flex flex-col overflow-hidden rounded-2xl bg-card shadow-sm transition-shadow duration-300 hover:shadow-lg product-card-hover"
     >
       <div className="relative aspect-[4/5] overflow-hidden bg-muted">

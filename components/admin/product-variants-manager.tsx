@@ -2,7 +2,7 @@
 
 import { useEffect, useState, FormEvent } from 'react';
 import Image from 'next/image';
-import { Plus, Pencil, Trash2, Upload, Loader2, Star, Link2, Wand2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Upload, Loader2, Star, Link2, Wand2, Video, Check } from 'lucide-react';
 import {
   fetchVariantsWithSizes,
   createVariant,
@@ -16,6 +16,7 @@ import {
   VariantWithSizes,
 } from '@/lib/variants-api';
 import { generateVariantSku, generateSizeSku } from '@/lib/sku';
+import { COLOR_PRESETS, findPresetByName } from '@/lib/color-presets';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -42,8 +43,13 @@ const slugify = (s: string) =>
 
 interface VariantFormState {
   color: string;
+  /** Hex swatch colour, e.g. "#7A1F2B" — either picked from the library
+   *  below or typed/adjusted manually via the colour-type input. */
+  colorHex: string;
   slug: string;
   images: string[];
+  /** Optional short fabric/drape/try-on video URL for this colour. */
+  video: string;
   priceOverride: string;
   sku: string;
   metaTitle: string;
@@ -54,8 +60,10 @@ interface VariantFormState {
 
 const emptyVariantForm = (): VariantFormState => ({
   color: '',
+  colorHex: '',
   slug: '',
   images: [],
+  video: '',
   priceOverride: '',
   sku: '',
   metaTitle: '',
@@ -120,8 +128,10 @@ export default function ProductVariantsManager({ productId, productName, product
     setEditing(v);
     setForm({
       color: v.color,
+      colorHex: v.color_hex ?? findPresetByName(v.color)?.hex ?? '',
       slug: v.slug,
       images: v.images,
+      video: v.video ?? '',
       priceOverride: v.price_override != null ? String(v.price_override) : '',
       sku: v.sku ?? '',
       metaTitle: v.meta_title ?? '',
@@ -238,8 +248,10 @@ export default function ProductVariantsManager({ productId, productName, product
       if (editing) {
         await updateVariant(editing.id, {
           color: form.color.trim(),
+          color_hex: form.colorHex.trim() || null,
           slug,
           images: form.images,
+          video: form.video.trim() || null,
           price_override: priceOverride,
           meta_title: form.metaTitle.trim() || null,
           meta_description: form.metaDescription.trim() || null,
@@ -280,8 +292,10 @@ export default function ProductVariantsManager({ productId, productName, product
         const created = await createVariant({
           productId,
           color: form.color.trim(),
+          colorHex: form.colorHex.trim() || null,
           slug,
           images: form.images,
+          video: form.video.trim() || null,
           priceOverride,
           metaTitle: form.metaTitle.trim() || undefined,
           metaDescription: form.metaDescription.trim() || undefined,
@@ -378,7 +392,15 @@ export default function ProductVariantsManager({ productId, productName, product
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-1">
+                  {v.color_hex && (
+                    <span
+                      className="h-3 w-3 shrink-0 rounded-full border border-border/70"
+                      style={{ backgroundColor: v.color_hex }}
+                      title={v.color_hex}
+                    />
+                  )}
                   <p className="truncate text-sm font-semibold">{v.color}</p>
+                  {v.video && <Video className="h-3 w-3 shrink-0 text-muted-foreground" />}
                   {v.is_default && (
                     <Badge className="bg-primary px-1 py-0 text-[10px] text-primary-foreground">
                       <Star className="mr-0.5 h-2.5 w-2.5 fill-current" /> Default
@@ -436,15 +458,62 @@ export default function ProductVariantsManager({ productId, productName, product
             <DialogDescription>For &quot;{productName || 'this product'}&quot;</DialogDescription>
           </DialogHeader>
           <form onSubmit={onSubmit} className="grid gap-4">
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-1.5">
+              <Label>Pick a colour</Label>
+              <p className="text-xs text-muted-foreground">
+                Select from the colour library, or type a custom colour name and set its swatch below.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {COLOR_PRESETS.map((c) => {
+                  const isSelected = form.color.trim().toLowerCase() === c.name.toLowerCase();
+                  return (
+                    <button
+                      key={c.name}
+                      type="button"
+                      title={c.name}
+                      onClick={() => setForm((f) => ({ ...f, color: c.name, colorHex: c.hex }))}
+                      className="group flex flex-col items-center gap-1"
+                    >
+                      <span
+                        className={`relative flex h-7 w-7 items-center justify-center rounded-full border-2 shadow-sm ${
+                          isSelected ? 'border-primary ring-2 ring-primary/25' : 'border-border/70 group-hover:border-primary/40'
+                        }`}
+                        style={{ backgroundColor: c.hex }}
+                      >
+                        {isSelected && (
+                          <Check className={`h-3.5 w-3.5 ${c.hex === '#FFFFFF' ? 'text-foreground' : 'text-white'}`} />
+                        )}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-[1fr_auto_1fr]">
               <div className="grid gap-1.5">
-                <Label htmlFor="v-color">Colour *</Label>
+                <Label htmlFor="v-color">Colour name *</Label>
                 <Input
                   id="v-color"
                   value={form.color}
-                  onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
-                  placeholder="e.g. Maroon"
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    const preset = findPresetByName(value);
+                    setForm((f) => ({ ...f, color: value, colorHex: preset ? preset.hex : f.colorHex }));
+                  }}
+                  placeholder="e.g. Maroon, or type a new/custom colour"
                   required
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="v-color-hex">Colour type</Label>
+                <input
+                  id="v-color-hex"
+                  type="color"
+                  value={/^#([0-9a-f]{3}){1,2}$/i.test(form.colorHex) ? form.colorHex : '#cccccc'}
+                  onChange={(e) => setForm((f) => ({ ...f, colorHex: e.target.value }))}
+                  title="Pick the exact swatch colour"
+                  className="h-9 w-14 cursor-pointer rounded-md border border-input bg-transparent p-1"
                 />
               </div>
               <div className="grid gap-1.5">
@@ -538,6 +607,22 @@ export default function ProductVariantsManager({ productId, productName, product
                   </div>
                 ))}
               </div>
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label htmlFor="v-video" className="flex items-center gap-1.5">
+                <Video className="h-3.5 w-3.5" /> Video URL (optional)
+              </Label>
+              <Input
+                id="v-video"
+                value={form.video}
+                onChange={(e) => setForm((f) => ({ ...f, video: e.target.value }))}
+                placeholder="Short fabric/drape/try-on video link for this colour"
+              />
+              <p className="text-xs text-muted-foreground">
+                Shows as the first slide in this colour&apos;s gallery on the product page. Leave blank to use the
+                product&apos;s main video (if any).
+              </p>
             </div>
 
             <div className="grid gap-1.5">

@@ -14,8 +14,14 @@ export interface ProductVariant {
   id: string;
   product_id: string;
   color: string;
+  /** Hex swatch colour (e.g. "#7A1F2B") picked from the colour library, or
+   *  typed manually for a custom colour. Used to render a real colour dot
+   *  on the storefront when the variant has no image yet. */
+  color_hex: string | null;
   slug: string;
   images: string[];
+  /** Optional short fabric/drape/try-on video for this colour. */
+  video: string | null;
   price_override: number | null;
   meta_title: string | null;
   meta_description: string | null;
@@ -80,8 +86,10 @@ export async function fetchVariantBySlug(
 export async function createVariant(input: {
   productId: string;
   color: string;
+  colorHex?: string | null;
   slug: string;
   images: string[];
+  video?: string | null;
   priceOverride?: number | null;
   metaTitle?: string;
   metaDescription?: string;
@@ -95,8 +103,10 @@ export async function createVariant(input: {
     .insert({
       product_id: input.productId,
       color: input.color,
+      color_hex: input.colorHex ?? null,
       slug: input.slug,
       images: input.images,
+      video: input.video ?? null,
       price_override: input.priceOverride ?? null,
       meta_title: input.metaTitle ?? null,
       meta_description: input.metaDescription ?? null,
@@ -142,8 +152,10 @@ export async function updateVariant(
   id: string,
   input: Partial<{
     color: string;
+    color_hex: string | null;
     slug: string;
     images: string[];
+    video: string | null;
     price_override: number | null;
     meta_title: string | null;
     meta_description: string | null;
