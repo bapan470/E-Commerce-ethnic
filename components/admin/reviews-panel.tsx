@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Check, EyeOff, Trash2, Star, Search } from 'lucide-react';
+import { Check, EyeOff, Trash2, Star, Search, X } from 'lucide-react';
 import {
   fetchAllReviewsAdmin,
   approveReview,
@@ -45,6 +45,7 @@ export default function ReviewsPanel() {
   const [search, setSearch] = useState('');
   const [confirmTarget, setConfirmTarget] = useState<AdminReview | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -186,14 +187,19 @@ export default function ReviewsPanel() {
                 {r.photos && r.photos.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {r.photos.map((url, idx) => (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <a key={idx} href={url} target="_blank" rel="noopener noreferrer">
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setLightboxUrl(url)}
+                        className="overflow-hidden rounded-md border border-border/60 transition-transform hover:scale-105"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={url}
                           alt={`${r.customer_name} review photo ${idx + 1}`}
-                          className="h-14 w-14 rounded-md border border-border/60 object-cover"
+                          className="h-14 w-14 object-cover"
                         />
-                      </a>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -333,6 +339,29 @@ export default function ReviewsPanel() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-50 flex animate-in fade-in items-center justify-center bg-black/90 p-4 duration-200"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button
+            type="button"
+            aria-label="Close photo"
+            onClick={() => setLightboxUrl(null)}
+            className="absolute right-4 top-4 rounded-full bg-background/20 p-2 text-white hover:bg-background/30"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightboxUrl}
+            alt="Review photo enlarged"
+            className="max-h-[85vh] max-w-full animate-in zoom-in-95 rounded-lg object-contain duration-200"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }

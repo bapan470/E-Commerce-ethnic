@@ -92,6 +92,12 @@ function initials(name: string) {
   return (parts[0][0] + (parts[1]?.[0] ?? '')).toUpperCase();
 }
 
+/** Public-facing reviews only ever show the reviewer's first name, for privacy. */
+function firstName(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return parts[0] ?? name;
+}
+
 export default function ReviewsSection({
   productId,
   productSlug,
@@ -451,7 +457,7 @@ export default function ReviewsSection({
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-semibold text-foreground">{r.customer_name}</span>
+                      <span className="text-sm font-semibold text-foreground">{firstName(r.customer_name)}</span>
                       <span className="inline-flex items-center gap-1 rounded bg-emerald-600 px-1.5 py-0.5 text-xs font-semibold text-white">
                         {r.rating.toFixed(1)}
                         <Star className="h-3 w-3 fill-white" />
@@ -483,7 +489,7 @@ export default function ReviewsSection({
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={src}
-                              alt={`Photo from ${r.customer_name}'s review`}
+                              alt={`Photo from ${firstName(r.customer_name)}'s review`}
                               className="h-full w-full object-cover"
                             />
                           </button>
@@ -491,21 +497,26 @@ export default function ReviewsSection({
                       </div>
                     )}
 
-                    <div className="mt-3 flex items-center gap-4">
-                      <span className="text-xs font-medium text-muted-foreground">
-                        {r.customer_name} · Verified Purchase
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <span
+                        className="inline-flex animate-in fade-in zoom-in items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 duration-500 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-400"
+                      >
+                        <CheckCircle2 className="h-3 w-3 shrink-0 animate-pulse text-emerald-600 [animation-duration:2s] dark:text-emerald-400" />
+                        Verified Purchase
                       </span>
                       <button
                         type="button"
                         onClick={() => toggleHelpful(r.id)}
-                        className={`inline-flex items-center gap-1.5 text-xs font-medium transition-colors ${
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium transition-all duration-200 active:scale-95 ${
                           markedHelpful[r.id]
-                            ? 'text-primary'
-                            : 'text-muted-foreground hover:text-primary'
+                            ? 'border-primary/40 bg-primary/10 text-primary'
+                            : 'border-border/60 text-muted-foreground hover:border-primary/40 hover:text-primary'
                         }`}
                       >
                         <ThumbsUp
-                          className={`h-3.5 w-3.5 ${markedHelpful[r.id] ? 'fill-primary' : ''}`}
+                          className={`h-3 w-3 transition-transform duration-200 ${
+                            markedHelpful[r.id] ? 'fill-primary scale-110' : ''
+                          }`}
                         />
                         Helpful{helpfulVotes[r.id] ? ` (${helpfulVotes[r.id]})` : ''}
                       </button>
