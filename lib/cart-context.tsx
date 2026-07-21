@@ -82,7 +82,7 @@ interface CartContextValue {
   items: CartItem[];
   count: number;
   subtotal: number;
-  addItem: (product: Product, size: string, quantity?: number) => void;
+  addItem: (product: Product, size: string, quantity?: number, options?: { silent?: boolean }) => void;
   removeItem: (productId: string, size: string) => void;
   updateQuantity: (productId: string, size: string, quantity: number) => void;
   clearCart: () => void;
@@ -163,7 +163,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, [appliedCoupon, hydrated]);
 
   const addItem = useCallback(
-    (product: Product, size: string, quantity?: number) => {
+    (product: Product, size: string, quantity?: number, options?: { silent?: boolean }) => {
       const qty = quantity ?? 1;
       const stock = product.stock_quantity ?? Infinity;
       const existing = state.items.find(
@@ -178,7 +178,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         );
       }
       dispatch({ type: 'ADD', product, size, quantity: qty, maxStock: stock });
-      setCartOpen(true);
+      if (!options?.silent) {
+        setCartOpen(true);
+      }
     },
     [state.items]
   );

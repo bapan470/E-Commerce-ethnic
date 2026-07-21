@@ -68,7 +68,7 @@ export default function Header() {
   const recoverFromCheckout = (returnPath: string | null) => {
     if (isCheckoutReturnFromBuyNow()) {
       if (buyNowItem) {
-        addItem(buyNowItem.product, buyNowItem.size, buyNowItem.quantity);
+        addItem(buyNowItem.product, buyNowItem.size, buyNowItem.quantity, { silent: true });
       }
       clearBuyNow();
       clearCheckoutReturnBuyNowFlag();
