@@ -9,8 +9,10 @@ import {
   fetchApprovedReviews,
   fetchMyReviewForProduct,
   hasPurchasedProduct,
+  hasWrittenContent,
   submitReview,
   summarizeReviews,
+  updateMyReview,
   uploadReviewPhoto,
 } from '@/lib/reviews-api';
 import { Button } from '@/components/ui/button';
@@ -104,6 +106,7 @@ export default function ReviewsSection({
   const [myReview, setMyReview] = useState<Review | null>(null);
   const [eligible, setEligible] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [step, setStep] = useState<'rating' | 'details'>('rating');
   const [rating, setRating] = useState(0);
   const [title, setTitle] = useState('');
   const [comment, setComment] = useState('');
@@ -176,21 +179,35 @@ export default function ReviewsSection({
     setPhotoFiles((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  const handleSubmit = async () => {
+  const handleSubmitRating = async () => {
     if (rating === 0) {
       toast.error('Please select a star rating');
       return;
     }
     setSubmitting(true);
     try {
+      const review = await submitReview({ productId, rating });
+      setMyReview(review);
+      setStep('details');
+      toast.success('Thanks for rating! Add a written review below, or come back anytime.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not submit rating');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSubmitDetails = async () => {
+    if (!myReview) return;
+    setSubmitting(true);
+    try {
       let photos: string[] = [];
       if (photoFiles.length > 0) {
         photos = await Promise.all(photoFiles.map(uploadReviewPhoto));
       }
-      const review = await submitReview({ productId, rating, title, comment, photos });
-      setMyReview(review);
+      const updated = await updateMyReview(myReview.id, { title, comment, photos });
+      setMyReview(updated);
       setFormOpen(false);
-      setRating(0);
       setTitle('');
       setComment('');
       setPhotoFiles([]);
@@ -207,6 +224,14 @@ export default function ReviewsSection({
       toast.info('Login to write a review');
       router.push(`/login?next=/product/${productSlug}`);
       return;
+    }
+    if (myReview && !hasWrittenContent(myReview)) {
+      // Already rated -- go straight to the "add details" step.
+      setRating(myReview.rating);
+      setStep('details');
+    } else {
+      setStep('rating');
+      setRating(0);
     }
     setFormOpen(true);
   };
@@ -250,12 +275,28 @@ export default function ReviewsSection({
           })}
         </div>
 
-        {myReview ? (
+        {myReview && hasWrittenContent(myReview) ? (
           <div className="flex items-center gap-2 rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
             <CheckCircle2 className="h-4 w-4 shrink-0 text-secondary" />
             {myReview.is_approved
               ? 'You reviewed this product.'
               : 'Your review is awaiting approval.'}
+          </div>
+        ) : myReview ? (
+          <div className="flex flex-col gap-2 rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-secondary" />
+              You rated this {myReview.rating}★
+              {myReview.is_approved ? '' : ' (awaiting approval)'}
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={openForm}
+              className="w-fit border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+            >
+              Add a written review
+            </Button>
           </div>
         ) : (
           <Button
@@ -263,7 +304,7 @@ export default function ReviewsSection({
             onClick={openForm}
             className="border-primary text-primary hover:bg-primary hover:text-primary-foreground"
           >
-            Write a review
+            Rate this product
           </Button>
         )}
 
@@ -277,77 +318,106 @@ export default function ReviewsSection({
       <div className="flex flex-col gap-6">
         {formOpen && (
           <div className="rounded-lg border border-border/60 bg-card p-5">
-            <p className="mb-2 text-sm font-semibold">Rate this product</p>
-            <StarPicker value={rating} onChange={setRating} />
-            <Input
-              className="mt-4"
-              placeholder="Review title (optional)"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              maxLength={100}
-            />
-            <Textarea
-              className="mt-3"
-              placeholder="Share details about the fit, fabric, and quality..."
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              rows={4}
-              maxLength={1000}
-            />
+            {step === 'rating' ? (
+              <>
+                <p className="mb-2 text-sm font-semibold">Rate this product</p>
+                <p className="mb-3 text-xs text-muted-foreground">
+                  Just tap a star to submit your rating. You can add a written review after, if you&apos;d like.
+                </p>
+                <StarPicker value={rating} onChange={setRating} />
+                <div className="mt-4 flex gap-2">
+                  <Button onClick={handleSubmitRating} disabled={submitting} className="bg-primary">
+                    {submitting ? (
+                      <>
+                        <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                        Submitting...
+                      </>
+                    ) : (
+                      'Submit Rating'
+                    )}
+                  </Button>
+                  <Button variant="ghost" onClick={() => setFormOpen(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="mb-1 text-sm font-semibold">Write a review</p>
+                <div className="mb-3 flex items-center gap-2 text-xs text-muted-foreground">
+                  <StarRow value={myReview?.rating ?? rating} size="h-3.5 w-3.5" />
+                  Your rating &mdash; already saved
+                </div>
+                <Input
+                  placeholder="Review title (optional)"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  maxLength={100}
+                />
+                <Textarea
+                  className="mt-3"
+                  placeholder="Share details about the fit, fabric, and quality..."
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  rows={4}
+                  maxLength={1000}
+                />
 
-            <div className="mt-3">
-              <p className="mb-1.5 text-xs font-medium text-muted-foreground">
-                Add photos (optional) — {photoFiles.length}/{MAX_PHOTOS}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {photoPreviews.map((src, idx) => (
-                  <div
-                    key={idx}
-                    className="relative h-16 w-16 overflow-hidden rounded-md border border-border/60"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={src} alt={`Attached photo ${idx + 1}`} className="h-full w-full object-cover" />
-                    <button
-                      type="button"
-                      onClick={() => removePhoto(idx)}
-                      className="absolute right-0.5 top-0.5 rounded-full bg-background/90 p-0.5 text-destructive shadow-sm hover:bg-background"
-                      aria-label="Remove photo"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
+                <div className="mt-3">
+                  <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                    Add photos (optional) — {photoFiles.length}/{MAX_PHOTOS}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {photoPreviews.map((src, idx) => (
+                      <div
+                        key={idx}
+                        className="relative h-16 w-16 overflow-hidden rounded-md border border-border/60"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={src} alt={`Attached photo ${idx + 1}`} className="h-full w-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => removePhoto(idx)}
+                          className="absolute right-0.5 top-0.5 rounded-full bg-background/90 p-0.5 text-destructive shadow-sm hover:bg-background"
+                          aria-label="Remove photo"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                    {photoFiles.length < MAX_PHOTOS && (
+                      <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border text-muted-foreground hover:border-primary/40 hover:text-primary">
+                        <ImagePlus className="h-5 w-5" />
+                        <span className="text-[10px]">Add</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          onChange={onPickPhotos}
+                        />
+                      </label>
+                    )}
                   </div>
-                ))}
-                {photoFiles.length < MAX_PHOTOS && (
-                  <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border text-muted-foreground hover:border-primary/40 hover:text-primary">
-                    <ImagePlus className="h-5 w-5" />
-                    <span className="text-[10px]">Add</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="hidden"
-                      onChange={onPickPhotos}
-                    />
-                  </label>
-                )}
-              </div>
-            </div>
+                </div>
 
-            <div className="mt-3 flex gap-2">
-              <Button onClick={handleSubmit} disabled={submitting} className="bg-primary">
-                {submitting ? (
-                  <>
-                    <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                    Submitting...
-                  </>
-                ) : (
-                  'Submit Review'
-                )}
-              </Button>
-              <Button variant="ghost" onClick={() => setFormOpen(false)}>
-                Cancel
-              </Button>
-            </div>
+                <div className="mt-3 flex gap-2">
+                  <Button onClick={handleSubmitDetails} disabled={submitting} className="bg-primary">
+                    {submitting ? (
+                      <>
+                        <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                        Submitting...
+                      </>
+                    ) : (
+                      'Submit Review'
+                    )}
+                  </Button>
+                  <Button variant="ghost" onClick={() => setFormOpen(false)}>
+                    Maybe later
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         )}
 

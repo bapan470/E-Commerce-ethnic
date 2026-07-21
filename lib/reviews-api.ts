@@ -24,7 +24,7 @@ export interface RatingSummary {
   breakdown: Record<1 | 2 | 3 | 4 | 5, number>;
 }
 
-const hasWrittenContent = (r: Review) =>
+export const hasWrittenContent = (r: Review) =>
   Boolean(r.title?.trim()) || Boolean(r.comment?.trim());
 
 export function summarizeReviews(reviews: Review[]): RatingSummary {
@@ -186,4 +186,31 @@ export async function submitReview(input: {
     throw error;
   }
   return data as Review;
+}
+
+/**
+ * Adds/updates the title, comment, and photos on the current user's own
+ * review (used by the "rate first, write a review later" flow -- the
+ * rating itself is already saved via submitReview). Re-submits it for
+ * moderation since new written content hasn't been checked yet, even if
+ * the rating-only version was already approved.
+ */
+export async function updateMyReview(
+  id: string,
+  input: { title?: string; comment?: string; photos?: string[] }
+): Promise<Review> {
+  const supabase = getSupabaseBrowser();
+  const { data, error } = await supabase
+    .from('reviews')
+    .update({
+      title: input.title?.trim() || null,
+      comment: input.comment?.trim() || null,
+      photos: input.photos ?? [],
+      is_approved: false,
+    })
+    .eq('id', id)
+    .select('*')
+    .single();
+  if (error) throw error;
+  return { ...data, photos: (data as any).photos ?? [] } as Review;
 }

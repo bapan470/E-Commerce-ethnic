@@ -1,36 +1,65 @@
-Ratings vs Reviews — separate counts (product page review box)
-================================================================
+Rating & Review — split into two clear steps
+==============================================
 
-2 files, replace at the same paths:
+4 files -- 1 new, 3 replaced. Copy at the same relative paths:
 
-  lib/reviews-api.ts
-  components/product/reviews-section.tsx
+  lib/reviews-api.ts                                  (replace)
+  components/product/reviews-section.tsx              (replace)
+  components/account/delivered-item-review.tsx         (NEW file)
+  app/account/orders/[id]/page.tsx                     (replace)
+
+No DB migration needed -- the `reviews` table's UPDATE policy already
+allows a user to update their own row (checked in
+supabase/migrations/20260717000000_full_feature_schema.sql).
 
 What changed
 ------------
-Pehle: "Ratings" aur "Reviews" dono same number dikhate the (summary.total),
-kyunki har review row me rating hamesha hoti thi.
 
-Ab: automatic split, real submitted reviews se hi -- koi naya DB column
-ya admin field nahi chahiye:
+1. Product page ("Reviews" tab) -- Rate this product / Write a review
+   Ab do saaf steps mein bant gaya hai:
 
-  - RATINGS = saare approved reviews jinme sirf star diya gaya (comment ho
-    ya na ho) -- summary.totalRatings
-  - REVIEWS = un me se jinhone title ya comment likha (likha hua text hai)
-    -- summary.totalReviews
+   Step 1 -- "Rate this product": sirf stars + "Submit Rating" button.
+   Star tap karke submit karte hi rating turant save ho jaati hai (koi
+   title/comment zaroori nahi).
 
-Star breakdown bars (Excellent/Very Good/Good/Average/Poor) still totalRatings
-ke against calculate hote hain -- kyunki wo distribution har rating ka hai,
-sirf likhe hue reviews ka nahi.
+   Step 2 -- "Write a review" (optional, alag button se khulta hai):
+   title + comment + photos, apni already-saved rating ke saath. Ye same
+   review row ko UPDATE karta hai (naya function `updateMyReview` in
+   lib/reviews-api.ts) -- naya review nahi banta.
 
-Note: agar future me photos-only (bina text) submissions ko bhi "Review" me
-count karna ho, to lib/reviews-api.ts me `hasWrittenContent` function me
-`|| r.photos.length > 0` add kar dena -- abhi sirf title/comment text ko
-"written review" mana gaya hai.
+   Left panel ab teen states dikhata hai:
+     - Koi rating nahi di -> "Rate this product" button
+     - Rating di, likha kuch nahi -> "You rated this X★" + "Add a written
+       review" button
+     - Likha hua review bhi hai -> "You reviewed this product" /
+       "awaiting approval" (jaisa pehle tha)
+
+   Written content add/update hone par review dobara `is_approved: false`
+   ho jaata hai -- naya text bhi ek baar admin se moderate hokar hi
+   dikhega (rating khud turant count ho jaati hai, kyunki wo already-
+   approved trigger se turant products.rating me sync hoti hai).
+
+2. Account > Orders > [order] -- delivered order ke har item ke neeche
+   ek chhota inline widget (naya component
+   components/account/delivered-item-review.tsx):
+
+     - Order "delivered" hone par har item ke neeche turant "Rate this
+       product" stars dikhte hain -- ek tap = rating submit.
+     - Rating dene ke baad wahi widget "Add a written review" prompt
+       dikhata hai (same rate -> review order, jaisa aapne bola).
+     - Already likha hua review hai to "You reviewed this product" /
+       "awaiting approval" dikhta hai.
+
+   Sirf un items ke liye dikhta hai jinke paas item.product_id ho (naye
+   orders me already hai -- app/checkout/page.tsx already product_id
+   bhejta hai). Bahut purane orders jinme product_id save nahi hua tha,
+   unme ye widget nahi dikhega (koi error nahi aayega, bas silently
+   skip ho jaata hai).
 
 How to apply
 ------------
-1. Unzip, copy these 2 files into your project at the same relative paths.
-2. git add -A && git commit -m "Split ratings vs reviews count" && git push
+1. Unzip, copy these 4 files into your project at the same relative
+   paths (delivered-item-review.tsx is a brand-new file).
+2. git add -A && git commit -m "Split rating and written review into two steps" && git push
 
-Verified: `npx tsc --noEmit` and `next lint` both pass clean.
+Verified: `npx tsc --noEmit` and `next lint` both pass clean on all 4 files.

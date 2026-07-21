@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import ReturnRequestButton from '@/components/account/return-request-button';
 import OrderTracking from '@/components/order/order-tracking';
+import DeliveredItemReview from '@/components/account/delivered-item-review';
 
 const RETURN_WINDOW_DAYS = 7;
 
@@ -56,14 +57,19 @@ export default async function OrderDetailPage({ params }: { params: { id: string
       <h2 className="font-serif text-lg font-semibold">Items</h2>
       <div className="mt-3 divide-y divide-border/60">
         {items.map((item: any, i: number) => (
-          <div key={i} className="flex items-center justify-between py-3 text-sm">
-            <div>
-              <p className="font-medium">{item.product_name}</p>
-              <p className="text-muted-foreground">
-                Size: {item.size} &middot; Qty: {item.quantity}
-              </p>
+          <div key={i} className="py-3 text-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium">{item.product_name}</p>
+                <p className="text-muted-foreground">
+                  Size: {item.size} &middot; Qty: {item.quantity}
+                </p>
+              </div>
+              <p className="font-medium">{formatINR(item.price * item.quantity)}</p>
             </div>
-            <p className="font-medium">{formatINR(item.price * item.quantity)}</p>
+            {order.status === 'delivered' && item.product_id && (
+              <DeliveredItemReview productId={item.product_id} productName={item.product_name} />
+            )}
           </div>
         ))}
       </div>
