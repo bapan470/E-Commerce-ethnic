@@ -2,7 +2,7 @@
 
 import { useEffect, useState, FormEvent } from 'react';
 import Image from 'next/image';
-import { Plus, Pencil, Trash2, Upload, Loader2, Star, Link2, Wand2, Video, Check } from 'lucide-react';
+import { Plus, Pencil, Trash2, Upload, Loader2, Star, Link2, Wand2, Video, Check, Sparkles } from 'lucide-react';
 import {
   fetchVariantsWithSizes,
   createVariant,
@@ -96,6 +96,7 @@ export default function ProductVariantsManager({ productId, productName, product
   const [uploading, setUploading] = useState(false);
   const [importUrl, setImportUrl] = useState('');
   const [importing, setImporting] = useState(false);
+  const [detectingColor, setDetectingColor] = useState(false);
   const [confirmVariant, setConfirmVariant] = useState<VariantWithSizes | null>(null);
   const [colorSuggestions, setColorSuggestions] = useState<ColorPreset[]>([]);
   const [showColorSuggestions, setShowColorSuggestions] = useState(false);
@@ -163,13 +164,52 @@ export default function ProductVariantsManager({ productId, productName, product
     }));
   };
 
+  /**
+   * Sends a variant photo to the AI vision model and fills in the colour
+   * name + hex swatch from what it sees in the image. `silent` is used for
+   * the automatic call right after the first photo is added — it skips the
+   * "no photo yet" error toast and doesn't overwrite a colour the admin
+   * already typed themselves.
+   */
+  const detectColorFromImage = async (imageUrl: string, opts?: { silent?: boolean }) => {
+    if (!imageUrl) {
+      if (!opts?.silent) toast.error('Add a photo for this colour first, then detect.');
+      return;
+    }
+    setDetectingColor(true);
+    try {
+      const res = await fetch('/api/admin/detect-variant-color', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (!opts?.silent) toast.error(data.error || 'Could not detect the colour');
+        return;
+      }
+      setForm((f) => ({ ...f, color: data.color, colorHex: data.colorHex }));
+      toast.success(`Detected colour: ${data.color}`);
+    } catch (err) {
+      if (!opts?.silent) toast.error(err instanceof Error ? err.message : 'Colour detection failed');
+    } finally {
+      setDetectingColor(false);
+    }
+  };
+
   const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
     setUploading(true);
     try {
       const urls = await Promise.all(files.map(uploadVariantImage));
+      const isFirstImage = form.images.length === 0;
       setForm((f) => ({ ...f, images: [...f.images, ...urls] }));
+      // Auto-fill the colour from the first photo added, but only if the
+      // admin hasn't already typed a colour name themselves.
+      if (isFirstImage && !form.color.trim() && urls[0]) {
+        detectColorFromImage(urls[0], { silent: true });
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Image upload failed');
     } finally {
@@ -197,9 +237,13 @@ export default function ProductVariantsManager({ productId, productName, product
         toast.error(data.error || 'Could not import that image');
         return;
       }
+      const isFirstImage = form.images.length === 0;
       setForm((f) => ({ ...f, images: [...f.images, data.url] }));
       setImportUrl('');
       toast.success('Image imported and converted to WebP');
+      if (isFirstImage && !form.color.trim()) {
+        detectColorFromImage(data.url, { silent: true });
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Image import failed');
     } finally {
@@ -462,9 +506,28 @@ export default function ProductVariantsManager({ productId, productName, product
           </DialogHeader>
           <form onSubmit={onSubmit} className="grid gap-4">
             <div className="grid gap-1.5">
-              <Label>Pick a colour</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label>Pick a colour</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 px-2 text-xs"
+                  disabled={detectingColor || form.images.length === 0}
+                  title={form.images.length === 0 ? 'Add a photo first' : 'Detect colour from the photo using AI'}
+                  onClick={() => detectColorFromImage(form.images[0])}
+                >
+                  {detectingColor ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5" />
+                  )}
+                  {detectingColor ? 'Detecting…' : 'Detect from photo (AI)'}
+                </Button>
+              </div>
               <p className="text-xs text-muted-foreground">
-                Select from the colour library, or type a custom colour name and set its swatch below.
+                Select from the colour library, or type a custom colour name and set its swatch below. Adding a
+                photo auto-detects the colour too — use this button to re-run it any time.
               </p>
               <div className="flex flex-wrap gap-2">
                 {COLOR_PRESETS.map((c) => {
