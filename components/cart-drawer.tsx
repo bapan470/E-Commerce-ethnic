@@ -129,7 +129,7 @@ export default function CartDrawer() {
                           {item.product.name}
                         </Link>
                         <button
-                          onClick={() => removeItem(item.product.id, item.size)}
+                          onClick={() => removeItem(item.product.id, item.size, item.product.colors?.[0] ?? null)}
                           className="text-muted-foreground transition-colors hover:text-destructive"
                           aria-label="Remove item"
                         >
@@ -146,7 +146,7 @@ export default function CartDrawer() {
                         <div className="flex items-center rounded-md border border-border">
                           <button
                             onClick={() =>
-                              updateQuantity(item.product.id, item.size, item.quantity - 1)
+                              updateQuantity(item.product.id, item.size, item.quantity - 1, item.product.colors?.[0] ?? null)
                             }
                             className="p-1.5 text-muted-foreground hover:text-primary"
                             aria-label="Decrease quantity"
@@ -158,7 +158,7 @@ export default function CartDrawer() {
                           </span>
                           <button
                             onClick={() =>
-                              updateQuantity(item.product.id, item.size, item.quantity + 1)
+                              updateQuantity(item.product.id, item.size, item.quantity + 1, item.product.colors?.[0] ?? null)
                             }
                             className="p-1.5 text-muted-foreground hover:text-primary"
                             aria-label="Increase quantity"

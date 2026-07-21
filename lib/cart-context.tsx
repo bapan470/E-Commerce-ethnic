@@ -21,25 +21,44 @@ interface CartState {
 }
 
 type CartAction =
-  | { type: 'ADD'; product: Product; size: string; quantity?: number; maxStock?: number }
-  | { type: 'REMOVE'; productId: string; size: string }
-  | { type: 'UPDATE_QTY'; productId: string; size: string; quantity: number; maxStock?: number }
+  | { type: 'ADD'; product: Product; size: string; quantity?: number; maxStock?: number; isBump?: boolean }
+  | { type: 'REMOVE'; productId: string; size: string; color?: string | null }
+  | { type: 'UPDATE_QTY'; productId: string; size: string; quantity: number; maxStock?: number; color?: string | null }
   | { type: 'CLEAR' }
   | { type: 'HYDRATE'; items: CartItem[] };
+
+// Colour variants (e.g. a saree's Red / Blue / Green swatches) are separate
+// products to the shopper but share the SAME base product.id — the product
+// page just overlays the variant's colour/price/images on top of it (see
+// the `product` useMemo in app/product/[slug]/product-detail.tsx). Matching
+// cart lines by product.id + size alone, without colour, meant switching a
+// colour swatch and buying/adding again looked like "the same line" to the
+// cart: instead of a new line for the new colour, it bumped the OLD
+// colour's quantity up by however many of the new one were just added. This
+// pulls out the colour so every cart action below can key on it too.
+const itemColor = (product: Product): string | null => product.colors?.[0] ?? null;
+const sameLine = (
+  item: CartItem,
+  productId: string,
+  size: string,
+  color?: string | null
+) =>
+  item.product.id === productId &&
+  item.size === size &&
+  (color === undefined || itemColor(item.product) === color);
 
 function cartReducer(state: CartState, action: CartAction): CartState {
   switch (action.type) {
     case 'ADD': {
       const qty = action.quantity ?? 1;
       const cap = action.maxStock ?? Infinity;
-      const existing = state.items.find(
-        (i) => i.product.id === action.product.id && i.size === action.size
-      );
+      const color = itemColor(action.product);
+      const existing = state.items.find((i) => sameLine(i, action.product.id, action.size, color));
       if (existing) {
         return {
           items: state.items.map((i) =>
-            i.product.id === action.product.id && i.size === action.size
-              ? { ...i, quantity: Math.min(i.quantity + qty, cap) }
+            sameLine(i, action.product.id, action.size, color)
+              ? { ...i, quantity: Math.min(i.quantity + qty, cap), isBump: i.isBump || action.isBump }
               : i
           ),
         };
@@ -47,14 +66,14 @@ function cartReducer(state: CartState, action: CartAction): CartState {
       return {
         items: [
           ...state.items,
-          { product: action.product, size: action.size, quantity: Math.min(qty, cap) },
+          { product: action.product, size: action.size, quantity: Math.min(qty, cap), isBump: action.isBump },
         ],
       };
     }
     case 'REMOVE':
       return {
         items: state.items.filter(
-          (i) => !(i.product.id === action.productId && i.size === action.size)
+          (i) => !sameLine(i, action.productId, action.size, action.color)
         ),
       };
     case 'UPDATE_QTY': {
@@ -62,7 +81,7 @@ function cartReducer(state: CartState, action: CartAction): CartState {
       return {
         items: state.items
           .map((i) =>
-            i.product.id === action.productId && i.size === action.size
+            sameLine(i, action.productId, action.size, action.color)
               ? { ...i, quantity: Math.min(Math.max(0, action.quantity), cap) }
               : i
           )
@@ -82,9 +101,9 @@ interface CartContextValue {
   items: CartItem[];
   count: number;
   subtotal: number;
-  addItem: (product: Product, size: string, quantity?: number, options?: { silent?: boolean }) => void;
-  removeItem: (productId: string, size: string) => void;
-  updateQuantity: (productId: string, size: string, quantity: number) => void;
+  addItem: (product: Product, size: string, quantity?: number, options?: { silent?: boolean; isBump?: boolean }) => void;
+  removeItem: (productId: string, size: string, color?: string | null) => void;
+  updateQuantity: (productId: string, size: string, quantity: number, color?: string | null) => void;
   clearCart: () => void;
   isCartOpen: boolean;
   setCartOpen: (open: boolean) => void;
@@ -163,12 +182,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, [appliedCoupon, hydrated]);
 
   const addItem = useCallback(
-    (product: Product, size: string, quantity?: number, options?: { silent?: boolean }) => {
+    (product: Product, size: string, quantity?: number, options?: { silent?: boolean; isBump?: boolean }) => {
       const qty = quantity ?? 1;
       const stock = product.stock_quantity ?? Infinity;
-      const existing = state.items.find(
-        (i) => i.product.id === product.id && i.size === size
-      );
+      const existing = state.items.find((i) => sameLine(i, product.id, size, itemColor(product)));
       const desired = (existing?.quantity ?? 0) + qty;
       if (stock < Infinity && desired > stock) {
         toast.error(
@@ -177,24 +194,24 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             : `Only ${stock} unit${stock > 1 ? 's' : ''} in stock`
         );
       }
-      dispatch({ type: 'ADD', product, size, quantity: qty, maxStock: stock });
+      dispatch({ type: 'ADD', product, size, quantity: qty, maxStock: stock, isBump: options?.isBump });
       if (!options?.silent) {
         setCartOpen(true);
       }
     },
     [state.items]
   );
-  const removeItem = useCallback((productId: string, size: string) => {
-    dispatch({ type: 'REMOVE', productId, size });
+  const removeItem = useCallback((productId: string, size: string, color?: string | null) => {
+    dispatch({ type: 'REMOVE', productId, size, color });
   }, []);
   const updateQuantity = useCallback(
-    (productId: string, size: string, quantity: number) => {
-      const item = state.items.find((i) => i.product.id === productId && i.size === size);
+    (productId: string, size: string, quantity: number, color?: string | null) => {
+      const item = state.items.find((i) => sameLine(i, productId, size, color));
       const stock = item?.product.stock_quantity ?? Infinity;
       if (stock < Infinity && quantity > stock) {
         toast.error(`Only ${stock} unit${stock > 1 ? 's' : ''} in stock`);
       }
-      dispatch({ type: 'UPDATE_QTY', productId, size, quantity, maxStock: stock });
+      dispatch({ type: 'UPDATE_QTY', productId, size, quantity, maxStock: stock, color });
     },
     [state.items]
   );

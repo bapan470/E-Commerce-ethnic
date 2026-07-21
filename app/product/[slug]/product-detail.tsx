@@ -116,7 +116,16 @@ export default function ProductDetail() {
   // sizes (needed for stock accuracy) fill in a moment later in the background.
   const handleSelectVariant = (v: ProductVariant) => {
     setVariant((prev) => ({ ...v, sizes: prev?.slug === v.slug ? prev.sizes : [] }));
-    window.history.replaceState(null, '', `/product/${v.slug}`);
+    // Pass the EXISTING history.state through instead of null. Next.js's App
+    // Router attaches its own internal navigation data to each history
+    // entry's state object; wiping it with null here desyncs the router
+    // from the real browser history stack. That desync is what made the
+    // hardware/edge-swipe back gesture need two tries to leave checkout on
+    // a colour-variant page — the first swipe only updated the URL bar
+    // (browser-level), the second was needed for Next's router to actually
+    // notice and re-render. Keeping the state object intact and only
+    // swapping the URL avoids that entirely.
+    window.history.replaceState(window.history.state, '', `/product/${v.slug}`);
     fetchVariantBySlug(v.slug)
       .then((res) => {
         if (res) setVariant(res.variant);

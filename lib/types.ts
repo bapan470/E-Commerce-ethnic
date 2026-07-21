@@ -62,6 +62,12 @@ export interface CartItem {
   product: Product;
   size: string;
   quantity: number;
+  /** True only for the line added via the checkout order-bump upsell toggle.
+   *  Needed because the bump is admin-configured as a single fixed product —
+   *  if a shopper happens to buy THAT SAME product (any colour variant) as
+   *  their main item, matching by product.id alone would misidentify their
+   *  own main item as "the bump line" and incorrectly hide its qty +/-. */
+  isBump?: boolean;
 }
 
 export interface CategoryRow {

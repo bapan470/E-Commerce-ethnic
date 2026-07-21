@@ -323,16 +323,16 @@ export default function CheckoutPage() {
       if (isBuyNow) {
         setBuyNowExtras((prev) => [
           ...prev,
-          { product: { ...bumpProduct, price: bumpPrice }, size: bumpSize, quantity: 1 },
+          { product: { ...bumpProduct, price: bumpPrice }, size: bumpSize, quantity: 1, isBump: true },
         ]);
       } else {
-        addItem({ ...bumpProduct, price: bumpPrice }, bumpSize, 1);
+        addItem({ ...bumpProduct, price: bumpPrice }, bumpSize, 1, { isBump: true });
       }
     } else {
       if (isBuyNow) {
         setBuyNowExtras((prev) => prev.filter((i) => i.product.id !== bumpProduct.id));
       } else {
-        removeItem(bumpProduct.id, bumpSize);
+        removeItem(bumpProduct.id, bumpSize, bumpProduct.colors?.[0] ?? null);
       }
     }
   };
@@ -355,22 +355,31 @@ export default function CheckoutPage() {
     const stock = item.product.stock_quantity ?? Infinity;
     const nextQty = Math.min(Math.max(1, item.quantity + delta), stock);
     if (nextQty === item.quantity) return;
+    const itemColorKey = item.product.colors?.[0] ?? null;
 
-    if (buyNowItem && item.product.id === buyNowItem.product.id && item.size === buyNowItem.size) {
+    if (
+      buyNowItem &&
+      !item.isBump &&
+      item.product.id === buyNowItem.product.id &&
+      item.size === buyNowItem.size &&
+      (buyNowItem.product.colors?.[0] ?? null) === itemColorKey
+    ) {
       updateBuyNowQuantity(nextQty);
       return;
     }
     if (isBuyNow) {
       setBuyNowExtras((prev) =>
         prev.map((i) =>
-          i.product.id === item.product.id && i.size === item.size
+          i.product.id === item.product.id &&
+          i.size === item.size &&
+          (i.product.colors?.[0] ?? null) === itemColorKey
             ? { ...i, quantity: nextQty }
             : i
         )
       );
       return;
     }
-    updateQuantity(item.product.id, item.size, nextQty);
+    updateQuantity(item.product.id, item.size, nextQty, itemColorKey);
   };
 
   // Log the funnel step once — used by Admin > Analytics for conversion rate.
@@ -1091,7 +1100,7 @@ export default function CheckoutPage() {
             <Separator className="my-4" />
             <ul className="flex max-h-72 flex-col gap-3 overflow-y-auto">
               {items.map((item) => {
-                const isBumpItem = !!bumpProduct && item.product.id === bumpProduct.id;
+                const isBumpItem = !!item.isBump;
                 return (
                   <li
                     key={`${item.product.id}-${item.size}`}

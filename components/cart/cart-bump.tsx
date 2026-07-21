@@ -47,9 +47,9 @@ export default function CartBump({ compact = false }: { compact?: boolean }) {
 
   const toggle = (checked: boolean) => {
     if (checked) {
-      addItem({ ...product, price }, size, 1);
+      addItem({ ...product, price }, size, 1, { isBump: true });
     } else {
-      removeItem(product.id, size);
+      removeItem(product.id, size, product.colors?.[0] ?? null);
     }
   };
 

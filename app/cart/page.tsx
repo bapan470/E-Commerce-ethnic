@@ -132,7 +132,7 @@ export default function CartPage() {
                       </div>
                     </div>
                     <button
-                      onClick={() => removeItem(item.product.id, item.size)}
+                      onClick={() => removeItem(item.product.id, item.size, item.product.colors?.[0] ?? null)}
                       className="text-muted-foreground transition-colors hover:text-destructive"
                       aria-label="Remove item"
                     >
@@ -142,7 +142,7 @@ export default function CartPage() {
                   <div className="mt-auto flex items-end justify-between pt-3">
                     <div className="flex items-center rounded-md border border-border">
                       <button
-                        onClick={() => updateQuantity(item.product.id, item.size, item.quantity - 1)}
+                        onClick={() => updateQuantity(item.product.id, item.size, item.quantity - 1, item.product.colors?.[0] ?? null)}
                         className="p-2 text-muted-foreground hover:text-primary"
                         aria-label="Decrease quantity"
                       >
@@ -152,7 +152,7 @@ export default function CartPage() {
                         {item.quantity}
                       </span>
                       <button
-                        onClick={() => updateQuantity(item.product.id, item.size, item.quantity + 1)}
+                        onClick={() => updateQuantity(item.product.id, item.size, item.quantity + 1, item.product.colors?.[0] ?? null)}
                         className="p-2 text-muted-foreground hover:text-primary"
                         aria-label="Increase quantity"
                       >
