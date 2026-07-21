@@ -1,10 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Loader2, Truck } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Loader2, Truck, Search, X, Copy, Check } from 'lucide-react';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
-import { Select } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import {
+  Select as SelectRoot,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
 import OrderTracking from '@/components/order/order-tracking';
 import CreateShipmentModal, {
@@ -57,11 +64,40 @@ export default function OrdersPanel() {
     load();
   }, []);
 
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [paymentFilter, setPaymentFilter] = useState('all');
+
+  const filteredOrders = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return orders.filter((o) => {
+      const matchesQuery =
+        !q ||
+        o.id.toLowerCase().includes(q) ||
+        (o.customer_name ?? '').toLowerCase().includes(q) ||
+        (o.customer_email ?? '').toLowerCase().includes(q) ||
+        (o.customer_phone ?? '').toLowerCase().includes(q) ||
+        o.items.some((it: any) => (it.product_name ?? '').toLowerCase().includes(q));
+
+      const matchesStatus = statusFilter === 'all' || o.status === statusFilter;
+      const matchesPayment =
+        paymentFilter === 'all' ||
+        (paymentFilter === 'cod' ? o.payment_method === 'cod' : o.payment_method !== 'cod');
+
+      return matchesQuery && matchesStatus && matchesPayment;
+    });
+  }, [orders, searchQuery, statusFilter, paymentFilter]);
+
   const totalOrders = orders.length;
+  // Sum of every order's total, regardless of status -- this is the figure
+  // the admin actually wants when they ask "total price" for the order list.
+  const totalOrderValue = orders.reduce((s, o) => s + (o.total_amount || 0), 0);
   const revenue = orders
     .filter((o) => ['paid', 'shipped', 'delivered'].includes(o.status))
     .reduce((s, o) => s + (o.total_amount || 0), 0);
   const pendingCount = orders.filter((o) => o.status === 'pending').length;
+  const filtersActive = !!searchQuery || statusFilter !== 'all' || paymentFilter !== 'all';
+  const filteredTotal = filteredOrders.reduce((s, o) => s + (o.total_amount || 0), 0);
 
   const [creatingShipmentFor, setCreatingShipmentFor] = useState<string | null>(null);
   const [shipmentModalOrderId, setShipmentModalOrderId] = useState<string | null>(null);
@@ -132,13 +168,21 @@ export default function OrdersPanel() {
 
   return (
     <div className="grid gap-6">
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <div className="rounded-lg border border-border/60 bg-card p-4">
           <p className="text-xs text-muted-foreground">Total Orders</p>
-          <p className="mt-2 text-2xl font-semibold">{totalOrders}</p>
+          <p className="mt-2 text-2xl font-semibold">
+            {filtersActive ? `${filteredOrders.length} / ${totalOrders}` : totalOrders}
+          </p>
         </div>
         <div className="rounded-lg border border-border/60 bg-card p-4">
-          <p className="text-xs text-muted-foreground">Revenue</p>
+          <p className="text-xs text-muted-foreground">Total Order Value</p>
+          <p className="mt-2 text-2xl font-semibold">
+            {formatINR(filtersActive ? filteredTotal : totalOrderValue)}
+          </p>
+        </div>
+        <div className="rounded-lg border border-border/60 bg-card p-4">
+          <p className="text-xs text-muted-foreground">Revenue (paid/shipped/delivered)</p>
           <p className="mt-2 text-2xl font-semibold">{formatINR(revenue)}</p>
         </div>
         <div className="rounded-lg border border-border/60 bg-card p-4">
@@ -147,10 +191,74 @@ export default function OrdersPanel() {
         </div>
       </div>
 
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative w-full sm:max-w-xs">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search order ID, customer, product…"
+            className="pl-9 pr-8"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              aria-label="Clear search"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <SelectRoot value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue placeholder="All Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              {['pending', 'paid', 'shipped', 'delivered', 'cancelled', 'failed'].map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </SelectRoot>
+
+          <SelectRoot value={paymentFilter} onValueChange={setPaymentFilter}>
+            <SelectTrigger className="w-[130px]">
+              <SelectValue placeholder="All Payments" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Payments</SelectItem>
+              <SelectItem value="cod">COD</SelectItem>
+              <SelectItem value="online">Online</SelectItem>
+            </SelectContent>
+          </SelectRoot>
+
+          {filtersActive && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSearchQuery('');
+                setStatusFilter('all');
+                setPaymentFilter('all');
+              }}
+            >
+              Reset
+            </Button>
+          )}
+        </div>
+      </div>
+
       <div className="overflow-hidden rounded-lg border border-border/60 bg-card">
         <table className="w-full table-auto">
           <thead className="bg-muted/40 text-left text-xs uppercase tracking-wider text-muted-foreground">
             <tr>
+              <th className="px-4 py-3">Order ID</th>
               <th className="px-4 py-3">Customer</th>
               <th className="px-4 py-3">Product</th>
               <th className="px-4 py-3">Date</th>
@@ -162,15 +270,23 @@ export default function OrdersPanel() {
             </tr>
           </thead>
           <tbody>
-            {orders.map((o) => (
-              <OrderRow
-                key={o.id}
-                order={o}
-                onChangeStatus={updateStatus}
-                onCreateShipment={openShipmentModal}
-                creatingShipment={creatingShipmentFor === o.id}
-              />
-            ))}
+            {filteredOrders.length === 0 ? (
+              <tr>
+                <td colSpan={9} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  No orders match your search or filters.
+                </td>
+              </tr>
+            ) : (
+              filteredOrders.map((o) => (
+                <OrderRow
+                  key={o.id}
+                  order={o}
+                  onChangeStatus={updateStatus}
+                  onCreateShipment={openShipmentModal}
+                  creatingShipment={creatingShipmentFor === o.id}
+                />
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -204,9 +320,37 @@ function OrderRow({
   creatingShipment: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const shortId = order.id.slice(0, 8).toUpperCase();
+
+  const copyId = async () => {
+    try {
+      await navigator.clipboard.writeText(order.id);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard not available -- ignore
+    }
+  };
+
   return (
     <>
       <tr className="border-t">
+        <td className="px-4 py-3 align-top">
+          <div className="flex items-center gap-1.5">
+            <span className="font-mono text-xs font-semibold" title={order.id}>
+              #{shortId}
+            </span>
+            <button
+              type="button"
+              onClick={copyId}
+              aria-label="Copy order ID"
+              className="text-muted-foreground hover:text-primary"
+            >
+              {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+            </button>
+          </div>
+        </td>
         <td className="px-4 py-3 align-top">
           <div className="text-sm font-medium">{order.customer_name || 'Guest'}</div>
           <div className="text-xs text-muted-foreground">{order.customer_email || order.customer_phone}</div>
@@ -295,7 +439,7 @@ function OrderRow({
       </tr>
       {open && (
         <tr className="bg-muted/20">
-          <td colSpan={8} className="px-4 py-3">
+          <td colSpan={9} className="px-4 py-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <h4 className="mb-2 text-sm font-semibold">Items</h4>
