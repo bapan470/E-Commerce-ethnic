@@ -27,6 +27,10 @@ export interface ProductVariant {
   meta_description: string | null;
   is_default: boolean;
   sku: string | null;
+  /** Per-colour rating/review-count override. NULL means "no override" --
+   *  the storefront falls back to the base product's rating/reviews. */
+  rating: number | null;
+  reviews: number | null;
   created_at: string;
 }
 
@@ -95,6 +99,8 @@ export async function createVariant(input: {
   metaDescription?: string;
   isDefault?: boolean;
   sku?: string | null;
+  rating?: number | null;
+  reviews?: number | null;
   sizes: { size: string; stockQuantity: number; priceOverride?: number | null; sku?: string | null }[];
 }): Promise<ProductVariant> {
   const supabase = getSupabaseBrowser();
@@ -112,6 +118,8 @@ export async function createVariant(input: {
       meta_description: input.metaDescription ?? null,
       is_default: input.isDefault ?? false,
       sku: input.sku ?? null,
+      rating: input.rating ?? null,
+      reviews: input.reviews ?? null,
     })
     .select('*')
     .single();
@@ -161,6 +169,8 @@ export async function updateVariant(
     meta_description: string | null;
     is_default: boolean;
     sku: string | null;
+    rating: number | null;
+    reviews: number | null;
   }>
 ): Promise<ProductVariant> {
   const supabase = getSupabaseBrowser();

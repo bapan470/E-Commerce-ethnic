@@ -55,6 +55,11 @@ interface VariantFormState {
   metaTitle: string;
   metaDescription: string;
   isDefault: boolean;
+  /** Optional per-colour rating (0-5) / review-count override, shown as
+   *  plain strings in the form (empty = no override, falls back to the
+   *  base product's rating/reviews on the storefront). */
+  rating: string;
+  reviews: string;
   sizes: { size: string; stockQuantity: string; sku: string }[];
 }
 
@@ -69,6 +74,8 @@ const emptyVariantForm = (): VariantFormState => ({
   metaTitle: '',
   metaDescription: '',
   isDefault: false,
+  rating: '',
+  reviews: '',
   sizes: [{ size: 'Free Size', stockQuantity: '0', sku: '' }],
 });
 
@@ -141,6 +148,8 @@ export default function ProductVariantsManager({ productId, productName, product
       metaTitle: v.meta_title ?? '',
       metaDescription: v.meta_description ?? '',
       isDefault: v.is_default,
+      rating: v.rating != null ? String(v.rating) : '',
+      reviews: v.reviews != null ? String(v.reviews) : '',
       sizes: v.sizes.length
         ? v.sizes.map((s) => ({ size: s.size, stockQuantity: String(s.stock_quantity), sku: s.sku ?? '' }))
         : [{ size: 'Free Size', stockQuantity: '0', sku: '' }],
@@ -291,6 +300,8 @@ export default function ProductVariantsManager({ productId, productName, product
       const slug = form.slug.trim() || slugify(`${productName}-${form.color}`);
       const priceOverride = form.priceOverride ? Number(form.priceOverride) : null;
       const vSku = form.sku.trim() || (productSku ? generateVariantSku(productSku, form.color) : null);
+      const ratingOverride = form.rating.trim() ? Number(form.rating) : null;
+      const reviewsOverride = form.reviews.trim() ? Number(form.reviews) : null;
 
       if (editing) {
         await updateVariant(editing.id, {
@@ -303,6 +314,8 @@ export default function ProductVariantsManager({ productId, productName, product
           meta_title: form.metaTitle.trim() || null,
           meta_description: form.metaDescription.trim() || null,
           sku: vSku,
+          rating: ratingOverride,
+          reviews: reviewsOverride,
         });
 
         const existingIds = new Set(editing.sizes.map((s) => s.id));
@@ -348,6 +361,8 @@ export default function ProductVariantsManager({ productId, productName, product
           metaDescription: form.metaDescription.trim() || undefined,
           isDefault: form.isDefault,
           sku: vSku,
+          rating: ratingOverride,
+          reviews: reviewsOverride,
           sizes: validSizes.map((s) => ({
             size: s.size.trim(),
             stockQuantity: Number(s.stockQuantity) || 0,
@@ -755,6 +770,39 @@ export default function ProductVariantsManager({ productId, productName, product
               <p className="text-xs text-muted-foreground">
                 Shows as the first slide in this colour&apos;s gallery on the product page. Leave blank to use the
                 product&apos;s main video (if any).
+              </p>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-1.5">
+                <Label htmlFor="v-rating" className="flex items-center gap-1.5">
+                  <Star className="h-3.5 w-3.5" /> Rating (0–5, optional)
+                </Label>
+                <Input
+                  id="v-rating"
+                  type="number"
+                  min={0}
+                  max={5}
+                  step={0.1}
+                  value={form.rating}
+                  onChange={(e) => setForm((f) => ({ ...f, rating: e.target.value }))}
+                  placeholder="Leave blank to use base product rating"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="v-reviews">Reviews count (optional)</Label>
+                <Input
+                  id="v-reviews"
+                  type="number"
+                  min={0}
+                  value={form.reviews}
+                  onChange={(e) => setForm((f) => ({ ...f, reviews: e.target.value }))}
+                  placeholder="Leave blank to use base product reviews"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground sm:col-span-2">
+                Optional — gives this colour its own rating/review numbers instead of sharing the base product&apos;s.
+                Real customer reviews still count toward the base product either way.
               </p>
             </div>
 

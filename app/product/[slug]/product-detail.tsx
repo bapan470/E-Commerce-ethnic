@@ -135,9 +135,15 @@ export default function ProductDetail() {
     };
   }, [baseProduct?.id]);
 
-  const displayRating = liveSummary && liveSummary.totalRatings > 0 ? liveSummary.average : baseProduct?.rating ?? 0;
-  const displayRatingsCount = liveSummary && liveSummary.totalRatings > 0 ? liveSummary.totalRatings : baseProduct?.reviews ?? 0;
-  const displayReviewsCount = liveSummary && liveSummary.totalRatings > 0 ? liveSummary.totalReviews : baseProduct?.reviews ?? 0;
+  // A colour variant's own rating/reviews override (set in the admin panel)
+  // takes priority over the base product's seed numbers, but real, live
+  // approved reviews (shared across all colours of a product) always win
+  // over either seed value once they exist.
+  const seedRating = variant?.rating ?? baseProduct?.rating ?? 0;
+  const seedReviews = variant?.reviews ?? baseProduct?.reviews ?? 0;
+  const displayRating = liveSummary && liveSummary.totalRatings > 0 ? liveSummary.average : seedRating;
+  const displayRatingsCount = liveSummary && liveSummary.totalRatings > 0 ? liveSummary.totalRatings : seedReviews;
+  const displayReviewsCount = liveSummary && liveSummary.totalRatings > 0 ? liveSummary.totalReviews : seedReviews;
 
   // If the URL is the base product's own slug (not a colour's dedicated
   // SEO page) and that product has colour variants, silently switch to its

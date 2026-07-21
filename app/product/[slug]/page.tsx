@@ -125,11 +125,11 @@ export default async function ProductPage({ params }: Params) {
           },
         },
         aggregateRating:
-          product.reviews > 0
+          (variant?.reviews ?? product.reviews) > 0
             ? {
                 '@type': 'AggregateRating',
-                ratingValue: product.rating,
-                reviewCount: product.reviews,
+                ratingValue: variant?.rating ?? product.rating,
+                reviewCount: variant?.reviews ?? product.reviews,
                 bestRating: 5,
                 worstRating: 1,
               }
