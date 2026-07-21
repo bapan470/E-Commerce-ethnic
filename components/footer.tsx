@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Instagram, Facebook, Mail, Phone } from 'lucide-react';
 import NewsletterSignup from './newsletter-signup';
 import { useCart } from '@/lib/cart-context';
+import { markCheckoutEntry } from '@/lib/checkout-return';
 
 export default function Footer() {
   const { clearBuyNow } = useCart();
@@ -35,7 +36,7 @@ export default function Footer() {
           </h4>
           <ul className="mt-3 space-y-2 text-sm text-primary-foreground/80">
             <li><Link href="/cart" className="hover:text-secondary">Cart</Link></li>
-            <li><Link href="/checkout" onClick={() => clearBuyNow()} className="hover:text-secondary">Checkout</Link></li>
+            <li><Link href="/checkout" onClick={() => { clearBuyNow(); markCheckoutEntry(); }} className="hover:text-secondary">Checkout</Link></li>
             <li><Link href="/contact" className="hover:text-secondary">Contact Us</Link></li>
             {/* Admin link intentionally omitted for security */}
             <li><Link href="/legal/shipping-policy" className="hover:text-secondary">Shipping & Returns</Link></li>

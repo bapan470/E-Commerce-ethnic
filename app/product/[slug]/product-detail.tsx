@@ -39,6 +39,7 @@ import { addRecentlyViewed } from '@/lib/recently-viewed';
 import { trackEvent } from '@/lib/track-api';
 import { useAuth } from '@/lib/auth-context';
 import { toast } from 'sonner';
+import { markCheckoutEntry } from '@/lib/checkout-return';
 
 // Coupon "preview" applied on a product page before Add to Cart. Persisted
 // so it survives a page reload, or a trip to another product and back —
@@ -319,6 +320,7 @@ export default function ProductDetail() {
       userId: user?.id ?? null,
       metadata: { size: selectedSize, quantity, color: product.colors?.[0] ?? null, via: 'buy_now' },
     });
+    markCheckoutEntry({ fromBuyNow: true });
     router.push('/checkout');
   };
 

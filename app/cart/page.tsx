@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Tag, X, Loader2 } from 'lucide-react';
 import { useCart } from '@/lib/cart-context';
+import { markCheckoutEntry } from '@/lib/checkout-return';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -271,7 +272,7 @@ export default function CartPage() {
                 {formatINR(total)}
               </span>
             </div>
-            <Button asChild size="lg" className="mt-5 w-full gap-2 bg-primary" onClick={() => clearBuyNow()}>
+            <Button asChild size="lg" className="mt-5 w-full gap-2 bg-primary" onClick={() => { clearBuyNow(); markCheckoutEntry(); }}>
               <Link href="/checkout">
                 Proceed to Checkout <ArrowRight className="h-4 w-4" />
               </Link>

@@ -7,6 +7,7 @@ import { useState, useMemo, useRef, useEffect, FormEvent } from 'react';
 import { Search, ShoppingBag, Menu, User, Heart, ArrowLeft } from 'lucide-react';
 import { useCart, useProducts } from '@/lib/cart-context';
 import { useAuth } from '@/lib/auth-context';
+import { getCheckoutReturnPath, isCheckoutReturnFromBuyNow, clearCheckoutReturnBuyNowFlag } from '@/lib/checkout-return';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,7 +26,7 @@ const navLinks = [
 ];
 
 export default function Header() {
-  const { count, setCartOpen } = useCart();
+  const { count, setCartOpen, addItem, buyNowItem, clearBuyNow } = useCart();
   const { products } = useProducts();
   const { user } = useAuth();
   const router = useRouter();
@@ -46,14 +47,38 @@ export default function Header() {
     pathname.startsWith('/checkout') ||
     pathname.startsWith('/product/');
 
-  // next/navigation's router.back() goes through Next's client-side route
-  // cache (App Router, Next 13.5), which sometimes needs a second tap
-  // before it actually pops the page — the first click just re-resolves
-  // the cache silently. Falling back to the browser's native history.back()
-  // avoids that layer entirely, so one tap reliably goes back. We only
-  // reach for router.back() if there's truly nowhere for native history to
-  // go (e.g. this tab was opened directly on this page).
+  // Browser history depth isn't reliable enough to build a "one tap always
+  // works" back button on — prefetching, redirects, and how a page was
+  // first opened can all change how many entries are really on the stack,
+  // which is what made this button sometimes need two taps. On /checkout
+  // specifically, we instead use the exact page markCheckoutEntry()
+  // recorded when the shopper navigated here (see lib/checkout-return.ts)
+  // and push straight to it — no history stack involved, so it's always
+  // exactly one tap. Everywhere else, native history.back() is still used
+  // since next/navigation's router.back() can lag a tap behind its own
+  // route cache.
+  //
+  // Buy Now is special: it's a single-item express checkout that never
+  // touches the real cart. If the shopper backs out of it, we don't want
+  // that item to just vanish — so we drop it into the real cart and pop
+  // open the side cart drawer instead of silently landing back on the
+  // product page with nothing to show for it.
   const handleBack = () => {
+    if (pathname.startsWith('/checkout')) {
+      const returnPath = getCheckoutReturnPath();
+      if (isCheckoutReturnFromBuyNow() && buyNowItem) {
+        addItem(buyNowItem.product, buyNowItem.size, buyNowItem.quantity);
+        clearBuyNow();
+        clearCheckoutReturnBuyNowFlag();
+        router.push(returnPath || '/');
+        setCartOpen(true);
+        return;
+      }
+      if (returnPath) {
+        router.push(returnPath);
+        return;
+      }
+    }
     if (typeof window !== 'undefined' && window.history.length > 1) {
       window.history.back();
     } else {

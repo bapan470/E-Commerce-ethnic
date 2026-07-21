@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Minus, Plus, Trash2, ShoppingBag, Tag, ArrowLeft, X, Loader2 } from 'lucide-react';
 import { useCart } from '@/lib/cart-context';
+import { markCheckoutEntry } from '@/lib/checkout-return';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -254,6 +255,7 @@ export default function CartDrawer() {
                   onClick={() => {
                     setCartOpen(false);
                     clearBuyNow();
+                    markCheckoutEntry();
                   }}
                 >
                   <Link href="/checkout">Checkout</Link>
