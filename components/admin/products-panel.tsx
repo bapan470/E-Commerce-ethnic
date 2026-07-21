@@ -300,7 +300,7 @@ export default function ProductsPanel() {
     if (files.length === 0) return;
     setUploading(true);
     try {
-      const urls = await Promise.all(files.map(uploadProductImage));
+      const urls = await Promise.all(files.map((file) => uploadProductImage(file, form.name)));
       setForm((f) => ({ ...f, images: [...f.images, ...urls] }));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Image upload failed');

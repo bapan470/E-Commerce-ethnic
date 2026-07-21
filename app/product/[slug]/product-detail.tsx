@@ -358,6 +358,15 @@ export default function ProductDetail() {
 
   const discount = discountPct(product.price, product.mrp);
 
+  // SEO-friendly alt text, generated automatically from the product's own
+  // details — never from the uploaded file's original name (which may just
+  // be a generic export like "WhatsApp Image 2026-07-21 at 20.49.28.jpg").
+  // This is what Google Images actually reads to understand and rank the
+  // photo, so it always reflects the product, not the source file.
+  const seoAltText = [product.name, product.fabric, product.category, product.origin ? `from ${product.origin}` : '']
+    .filter(Boolean)
+    .join(' - ');
+
   const goToReviews = () => {
     setActiveTab('reviews');
     document.getElementById('product-tabs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -425,14 +434,14 @@ export default function ProductDetail() {
       <div className="grid gap-4 lg:grid-cols-2 lg:gap-8 lg:items-start">
         <div className="flex flex-col gap-3 lg:sticky lg:top-24 lg:self-start">
           <div className="-mx-4 sm:mx-0">
-            <ProductGallery images={product.images} alt={product.name} discount={discount} />
+            <ProductGallery images={product.images} alt={seoAltText} discount={discount} />
           </div>
           {product.video_url && (
             <div className="px-4 sm:px-0">
               <ProductVideo
                 videoUrl={product.video_url}
                 posterUrl={product.images[0]}
-                alt={product.name}
+                alt={seoAltText}
               />
             </div>
           )}

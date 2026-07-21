@@ -203,9 +203,18 @@ export async function deleteProduct(id: string): Promise<void> {
   if (error) throw error;
 }
 
-export async function uploadProductImage(file: File): Promise<string> {
+export async function uploadProductImage(file: File, seoName?: string): Promise<string> {
   const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-  const path = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
+  // Slugify the product name (if we have one yet) into the filename itself,
+  // e.g. "womens-traditional-bengal-solid-saree-....jpg" instead of a bare
+  // random string or a leftover upload name like "whatsapp-image-....jpg".
+  const slug = (seoName || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+  const path = `${slug ? `${slug}-` : ''}${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
   const { error } = await supabase.storage
     .from('product-images')
     .upload(path, file, { cacheControl: '3600', upsert: false });
