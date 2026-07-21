@@ -80,6 +80,16 @@
        dropdown/filter/modal opens or closes. */
     scrollbar-gutter: stable;
   }
+  /* Radix's scroll-lock (react-remove-scroll) also injects its own inline
+     padding-right on <html>/<body> to compensate for the scrollbar it hides,
+     on top of the gutter already reserved above -- that's the extra shift
+     still visible after adding scrollbar-gutter alone. Zero it out since the
+     gutter already does that job. */
+  html[data-scroll-locked],
+  body[data-scroll-locked] {
+    padding-right: 0 !important;
+    margin-right: 0 !important;
+  }
   body {
     @apply bg-background text-foreground overflow-x-clip;
     font-feature-settings: 'rlig' 1, 'calt' 1;
