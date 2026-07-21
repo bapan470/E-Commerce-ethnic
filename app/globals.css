@@ -74,6 +74,11 @@
   }
   html {
     @apply overflow-x-clip;
+    /* Radix UI (Select, Dialog, etc.) locks body scroll while open, which
+       removes the scrollbar and shifts all page content sideways. Reserving
+       a stable gutter keeps that width constant so nothing jumps when a
+       dropdown/filter/modal opens or closes. */
+    scrollbar-gutter: stable;
   }
   body {
     @apply bg-background text-foreground overflow-x-clip;
