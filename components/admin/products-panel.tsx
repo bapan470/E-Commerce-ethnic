@@ -201,6 +201,22 @@ const fromProduct = (p: Product): FormState => ({
 export default function ProductsPanel() {
   const { products, categories, loading, refresh } = useProducts();
 
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Product | null>(null);
+  const [form, setForm] = useState<FormState>(emptyForm());
+  const [colorSuggestions, setColorSuggestions] = useState<ColorPreset[]>([]);
+  const [showColorSuggestions, setShowColorSuggestions] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [aiHint, setAiHint] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [importUrl, setImportUrl] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [stockFilter, setStockFilter] = useState<'all' | 'in' | 'out' | 'low'>('all');
+
   const filteredProducts = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return products.filter((p) => {
@@ -229,21 +245,6 @@ export default function ProductsPanel() {
       return matchesQuery && matchesCategory && matchesStock;
     });
   }, [products, searchQuery, categoryFilter, stockFilter]);
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<Product | null>(null);
-  const [form, setForm] = useState<FormState>(emptyForm());
-  const [colorSuggestions, setColorSuggestions] = useState<ColorPreset[]>([]);
-  const [showColorSuggestions, setShowColorSuggestions] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [generating, setGenerating] = useState(false);
-  const [aiHint, setAiHint] = useState('');
-  const [uploading, setUploading] = useState(false);
-  const [importUrl, setImportUrl] = useState('');
-  const [importing, setImporting] = useState(false);
-  const [confirmId, setConfirmId] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('all');
-  const [stockFilter, setStockFilter] = useState<'all' | 'in' | 'out' | 'low'>('all');
 
   useEffect(() => {
     refresh();
