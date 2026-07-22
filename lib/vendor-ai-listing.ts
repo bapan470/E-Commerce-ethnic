@@ -93,19 +93,28 @@ export async function generateVendorListing(input: VendorAIInput): Promise<Vendo
   const apiKey = process.env.NVIDIA_API_KEY;
   if (!apiKey) return null;
 
-  // Fetch and convert the first image to base64 for vision analysis
+  // Fetch and convert the first image to base64 for vision analysis.
+  // A 10s timeout (matching app/api/admin/generate-listing/route.ts) stops a
+  // slow/hanging storage fetch from eating into the 60s function budget and
+  // starving the NIM call below of the time it needs (20-55s on the free tier).
   let imageDataUri: string | null = null;
   if (input.images[0]) {
+    const imgController = new AbortController();
+    const imgTimeout = setTimeout(() => imgController.abort(), 10_000);
     try {
-      const imgRes = await fetch(input.images[0]);
+      const imgRes = await fetch(input.images[0], { signal: imgController.signal });
       if (imgRes.ok) {
         const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
         const buffer = await imgRes.arrayBuffer();
         const base64 = Buffer.from(buffer).toString('base64');
         imageDataUri = `data:${contentType};base64,${base64}`;
+      } else {
+        console.error('[vendor-ai-listing] image fetch not ok:', imgRes.status, input.images[0]);
       }
-    } catch {
-      // proceed without image
+    } catch (err) {
+      console.error('[vendor-ai-listing] image fetch failed/timed out, proceeding text-only:', err);
+    } finally {
+      clearTimeout(imgTimeout);
     }
   }
 
@@ -167,7 +176,8 @@ export async function generateVendorListing(input: VendorAIInput): Promise<Vendo
   }
 
   if (!res.ok) {
-    console.error('[vendor-ai-listing] NIM API error:', res.status);
+    const errText = await res.text().catch(() => '');
+    console.error('[vendor-ai-listing] NIM API error:', res.status, errText);
     return null;
   }
 
