@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/select';
 import { uploadProductImage } from '@/lib/products-api';
 import { useProducts } from '@/lib/cart-context';
-import { fetchMyVendorProfile, submitVendorProduct } from '@/lib/vendor-api';
+import { fetchMyVendorProfile, submitVendorProduct, triggerVendorAIProcess } from '@/lib/vendor-api';
 import PhotographyGuidelines from '@/components/vendor/photography-guidelines';
 
 const EMPTY_FORM = {
@@ -103,6 +103,14 @@ export default function AddVendorProductPage() {
         is_dead_stock: form.is_dead_stock,
         images: form.images,
       });
+
+      // Fire-and-forget: trigger AI enrichment in the background so the
+      // description, origin, occasion tags, colors and Product Highlights
+      // get filled in. Without this call the product sits in
+      // 'pending_review' until the stuck-listing safety net force-publishes
+      // it (after ~10 min) with all AI fields left empty.
+      triggerVendorAIProcess(created.id).catch(() => {});
+
       toast.success(`Published! "${created.name}" is now live on the site — barcode ${created.barcode ?? 'assigned'}.`);
       resetForm();
     } catch (err) {
