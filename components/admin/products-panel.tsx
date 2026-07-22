@@ -3,7 +3,7 @@
 import { useState, FormEvent, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles, Link2, Palette, Wand2, Search, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles, Link2, Palette, Wand2, Search, X, Truck, Package } from 'lucide-react';
 import { useProducts } from '@/lib/cart-context';
 import {
   createProduct,
@@ -15,6 +15,7 @@ import { generateProductSku } from '@/lib/sku';
 import { searchPresets, ColorPreset } from '@/lib/color-presets';
 import { Product, CategoryRow, ProductHighlights } from '@/lib/types';
 import ProductVariantsManager from '@/components/admin/product-variants-manager';
+import VendorSubmissionsPanel from '@/components/admin/vendor-submissions-panel';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -200,6 +201,15 @@ const fromProduct = (p: Product): FormState => ({
 
 export default function ProductsPanel() {
   const { products, categories, loading, refresh } = useProducts();
+
+  // Phase 2, Part 5 — "Vendor Submissions" lives as a second tab inside
+  // this same Products panel (same pattern already used for colour/size
+  // variants, which live inside the Add/Edit dialog rather than a
+  // separate sidebar entry). Catalog products (this panel's original
+  // scope) and vendor submissions are deliberately separate flows —
+  // vendor rows are edited only through the guarded /api/admin/vendor-products
+  // route, never through this panel's own createProduct/updateProduct.
+  const [view, setView] = useState<'catalog' | 'vendor-submissions'>('catalog');
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
@@ -484,6 +494,36 @@ export default function ProductsPanel() {
       >
         <ArrowLeft className="h-4 w-4" /> Back to store
       </Link>
+
+      <div className="mb-4 flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setView('catalog')}
+          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+            view === 'catalog'
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+          }`}
+        >
+          <Package className="h-3.5 w-3.5" /> Catalog
+        </button>
+        <button
+          type="button"
+          onClick={() => setView('vendor-submissions')}
+          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition ${
+            view === 'vendor-submissions'
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+          }`}
+        >
+          <Truck className="h-3.5 w-3.5" /> Vendor Submissions
+        </button>
+      </div>
+
+      {view === 'vendor-submissions' ? (
+        <VendorSubmissionsPanel />
+      ) : (
+        <>
 
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
@@ -1481,6 +1521,8 @@ export default function ProductsPanel() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+        </>
+      )}
     </div>
   );
 }

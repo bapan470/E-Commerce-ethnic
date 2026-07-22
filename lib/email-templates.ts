@@ -407,3 +407,35 @@ export function vendorBankUpdateStatusEmail(vendor: {
   `);
   return { subject, html };
 }
+
+/** Sent to the vendor once the admin approves/rejects one of their product submissions (Phase 2, Part 5). */
+export function vendorProductStatusEmail(input: {
+  business_name: string;
+  product_name: string;
+  status: 'awaiting_stock' | 'rejected';
+  final_price?: number | null;
+  rejection_reason?: string | null;
+}) {
+  const approved = input.status === 'awaiting_stock';
+  const subject = approved
+    ? `Product approved — ${input.product_name} — ${SITE_NAME}`
+    : `Update on your product submission — ${SITE_NAME}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">${approved ? 'Product approved!' : 'Submission update'}</h2>
+    <p>Hi ${input.business_name},</p>
+    ${
+      approved
+        ? `<p>Your product <strong>${input.product_name}</strong> has been approved${
+            input.final_price != null ? ` at a final price of ${formatINR(input.final_price)}` : ''
+          }. It will go live once stock is confirmed.</p>`
+        : `<p>Your submission for <strong>${input.product_name}</strong> was not approved this time.</p>`
+    }
+    ${input.rejection_reason ? `<p style="padding:12px; background:#fff; border-left:3px solid ${BRAND_COLOR}; font-size:14px;">${input.rejection_reason}</p>` : ''}
+    <p style="text-align:center; margin-top: 20px;">
+      <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/vendor/dashboard" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+        View in vendor dashboard
+      </a>
+    </p>
+  `);
+  return { subject, html };
+}

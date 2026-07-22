@@ -11,7 +11,11 @@
 // ---------------------------------------------------------------------
 
 import { sendEmail } from './email';
-import { vendorApplicationStatusEmail, vendorBankUpdateStatusEmail } from './email-templates';
+import {
+  vendorApplicationStatusEmail,
+  vendorBankUpdateStatusEmail,
+  vendorProductStatusEmail,
+} from './email-templates';
 
 interface VendorLike {
   business_name: string;
@@ -69,5 +73,34 @@ export async function notifyVendorBankUpdateStatus(
     vendor.approved
       ? `Aapki bank detail update ho gayi hai.`
       : `Aapki bank detail change request reject ho gayi hai — kripya dobara try karein ya humse contact karein.`
+  );
+}
+
+/** Sent from the admin "Vendor Submissions" panel (Phase 2, Part 5) on Approve/Reject. */
+export async function notifyVendorProductStatus(
+  vendor: VendorLike & {
+    product_name: string;
+    status: 'awaiting_stock' | 'rejected';
+    final_price?: number | null;
+    rejection_reason?: string | null;
+  }
+): Promise<void> {
+  const { subject, html } = vendorProductStatusEmail({
+    business_name: vendor.business_name,
+    product_name: vendor.product_name,
+    status: vendor.status,
+    final_price: vendor.final_price,
+    rejection_reason: vendor.rejection_reason,
+  });
+
+  if (vendor.email) {
+    await sendEmail({ to: vendor.email, subject, html });
+  }
+
+  await sendVendorWhatsApp(
+    vendor,
+    vendor.status === 'awaiting_stock'
+      ? `Aapka product "${vendor.product_name}" approve ho gaya hai. Stock confirm hote hi ye live ho jayega.`
+      : `Aapka product "${vendor.product_name}" is baar approve nahi ho saka.${vendor.rejection_reason ? ` Reason: ${vendor.rejection_reason}` : ''}`
   );
 }

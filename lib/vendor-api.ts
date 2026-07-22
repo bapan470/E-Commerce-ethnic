@@ -199,3 +199,101 @@ export async function fetchMyVendorProducts(): Promise<VendorProductRow[]> {
   const body = await res.json();
   return body.products as VendorProductRow[];
 }
+
+// ---------------------------------------------------------------------
+// Phase 2, Part 5 — Admin "Vendor Submissions" (Admin > Products tab)
+// ---------------------------------------------------------------------
+
+/** Full admin-side shape of a vendor-sourced product row — includes the
+ *  vendor's own business name (joined server-side) plus every field the
+ *  admin is allowed to see/edit. Never reused for customer-facing data. */
+export interface AdminVendorProductRow {
+  id: string;
+  name: string;
+  slug: string;
+  images: string[];
+  fabric: string | null;
+  category_name: string | null;
+  available_quantity: number;
+  quantity_last_updated_at: string;
+  vendor_expected_price: number | null;
+  ai_suggested_price: number | null;
+  final_price: number | null;
+  price: number;
+  is_dead_stock: boolean;
+  approval_status: VendorProductApprovalStatus;
+  barcode: string | null;
+  rejection_reason: string | null;
+  vendor_id: string;
+  created_at: string;
+  vendors: { business_name: string; email: string | null; whatsapp: string | null; phone: string } | null;
+}
+
+/** All vendor-sourced products, optionally filtered by approval_status. */
+export async function fetchAdminVendorProducts(
+  status?: VendorProductApprovalStatus
+): Promise<AdminVendorProductRow[]> {
+  const url = status ? `/api/admin/vendor-products?status=${status}` : '/api/admin/vendor-products';
+  const res = await fetch(url);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to load vendor submissions');
+  }
+  const body = await res.json();
+  return body.products as AdminVendorProductRow[];
+}
+
+/** Edits/confirms the final price without changing approval_status. */
+export async function updateAdminVendorProductPrice(
+  id: string,
+  final_price: number
+): Promise<AdminVendorProductRow> {
+  const res = await fetch('/api/admin/vendor-products', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, action: 'update_price', final_price }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to update price');
+  }
+  const body = await res.json();
+  return body.product as AdminVendorProductRow;
+}
+
+/** Approves a submission -> approval_status = 'awaiting_stock'. Pass
+ *  final_price to save any last edit and approve in the same call. */
+export async function approveAdminVendorProduct(
+  id: string,
+  final_price?: number
+): Promise<AdminVendorProductRow> {
+  const res = await fetch('/api/admin/vendor-products', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, action: 'approve', final_price }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to approve product');
+  }
+  const body = await res.json();
+  return body.product as AdminVendorProductRow;
+}
+
+/** Rejects a submission. reason is mandatory. */
+export async function rejectAdminVendorProduct(
+  id: string,
+  rejection_reason: string
+): Promise<AdminVendorProductRow> {
+  const res = await fetch('/api/admin/vendor-products', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, action: 'reject', rejection_reason }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to reject product');
+  }
+  const body = await res.json();
+  return body.product as AdminVendorProductRow;
+}
