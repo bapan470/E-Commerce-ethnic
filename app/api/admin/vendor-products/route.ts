@@ -23,7 +23,7 @@ const ADMIN_VENDOR_PRODUCT_COLUMNS = [
   'available_quantity', 'quantity_last_updated_at',
   'vendor_expected_price', 'ai_suggested_price', 'final_price', 'price',
   'is_dead_stock', 'approval_status', 'barcode', 'rejection_reason',
-  'vendor_id', 'created_at',
+  'vendor_id', 'vendor_edit_count', 'created_at',
   'vendors(business_name, email, whatsapp, phone)',
 ].join(', ');
 

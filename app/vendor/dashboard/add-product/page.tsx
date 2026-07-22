@@ -112,7 +112,7 @@ export default function AddVendorProductPage() {
       triggerVendorAIProcess(created.id).catch(() => {});
 
       toast.success(
-        `Submitted! AI is processing your listing for "${created.name}". You'll get an email once it's live — usually within a minute.`
+        `"${created.name}" submitted! You'll get an email once it's live.`
       );
       resetForm();
     } catch (err) {

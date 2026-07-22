@@ -250,10 +250,15 @@ export async function updateVendorProduct(
  *  product ID, then publish it live and email the vendor.
  *  Pass isEdit=true when this follows an edit (uses the edit email template).
  *  The promise is intentionally not awaited by callers — use
- *  `.catch(() => {})` to suppress unhandled-rejection warnings. */
+ *  `.catch(() => {})` to suppress unhandled-rejection warnings.
+ *
+ *  keepalive:true ensures the request outlives the current page — critical
+ *  for the edit flow where router.replace() navigates away before the
+ *  response comes back. Without this, the browser cancels the in-flight
+ *  request on navigation and the product gets stuck in pending_review. */
 export function triggerVendorAIProcess(id: string, isEdit = false): Promise<Response> {
   const url = `/api/vendor/ai-process/${id}${isEdit ? '?edit=true' : ''}`;
-  return fetch(url, { method: 'POST' });
+  return fetch(url, { method: 'POST', keepalive: true });
 }
 
 // ---------------------------------------------------------------------
@@ -281,6 +286,7 @@ export interface AdminVendorProductRow {
   barcode: string | null;
   rejection_reason: string | null;
   vendor_id: string;
+  vendor_edit_count: number | null;
   created_at: string;
   vendors: { business_name: string; email: string | null; whatsapp: string | null; phone: string } | null;
 }

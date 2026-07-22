@@ -229,8 +229,15 @@ export default function VendorSubmissionsPanel() {
                         {p.category_name || '—'} · {p.fabric || '—'} · Qty {p.available_quantity}
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        Vendor: {p.vendors?.business_name || '—'}
+                        <span className="font-medium text-foreground">
+                          {p.vendors?.business_name || '—'}
+                        </span>
                         {p.vendors?.phone ? ` · ${p.vendors.phone}` : ''}
+                        {p.vendor_edit_count != null && p.vendor_edit_count > 0 && (
+                          <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+                            Edited {p.vendor_edit_count}×
+                          </span>
+                        )}
                       </p>
                       {p.barcode && (
                         <p className="mt-1 font-mono text-xs text-muted-foreground">{p.barcode}</p>

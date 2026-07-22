@@ -135,7 +135,7 @@ export default function EditVendorProductPage() {
       triggerVendorAIProcess(updated.id, true).catch(() => {});
 
       toast.success(
-        `Changes saved! AI is re-processing "${updated.name}" and will email you once it's live again.`
+        `Changes saved! You'll get an email once "${updated.name}" is live again.`
       );
       router.replace('/vendor/dashboard/products');
     } catch (err) {

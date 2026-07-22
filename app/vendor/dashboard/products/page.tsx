@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { Loader2, Boxes, PackagePlus, Barcode as BarcodeIcon, Pencil } from 'lucide-react';
@@ -15,7 +15,7 @@ import {
 const PRODUCT_STATUS_META: Record<VendorProductApprovalStatus, { label: string; className: string }> = {
   draft: { label: 'Draft', className: 'bg-muted text-muted-foreground border-border' },
   pending_review: {
-    label: '⏳ AI Processing…',
+    label: '⏳ Processing…',
     className: 'bg-amber-50 text-amber-700 border-amber-200',
   },
   awaiting_stock: { label: 'Awaiting Stock Pickup', className: 'bg-blue-50 text-blue-700 border-blue-200' },
@@ -26,17 +26,44 @@ const PRODUCT_STATUS_META: Record<VendorProductApprovalStatus, { label: string; 
 /** Statuses where the vendor can edit the product */
 const EDITABLE_STATUSES: VendorProductApprovalStatus[] = ['live', 'rejected', 'draft'];
 
+// Poll interval (ms) while any product is still processing
+const POLL_INTERVAL = 12_000;
+
 export default function VendorProductsPage() {
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<VendorProductRow[]>([]);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = () => {
-    setLoading(true);
     fetchMyVendorProducts()
-      .then(setProducts)
-      .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load your products'))
-      .finally(() => setLoading(false));
+      .then((rows) => {
+        setProducts(rows);
+        setLoading(false);
+      })
+      .catch((err) => {
+        toast.error(err instanceof Error ? err.message : 'Failed to load your products');
+        setLoading(false);
+      });
   };
+
+  // Auto-refresh while any product is still in 'pending_review' (being processed).
+  // Stops the interval once all products have settled.
+  useEffect(() => {
+    const hasPending = products.some((p) => p.approval_status === 'pending_review');
+    if (hasPending && !pollRef.current) {
+      pollRef.current = setInterval(load, POLL_INTERVAL);
+    }
+    if (!hasPending && pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [products]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     load();
@@ -57,7 +84,7 @@ export default function VendorProductsPage() {
         </Link>
       </div>
       <p className="mt-1 text-sm text-muted-foreground">
-        Everything you&apos;ve listed, in one place — AI processes each submission and publishes it live automatically.
+        Everything you&apos;ve listed, in one place. You&apos;ll get an email when each product goes live.
       </p>
 
       <div className="mt-6 rounded-lg border border-border/60 bg-card p-5">
@@ -109,8 +136,7 @@ export default function VendorProductsPage() {
                       )}
                       {p.approval_status === 'pending_review' && (
                         <p className="mt-0.5 text-xs text-amber-600">
-                          AI is generating your product listing — this usually takes under a minute.
-                          You&apos;ll receive an email when it&apos;s live.
+                          Your listing is being prepared. You&apos;ll receive an email when it goes live.
                         </p>
                       )}
                     </div>

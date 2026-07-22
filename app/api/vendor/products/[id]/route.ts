@@ -50,7 +50,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   // Make sure this product belongs to this vendor
   const { data: existing, error: fetchErr } = await admin
     .from('products')
-    .select('id, vendor_id, approval_status')
+    .select('id, vendor_id, approval_status, vendor_edit_count')
     .eq('id', productId)
     .eq('vendor_id', vendor.id)
     .maybeSingle();
@@ -97,6 +97,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     // Always reset to pending_review so AI re-enriches the listing.
     // The /api/vendor/ai-process/[id] route will flip it back to 'live'.
     approval_status: 'pending_review',
+    // Increment edit count — used in admin panel to track how many times
+    // this vendor has re-submitted the listing.
+    vendor_edit_count: existing.vendor_edit_count != null
+      ? existing.vendor_edit_count + 1
+      : 1,
   };
   if (name !== undefined) patch.name = name;
   if (fabric !== undefined) patch.fabric = fabric;
