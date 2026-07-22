@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser, getSupabaseServer } from '@/lib/supabase-server-auth';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { suggestVendorProductPrice } from '@/lib/ai-pricing';
 
 // Fields the VENDOR is ever allowed to see about their own submissions.
 // Deliberately excludes vendor_id (redundant — it's their own id anyway)
@@ -178,11 +180,37 @@ export async function POST(req: Request) {
     }
     if (error) throw error;
 
-    // TODO (Part 4): call the rule-based AI price suggestion function
-    // here and PATCH ai_suggested_price on `created` via the admin/
-    // service-role client (this route's RLS-authenticated vendor
-    // session can't write that column itself — see the guard trigger
-    // in the Phase 2 migration).
+    // Part 3 — rule-based AI price suggestion, runs right on submit.
+    // ai_suggested_price is a guarded column (trg_guard_vendor_product_fields,
+    // Phase 2 migration) — only the service-role client can write it, so
+    // this PATCH deliberately goes through getSupabaseAdmin(), not the
+    // RLS-authenticated `supabase` client used above. A failure here
+    // must never fail the submission itself: the vendor's product is
+    // already saved and pending review either way, so this is best-effort
+    // and only logs on error.
+    if (created) {
+      const { suggested_price } = await suggestVendorProductPrice(getSupabaseAdmin(), {
+        category_name,
+        fabric,
+        vendor_expected_price,
+        is_dead_stock,
+      });
+
+      if (suggested_price != null) {
+        const { data: patched, error: patchErr } = await getSupabaseAdmin()
+          .from('products')
+          .update({ ai_suggested_price: suggested_price })
+          .eq('id', (created as { id: string }).id)
+          .select(VENDOR_PRODUCT_COLUMNS)
+          .single();
+
+        if (patchErr) {
+          console.error('[vendor/products] failed to save ai_suggested_price:', patchErr);
+        } else if (patched) {
+          created = patched;
+        }
+      }
+    }
 
     return NextResponse.json({ product: created });
   } catch (err) {
