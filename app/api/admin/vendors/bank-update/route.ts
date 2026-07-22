@@ -50,6 +50,9 @@ export async function PUT(req: Request) {
     if (action === 'approve') {
       updatePayload.bank_account_number = vendor.pending_bank_update.bank_account_number;
       updatePayload.bank_ifsc = vendor.pending_bank_update.bank_ifsc;
+      if (vendor.pending_bank_update.upi_id) {
+        updatePayload.upi_id = vendor.pending_bank_update.upi_id;
+      }
     }
 
     const { data: updated, error } = await supabase

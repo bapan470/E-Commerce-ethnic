@@ -8,7 +8,6 @@ import { Loader2, Store, CheckCircle2, Clock, XCircle, Ban } from 'lucide-react'
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/lib/auth-context';
 import { fetchMyVendorProfile, submitVendorApplication, type VendorProfile } from '@/lib/vendor-api';
 
@@ -20,7 +19,11 @@ const EMPTY_FORM = {
   email: '',
   pan_number: '',
   gst_number: '',
-  pickup_address: '',
+  address_line1: '',
+  address_line2: '',
+  city: '',
+  state: '',
+  pincode: '',
   expected_category: '',
 };
 
@@ -52,8 +55,21 @@ export default function SellWithUsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.business_name || !form.owner_name || !form.phone || !form.pan_number || !form.pickup_address) {
+    if (
+      !form.business_name ||
+      !form.owner_name ||
+      !form.phone ||
+      !form.pan_number ||
+      !form.address_line1 ||
+      !form.city ||
+      !form.state ||
+      !form.pincode
+    ) {
       toast.error('Please fill in all required fields');
+      return;
+    }
+    if (!/^[0-9]{6}$/.test(form.pincode)) {
+      toast.error('Pincode must be a 6-digit number');
       return;
     }
     setSubmitting(true);
@@ -203,14 +219,49 @@ export default function SellWithUsPage() {
             />
           </div>
         </div>
-        <div>
-          <Label>Pickup Address *</Label>
-          <Textarea
-            required
-            rows={3}
-            value={form.pickup_address}
-            onChange={handleChange('pickup_address')}
-          />
+        <div className="space-y-4 rounded-md border border-border/60 p-4">
+          <p className="text-sm font-semibold text-primary">Pickup Address *</p>
+          <p className="-mt-2 text-xs text-muted-foreground">
+            This is where our courier partner will collect stock from — not shown to customers.
+          </p>
+          <div>
+            <Label>Address Line 1 *</Label>
+            <Input
+              required
+              placeholder="House/Flat no., Street, Area"
+              value={form.address_line1}
+              onChange={handleChange('address_line1')}
+            />
+          </div>
+          <div>
+            <Label>Address Line 2 (optional)</Label>
+            <Input
+              placeholder="Landmark, additional info"
+              value={form.address_line2}
+              onChange={handleChange('address_line2')}
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div>
+              <Label>City *</Label>
+              <Input required value={form.city} onChange={handleChange('city')} />
+            </div>
+            <div>
+              <Label>State *</Label>
+              <Input required value={form.state} onChange={handleChange('state')} />
+            </div>
+            <div>
+              <Label>Pincode *</Label>
+              <Input
+                required
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="6-digit pincode"
+                value={form.pincode}
+                onChange={handleChange('pincode')}
+              />
+            </div>
+          </div>
         </div>
         <Button type="submit" className="w-full bg-primary" disabled={submitting}>
           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Submit Application'}

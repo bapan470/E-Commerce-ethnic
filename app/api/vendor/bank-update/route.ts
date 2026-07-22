@@ -16,6 +16,7 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const bank_account_number = String(body?.bank_account_number || '').trim();
   const bank_ifsc = String(body?.bank_ifsc || '').trim().toUpperCase();
+  const upi_id = body?.upi_id ? String(body.upi_id).trim() : null;
 
   if (!bank_account_number || !bank_ifsc) {
     return NextResponse.json({ error: 'bank_account_number and bank_ifsc are required' }, { status: 400 });
@@ -27,6 +28,7 @@ export async function POST(req: Request) {
     const { error } = await supabase.rpc('request_vendor_bank_update', {
       new_account_number: bank_account_number,
       new_ifsc: bank_ifsc,
+      new_upi_id: upi_id,
     });
     if (error) throw error;
 

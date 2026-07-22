@@ -42,18 +42,36 @@ export async function POST(req: Request) {
   const owner_name = String(body?.owner_name || '').trim();
   const phone = String(body?.phone || '').trim();
   const pan_number = String(body?.pan_number || '').trim().toUpperCase();
-  const pickup_address = String(body?.pickup_address || '').trim();
+  const address_line1 = String(body?.address_line1 || '').trim();
+  const address_line2 = body?.address_line2 ? String(body.address_line2).trim() : null;
+  const city = String(body?.city || '').trim();
+  const state = String(body?.state || '').trim();
+  const pincode = String(body?.pincode || '').trim();
   const whatsapp = body?.whatsapp ? String(body.whatsapp).trim() : null;
   const email = body?.email ? String(body.email).trim() : user.email ?? null;
   const gst_number = body?.gst_number ? String(body.gst_number).trim().toUpperCase() : null;
   const expected_category = body?.expected_category ? String(body.expected_category).trim() : null;
 
-  if (!business_name || !owner_name || !phone || !pan_number || !pickup_address) {
+  if (!business_name || !owner_name || !phone || !pan_number || !address_line1 || !city || !state || !pincode) {
     return NextResponse.json(
-      { error: 'business_name, owner_name, phone, pan_number and pickup_address are required' },
+      {
+        error:
+          'business_name, owner_name, phone, pan_number, address_line1, city, state and pincode are required',
+      },
       { status: 400 }
     );
   }
+
+  if (!/^[0-9]{6}$/.test(pincode)) {
+    return NextResponse.json({ error: 'Pincode must be a 6-digit number' }, { status: 400 });
+  }
+
+  // Compose the single-string pickup_address that lib/vendor-courier.ts,
+  // lib/delhivery-api.ts, and the admin panel already read — this keeps
+  // every existing downstream consumer working without touching them.
+  const pickup_address = [address_line1, address_line2, city, `${state} - ${pincode}`]
+    .filter(Boolean)
+    .join(', ');
 
   const supabase = await getSupabaseServer();
 
@@ -82,6 +100,11 @@ export async function POST(req: Request) {
         pan_number,
         gst_number,
         pickup_address,
+        address_line1,
+        address_line2,
+        city,
+        state,
+        pincode,
         expected_category,
         status: 'pending',
       })

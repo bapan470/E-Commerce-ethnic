@@ -24,6 +24,7 @@ export default function VendorDashboardPage() {
   const [profile, setProfile] = useState<VendorProfile | null>(null);
   const [accountInput, setAccountInput] = useState('');
   const [ifscInput, setIfscInput] = useState('');
+  const [upiInput, setUpiInput] = useState('');
   const [requesting, setRequesting] = useState(false);
 
   const load = async () => {
@@ -50,10 +51,11 @@ export default function VendorDashboardPage() {
     }
     setRequesting(true);
     try {
-      await requestVendorBankUpdate(accountInput, ifscInput);
+      await requestVendorBankUpdate(accountInput, ifscInput, upiInput || undefined);
       toast.success('Request sent — an admin will verify and approve it shortly.');
       setAccountInput('');
       setIfscInput('');
+      setUpiInput('');
       await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to request bank detail update');
@@ -118,6 +120,7 @@ export default function VendorDashboardPage() {
         <p className="mt-1 text-sm text-muted-foreground">
           Current account on file: <span className="font-mono">{maskAccount(profile.bank_account_number)}</span>
           {profile.bank_ifsc ? ` · ${profile.bank_ifsc}` : ''}
+          {profile.upi_id ? ` · UPI: ${profile.upi_id}` : ''}
         </p>
 
         {profile.pending_bank_update ? (
@@ -138,17 +141,37 @@ export default function VendorDashboardPage() {
               <Label>New IFSC</Label>
               <Input value={ifscInput} onChange={(e) => setIfscInput(e.target.value.toUpperCase())} />
             </div>
+            <div>
+              <Label>UPI ID (optional)</Label>
+              <Input placeholder="yourname@bank" value={upiInput} onChange={(e) => setUpiInput(e.target.value)} />
+            </div>
             <div className="sm:col-span-2">
               <Button type="submit" variant="outline" disabled={requesting}>
                 {requesting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Request Bank Detail Change'}
               </Button>
               <p className="mt-2 text-xs text-muted-foreground">
                 For fraud prevention, changes are held for manual admin verification before they
-                apply — this can take a little time.
+                apply — this can take a little time. This same verification covers UPI ID changes
+                too, there's no separate process for it.
               </p>
             </div>
           </form>
         )}
+      </div>
+
+      <div className="mt-6 rounded-lg border border-border/60 bg-card p-5">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4 text-primary" />
+          <p className="font-serif text-lg font-semibold text-primary">KYC Documents</p>
+        </div>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Upload your PAN card, GST certificate (if applicable), and bank proof for compliance records.
+        </p>
+        <Link href="/vendor/dashboard/kyc">
+          <Button variant="outline" className="mt-3">
+            Go to KYC Documents
+          </Button>
+        </Link>
       </div>
 
       <p className="mt-6 text-sm text-muted-foreground">

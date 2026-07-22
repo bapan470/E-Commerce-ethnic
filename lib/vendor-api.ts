@@ -17,10 +17,21 @@ export interface VendorProfile {
   pan_number: string;
   gst_number: string | null;
   pickup_address: string;
+  address_line1: string | null;
+  address_line2: string | null;
+  city: string | null;
+  state: string | null;
+  pincode: string | null;
   expected_category: string | null;
   bank_account_number: string | null;
   bank_ifsc: string | null;
-  pending_bank_update: { bank_account_number: string; bank_ifsc: string; requested_at: string } | null;
+  upi_id: string | null;
+  pending_bank_update: {
+    bank_account_number: string;
+    bank_ifsc: string;
+    upi_id: string | null;
+    requested_at: string;
+  } | null;
   status: 'pending' | 'approved' | 'rejected' | 'suspended';
   admin_note: string | null;
   created_at: string;
@@ -34,7 +45,11 @@ export interface VendorApplicationInput {
   email?: string;
   pan_number: string;
   gst_number?: string;
-  pickup_address: string;
+  address_line1: string;
+  address_line2?: string;
+  city: string;
+  state: string;
+  pincode: string;
   expected_category?: string;
 }
 
@@ -44,7 +59,7 @@ export interface VendorApplicationInput {
 
 /** Fetches the current user's vendor profile, or null if they haven't applied yet. */
 export async function fetchMyVendorProfile(): Promise<VendorProfile | null> {
-  const res = await fetch('/api/vendor');
+  const res = await fetch('/api/vendor', { cache: 'no-store' });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || 'Failed to load vendor profile');
@@ -73,11 +88,19 @@ export async function submitVendorApplication(input: VendorApplicationInput): Pr
  * directly — it stages the request for admin approval (see the
  * request_vendor_bank_update() RPC in the Phase 1 migration).
  */
-export async function requestVendorBankUpdate(newAccountNumber: string, newIfsc: string): Promise<void> {
+export async function requestVendorBankUpdate(
+  newAccountNumber: string,
+  newIfsc: string,
+  newUpiId?: string
+): Promise<void> {
   const res = await fetch('/api/vendor/bank-update', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ bank_account_number: newAccountNumber, bank_ifsc: newIfsc }),
+    body: JSON.stringify({
+      bank_account_number: newAccountNumber,
+      bank_ifsc: newIfsc,
+      upi_id: newUpiId || null,
+    }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));

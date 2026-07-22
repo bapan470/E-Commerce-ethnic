@@ -337,6 +337,11 @@ export default function VendorsPanel() {
                       PAN: {v.pan_number} {v.gst_number ? `· GST: ${v.gst_number}` : ''}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">Pickup: {v.pickup_address}</p>
+                    {(v.city || v.state || v.pincode) && (
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {[v.city, v.state, v.pincode].filter(Boolean).join(' · ')}
+                      </p>
+                    )}
                     {v.expected_category && (
                       <p className="mt-1 text-xs text-muted-foreground">Category: {v.expected_category}</p>
                     )}
@@ -351,6 +356,7 @@ export default function VendorsPanel() {
                     </p>
                     <p className="mt-1 font-mono text-amber-900">
                       A/C: {v.pending_bank_update.bank_account_number} · IFSC: {v.pending_bank_update.bank_ifsc}
+                      {v.pending_bank_update.upi_id ? ` · UPI: ${v.pending_bank_update.upi_id}` : ''}
                     </p>
                     <p className="mt-1 text-xs text-amber-700">
                       Requested {new Date(v.pending_bank_update.requested_at).toLocaleString('en-IN')}
