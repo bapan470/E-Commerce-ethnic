@@ -30,6 +30,7 @@ import {
   PackageCheck,
   Landmark,
   RotateCcw,
+  FileBarChart,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import NotificationBell from './notification-bell';
@@ -57,6 +58,7 @@ export type AdminSection =
   | 'fulfillment'
   | 'vendor-settlements'
   | 'vendor-ops'
+  | 'vendor-reports'
   | 'settings';
 
 interface NavItem {
@@ -102,6 +104,7 @@ const NAV_GROUPS: NavGroup[] = [
       { value: 'fulfillment', label: 'Stock Receiving', icon: PackageCheck },
       { value: 'vendor-settlements', label: 'Vendor Settlements', icon: Landmark },
       { value: 'vendor-ops', label: 'Vendor Ops', icon: RotateCcw },
+      { value: 'vendor-reports', label: 'Vendor Reports', icon: FileBarChart },
     ],
   },
   {

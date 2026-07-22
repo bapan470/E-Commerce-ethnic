@@ -666,3 +666,47 @@ export async function reviewAdminVendorKyc(
   return body.document as VendorKycDocument;
 }
 
+
+// ---------------------------------------------------------------------
+// Phase 5B — Admin Monthly Reporting. Vendor-wise sales/fee/payable/
+// paid/pending for one calendar month, built from the same order_items
+// + vendor_settlements data as the Phase 4A/4B settlement flow (no new
+// tables). CSV/PDF export hit the same route with ?format=csv|pdf and
+// are downloaded directly rather than parsed as JSON.
+// ---------------------------------------------------------------------
+
+export interface VendorMonthlyReportRow {
+  vendor_id: string;
+  vendor_name: string;
+  total_sales: number;
+  fee_collected: number;
+  payable_total: number;
+  paid_amount: number;
+  pending_amount: number;
+}
+
+/** month is "YYYY-MM"; omit for the current calendar month. */
+export async function fetchAdminVendorMonthlyReport(
+  month?: string
+): Promise<{ month_label: string; rows: VendorMonthlyReportRow[] }> {
+  const url = month
+    ? `/api/admin/vendor-monthly-report?month=${month}`
+    : '/api/admin/vendor-monthly-report';
+  const res = await fetch(url);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to load the monthly report');
+  }
+  return res.json();
+}
+
+/** Triggers a browser download for the CSV or PDF export of a given month. */
+export function downloadAdminVendorMonthlyReport(month: string, format: 'csv' | 'pdf') {
+  const url = `/api/admin/vendor-monthly-report?month=${month}&format=${format}`;
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}

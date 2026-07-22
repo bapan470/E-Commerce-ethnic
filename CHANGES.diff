@@ -1,3 +1,23 @@
+diff --git a/app/admin/page.tsx b/app/admin/page.tsx
+index 6553f7b..9160b8a 100644
+--- a/app/admin/page.tsx
++++ b/app/admin/page.tsx
+@@ -26,6 +26,7 @@ import VendorsPanel from '@/components/admin/vendors-panel';
+ import FulfillmentPanel from '@/components/admin/fulfillment-panel';
+ import VendorSettlementsPanel from '@/components/admin/vendor-settlements-panel';
+ import VendorOpsPanel from '@/components/admin/vendor-ops-panel';
++import VendorReportsPanel from '@/components/admin/vendor-reports-panel';
+ 
+ const PANELS: Record<AdminSection, React.ComponentType> = {
+   analytics: AnalyticsPanel,
+@@ -50,6 +51,7 @@ const PANELS: Record<AdminSection, React.ComponentType> = {
+   fulfillment: FulfillmentPanel,
+   'vendor-settlements': VendorSettlementsPanel,
+   'vendor-ops': VendorOpsPanel,
++  'vendor-reports': VendorReportsPanel,
+   settings: SettingsPanel,
+ };
+ 
 diff --git a/app/vendor/layout.tsx b/app/vendor/layout.tsx
 index 9f3a5cb..4fa2f60 100644
 --- a/app/vendor/layout.tsx
@@ -10,6 +30,34 @@ index 9f3a5cb..4fa2f60 100644
  ];
  
  export default async function VendorLayout({ children }: { children: React.ReactNode }) {
+diff --git a/components/admin/admin-shell.tsx b/components/admin/admin-shell.tsx
+index 8e2d322..2facfcb 100644
+--- a/components/admin/admin-shell.tsx
++++ b/components/admin/admin-shell.tsx
+@@ -30,6 +30,7 @@ import {
+   PackageCheck,
+   Landmark,
+   RotateCcw,
++  FileBarChart,
+ } from 'lucide-react';
+ import { cn } from '@/lib/utils';
+ import NotificationBell from './notification-bell';
+@@ -57,6 +58,7 @@ export type AdminSection =
+   | 'fulfillment'
+   | 'vendor-settlements'
+   | 'vendor-ops'
++  | 'vendor-reports'
+   | 'settings';
+ 
+ interface NavItem {
+@@ -102,6 +104,7 @@ const NAV_GROUPS: NavGroup[] = [
+       { value: 'fulfillment', label: 'Stock Receiving', icon: PackageCheck },
+       { value: 'vendor-settlements', label: 'Vendor Settlements', icon: Landmark },
+       { value: 'vendor-ops', label: 'Vendor Ops', icon: RotateCcw },
++      { value: 'vendor-reports', label: 'Vendor Reports', icon: FileBarChart },
+     ],
+   },
+   {
 diff --git a/components/admin/vendors-panel.tsx b/components/admin/vendors-panel.tsx
 index fb841dc..792df2b 100644
 --- a/components/admin/vendors-panel.tsx
@@ -174,10 +222,10 @@ index fb841dc..792df2b 100644
                  </div>
  
 diff --git a/lib/vendor-api.ts b/lib/vendor-api.ts
-index 2452288..ef92df3 100644
+index 2452288..d2dc511 100644
 --- a/lib/vendor-api.ts
 +++ b/lib/vendor-api.ts
-@@ -580,4 +580,89 @@ export async function closeVendorAccount(id: string): Promise<{
+@@ -580,4 +580,133 @@ export async function closeVendorAccount(id: string): Promise<{
    return res.json();
  }
  
@@ -266,4 +314,48 @@ index 2452288..ef92df3 100644
 +  const body = await res.json();
 +  return body.document as VendorKycDocument;
 +}
++
  
++// ---------------------------------------------------------------------
++// Phase 5B — Admin Monthly Reporting. Vendor-wise sales/fee/payable/
++// paid/pending for one calendar month, built from the same order_items
++// + vendor_settlements data as the Phase 4A/4B settlement flow (no new
++// tables). CSV/PDF export hit the same route with ?format=csv|pdf and
++// are downloaded directly rather than parsed as JSON.
++// ---------------------------------------------------------------------
++
++export interface VendorMonthlyReportRow {
++  vendor_id: string;
++  vendor_name: string;
++  total_sales: number;
++  fee_collected: number;
++  payable_total: number;
++  paid_amount: number;
++  pending_amount: number;
++}
++
++/** month is "YYYY-MM"; omit for the current calendar month. */
++export async function fetchAdminVendorMonthlyReport(
++  month?: string
++): Promise<{ month_label: string; rows: VendorMonthlyReportRow[] }> {
++  const url = month
++    ? `/api/admin/vendor-monthly-report?month=${month}`
++    : '/api/admin/vendor-monthly-report';
++  const res = await fetch(url);
++  if (!res.ok) {
++    const body = await res.json().catch(() => ({}));
++    throw new Error(body.error || 'Failed to load the monthly report');
++  }
++  return res.json();
++}
++
++/** Triggers a browser download for the CSV or PDF export of a given month. */
++export function downloadAdminVendorMonthlyReport(month: string, format: 'csv' | 'pdf') {
++  const url = `/api/admin/vendor-monthly-report?month=${month}&format=${format}`;
++  const a = document.createElement('a');
++  a.href = url;
++  a.download = '';
++  document.body.appendChild(a);
++  a.click();
++  a.remove();
++}

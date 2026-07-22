@@ -26,6 +26,7 @@ import VendorsPanel from '@/components/admin/vendors-panel';
 import FulfillmentPanel from '@/components/admin/fulfillment-panel';
 import VendorSettlementsPanel from '@/components/admin/vendor-settlements-panel';
 import VendorOpsPanel from '@/components/admin/vendor-ops-panel';
+import VendorReportsPanel from '@/components/admin/vendor-reports-panel';
 
 const PANELS: Record<AdminSection, React.ComponentType> = {
   analytics: AnalyticsPanel,
@@ -50,6 +51,7 @@ const PANELS: Record<AdminSection, React.ComponentType> = {
   fulfillment: FulfillmentPanel,
   'vendor-settlements': VendorSettlementsPanel,
   'vendor-ops': VendorOpsPanel,
+  'vendor-reports': VendorReportsPanel,
   settings: SettingsPanel,
 };
 
