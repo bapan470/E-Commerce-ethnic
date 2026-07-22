@@ -35,6 +35,10 @@ export const ADMIN_FULFILLMENT_COLUMNS = [
   'shipped_courier_name',
   'shipped_tracking_number',
   'shipped_at',
+  'delivered_at',
+  'fee_amount',
+  'vendor_payable_amount',
+  'settlement_id',
   'created_at',
   'stage_updated_at',
   'products(images)',
@@ -79,6 +83,11 @@ export function shapeAdminFulfillmentRow(row: any) {
     shipped_courier_name: row.shipped_courier_name,
     shipped_tracking_number: row.shipped_tracking_number,
     shipped_at: row.shipped_at,
+
+    delivered_at: row.delivered_at,
+    fee_amount: row.fee_amount,
+    vendor_payable_amount: row.vendor_payable_amount,
+    settlement_id: row.settlement_id,
 
     created_at: row.created_at,
     stage_updated_at: row.stage_updated_at,

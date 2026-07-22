@@ -26,6 +26,16 @@ import {
 //                      is manual (courier's own site/app), this just
 //                      records it. Defaults liability to 'own' if not
 //                      already 'vendor' (delivery-leg risk from here on).
+//   deliver        -> stage 'shipped_to_customer' -> 'delivered' (Phase 4A).
+//                      No new fields required — this just confirms
+//                      delivery has happened (courier tracking/webhook
+//                      isn't wired yet, so mark this manually for now).
+//                      The moment stage flips to 'delivered', a DB
+//                      trigger (calculate_order_item_settlement_fee(),
+//                      supabase/migrations/20260808000000_phase4a_
+//                      settlement_schema.sql) computes fee_amount /
+//                      vendor_payable_amount automatically — nothing to
+//                      do here beyond the stage change itself.
 // ---------------------------------------------------------------------
 
 export async function PUT(req: Request, { params }: { params: { id: string } }) {
@@ -170,6 +180,18 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
         // Delivery-leg risk from here on — only default to 'own' if a
         // failed QC hasn't already pinned this on the vendor.
         liability: existing.liability ?? 'own',
+      });
+    }
+
+    if (action === 'deliver') {
+      if (existing.stage !== 'shipped_to_customer') {
+        return NextResponse.json(
+          { error: `Cannot mark delivered from stage "${existing.stage}"` },
+          { status: 400 }
+        );
+      }
+      return await updateAndReturn(admin, orderItemId, {
+        stage: 'delivered',
       });
     }
 

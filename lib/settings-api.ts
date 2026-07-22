@@ -140,6 +140,50 @@ export async function saveAiChatSettings(settings: AiChatSettings) {
   if (error) throw error;
 }
 
+// ---------------------------------------------------------------------
+// Phase 4A — vendor handling-fee formula + settlement config.
+// fee = handling_fee_base + (sale_price * handling_fee_percent / 100),
+// applied by the DB trigger calculate_order_item_settlement_fee()
+// (supabase/migrations/20260808000000_phase4a_settlement_schema.sql)
+// the moment an order_item's stage becomes 'delivered'. This
+// fetch/save pair is provided now so Phase 4B's admin settings screen
+// just needs to build a form around it — no new plumbing.
+// ---------------------------------------------------------------------
+export interface HandlingFeeSettings {
+  handling_fee_base: number;
+  handling_fee_percent: number;
+  return_window_days: number;
+}
+
+const DEFAULT_HANDLING_FEE_SETTINGS: HandlingFeeSettings = {
+  handling_fee_base: 0,
+  handling_fee_percent: 10,
+  return_window_days: 7,
+};
+
+export async function fetchHandlingFeeSettings(): Promise<HandlingFeeSettings> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'vendor_settlement_settings')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_HANDLING_FEE_SETTINGS;
+  return { ...DEFAULT_HANDLING_FEE_SETTINGS, ...(data.value as Partial<HandlingFeeSettings>) };
+}
+
+export async function saveHandlingFeeSettings(settings: HandlingFeeSettings) {
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ key: 'vendor_settlement_settings', value: settings }, { onConflict: 'key' });
+  if (error) throw error;
+}
+
+/** Mirrors the DB trigger's math client-side, e.g. for an admin preview before saving new fee settings. */
+export function calculateHandlingFee(salePrice: number, settings: HandlingFeeSettings): number {
+  const fee = settings.handling_fee_base + (salePrice * settings.handling_fee_percent) / 100;
+  return Math.min(Math.round(fee * 100) / 100, salePrice);
+}
+
 /**
  * Server-only variant (used inside API routes where we don't have a
  * browser session). Importing the client `supabase` singleton from a
