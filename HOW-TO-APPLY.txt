@@ -1,0 +1,65 @@
+STUCK "Processing..." PRODUCT FIX — kaise apply karein
+=========================================================
+
+Is zip me 5 files hain, apne repo (E-Commerce-ethnic) ke exact
+same path/folder structure me:
+
+  app/api/cron/daily-jobs/route.ts            (MODIFIED)
+  app/api/cron/stuck-vendor-listings/route.ts (NEW)
+  app/api/vendor/ai-process/[id]/route.ts     (MODIFIED)
+  lib/cron-jobs.ts                            (MODIFIED)
+  lib/vendor-ai-listing.ts                    (MODIFIED)
+
+Option A (aasan) — files copy-paste karo
+-----------------------------------------
+1. Is zip ko extract karo.
+2. Har file ko apne local repo (C:\Users\bapan\E-Commerce-ethnic\...) ke
+   same path pe copy-paste karo, replace/overwrite kar do.
+   (app/api/cron/stuck-vendor-listings/ folder naya hai, use bana lena.)
+3. Terminal me apne repo folder me jaake:
+     git add -A
+     git commit -m "fix: vendor products stuck in pending_review (Netlify timeout safety net)"
+     git push
+
+Option B (git patch se) — agar chaho
+--------------------------------------
+1. vendor-ai-fix.patch file ko apne repo ke root me daalo.
+2. Terminal me:
+     git apply vendor-ai-fix.patch
+3. Phir commit + push same jaise upar.
+
+Deploy ke baad kya karna hai
+------------------------------
+Do jo purane products already "Processing..." me atke hain
+(Blue Cotton Silk Saree, Cotton silk white saree) — ye apne aap
+turant fix nahi honge. Do options:
+
+  1. Wait karo — naya safety-net cron job (/api/cron/daily-jobs, jo
+     Vercel par pehle se daily schedule me hai) unhe apne aap
+     "live" kar dega jab bhi wo agli baar chalega.
+
+  2. Turant fix chahiye to Supabase dashboard me jaake products table
+     me un dono rows ka approval_status manually 'pending_review' se
+     'live' set kar do.
+
+Optional (recommended) — jyada fast safety net
+--------------------------------------------------
+Naya route /api/cron/stuck-vendor-listings ek standalone route hai jo
+sirf yehi ek job chalata hai. Vercel ka free/daily cron isko sirf din
+me ek baar chalayega, jo is use-case ke liye slow hai. Agar chaho to
+free external scheduler jaise cron-job.org se is URL ko har 5-10 min
+me hit karwa sakte ho:
+
+  https://<tumhari-site>/api/cron/stuck-vendor-listings
+
+Agar .env me CRON_SECRET set hai, to scheduler ko Authorization
+header bhejna hoga:  Authorization: Bearer <CRON_SECRET>
+
+Kya fix hua, ek line me
+--------------------------
+NVIDIA AI call ka timeout 55s se 8s kiya gaya (Netlify ka function
+timeout sirf 10s hai), fetch/JSON parsing ab crash nahi karte (null
+return karte hain), poora route try/catch me wrap hai jisme fail hone
+par bhi product force-publish ho jaata hai, aur ek naya safety-net
+cron job hai jo kisi bhi product ko 10 min se zyada pending_review me
+atka na rehne de.

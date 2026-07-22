@@ -5,7 +5,12 @@ import { generateVendorListing } from '@/lib/vendor-ai-listing';
 import { sendEmail } from '@/lib/email';
 import { vendorProductLiveEmail, vendorProductEditLiveEmail } from '@/lib/email-templates';
 
-// Allow up to 60 seconds — NVIDIA NIM free tier can be slow.
+// Allow up to 60 seconds on platforms that support it (e.g. Vercel).
+// NOTE: this has no effect on Netlify — its default function timeout is
+// only 10s regardless of this value. See the try/catch + fallback below,
+// and lib/vendor-ai-listing.ts's 8s internal timeout, which together make
+// sure the product still gets published even if the function gets killed
+// before AI finishes.
 export const maxDuration = 60;
 
 /**
@@ -34,6 +39,34 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const admin = getSupabaseAdmin();
 
+  try {
+    return await handleAiProcess({ req, admin, productId, isEdit });
+  } catch (err) {
+    // Last-resort fallback: if ANYTHING above threw unexpectedly (auth,
+    // DB, AI call, whatever) the product must not stay stuck in
+    // pending_review forever. Force-publish it with whatever basic
+    // fields it already has, then report the failure.
+    console.error('[vendor/ai-process] unhandled error, force-publishing product', productId, err);
+    try {
+      await admin.from('products').update({ approval_status: 'live' }).eq('id', productId);
+    } catch (fallbackErr) {
+      console.error('[vendor/ai-process] fallback force-publish also failed', productId, fallbackErr);
+    }
+    return NextResponse.json({ error: 'Internal error, product force-published as fallback' }, { status: 500 });
+  }
+}
+
+async function handleAiProcess({
+  req,
+  admin,
+  productId,
+  isEdit,
+}: {
+  req: Request;
+  admin: ReturnType<typeof getSupabaseAdmin>;
+  productId: string;
+  isEdit: boolean;
+}) {
   // ── Auth: internal secret OR user session ──────────────────────────────
   const internalSecret = req.headers.get('x-internal-secret');
   const sessionSecret = process.env.SESSION_SECRET;

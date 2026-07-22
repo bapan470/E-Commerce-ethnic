@@ -261,6 +261,48 @@ export async function runVendorReturnTimersJob() {
   };
 }
 
+// ----------------------------- Stuck vendor listings (safety net) -----------------------------
+// Vendor products go to 'pending_review' right after creation, and are
+// supposed to flip to 'live' once /api/vendor/ai-process/[id] finishes
+// (with or without AI-generated fields). If that route's function gets
+// killed mid-flight (e.g. platform function timeout) or the client's
+// fire-and-forget call never lands, a product can get stuck in
+// pending_review forever. This job is the safety net: anything that's
+// been pending_review for longer than STUCK_MINUTES gets force-published
+// as-is, so vendors never lose a listing permanently.
+const STUCK_MINUTES = 10;
+
+export async function runStuckVendorListingsJob() {
+  const supabase = getSupabaseAdmin();
+  const cutoff = new Date(Date.now() - STUCK_MINUTES * 60 * 1000).toISOString();
+
+  const { data: stuckProducts, error } = await supabase
+    .from('products')
+    .select('id, name, vendor_id, approval_status_changed_at')
+    .eq('approval_status', 'pending_review')
+    .lte('approval_status_changed_at', cutoff);
+
+  if (error) throw error;
+
+  let published = 0;
+  const errors: string[] = [];
+
+  for (const product of stuckProducts ?? []) {
+    try {
+      const { error: updateError } = await supabase
+        .from('products')
+        .update({ approval_status: 'live' })
+        .eq('id', product.id);
+      if (updateError) throw updateError;
+      published++;
+    } catch (itemErr: any) {
+      errors.push(`product ${product.id}: ${itemErr?.message || itemErr}`);
+    }
+  }
+
+  return { checked: stuckProducts?.length ?? 0, published, errors };
+}
+
 // ----------------------------- Vendor settlement (weekly) -----------------------------
 export async function runVendorSettlementJob() {
   const supabase = getSupabaseAdmin();

@@ -123,8 +123,14 @@ export async function generateVendorListing(input: VendorAIInput): Promise<Vendo
       ]
     : promptText;
 
+  // NOTE: keep this well under the hosting platform's function timeout.
+  // Netlify's default function timeout is only 10s, so 55s was causing
+  // the whole function (and this fetch) to get killed mid-flight, which
+  // left the product stuck in pending_review forever. 8s gives the NIM
+  // call a real chance while still leaving headroom for the rest of the
+  // route (DB update, email) to run within a 10s budget.
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 55_000);
+  const timeout = setTimeout(() => controller.abort(), 8_000);
 
   let res: Response;
   try {
@@ -143,6 +149,12 @@ export async function generateVendorListing(input: VendorAIInput): Promise<Vendo
         response_format: { type: 'json_object' },
       }),
     });
+  } catch (err) {
+    // Network error, abort/timeout, DNS failure, etc. Never let this
+    // throw out of the function — caller falls back to publishing the
+    // product with the vendor's basic fields instead of AI-generated ones.
+    console.error('[vendor-ai-listing] NIM fetch failed:', err);
+    return null;
   } finally {
     clearTimeout(timeout);
   }
@@ -152,7 +164,13 @@ export async function generateVendorListing(input: VendorAIInput): Promise<Vendo
     return null;
   }
 
-  const data = await res.json();
+  let data: any;
+  try {
+    data = await res.json();
+  } catch (err) {
+    console.error('[vendor-ai-listing] failed to parse NIM response as JSON:', err);
+    return null;
+  }
   const text: string = data?.choices?.[0]?.message?.content ?? '';
   const cleaned = text.replace(/^```(json)?/i, '').replace(/```$/, '').trim();
 
