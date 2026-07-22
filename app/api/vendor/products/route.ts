@@ -200,7 +200,7 @@ export async function POST(req: Request) {
         const { data: patched, error: patchErr } = await getSupabaseAdmin()
           .from('products')
           .update({ ai_suggested_price: suggested_price })
-          .eq('id', (created as { id: string }).id)
+          .eq('id', (created as any)?.id)
           .select(VENDOR_PRODUCT_COLUMNS)
           .single();
 

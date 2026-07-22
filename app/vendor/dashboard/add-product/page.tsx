@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { Loader2, Upload, X, PackagePlus, Barcode as BarcodeIcon } from 'lucide-react';
+import { Loader2, Upload, X, PackagePlus, Barcode as BarcodeIcon, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -325,9 +325,19 @@ export default function AddVendorProductPage() {
                         {p.category_name} · Qty {p.available_quantity}
                       </p>
                       {p.barcode && (
-                        <p className="mt-0.5 flex items-center gap-1 font-mono text-xs text-muted-foreground">
-                          <BarcodeIcon className="h-3 w-3" /> {p.barcode}
-                        </p>
+                        <>
+                          <p className="mt-0.5 flex items-center gap-1 font-mono text-xs text-muted-foreground">
+                            <BarcodeIcon className="h-3 w-3" /> {p.barcode}
+                          </p>
+                          <a
+                            href={`/api/vendor/products/${p.id}/label`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                          >
+                            <Printer className="h-3 w-3" /> Print Label
+                          </a>
+                        </>
                       )}
                     </div>
                   </div>
