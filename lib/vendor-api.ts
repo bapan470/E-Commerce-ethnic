@@ -580,4 +580,89 @@ export async function closeVendorAccount(id: string): Promise<{
   return res.json();
 }
 
+// ---------------------------------------------------------------------
+// Phase 5A — Vendor KYC Documents (PAN card, GST certificate, bank
+// proof). Files live in the PRIVATE `vendor-kyc-documents` bucket —
+// every URL below is a short-lived signed URL minted server-side by
+// /api/vendor/kyc or /api/admin/vendor-kyc, never a permanent public
+// link. Uploads also go through those routes (not direct browser
+// storage access like uploadPickupProofPhoto above) since the bucket
+// has no policies for the anon/authenticated roles.
+// ---------------------------------------------------------------------
+
+export type VendorKycDocType = 'pan_card' | 'gst_certificate' | 'bank_proof';
+export type VendorKycStatus = 'pending' | 'verified' | 'rejected';
+
+export interface VendorKycDocument {
+  id: string;
+  vendor_id?: string; // present only on the admin-facing fetch
+  doc_type: VendorKycDocType;
+  original_filename: string | null;
+  status: VendorKycStatus;
+  admin_note: string | null;
+  uploaded_at: string;
+  reviewed_at?: string | null;
+  url: string | null; // signed URL, valid ~5 minutes
+}
+
+/** Vendor-facing: this vendor's own KYC documents. */
+export async function fetchMyVendorKyc(): Promise<VendorKycDocument[]> {
+  const res = await fetch('/api/vendor/kyc');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to load your KYC documents');
+  }
+  const body = await res.json();
+  return body.documents as VendorKycDocument[];
+}
+
+/** Vendor-facing: upload (or re-upload) one KYC document. Re-uploading
+ *  replaces the previous file and resets its status to 'pending'. */
+export async function uploadVendorKycDocument(
+  doc_type: VendorKycDocType,
+  file: File
+): Promise<VendorKycDocument> {
+  const formData = new FormData();
+  formData.append('doc_type', doc_type);
+  formData.append('file', file);
+
+  const res = await fetch('/api/vendor/kyc', { method: 'POST', body: formData });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to upload document');
+  }
+  const body = await res.json();
+  return body.document as VendorKycDocument;
+}
+
+/** Admin-facing: KYC documents for one vendor, or every vendor if omitted. */
+export async function fetchAdminVendorKyc(vendorId?: string): Promise<VendorKycDocument[]> {
+  const url = vendorId ? `/api/admin/vendor-kyc?vendor_id=${vendorId}` : '/api/admin/vendor-kyc';
+  const res = await fetch(url);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to load KYC documents');
+  }
+  const body = await res.json();
+  return body.documents as VendorKycDocument[];
+}
+
+/** Admin-facing: verify or reject one document. */
+export async function reviewAdminVendorKyc(
+  id: string,
+  action: 'verify' | 'reject',
+  admin_note?: string
+): Promise<VendorKycDocument> {
+  const res = await fetch('/api/admin/vendor-kyc', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, action, admin_note }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to review document');
+  }
+  const body = await res.json();
+  return body.document as VendorKycDocument;
+}
 

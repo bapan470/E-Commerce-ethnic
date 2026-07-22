@@ -11,6 +11,10 @@ import {
   Landmark,
   Loader2,
   UserX,
+  FileText,
+  ChevronDown,
+  ChevronUp,
+  Eye,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -29,8 +33,138 @@ import {
   updateAdminVendorStatus,
   reviewAdminVendorBankUpdate,
   closeVendorAccount,
+  fetchAdminVendorKyc,
+  reviewAdminVendorKyc,
   type AdminVendorRow,
+  type VendorKycDocument,
 } from '@/lib/vendor-api';
+
+const KYC_DOC_LABELS: Record<VendorKycDocument['doc_type'], string> = {
+  pan_card: 'PAN Card',
+  gst_certificate: 'GST Certificate',
+  bank_proof: 'Bank Proof',
+};
+
+const KYC_STATUS_META: Record<VendorKycDocument['status'], { label: string; className: string }> = {
+  pending: { label: 'Pending', className: 'bg-amber-50 text-amber-700 border-amber-200' },
+  verified: { label: 'Verified', className: 'bg-green-50 text-green-700 border-green-200' },
+  rejected: { label: 'Rejected', className: 'bg-red-50 text-red-700 border-red-200' },
+};
+
+// Phase 5A — inline "View KYC Documents" toggle on each vendor card.
+// Docs are fetched on demand (not preloaded for every vendor) since
+// each one requires minting fresh signed URLs server-side.
+function VendorKycSection({ vendorId }: { vendorId: string }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [docs, setDocs] = useState<VendorKycDocument[]>([]);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      setDocs(await fetchAdminVendorKyc(vendorId));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load KYC documents');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next && docs.length === 0) load();
+  };
+
+  const handleReview = async (doc: VendorKycDocument, action: 'verify' | 'reject') => {
+    setBusyId(doc.id);
+    try {
+      const updated = await reviewAdminVendorKyc(doc.id, action);
+      setDocs((prev) => prev.map((d) => (d.id === doc.id ? { ...d, ...updated } : d)));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to review document');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <div className="mt-3">
+      <button
+        onClick={toggle}
+        className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+      >
+        <FileText className="h-3.5 w-3.5" />
+        KYC Documents
+        {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+      </button>
+
+      {open && (
+        <div className="mt-2 space-y-2">
+          {loading ? (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          ) : docs.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No documents uploaded yet.</p>
+          ) : (
+            docs.map((doc) => {
+              const meta = KYC_STATUS_META[doc.status];
+              return (
+                <div
+                  key={doc.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/20 p-2"
+                >
+                  <div className="text-xs">
+                    <span className="font-medium text-primary">{KYC_DOC_LABELS[doc.doc_type]}</span>{' '}
+                    <Badge variant="outline" className={meta.className}>
+                      {meta.label}
+                    </Badge>
+                    <p className="mt-0.5 text-muted-foreground">
+                      {doc.original_filename} · {new Date(doc.uploaded_at).toLocaleDateString('en-IN')}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {doc.url && (
+                      <a
+                        href={doc.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                      >
+                        <Eye className="h-3.5 w-3.5" /> View
+                      </a>
+                    )}
+                    {doc.status !== 'verified' && (
+                      <Button
+                        size="sm"
+                        className="h-7 bg-primary px-2 text-xs"
+                        disabled={busyId === doc.id}
+                        onClick={() => handleReview(doc, 'verify')}
+                      >
+                        Verify
+                      </Button>
+                    )}
+                    {doc.status !== 'rejected' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2 text-xs"
+                        disabled={busyId === doc.id}
+                        onClick={() => handleReview(doc, 'reject')}
+                      >
+                        Reject
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const STATUS_META: Record<
   AdminVendorRow['status'],
@@ -206,6 +340,7 @@ export default function VendorsPanel() {
                     {v.expected_category && (
                       <p className="mt-1 text-xs text-muted-foreground">Category: {v.expected_category}</p>
                     )}
+                    <VendorKycSection vendorId={v.id} />
                   </div>
                 </div>
 
