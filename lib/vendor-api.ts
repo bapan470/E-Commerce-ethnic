@@ -197,9 +197,9 @@ export interface VendorProductInput {
   is_dead_stock: boolean;
 }
 
-/** Submits a new product for review. Server sets approval_status =
- *  'pending_review' and auto-generates the barcode — the vendor never
- *  supplies either. */
+/** Publishes a new product straight to the live site — no admin review
+ *  step. Server sets approval_status = 'live' and auto-generates the
+ *  barcode — the vendor never supplies either. */
 export async function submitVendorProduct(input: VendorProductInput): Promise<VendorProductRow> {
   const res = await fetch('/api/vendor/products', {
     method: 'POST',

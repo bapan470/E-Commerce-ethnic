@@ -71,18 +71,23 @@ export async function GET() {
   }
 }
 
-// POST — submit a new product for review.
+// POST — publishes a new product straight to the live site.
 //
-// - approval_status is always forced to 'pending_review' here — never
-//   trusted from the request body.
+// - approval_status is always forced to 'live' here — never trusted
+//   from the request body. There is deliberately no admin review step:
+//   the vendor's submission goes live immediately on the storefront
+//   (products-api / products-api-server / sitemap all query
+//   .eq('approval_status', 'live')).
 // - barcode is never supplied by the vendor; the Phase 2 migration's
 //   trg_products_set_barcode trigger auto-generates it on insert.
-// - final_price / ai_suggested_price are left for the admin (Part 5)
-//   and the pricing function (Part 4) to fill in — this route never
-//   sets them beyond a provisional placeholder equal to what the
-//   vendor asked for, which the guard trigger (Phase 2 migration)
-//   would in any case block from ever being changed by this vendor
-//   later on an UPDATE.
+// - price is set from, in order: the vendor's expected price, else the
+//   rule-based AI suggestion (lib/ai-pricing.ts, computed BEFORE insert
+//   since the product needs a real price the moment it goes live), else
+//   a safe fallback so nothing ever goes live at ₹0.
+// - final_price / ai_suggested_price are still saved for reference (and
+//   are still admin-editable from Admin > Products if a price ever
+//   needs correcting), but nothing blocks the listing from being live
+//   in the meantime.
 export async function POST(req: Request) {
   const user = await getCurrentUser();
   if (!user) {
@@ -134,15 +139,32 @@ export async function POST(req: Request) {
       );
     }
 
-    // Placeholder — never shown to customers (approval_status stays
-    // 'pending_review'/'awaiting_stock' until an admin sets the real
-    // final_price in Part 5, at which point it's copied into `price`).
-    const placeholderPrice = Math.max(0, Math.round(vendor_expected_price ?? 0));
+    // Part 3 — rule-based AI price suggestion. Computed BEFORE insert
+    // now (used to run after, back when submissions sat in
+    // 'pending_review' and an admin set the real price before it ever
+    // went live). Since this route publishes the product immediately,
+    // we need a real price up front. Never throws — see ai-pricing.ts.
+    const { suggested_price } = await suggestVendorProductPrice(getSupabaseAdmin(), {
+      category_name,
+      fabric,
+      vendor_expected_price,
+      is_dead_stock,
+    });
+
+    // Live price, in priority order: vendor's own expected price, else
+    // the AI suggestion, else a safe fallback so nothing ever
+    // publishes at ₹0 (admin can still correct it from Admin > Products
+    // any time afterwards).
+    const FALLBACK_PRICE = 999;
+    const livePrice = Math.max(
+      0,
+      Math.round(vendor_expected_price ?? suggested_price ?? FALLBACK_PRICE)
+    );
 
     const insertPayload = {
       name,
       slug: `${slugify(name) || 'product'}-${randomSuffix()}`,
-      price: placeholderPrice,
+      price: livePrice,
       category_id,
       category_name,
       fabric,
@@ -160,14 +182,27 @@ export async function POST(req: Request) {
       in_stock: available_quantity > 0,
 
       vendor_id: vendor.id,
-      approval_status: 'pending_review' as const,
+      approval_status: 'live' as const,
       vendor_expected_price,
       available_quantity,
       is_dead_stock,
-      final_price: placeholderPrice,
+      final_price: livePrice,
+      ai_suggested_price: suggested_price,
     };
 
-    let { data: created, error } = await supabase
+    // NOTE: this insert deliberately uses getSupabaseAdmin() (service
+    // role), not the RLS-authenticated `supabase` client used above.
+    // RLS's own_insert_vendor_products policy (Phase 2 migration) only
+    // allows a vendor to insert rows with approval_status IN ('draft',
+    // 'pending_review') — since this route now publishes straight to
+    // 'live' with no admin review step, the RLS client would reject
+    // the insert. Vendor identity + 'approved' status were already
+    // checked above, so this is a deliberate, already-authorized
+    // elevated write — same pattern as the ai_suggested_price patch
+    // used to be (before it moved into this same insert).
+    const admin = getSupabaseAdmin();
+
+    let { data: created, error } = await admin
       .from('products')
       .insert(insertPayload)
       .select(VENDOR_PRODUCT_COLUMNS)
@@ -175,7 +210,7 @@ export async function POST(req: Request) {
 
     // Extremely unlikely slug collision — retry once with a fresh suffix.
     if (error?.code === '23505' && error.message?.includes('slug')) {
-      const retry = await supabase
+      const retry = await admin
         .from('products')
         .insert({ ...insertPayload, slug: `${slugify(name) || 'product'}-${randomSuffix()}` })
         .select(VENDOR_PRODUCT_COLUMNS)
@@ -184,38 +219,6 @@ export async function POST(req: Request) {
       error = retry.error;
     }
     if (error) throw error;
-
-    // Part 3 — rule-based AI price suggestion, runs right on submit.
-    // ai_suggested_price is a guarded column (trg_guard_vendor_product_fields,
-    // Phase 2 migration) — only the service-role client can write it, so
-    // this PATCH deliberately goes through getSupabaseAdmin(), not the
-    // RLS-authenticated `supabase` client used above. A failure here
-    // must never fail the submission itself: the vendor's product is
-    // already saved and pending review either way, so this is best-effort
-    // and only logs on error.
-    if (created) {
-      const { suggested_price } = await suggestVendorProductPrice(getSupabaseAdmin(), {
-        category_name,
-        fabric,
-        vendor_expected_price,
-        is_dead_stock,
-      });
-
-      if (suggested_price != null) {
-        const { data: patched, error: patchErr } = await getSupabaseAdmin()
-          .from('products')
-          .update({ ai_suggested_price: suggested_price })
-          .eq('id', (created as any)?.id)
-          .select(VENDOR_PRODUCT_COLUMNS)
-          .single();
-
-        if (patchErr) {
-          console.error('[vendor/products] failed to save ai_suggested_price:', patchErr);
-        } else if (patched) {
-          created = patched;
-        }
-      }
-    }
 
     return NextResponse.json({ product: created });
   } catch (err) {

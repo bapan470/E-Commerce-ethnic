@@ -3,12 +3,11 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { Loader2, Upload, X, PackagePlus, Barcode as BarcodeIcon, Printer } from 'lucide-react';
+import { Loader2, Upload, X, PackagePlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -18,13 +17,7 @@ import {
 } from '@/components/ui/select';
 import { uploadProductImage } from '@/lib/products-api';
 import { useProducts } from '@/lib/cart-context';
-import {
-  fetchMyVendorProfile,
-  submitVendorProduct,
-  fetchMyVendorProducts,
-  type VendorProductRow,
-  type VendorProductApprovalStatus,
-} from '@/lib/vendor-api';
+import { fetchMyVendorProfile, submitVendorProduct } from '@/lib/vendor-api';
 import PhotographyGuidelines from '@/components/vendor/photography-guidelines';
 
 const EMPTY_FORM = {
@@ -38,14 +31,6 @@ const EMPTY_FORM = {
   images: [] as string[],
 };
 
-const STATUS_META: Record<VendorProductApprovalStatus, { label: string; className: string }> = {
-  draft: { label: 'Draft', className: 'bg-muted text-muted-foreground border-border' },
-  pending_review: { label: 'Pending Review', className: 'bg-amber-50 text-amber-700 border-amber-200' },
-  awaiting_stock: { label: 'Approved — Awaiting Stock Pickup', className: 'bg-blue-50 text-blue-700 border-blue-200' },
-  live: { label: 'Live on Site', className: 'bg-green-50 text-green-700 border-green-200' },
-  rejected: { label: 'Rejected', className: 'bg-red-50 text-red-700 border-red-200' },
-};
-
 export default function AddVendorProductPage() {
   const { categories } = useProducts();
 
@@ -56,27 +41,12 @@ export default function AddVendorProductPage() {
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const [submissions, setSubmissions] = useState<VendorProductRow[]>([]);
-  const [loadingSubmissions, setLoadingSubmissions] = useState(true);
-
   useEffect(() => {
     fetchMyVendorProfile()
       .then((p) => setVendorApproved(p?.status === 'approved'))
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to check vendor status'))
       .finally(() => setCheckingVendor(false));
   }, []);
-
-  const loadSubmissions = () => {
-    setLoadingSubmissions(true);
-    fetchMyVendorProducts()
-      .then(setSubmissions)
-      .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load your submissions'))
-      .finally(() => setLoadingSubmissions(false));
-  };
-
-  useEffect(() => {
-    if (vendorApproved) loadSubmissions();
-  }, [vendorApproved]);
 
   const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
@@ -133,9 +103,8 @@ export default function AddVendorProductPage() {
         is_dead_stock: form.is_dead_stock,
         images: form.images,
       });
-      toast.success(`Submitted for review — barcode ${created.barcode ?? 'assigned'}. We'll notify you once it's checked.`);
+      toast.success(`Published! "${created.name}" is now live on the site — barcode ${created.barcode ?? 'assigned'}.`);
       resetForm();
-      loadSubmissions();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to submit product');
     } finally {
@@ -174,7 +143,12 @@ export default function AddVendorProductPage() {
         <h1 className="font-serif text-2xl font-bold text-primary">Add a Product</h1>
       </div>
       <p className="mt-1 text-sm text-muted-foreground">
-        Submit for review — our team checks every listing before it's photographed and goes live.
+        Fill this in and it publishes straight to the live site — no waiting on a review. Track it
+        anytime from your{' '}
+        <Link href="/vendor/dashboard" className="font-medium text-primary hover:underline">
+          Dashboard
+        </Link>
+        .
       </p>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_280px]">
@@ -234,7 +208,8 @@ export default function AddVendorProductPage() {
                 placeholder="₹ what you'd like for this"
               />
               <p className="mt-1 text-xs text-muted-foreground">
-                We'll suggest a price based on similar live listings — the final price is confirmed by our team.
+                Leave blank and we'll price it automatically based on similar live listings. This is
+                the price that goes live — you can ask an admin to adjust it later if needed.
               </p>
             </div>
           </div>
@@ -290,75 +265,11 @@ export default function AddVendorProductPage() {
           </div>
 
           <Button type="submit" className="w-full bg-primary" disabled={submitting || uploading}>
-            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Submit for Review'}
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Publish Product'}
           </Button>
         </form>
 
         <PhotographyGuidelines />
-      </div>
-
-      <div className="mt-10">
-        <h2 className="font-serif text-lg font-semibold text-primary">Your Submissions</h2>
-        {loadingSubmissions ? (
-          <div className="py-6 text-center">
-            <Loader2 className="mx-auto h-5 w-5 animate-spin text-primary" />
-          </div>
-        ) : submissions.length === 0 ? (
-          <p className="mt-2 text-sm text-muted-foreground">Nothing submitted yet.</p>
-        ) : (
-          <div className="mt-3 space-y-3">
-            {submissions.map((p) => {
-              const meta = STATUS_META[p.approval_status];
-              return (
-                <div
-                  key={p.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 bg-card p-4"
-                >
-                  <div className="flex items-center gap-3">
-                    {p.images[0] && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={p.images[0]} alt="" className="h-14 w-14 rounded-md border border-border/60 object-cover" />
-                    )}
-                    <div>
-                      <p className="text-sm font-medium">{p.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {p.category_name} · Qty {p.available_quantity}
-                      </p>
-                      {p.barcode && (
-                        <>
-                          <p className="mt-0.5 flex items-center gap-1 font-mono text-xs text-muted-foreground">
-                            <BarcodeIcon className="h-3 w-3" /> {p.barcode}
-                          </p>
-                          <a
-                            href={`/api/vendor/products/${p.id}/label`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-                          >
-                            <Printer className="h-3 w-3" /> Print Label
-                          </a>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <Badge variant="outline" className={meta.className}>
-                      {meta.label}
-                    </Badge>
-                    {p.approval_status === 'rejected' && p.rejection_reason && (
-                      <p className="mt-1 max-w-[220px] text-xs text-red-600">{p.rejection_reason}</p>
-                    )}
-                    {(p.final_price ?? p.ai_suggested_price) != null && p.approval_status !== 'pending_review' && (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Price: ₹{p.final_price ?? p.ai_suggested_price}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
     </div>
   );
