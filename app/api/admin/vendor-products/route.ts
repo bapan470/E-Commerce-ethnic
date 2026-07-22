@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { notifyVendorProductStatus } from '@/lib/vendor-notifications';
+import { runStuckVendorListingsJob } from '@/lib/cron-jobs';
 
 // ---------------------------------------------------------------------
 // Phase 2, Part 5 — Admin "Vendor Submissions".
@@ -46,6 +47,18 @@ export async function GET(req: Request) {
   const status = searchParams.get('status');
 
   const supabase = getSupabaseAdmin();
+
+  // Same self-healing safety net as /api/vendor/products — see the
+  // comment there. This app's cron schedule lives in vercel.json, which
+  // Netlify (the actual host) never reads, so the dedicated cron route
+  // never fired in production. Running it here means the admin "Manage
+  // Products" screen self-heals any product stuck in pending_review the
+  // moment it's opened, regardless of hosting/cron setup.
+  try {
+    await runStuckVendorListingsJob();
+  } catch (stuckErr) {
+    console.error('[admin/vendor-products GET] stuck-listing safety net failed', stuckErr);
+  }
 
   try {
     let query = supabase
