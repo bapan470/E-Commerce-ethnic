@@ -11,7 +11,7 @@ import { getServerSupabase } from '@/lib/supabase-server';
 // count, so nothing here needs a dedicated read/unread column.
 export type AdminNotification = {
   id: string;
-  type: 'order' | 'contact_message' | 'support_ticket' | 'return' | 'restock' | 'abandoned_cart';
+  type: 'order' | 'contact_message' | 'support_ticket' | 'return' | 'restock' | 'abandoned_cart' | 'vendor_pickup';
   title: string;
   message: string;
   section: string;
@@ -28,7 +28,7 @@ export async function GET() {
   const supabase = getServerSupabase();
 
   try {
-    const [ordersRes, contactRes, ticketsRes, returnsRes, restockRes, cartsRes] = await Promise.all([
+    const [ordersRes, contactRes, ticketsRes, returnsRes, restockRes, cartsRes, pickupRes] = await Promise.all([
       supabase
         .from('orders')
         .select('id, customer_name, customer_email, total_amount, created_at')
@@ -65,6 +65,17 @@ export async function GET() {
         .eq('recovered', false)
         .order('last_activity_at', { ascending: false })
         .limit(10),
+      // Phase 3B — vendor tapped "Request Pickup". Stays a task until the
+      // item moves past vendor_accepted (i.e. courier actually picked it
+      // up), same filter the vendor's own dashboard uses to show/hide the
+      // upload-handoff-photo step.
+      supabase
+        .from('order_items')
+        .select('id, product_name, quantity, pickup_requested_at, vendors(business_name, pickup_address)')
+        .eq('stage', 'vendor_accepted')
+        .not('pickup_requested_at', 'is', null)
+        .order('pickup_requested_at', { ascending: false })
+        .limit(20),
     ]);
 
     const notifications: AdminNotification[] = [];
@@ -132,6 +143,17 @@ export async function GET() {
         message: `${c.email || 'A shopper'} left ₹${c.cart_value} in their cart`,
         section: 'abandoned-carts',
         created_at: c.last_activity_at,
+      });
+    });
+
+    (pickupRes.data || []).forEach((p: any) => {
+      notifications.push({
+        id: `pickup-${p.id}`,
+        type: 'vendor_pickup',
+        title: 'Vendor requested pickup',
+        message: `Book pickup for "${p.product_name}" (qty ${p.quantity}) — ${p.vendors?.business_name || 'vendor'} at ${p.vendors?.pickup_address || 'address on file'}`,
+        section: 'vendors',
+        created_at: p.pickup_requested_at,
       });
     });
 

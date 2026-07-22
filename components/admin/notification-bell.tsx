@@ -28,7 +28,8 @@ interface AdminNotification {
     | 'restock'
     | 'abandoned_cart'
     | 'vendor_application'
-    | 'vendor_bank_update';
+    | 'vendor_bank_update'
+    | 'vendor_pickup';
   title: string;
   message: string;
   section: string;
@@ -44,6 +45,7 @@ const ICONS: Record<AdminNotification['type'], typeof Bell> = {
   abandoned_cart: ShoppingBag,
   vendor_application: Truck,
   vendor_bank_update: Landmark,
+  vendor_pickup: Truck,
 };
 
 const LAST_SEEN_KEY = 'admin_notifications_last_seen';

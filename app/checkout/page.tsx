@@ -647,9 +647,20 @@ export default function CheckoutPage() {
         }
       }
 
-      const { data: orderData, error: orderError } = await supabase
-        .from('orders')
-        .insert({
+      // Phase 3A/3B: place_order_with_items() does the `orders` insert AND
+      // the per-item `order_items` insert in one atomic transaction, plus
+      // (for vendor-sourced products only) an atomic check+decrement of
+      // vendor stock and a vendor_accept_deadline. This replaces what used
+      // to be a raw `.from('orders').insert(...)` here — see the Phase 3A
+      // migration's header comment for why. Non-vendor products are
+      // completely unaffected (vendor_id is NULL for them, so the RPC
+      // skips the vendor-stock check for those lines); the existing
+      // decrementStockForOrder() call further below still separately
+      // handles the legacy customer-facing stock_quantity display for
+      // every product, vendor-sourced or not.
+      const { data: newOrderId, error: orderError } = await supabase.rpc('place_order_with_items', {
+        p_order: {
+          user_id: loggedInUser?.id ?? null,
           items: orderItems,
           total_amount: payableTotal,
           status: 'pending',
@@ -658,7 +669,6 @@ export default function CheckoutPage() {
           customer_name: customerName,
           customer_email: customerEmail,
           customer_phone: customerPhone,
-          user_id: loggedInUser?.id ?? null,
           session_id: getSessionId(),
           subtotal,
           shipping_charge: shipping,
@@ -675,12 +685,19 @@ export default function CheckoutPage() {
           reseller_base_cost: isResale ? total : null,
           reseller_profit: isResale ? resaleProfit : null,
           reseller_brand_name: isResale ? resaleBrandName || null : null,
-        })
-        .select('id')
-        .single();
+        },
+        p_items: orderItems,
+      });
 
-      if (orderError) throw orderError;
-      const internalOrderId = orderData.id;
+      if (orderError) {
+        if (orderError.message?.includes('INSUFFICIENT_STOCK')) {
+          toast.error('Sorry, one of the items in your cart just sold out. Please update your cart and try again.');
+          setPlacing(false);
+          return;
+        }
+        throw orderError;
+      }
+      const internalOrderId = newOrderId as string;
 
       // 2. Cash on Delivery — no online payment step, order is confirmed as-is
       // and payment is collected at delivery time.

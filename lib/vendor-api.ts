@@ -4,6 +4,8 @@
 // request flow.
 // ---------------------------------------------------------------------
 
+import { getSupabaseBrowser } from './supabase-browser';
+
 export interface VendorProfile {
   id: string;
   user_id: string;
@@ -296,4 +298,111 @@ export async function rejectAdminVendorProduct(
   }
   const body = await res.json();
   return body.product as AdminVendorProductRow;
+}
+
+// ---------------------------------------------------------------------
+// Phase 3B — Vendor "My Orders" dashboard (vendor-facing)
+//
+// NOTE ON CUSTOMER-DATA MASKING: every field below comes from
+// `order_items` only — no customer name/phone/address column exists on
+// this table at all, and the /api/vendor/orders route explicitly lists
+// which columns it selects (never `select('*')`) and filters by this
+// vendor's own vendor_id server-side, on top of whatever RLS is in
+// place. See that route's comments for the full reasoning.
+// ---------------------------------------------------------------------
+
+export type VendorOrderItemStage =
+  | 'placed'
+  | 'vendor_accepted'
+  | 'picked_from_vendor'
+  | 'received_at_warehouse'
+  | 'packed'
+  | 'shipped_to_customer'
+  | 'delivered'
+  | 'cancelled'
+  | 'returned'
+  | 'quality_hold';
+
+export interface VendorOrderItemRow {
+  id: string;
+  order_id: string;
+  product_name: string;
+  product_image: string | null;
+  barcode: string | null;
+  quantity: number;
+  price: number;
+  stage: VendorOrderItemStage;
+  vendor_accept_deadline: string | null;
+  vendor_accepted_at: string | null;
+  pickup_requested_at: string | null;
+  pickup_photo_url: string | null;
+  created_at: string;
+}
+
+/** Every order item ever placed against this vendor's products — never
+ *  includes the customer's name, phone, or address. */
+export async function fetchMyVendorOrders(): Promise<VendorOrderItemRow[]> {
+  const res = await fetch('/api/vendor/orders');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to load your orders');
+  }
+  const body = await res.json();
+  return body.orders as VendorOrderItemRow[];
+}
+
+/** Vendor accepts an order item -> stage 'vendor_accepted'. */
+export async function acceptVendorOrderItem(orderItemId: string): Promise<VendorOrderItemRow> {
+  return vendorOrderAction(orderItemId, { action: 'accept' });
+}
+
+/** Vendor rejects an order item -> stage 'cancelled', stock restocked, customer notified. */
+export async function rejectVendorOrderItem(orderItemId: string): Promise<VendorOrderItemRow> {
+  return vendorOrderAction(orderItemId, { action: 'reject' });
+}
+
+/** Vendor requests pickup — only creates an admin-visible task, no live courier call yet. */
+export async function requestVendorPickup(orderItemId: string): Promise<VendorOrderItemRow> {
+  return vendorOrderAction(orderItemId, { action: 'request_pickup' });
+}
+
+/** Vendor marks the item handed off to courier + attaches the handoff photo -> stage 'picked_from_vendor'. */
+export async function markVendorPickedUp(
+  orderItemId: string,
+  pickup_photo_url: string
+): Promise<VendorOrderItemRow> {
+  return vendorOrderAction(orderItemId, { action: 'mark_picked_up', pickup_photo_url });
+}
+
+async function vendorOrderAction(
+  orderItemId: string,
+  payload: Record<string, unknown>
+): Promise<VendorOrderItemRow> {
+  const res = await fetch(`/api/vendor/orders/${orderItemId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to update order');
+  }
+  const body = await res.json();
+  return body.order as VendorOrderItemRow;
+}
+
+/** Uploads the pickup-handoff photo to the public `order-fulfillment-photos`
+ *  bucket (same simple pattern as uploadReviewPhoto/uploadProductImage) and
+ *  returns its public URL. Does NOT save it against the order item — call
+ *  markVendorPickedUp() with the returned URL to do that. */
+export async function uploadPickupProofPhoto(file: File): Promise<string> {
+  const supabase = getSupabaseBrowser();
+  const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+  const path = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
+  const { error } = await supabase.storage
+    .from('order-fulfillment-photos')
+    .upload(path, file, { cacheControl: '3600', upsert: false });
+  if (error) throw error;
+  const { data } = supabase.storage.from('order-fulfillment-photos').getPublicUrl(path);
+  return data.publicUrl;
 }
