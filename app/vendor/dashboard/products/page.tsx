@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { Loader2, Boxes, PackagePlus, Barcode as BarcodeIcon } from 'lucide-react';
+import { Loader2, Boxes, PackagePlus, Barcode as BarcodeIcon, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -14,11 +14,17 @@ import {
 
 const PRODUCT_STATUS_META: Record<VendorProductApprovalStatus, { label: string; className: string }> = {
   draft: { label: 'Draft', className: 'bg-muted text-muted-foreground border-border' },
-  pending_review: { label: 'Pending Review', className: 'bg-amber-50 text-amber-700 border-amber-200' },
+  pending_review: {
+    label: '⏳ AI Processing…',
+    className: 'bg-amber-50 text-amber-700 border-amber-200',
+  },
   awaiting_stock: { label: 'Awaiting Stock Pickup', className: 'bg-blue-50 text-blue-700 border-blue-200' },
   live: { label: 'Live on Site', className: 'bg-green-50 text-green-700 border-green-200' },
   rejected: { label: 'Rejected', className: 'bg-red-50 text-red-700 border-red-200' },
 };
+
+/** Statuses where the vendor can edit the product */
+const EDITABLE_STATUSES: VendorProductApprovalStatus[] = ['live', 'rejected', 'draft'];
 
 export default function VendorProductsPage() {
   const [loading, setLoading] = useState(true);
@@ -51,7 +57,7 @@ export default function VendorProductsPage() {
         </Link>
       </div>
       <p className="mt-1 text-sm text-muted-foreground">
-        Everything you've listed, in one place — new items publish straight to the live site.
+        Everything you&apos;ve listed, in one place — AI processes each submission and publishes it live automatically.
       </p>
 
       <div className="mt-6 rounded-lg border border-border/60 bg-card p-5">
@@ -73,6 +79,7 @@ export default function VendorProductsPage() {
           <div className="space-y-2">
             {products.map((p) => {
               const meta = PRODUCT_STATUS_META[p.approval_status];
+              const canEdit = EDITABLE_STATUSES.includes(p.approval_status);
               return (
                 <div
                   key={p.id}
@@ -81,7 +88,11 @@ export default function VendorProductsPage() {
                   <div className="flex items-center gap-3">
                     {p.images[0] && (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={p.images[0]} alt="" className="h-12 w-12 rounded-md border border-border/60 object-cover" />
+                      <img
+                        src={p.images[0]}
+                        alt=""
+                        className="h-12 w-12 rounded-md border border-border/60 object-cover"
+                      />
                     )}
                     <div>
                       <p className="text-sm font-medium">{p.name}</p>
@@ -96,16 +107,30 @@ export default function VendorProductsPage() {
                       {p.approval_status === 'rejected' && p.rejection_reason && (
                         <p className="mt-0.5 text-xs text-red-600">Reason: {p.rejection_reason}</p>
                       )}
+                      {p.approval_status === 'pending_review' && (
+                        <p className="mt-0.5 text-xs text-amber-600">
+                          AI is generating your product listing — this usually takes under a minute.
+                          You&apos;ll receive an email when it&apos;s live.
+                        </p>
+                      )}
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="flex flex-col items-end gap-2">
                     <Badge variant="outline" className={meta.className}>
                       {meta.label}
                     </Badge>
                     {(p.final_price ?? p.ai_suggested_price) != null && (
-                      <p className="mt-1 text-xs text-muted-foreground">
+                      <p className="text-xs text-muted-foreground">
                         ₹{p.final_price ?? p.ai_suggested_price}
                       </p>
+                    )}
+                    {canEdit && (
+                      <Link href={`/vendor/dashboard/products/edit-product/${p.id}`}>
+                        <Button variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs">
+                          <Pencil className="h-3 w-3" />
+                          Edit
+                        </Button>
+                      </Link>
                     )}
                   </div>
                 </div>

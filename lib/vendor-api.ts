@@ -225,6 +225,37 @@ export async function fetchMyVendorProducts(): Promise<VendorProductRow[]> {
   return body.products as VendorProductRow[];
 }
 
+/** Updates basic fields of an existing vendor product (name, fabric, category,
+ *  quantity, price, dead-stock flag, images). The server resets the product to
+ *  'pending_review' so AI can re-enrich it — callers should fire
+ *  triggerVendorAIProcess(id, true) afterwards. */
+export async function updateVendorProduct(
+  id: string,
+  input: Partial<VendorProductInput>
+): Promise<VendorProductRow> {
+  const res = await fetch(`/api/vendor/products/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to update product');
+  }
+  const body = await res.json();
+  return body.product as VendorProductRow;
+}
+
+/** Fire-and-forget: tells the server to run AI enrichment for the given
+ *  product ID, then publish it live and email the vendor.
+ *  Pass isEdit=true when this follows an edit (uses the edit email template).
+ *  The promise is intentionally not awaited by callers — use
+ *  `.catch(() => {})` to suppress unhandled-rejection warnings. */
+export function triggerVendorAIProcess(id: string, isEdit = false): Promise<Response> {
+  const url = `/api/vendor/ai-process/${id}${isEdit ? '?edit=true' : ''}`;
+  return fetch(url, { method: 'POST' });
+}
+
 // ---------------------------------------------------------------------
 // Phase 2, Part 5 — Admin "Vendor Submissions" (Admin > Products tab)
 // ---------------------------------------------------------------------

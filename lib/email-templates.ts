@@ -408,6 +408,64 @@ export function vendorBankUpdateStatusEmail(vendor: {
   return { subject, html };
 }
 
+// -------------------------------------------------------------------------
+// Vendor product AI-processed & live (new listing or edit re-publish)
+// -------------------------------------------------------------------------
+
+/** Sent when AI finishes enriching a newly submitted vendor product and it
+ *  goes live on the storefront. */
+export function vendorProductLiveEmail(input: {
+  vendorName: string;
+  productName: string;
+}) {
+  const subject = `Your product is live — ${input.productName} — ${SITE_NAME}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Your product is now live!</h2>
+    <p>Hi ${input.vendorName},</p>
+    <p>
+      Great news — your product <strong>${input.productName}</strong> has been processed
+      and is now live on the ${SITE_NAME} storefront.
+    </p>
+    <p>Our AI has filled in the product description, highlights, and SEO details based on
+    the photos and information you provided.</p>
+    <p style="text-align:center; margin-top: 20px;">
+      <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/vendor/dashboard/products"
+         style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+        View my products
+      </a>
+    </p>
+    <p style="font-size:12px; color:#9a8f87;">
+      If any details look off, you can edit the product from your vendor dashboard
+      and we'll re-process it automatically.
+    </p>
+  `);
+  return { subject, html };
+}
+
+/** Sent when a vendor edits an existing product and AI finishes re-enriching it. */
+export function vendorProductEditLiveEmail(input: {
+  vendorName: string;
+  productName: string;
+}) {
+  const subject = `Product update live — ${input.productName} — ${SITE_NAME}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Your product edit is now live!</h2>
+    <p>Hi ${input.vendorName},</p>
+    <p>
+      Your changes to <strong>${input.productName}</strong> have been processed and the
+      updated listing is now live on ${SITE_NAME}.
+    </p>
+    <p>The product URL has not changed, so any existing links still work.</p>
+    <p style="text-align:center; margin-top: 20px;">
+      <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/vendor/dashboard/products"
+         style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+        View my products
+      </a>
+    </p>
+  `);
+  return { subject, html };
+}
+
 /** Sent to the vendor once the admin approves/rejects one of their product submissions (Phase 2, Part 5). */
 export function vendorProductStatusEmail(input: {
   business_name: string;

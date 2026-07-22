@@ -1,0 +1,179 @@
+// Shared AI listing generator for vendor-submitted products.
+// Called by /api/vendor/ai-process/[id] after a vendor publishes or edits a product.
+// Uses the same NVIDIA NIM vision-language model as the admin generate-listing route.
+
+const MODEL = 'meta/llama-3.2-11b-vision-instruct';
+const NIM_ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions';
+
+export interface VendorAIInput {
+  name: string;
+  fabric: string;
+  category: string;
+  images: string[];
+}
+
+export interface VendorAIListing {
+  name: string;
+  description: string;
+  fabric: string;
+  origin: string;
+  occasion: string[];
+  material: string;
+  pattern: string;
+  gender: string;
+  meta_description: string;
+  colors: string[];
+  highlights: Record<string, string>;
+}
+
+function buildVendorPrompt(input: {
+  name: string;
+  fabric: string;
+  category: string;
+  hasImage: boolean;
+}): string {
+  return `You are an SEO copywriter and Google Merchant Center data specialist for "Aruhi Handlooms", an Indian ethnic-wear e-commerce store selling handwoven sarees, lehengas, bridal wear and kurtis.
+
+${input.hasImage ? 'A photo of the actual product is attached — look at it closely and base the fabric, color, motifs, and craft details on what you actually see in the image.' : ''}
+
+Write a complete product listing based on this vendor-submitted info:
+
+- Product name/keywords: ${input.name || '(not given)'}
+- Category: ${input.category || '(not given)'}
+- Fabric: ${input.fabric || '(not given)'}
+
+Fill in sensible, realistic details for an Indian handloom ethnic-wear store where a field is missing. Keep the vendor's provided details exactly as-is where possible.
+
+Respond with ONLY a JSON object (no markdown fences, no preamble) with these exact keys:
+{
+  "name": "SEO-friendly product title, 40-70 characters, includes fabric/craft + product type + distinguishing detail. No marketing fluff.",
+  "description": "2-3 short paragraphs (120-180 words total) covering fabric/weave/craft, look and feel, occasion fit, and a care tip. Warm, boutique-style language. No emojis.",
+  "fabric": "full fabric name, e.g. 'Pure Kanjivaram Silk'",
+  "origin": "weave region, e.g. 'Kanchipuram, Tamil Nadu'",
+  "occasion": ["2-4 occasion tags, e.g.", "Wedding", "Festive"],
+  "material": "single Google Shopping material value, e.g. 'Silk'",
+  "pattern": "single Google Shopping pattern value, e.g. 'Zari Border'",
+  "gender": "one of exactly: female, male, unisex",
+  "meta_description": "SEO meta-description, 140-160 characters, enticing and keyword-rich",
+  "colors": ["main colors visible in product, 1-4 values, e.g. 'Maroon', 'Gold'"],
+  "highlights": {
+    "border": "e.g. 'Zari', 'Temple Border' — leave empty string if not applicable",
+    "border_width": "e.g. 'Small Border', 'Broad Border' — leave empty string if not applicable",
+    "blouse": "e.g. 'Separate Blouse Piece', 'Without Blouse' — leave empty string if not applicable",
+    "saree_fabric": "e.g. 'Georgette' — leave empty string if not a saree",
+    "saree_pattern": "e.g. 'Handloom Woven' — leave empty string if not applicable",
+    "ornamentation": "e.g. 'Zari Work', 'Plain' — leave empty string if none",
+    "blouse_fabric": "e.g. 'Bangalori Silk' — leave empty string if no blouse",
+    "pallu_details": "e.g. 'Same as Saree', 'Contrast Pallu' — leave empty string if not applicable",
+    "blouse_pattern": "e.g. 'Solid' — leave empty string if no blouse",
+    "blouse_color": "e.g. 'Black' — leave empty string if no blouse",
+    "brand": "Aruhi Handlooms",
+    "loom_type": "e.g. 'Handloom', 'Powerloom' — your best estimate, leave empty string if unclear",
+    "fit_shape": "e.g. 'Straight', 'A-Line' — leave empty string if not applicable",
+    "length": "e.g. 'Ankle-Length', 'Saree Length (5.5 m)'",
+    "neck": "e.g. 'Round Neck' — leave empty string if not applicable (e.g. saree)",
+    "sleeve_length": "e.g. 'Sleeveless', 'Full Sleeves' — leave empty string if not applicable",
+    "sleeve_styling": "e.g. 'Regular Sleeves' — leave empty string if not applicable",
+    "surface_styling": "e.g. 'Zari Woven', 'Embroidered', 'Plain'",
+    "print_or_pattern_type": "e.g. 'Solid', 'Floral Print', 'Zari Border'",
+    "net_quantity": "1",
+    "add_on": "e.g. 'Blouse Piece' — leave empty string if nothing bundled",
+    "type": "e.g. 'Saree', 'Lehenga Set', 'Kurti'",
+    "generic_name": "e.g. 'Sarees', 'Kurtis'",
+    "country_of_origin": "India",
+    "transparency": "e.g. 'Opaque', 'Semi-Sheer' — leave empty string if unsure"
+  }
+}`;
+}
+
+/** Calls NVIDIA NIM to generate a full product listing from vendor-submitted basics.
+ *  Returns null if NVIDIA_API_KEY is not set or the AI call fails — callers
+ *  should still publish the product with basic fields in that case. */
+export async function generateVendorListing(input: VendorAIInput): Promise<VendorAIListing | null> {
+  const apiKey = process.env.NVIDIA_API_KEY;
+  if (!apiKey) return null;
+
+  // Fetch and convert the first image to base64 for vision analysis
+  let imageDataUri: string | null = null;
+  if (input.images[0]) {
+    try {
+      const imgRes = await fetch(input.images[0]);
+      if (imgRes.ok) {
+        const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+        const buffer = await imgRes.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString('base64');
+        imageDataUri = `data:${contentType};base64,${base64}`;
+      }
+    } catch {
+      // proceed without image
+    }
+  }
+
+  const promptText = buildVendorPrompt({
+    name: input.name,
+    fabric: input.fabric,
+    category: input.category,
+    hasImage: !!imageDataUri,
+  });
+
+  const userContent: unknown = imageDataUri
+    ? [
+        { type: 'text', text: promptText },
+        { type: 'image_url', image_url: { url: imageDataUri } },
+      ]
+    : promptText;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 55_000);
+
+  let res: Response;
+  try {
+    res = await fetch(NIM_ENDPOINT, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [{ role: 'user', content: userContent }],
+        temperature: 0.4,
+        max_tokens: 1024,
+        response_format: { type: 'json_object' },
+      }),
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!res.ok) {
+    console.error('[vendor-ai-listing] NIM API error:', res.status);
+    return null;
+  }
+
+  const data = await res.json();
+  const text: string = data?.choices?.[0]?.message?.content ?? '';
+  const cleaned = text.replace(/^```(json)?/i, '').replace(/```$/, '').trim();
+
+  let parsed: VendorAIListing | undefined;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        parsed = JSON.parse(match[0]);
+      } catch {
+        /* fall through */
+      }
+    }
+  }
+
+  if (!parsed) {
+    console.error('[vendor-ai-listing] non-JSON model response:', text.slice(0, 300));
+    return null;
+  }
+
+  return parsed;
+}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { Loader2, Upload, X, PackagePlus } from 'lucide-react';
@@ -17,36 +18,62 @@ import {
 } from '@/components/ui/select';
 import { uploadProductImage } from '@/lib/products-api';
 import { useProducts } from '@/lib/cart-context';
-import { fetchMyVendorProfile, submitVendorProduct, triggerVendorAIProcess } from '@/lib/vendor-api';
+import {
+  fetchMyVendorProducts,
+  updateVendorProduct,
+  triggerVendorAIProcess,
+  type VendorProductRow,
+} from '@/lib/vendor-api';
 import PhotographyGuidelines from '@/components/vendor/photography-guidelines';
 
-const EMPTY_FORM = {
-  name: '',
-  fabric: '',
-  category_id: '',
-  category_name: '',
-  available_quantity: '',
-  vendor_expected_price: '',
-  is_dead_stock: false,
-  images: [] as string[],
-};
-
-export default function AddVendorProductPage() {
+export default function EditVendorProductPage() {
+  const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const { categories } = useProducts();
 
-  const [checkingVendor, setCheckingVendor] = useState(true);
-  const [vendorApproved, setVendorApproved] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [product, setProduct] = useState<VendorProductRow | null>(null);
 
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [form, setForm] = useState({
+    name: '',
+    fabric: '',
+    category_id: '',
+    category_name: '',
+    available_quantity: '',
+    vendor_expected_price: '',
+    is_dead_stock: false,
+    images: [] as string[],
+  });
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
+  // Load the product to pre-fill the form
   useEffect(() => {
-    fetchMyVendorProfile()
-      .then((p) => setVendorApproved(p?.status === 'approved'))
-      .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to check vendor status'))
-      .finally(() => setCheckingVendor(false));
-  }, []);
+    if (!id) return;
+    setLoading(true);
+    fetchMyVendorProducts()
+      .then((products) => {
+        const found = products.find((p) => p.id === id) ?? null;
+        if (!found) {
+          toast.error('Product not found');
+          router.replace('/vendor/dashboard/products');
+          return;
+        }
+        setProduct(found);
+        setForm({
+          name: found.name,
+          fabric: found.fabric ?? '',
+          category_id: '',          // category_id is not returned to vendor; keep blank
+          category_name: found.category_name ?? '',
+          available_quantity: String(found.available_quantity),
+          vendor_expected_price: found.vendor_expected_price != null ? String(found.vendor_expected_price) : '',
+          is_dead_stock: found.is_dead_stock,
+          images: found.images ?? [],
+        });
+      })
+      .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load product'))
+      .finally(() => setLoading(false));
+  }, [id, router]);
 
   const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
@@ -72,8 +99,6 @@ export default function AddVendorProductPage() {
     setForm((f) => ({ ...f, category_id: categoryId, category_name: cat?.name || '' }));
   };
 
-  const resetForm = () => setForm(EMPTY_FORM);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -93,7 +118,7 @@ export default function AddVendorProductPage() {
 
     setSubmitting(true);
     try {
-      const created = await submitVendorProduct({
+      const updated = await updateVendorProduct(id, {
         name: form.name.trim(),
         fabric: form.fabric.trim(),
         category_id: form.category_id || null,
@@ -104,25 +129,23 @@ export default function AddVendorProductPage() {
         images: form.images,
       });
 
-      // Fire-and-forget: trigger AI enrichment in the background.
-      // The AI will fill description, highlights, occasion, etc. and then flip
-      // the product to 'live' + send the vendor an email.
-      // We deliberately do NOT await this — the vendor sees the success toast
-      // immediately while AI runs in the background.
-      triggerVendorAIProcess(created.id).catch(() => {});
+      // Fire-and-forget: trigger AI re-enrichment in the background.
+      // Pass isEdit=true so the vendor gets the edit-specific email.
+      // Product URL (slug) is not changed — all existing links still work.
+      triggerVendorAIProcess(updated.id, true).catch(() => {});
 
       toast.success(
-        `Submitted! AI is processing your listing for "${created.name}". You'll get an email once it's live — usually within a minute.`
+        `Changes saved! AI is re-processing "${updated.name}" and will email you once it's live again.`
       );
-      resetForm();
+      router.replace('/vendor/dashboard/products');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to submit product');
+      toast.error(err instanceof Error ? err.message : 'Failed to update product');
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (checkingVendor) {
+  if (loading) {
     return (
       <div className="py-10 text-center">
         <Loader2 className="mx-auto h-6 w-6 animate-spin text-primary" />
@@ -130,63 +153,59 @@ export default function AddVendorProductPage() {
     );
   }
 
-  if (!vendorApproved) {
-    return (
-      <div>
-        <h1 className="font-serif text-2xl font-bold text-primary">Not Available Yet</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Only approved vendors can list products. Check your application status on your dashboard.
-        </p>
-        <Link href="/vendor/dashboard">
-          <Button variant="outline" className="mt-4">
-            Back to Dashboard
-          </Button>
-        </Link>
-      </div>
-    );
-  }
+  if (!product) return null;
 
   return (
     <div>
       <div className="flex items-center gap-2">
         <PackagePlus className="h-5 w-5 text-primary" />
-        <h1 className="font-serif text-2xl font-bold text-primary">Add a Product</h1>
+        <h1 className="font-serif text-2xl font-bold text-primary">Edit Product</h1>
       </div>
       <p className="mt-1 text-sm text-muted-foreground">
-        Fill this in and it publishes straight to the live site — no waiting on a review. Track it
-        anytime from your{' '}
-        <Link href="/vendor/dashboard" className="font-medium text-primary hover:underline">
-          Dashboard
-        </Link>
-        .
+        Update the details below and click <strong>Publish Changes</strong>. AI will re-generate the full
+        listing and email you when it&apos;s live. The product URL won&apos;t change.
       </p>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_280px]">
-        <form onSubmit={handleSubmit} className="space-y-5 rounded-lg border border-border/60 bg-card p-6">
+      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_300px]">
+        <form onSubmit={handleSubmit} className="space-y-5 rounded-lg border border-border/60 bg-card p-5">
+          {/* Product Name */}
+          <div className="grid gap-1.5">
+            <Label htmlFor="name">
+              Product Name <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              id="name"
+              placeholder="e.g. Maroon Banarasi Silk Saree"
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              required
+            />
+          </div>
+
+          {/* Fabric & Category */}
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <Label>Product Name *</Label>
+            <div className="grid gap-1.5">
+              <Label htmlFor="fabric">
+                Fabric <span className="text-destructive">*</span>
+              </Label>
               <Input
-                required
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="e.g. Maroon Banarasi Silk Saree"
-              />
-            </div>
-            <div>
-              <Label>Fabric *</Label>
-              <Input
-                required
+                id="fabric"
+                placeholder="e.g. Banarasi Silk"
                 value={form.fabric}
                 onChange={(e) => setForm((f) => ({ ...f, fabric: e.target.value }))}
-                placeholder="e.g. Banarasi Silk"
+                required
               />
             </div>
-            <div>
-              <Label>Category *</Label>
-              <Select value={form.category_id} onValueChange={handleCategoryChange}>
+            <div className="grid gap-1.5">
+              <Label>
+                Category <span className="text-destructive">*</span>
+              </Label>
+              <Select
+                value={form.category_id || undefined}
+                onValueChange={handleCategoryChange}
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select category" />
+                  <SelectValue placeholder={form.category_name || 'Select category'} />
                 </SelectTrigger>
                 <SelectContent>
                   {categories.map((c) => (
@@ -197,49 +216,60 @@ export default function AddVendorProductPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label>Quantity *</Label>
+          </div>
+
+          {/* Quantity & Price */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-1.5">
+              <Label htmlFor="qty">
+                Quantity <span className="text-destructive">*</span>
+              </Label>
               <Input
-                required
+                id="qty"
                 type="number"
                 min={0}
+                placeholder="e.g. 10"
                 value={form.available_quantity}
                 onChange={(e) => setForm((f) => ({ ...f, available_quantity: e.target.value }))}
-                placeholder="e.g. 10"
+                required
               />
             </div>
-            <div>
-              <Label>Expected Price (optional)</Label>
+            <div className="grid gap-1.5">
+              <Label htmlFor="price">Expected Price (optional)</Label>
               <Input
+                id="price"
                 type="number"
                 min={0}
+                placeholder="₹ what you'd like for this"
                 value={form.vendor_expected_price}
                 onChange={(e) => setForm((f) => ({ ...f, vendor_expected_price: e.target.value }))}
-                placeholder="₹ what you'd like for this"
               />
-              <p className="mt-1 text-xs text-muted-foreground">
-                Leave blank and we'll price it automatically based on similar live listings. This is
-                the price that goes live — you can ask an admin to adjust it later if needed.
+              <p className="text-xs text-muted-foreground">
+                Leave blank and we&apos;ll price it automatically based on similar live listings.
               </p>
             </div>
           </div>
 
-          <div className="flex items-start gap-2 rounded-md border border-border/60 bg-muted/30 p-3">
+          {/* Dead stock checkbox */}
+          <div className="flex items-start gap-2">
             <Checkbox
               id="dead-stock"
               checked={form.is_dead_stock}
-              onCheckedChange={(v) => setForm((f) => ({ ...f, is_dead_stock: v === true }))}
+              onCheckedChange={(v) => setForm((f) => ({ ...f, is_dead_stock: Boolean(v) }))}
             />
-            <label htmlFor="dead-stock" className="text-sm leading-snug">
-              This is dead / slow-moving stock
-              <span className="block text-xs text-muted-foreground">
-                We'll suggest a lower price to help it sell faster.
+            <label htmlFor="dead-stock" className="grid gap-0.5">
+              <span className="text-sm font-medium leading-none">
+                This is dead / slow-moving stock
+              </span>
+              <span className="text-xs text-muted-foreground">
+                We&apos;ll suggest a lower price to help it sell faster.
               </span>
             </label>
           </div>
 
+          {/* Photos */}
           <div className="grid gap-1.5">
-            <Label>Photos *</Label>
+            <Label>Photos <span className="text-destructive">*</span></Label>
             <div className="flex flex-wrap items-center gap-3">
               <label className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border bg-muted/40 px-4 py-2 text-sm hover:border-primary/50">
                 {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
@@ -258,7 +288,10 @@ export default function AddVendorProductPage() {
             {form.images.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-2">
                 {form.images.map((url, idx) => (
-                  <div key={url + idx} className="group relative h-20 w-20 overflow-hidden rounded-md border border-border/60">
+                  <div
+                    key={url + idx}
+                    className="group relative h-20 w-20 overflow-hidden rounded-md border border-border/60"
+                  >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={url} alt="" className="h-full w-full object-cover" />
                     <button
@@ -274,9 +307,20 @@ export default function AddVendorProductPage() {
             )}
           </div>
 
-          <Button type="submit" className="w-full bg-primary" disabled={submitting || uploading}>
-            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Publish Product'}
-          </Button>
+          <div className="flex gap-3">
+            <Button
+              type="submit"
+              className="flex-1 bg-primary"
+              disabled={submitting || uploading}
+            >
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Publish Changes'}
+            </Button>
+            <Link href="/vendor/dashboard/products">
+              <Button type="button" variant="outline" disabled={submitting}>
+                Cancel
+              </Button>
+            </Link>
+          </div>
         </form>
 
         <PhotographyGuidelines />

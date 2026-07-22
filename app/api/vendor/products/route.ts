@@ -182,7 +182,13 @@ export async function POST(req: Request) {
       in_stock: available_quantity > 0,
 
       vendor_id: vendor.id,
-      approval_status: 'live' as const,
+      // Start in pending_review — the /api/vendor/ai-process/[id] route will
+      // run AI enrichment in the background and flip this to 'live' when done.
+      // We deliberately do NOT set 'live' here so the product doesn't appear
+      // on the storefront before AI has filled in the description, highlights,
+      // etc. The admin client is required because RLS only allows vendors to
+      // insert rows with approval_status IN ('draft', 'pending_review').
+      approval_status: 'pending_review' as const,
       vendor_expected_price,
       available_quantity,
       is_dead_stock,
