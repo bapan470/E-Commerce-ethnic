@@ -73,7 +73,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   const authedSupabase = await getSupabaseServer();
   const { data: vendor, error: vendorErr } = await authedSupabase
     .from('vendors')
-    .select('id, business_name, pickup_address')
+    .select('id, business_name, pickup_address, status')
     .eq('user_id', user.id)
     .maybeSingle();
   if (vendorErr) {
@@ -81,6 +81,11 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   }
   if (!vendor) {
     return NextResponse.json({ error: 'No vendor profile found for this account' }, { status: 403 });
+  }
+  // Phase 4C off-boarding (point 5c): a suspended vendor can't act on
+  // orders either, not just view them.
+  if (vendor.status === 'suspended') {
+    return NextResponse.json({ error: 'Your vendor account has been suspended' }, { status: 403 });
   }
 
   const body = await req.json().catch(() => ({}));

@@ -25,6 +25,7 @@ import GiftCardsPanel from '@/components/admin/giftcards-panel';
 import VendorsPanel from '@/components/admin/vendors-panel';
 import FulfillmentPanel from '@/components/admin/fulfillment-panel';
 import VendorSettlementsPanel from '@/components/admin/vendor-settlements-panel';
+import VendorOpsPanel from '@/components/admin/vendor-ops-panel';
 
 const PANELS: Record<AdminSection, React.ComponentType> = {
   analytics: AnalyticsPanel,
@@ -48,6 +49,7 @@ const PANELS: Record<AdminSection, React.ComponentType> = {
   vendors: VendorsPanel,
   fulfillment: FulfillmentPanel,
   'vendor-settlements': VendorSettlementsPanel,
+  'vendor-ops': VendorOpsPanel,
   settings: SettingsPanel,
 };
 

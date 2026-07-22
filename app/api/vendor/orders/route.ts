@@ -56,6 +56,12 @@ export async function GET() {
   if (!vendor) {
     return NextResponse.json({ error: 'No vendor profile found for this account' }, { status: 403 });
   }
+  // Phase 4C off-boarding (point 5c): a suspended vendor's dashboard
+  // access must actually go away, not just the "Suspend"/"Close Account"
+  // button in the admin panel — enforce it here server-side.
+  if (vendor.status === 'suspended') {
+    return NextResponse.json({ error: 'Your vendor account has been suspended' }, { status: 403 });
+  }
 
   // Now the actual order-item read, via service role, explicitly
   // filtered to this vendor's own id — never the wide-open anon policy.

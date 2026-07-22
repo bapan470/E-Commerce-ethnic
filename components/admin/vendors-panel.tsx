@@ -10,13 +10,25 @@ import {
   Clock,
   Landmark,
   Loader2,
+  UserX,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   fetchAdminVendors,
   updateAdminVendorStatus,
   reviewAdminVendorBankUpdate,
+  closeVendorAccount,
   type AdminVendorRow,
 } from '@/lib/vendor-api';
 
@@ -44,6 +56,8 @@ export default function VendorsPanel() {
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]['value']>('pending');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState<Record<string, string>>({});
+  const [closeAccountTarget, setCloseAccountTarget] = useState<AdminVendorRow | null>(null);
+  const [closing, setClosing] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -91,6 +105,30 @@ export default function VendorsPanel() {
       toast.error(err instanceof Error ? err.message : 'Failed to review request');
     } finally {
       setBusyId(null);
+    }
+  };
+
+  // Phase 4C, point 5 — full off-boarding: return stock immediately
+  // (skips the 90/60-day timers), finalize any pending settlement, then
+  // suspend. Distinct from the plain "Suspend" button below, which only
+  // flips status and leaves stock/settlement untouched.
+  const handleCloseAccount = async () => {
+    if (!closeAccountTarget) return;
+    setClosing(true);
+    try {
+      const result = await closeVendorAccount(closeAccountTarget.id);
+      toast.success(
+        `Vendor account closed. ${result.products_flagged} product(s) sent to Return to Vendor` +
+          (result.final_settlement_amount != null
+            ? `, final settlement ₹${result.final_settlement_amount} created.`
+            : '.')
+      );
+      setCloseAccountTarget(null);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to close vendor account');
+    } finally {
+      setClosing(false);
     }
   };
 
@@ -234,7 +272,7 @@ export default function VendorsPanel() {
                 )}
 
                 {activeTab === 'approved' && (
-                  <div className="mt-3">
+                  <div className="mt-3 flex gap-2">
                     <Button
                       size="sm"
                       variant="outline"
@@ -242,6 +280,14 @@ export default function VendorsPanel() {
                       onClick={() => handleStatusChange(v, 'suspended')}
                     >
                       Suspend
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={busyId === v.id}
+                      onClick={() => setCloseAccountTarget(v)}
+                    >
+                      <UserX className="mr-1 h-4 w-4" /> Close Vendor Account
                     </Button>
                   </div>
                 )}
@@ -263,6 +309,26 @@ export default function VendorsPanel() {
           })}
         </div>
       )}
+
+      <AlertDialog open={!!closeAccountTarget} onOpenChange={(open) => !open && setCloseAccountTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Close {closeAccountTarget?.business_name}'s vendor account?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This is irreversible from here. It will immediately: send every awaiting-stock/live
+              product to the Return to Vendor list (skipping the 90/60-day timers), finalize any
+              pending settlement as a Final Settlement, and suspend the vendor's dashboard access.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={closing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction disabled={closing} onClick={handleCloseAccount}>
+              {closing ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+              Yes, close account
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

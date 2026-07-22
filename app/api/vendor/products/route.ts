@@ -51,6 +51,11 @@ export async function GET() {
     if (!vendor) {
       return NextResponse.json({ error: 'No vendor profile found for this account' }, { status: 403 });
     }
+    // Phase 4C off-boarding (point 5c): a closed/suspended vendor's
+    // dashboard access must actually stop server-side.
+    if (vendor.status === 'suspended') {
+      return NextResponse.json({ error: 'Your vendor account has been suspended' }, { status: 403 });
+    }
 
     const { data, error } = await supabase
       .from('products')

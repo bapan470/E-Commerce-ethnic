@@ -479,3 +479,105 @@ export async function markSettlementPaid(
   return body.settlement as VendorSettlementRow;
 }
 
+// ---------------------------------------------------------------------
+// Phase 4C — Return Timers, Restock Alerts, Vendor Performance,
+// Stale Inventory, Off-boarding (Admin "Vendor Ops" panel).
+// ---------------------------------------------------------------------
+
+export interface ReturnToVendorRow {
+  id: string;
+  vendor_id: string;
+  business_name: string;
+  product_id: string | null;
+  product_name: string;
+  order_item_id: string | null;
+  quantity: number | null;
+  reason: 'never_sold_90d' | 'cancelled_returned_60d' | 'offboarding';
+  note: string | null;
+  created_at: string;
+}
+
+export interface RestockSuggestionRow {
+  product_id: string;
+  product_name: string;
+  vendor_id: string;
+  business_name: string;
+  available_quantity: number;
+  sold_last_30d: number;
+  sell_through_percent: number;
+}
+
+export interface VendorPerformanceRow {
+  vendor_id: string;
+  business_name: string;
+  total_items: number;
+  delivered_count: number;
+  cancelled_count: number;
+  returned_count: number;
+  sell_through_rate: number | null;
+  cancellation_rate: number | null;
+  return_rate: number | null;
+  avg_accept_time_minutes: number | null;
+  received_count: number;
+  quality_hold_count: number;
+  quality_check_fail_rate: number | null;
+  missed_order_count: number;
+}
+
+export interface StaleInventoryRow {
+  product_id: string;
+  product_name: string;
+  vendor_id: string;
+  business_name: string;
+  available_quantity: number;
+  quantity_last_updated_at: string;
+  days_stale: number;
+}
+
+async function fetchVendorOps<T>(type: string): Promise<T[]> {
+  const res = await fetch(`/api/admin/vendor-ops?type=${type}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to load data');
+  }
+  const body = await res.json();
+  return body.rows as T[];
+}
+
+export const fetchReturnToVendorQueue = () => fetchVendorOps<ReturnToVendorRow>('return-to-vendor');
+export const fetchRestockSuggestions = () => fetchVendorOps<RestockSuggestionRow>('restock');
+export const fetchVendorPerformance = () => fetchVendorOps<VendorPerformanceRow>('performance');
+export const fetchStaleInventory = () => fetchVendorOps<StaleInventoryRow>('stale');
+
+/** Marks a Return-to-Vendor queue row as physically returned. */
+export async function markReturnToVendorResolved(id: string): Promise<void> {
+  const res = await fetch('/api/admin/vendor-ops', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to update queue row');
+  }
+}
+
+/** Full off-boarding: return stock immediately, finalize settlement, suspend. */
+export async function closeVendorAccount(id: string): Promise<{
+  products_flagged: number;
+  final_settlement_id: string | null;
+  final_settlement_amount: number | null;
+}> {
+  const res = await fetch('/api/admin/vendors/close-account', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to close vendor account');
+  }
+  return res.json();
+}
+
+
