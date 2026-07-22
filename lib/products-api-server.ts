@@ -1,6 +1,18 @@
 import { getServerSupabase } from './supabase-server';
 import { Product, ProductRow, CategoryRow, Category } from './types';
 
+// Phase 2: keep in sync with CUSTOMER_SAFE_PRODUCT_COLUMNS in
+// products-api.ts. mapRowToProduct() already drops vendor_id since it's
+// not on the Product type, but selecting it explicitly here too means
+// it's never even fetched for SSR'd customer pages.
+const CUSTOMER_SAFE_PRODUCT_COLUMNS = [
+  'id', 'name', 'slug', 'description', 'price', 'mrp',
+  'category_id', 'category_name', 'fabric', 'origin', 'colors', 'sizes',
+  'occasion', 'gender', 'age_group', 'material', 'pattern', 'images',
+  'video_url', 'sku', 'highlights', 'stock_quantity', 'low_stock_threshold',
+  'rating', 'reviews', 'featured', 'in_stock', 'created_at', 'updated_at',
+].join(', ');
+
 /** Pick the default colour variant off the embedded `product_variants` list
  *  (falls back to the first variant if none is explicitly marked default),
  *  so cards/listings can show and link to it instead of the base product. */
@@ -49,22 +61,22 @@ export async function fetchProductBySlugServer(slug: string): Promise<Product | 
   const supabase = getServerSupabase();
   const { data, error } = await supabase
     .from('products')
-    .select('*, product_variants(slug, images, is_default)')
+    .select(`${CUSTOMER_SAFE_PRODUCT_COLUMNS}, product_variants(slug, images, is_default)`)
     .eq('slug', slug)
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  return mapRowToProduct(data as ProductRow);
+  return mapRowToProduct(data as unknown as ProductRow);
 }
 
 export async function fetchProductsServer(): Promise<Product[]> {
   const supabase = getServerSupabase();
   const { data, error } = await supabase
     .from('products')
-    .select('*, product_variants(slug, images, is_default)')
+    .select(`${CUSTOMER_SAFE_PRODUCT_COLUMNS}, product_variants(slug, images, is_default)`)
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data as ProductRow[]).map(mapRowToProduct);
+  return (data as unknown as ProductRow[]).map(mapRowToProduct);
 }
 
 export async function fetchCategoriesServer(): Promise<CategoryRow[]> {

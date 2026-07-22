@@ -3,6 +3,24 @@
 import { supabase } from './supabase';
 import { Product, ProductRow, CategoryRow, Category } from './types';
 
+// ---------------------------------------------------------------------
+// Phase 2 (vendor listings): `products` now also carries vendor_id,
+// barcode, approval_status, vendor_expected_price, ai_suggested_price
+// and final_price — all internal-only (admin / order-processing).
+// These functions run in the BROWSER, so an explicit column list here
+// isn't just tidy: it's the difference between the raw network
+// response never containing vendor_id at all, vs. it briefly existing
+// in the page's network tab before mapRowToProduct() below discards
+// it. Never widen this back to select('*') for customer-facing reads.
+// ---------------------------------------------------------------------
+const CUSTOMER_SAFE_PRODUCT_COLUMNS = [
+  'id', 'name', 'slug', 'description', 'price', 'mrp',
+  'category_id', 'category_name', 'fabric', 'origin', 'colors', 'sizes',
+  'occasion', 'gender', 'age_group', 'material', 'pattern', 'images',
+  'video_url', 'sku', 'highlights', 'stock_quantity', 'low_stock_threshold',
+  'rating', 'reviews', 'featured', 'in_stock', 'created_at', 'updated_at',
+].join(', ');
+
 /** Pick the default colour variant off the embedded `product_variants` list
  *  (falls back to the first variant if none is explicitly marked default),
  *  so cards/listings can show and link to it instead of the base product. */
@@ -50,33 +68,33 @@ export function mapRowToProduct(row: ProductRow): Product {
 export async function fetchProducts(): Promise<Product[]> {
   const { data, error } = await supabase
     .from('products')
-    .select('*, product_variants(slug, images, is_default)')
+    .select(`${CUSTOMER_SAFE_PRODUCT_COLUMNS}, product_variants(slug, images, is_default)`)
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data as ProductRow[]).map(mapRowToProduct);
+  return (data as unknown as ProductRow[]).map(mapRowToProduct);
 }
 
 export async function fetchProductBySlug(slug: string): Promise<Product | null> {
   const { data, error } = await supabase
     .from('products')
-    .select('*, product_variants(slug, images, is_default)')
+    .select(`${CUSTOMER_SAFE_PRODUCT_COLUMNS}, product_variants(slug, images, is_default)`)
     .eq('slug', slug)
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  return mapRowToProduct(data as ProductRow);
+  return mapRowToProduct(data as unknown as ProductRow);
 }
 
 /** Used by the checkout order-bump (settings store a product id, not a slug). */
 export async function fetchProductById(id: string): Promise<Product | null> {
   const { data, error } = await supabase
     .from('products')
-    .select('*')
+    .select(CUSTOMER_SAFE_PRODUCT_COLUMNS)
     .eq('id', id)
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  return mapRowToProduct(data as ProductRow);
+  return mapRowToProduct(data as unknown as ProductRow);
 }
 
 export async function fetchCategories(): Promise<CategoryRow[]> {
