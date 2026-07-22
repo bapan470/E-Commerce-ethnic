@@ -6,6 +6,7 @@ const NAV = [
   { href: '/vendor/dashboard', label: 'Dashboard' },
   { href: '/vendor/dashboard/add-product', label: 'Add Product' },
   { href: '/vendor/dashboard/orders', label: 'My Orders' },
+  { href: '/vendor/dashboard/earnings', label: 'Earnings' },
 ];
 
 export default async function VendorLayout({ children }: { children: React.ReactNode }) {

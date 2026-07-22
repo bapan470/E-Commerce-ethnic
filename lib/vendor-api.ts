@@ -406,3 +406,76 @@ export async function uploadPickupProofPhoto(file: File): Promise<string> {
   const { data } = supabase.storage.from('order-fulfillment-photos').getPublicUrl(path);
   return data.publicUrl;
 }
+
+// ---------------------------------------------------------------------
+// Phase 4B — Settlements/Earnings UI. Pure display of what Phase 4A's
+// triggers + weekly cron already calculated — no new math here.
+// ---------------------------------------------------------------------
+
+export interface VendorSettlementRow {
+  id: string;
+  vendor_id?: string;
+  vendor_name?: string; // present only on the admin-facing fetch
+  week_start: string;
+  week_end: string;
+  total_amount: number;
+  clawback_deducted: number;
+  status: 'pending' | 'paid';
+  payment_reference: string | null;
+  paid_date: string | null;
+  created_at: string;
+}
+
+export interface VendorEarningsSummary {
+  total_sales: number;
+  total_fee: number;
+  total_payable: number;
+  total_paid: number;
+  total_pending_settlement: number;
+  total_unsettled: number;
+  clawback_pending: number;
+}
+
+/** Vendor-facing (their own dashboard "Earnings" tab). */
+export async function fetchMyVendorEarnings(): Promise<{
+  summary: VendorEarningsSummary;
+  settlements: VendorSettlementRow[];
+}> {
+  const res = await fetch('/api/vendor/earnings');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to load your earnings');
+  }
+  return res.json();
+}
+
+/** Admin-facing (Admin > Vendor Settlements). Every settlement, every vendor. */
+export async function fetchAdminSettlements(): Promise<VendorSettlementRow[]> {
+  const res = await fetch('/api/admin/settlements');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to load settlements');
+  }
+  const body = await res.json();
+  return body.settlements as VendorSettlementRow[];
+}
+
+/** Marks a settlement 'paid'. payment_reference is mandatory (matches the DB route). */
+export async function markSettlementPaid(
+  id: string,
+  payment_reference: string,
+  paid_date?: string
+): Promise<VendorSettlementRow> {
+  const res = await fetch(`/api/admin/settlements/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ payment_reference, paid_date }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to mark settlement as paid');
+  }
+  const body = await res.json();
+  return body.settlement as VendorSettlementRow;
+}
+

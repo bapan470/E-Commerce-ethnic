@@ -28,6 +28,7 @@ import {
   Store,
   Truck,
   PackageCheck,
+  Landmark,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import NotificationBell from './notification-bell';
@@ -53,6 +54,7 @@ export type AdminSection =
   | 'giftcards'
   | 'vendors'
   | 'fulfillment'
+  | 'vendor-settlements'
   | 'settings';
 
 interface NavItem {
@@ -96,6 +98,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { value: 'vendors', label: 'Vendors', icon: Truck },
       { value: 'fulfillment', label: 'Stock Receiving', icon: PackageCheck },
+      { value: 'vendor-settlements', label: 'Vendor Settlements', icon: Landmark },
     ],
   },
   {
