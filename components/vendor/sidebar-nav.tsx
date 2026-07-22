@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard,
-  PackagePlus,
+  Boxes,
   PackageSearch,
   Wallet,
   ShieldCheck,
@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 
 const NAV = [
   { href: '/vendor/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/vendor/dashboard/add-product', label: 'Add Product', icon: PackagePlus },
+  { href: '/vendor/dashboard/products', label: 'Products', icon: Boxes },
   { href: '/vendor/dashboard/orders', label: 'My Orders', icon: PackageSearch },
   { href: '/vendor/dashboard/earnings', label: 'Earnings', icon: Wallet },
   { href: '/vendor/dashboard/kyc', label: 'KYC Documents', icon: ShieldCheck },

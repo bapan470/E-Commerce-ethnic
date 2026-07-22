@@ -211,7 +211,7 @@ export default function VendorDashboardPage() {
           <h1 className="font-serif text-2xl font-bold text-primary">Vendor Dashboard</h1>
           <p className="mt-1 text-sm text-muted-foreground">Welcome, {profile.business_name}.</p>
         </div>
-        <Link href="/vendor/dashboard/add-product">
+        <Link href="/vendor/dashboard/products/add-product">
           <Button className="bg-primary">
             <PackagePlus className="mr-1.5 h-4 w-4" /> Add Product
           </Button>
@@ -299,8 +299,8 @@ export default function VendorDashboardPage() {
                 <Boxes className="h-4 w-4 text-primary" />
                 <p className="font-serif text-lg font-semibold text-primary">Your Products</p>
               </div>
-              <Link href="/vendor/dashboard/add-product" className="text-xs font-medium text-primary hover:underline">
-                Add another
+              <Link href="/vendor/dashboard/products" className="text-xs font-medium text-primary hover:underline">
+                View all
               </Link>
             </div>
             {recentProducts.length === 0 ? (
