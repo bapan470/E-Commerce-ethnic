@@ -8,7 +8,7 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const supabase = getServerSupabase();
   const [productsRes, categoriesRes, variantsRes] = await Promise.all([
-    supabase.from('products').select('slug, updated_at'),
+    supabase.from('products').select('slug, updated_at').eq('approval_status', 'live'),
     supabase.from('categories').select('slug, name'),
     supabase.from('product_variants').select('slug, created_at'),
   ]);

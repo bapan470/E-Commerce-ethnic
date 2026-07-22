@@ -127,3 +127,75 @@ export async function reviewAdminVendorBankUpdate(id: string, action: 'approve' 
     throw new Error(body.error || 'Failed to review bank update request');
   }
 }
+
+// ---------------------------------------------------------------------
+// Phase 2 — Vendor Product Listing (vendor-facing)
+// ---------------------------------------------------------------------
+
+export type VendorProductApprovalStatus =
+  | 'draft'
+  | 'pending_review'
+  | 'awaiting_stock'
+  | 'live'
+  | 'rejected';
+
+/** Shape of a product row as returned to the VENDOR who owns it. Only
+ *  fields the vendor is allowed to see about their own submission —
+ *  this is a distinct, deliberately narrower shape than the admin's
+ *  view, and is never used for customer-facing product data. */
+export interface VendorProductRow {
+  id: string;
+  name: string;
+  slug: string;
+  images: string[];
+  fabric: string | null;
+  category_name: string | null;
+  available_quantity: number;
+  vendor_expected_price: number | null;
+  ai_suggested_price: number | null;
+  final_price: number | null;
+  is_dead_stock: boolean;
+  approval_status: VendorProductApprovalStatus;
+  barcode: string | null;
+  rejection_reason: string | null;
+  created_at: string;
+}
+
+export interface VendorProductInput {
+  name: string;
+  images: string[];
+  fabric: string;
+  category_id?: string | null;
+  category_name: string;
+  available_quantity: number;
+  vendor_expected_price?: number | null;
+  is_dead_stock: boolean;
+}
+
+/** Submits a new product for review. Server sets approval_status =
+ *  'pending_review' and auto-generates the barcode — the vendor never
+ *  supplies either. */
+export async function submitVendorProduct(input: VendorProductInput): Promise<VendorProductRow> {
+  const res = await fetch('/api/vendor/products', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to submit product');
+  }
+  const body = await res.json();
+  return body.product as VendorProductRow;
+}
+
+/** All products this vendor has ever submitted, newest first. */
+export async function fetchMyVendorProducts(): Promise<VendorProductRow[]> {
+  const res = await fetch('/api/vendor/products');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to load your products');
+  }
+  const body = await res.json();
+  return body.products as VendorProductRow[];
+}

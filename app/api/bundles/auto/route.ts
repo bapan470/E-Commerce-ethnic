@@ -49,9 +49,12 @@ export async function GET(req: Request) {
 
     const { data: products, error: prodErr } = await supabase
       .from('products')
-      .select('*')
+      .select(
+        'id, name, slug, description, price, mrp, category_id, category_name, fabric, origin, colors, sizes, occasion, gender, age_group, material, pattern, images, video_url, sku, highlights, stock_quantity, low_stock_threshold, rating, reviews, featured, in_stock, created_at, updated_at'
+      )
       .in('id', topIds)
-      .eq('in_stock', true);
+      .eq('in_stock', true)
+      .eq('approval_status', 'live');
     if (prodErr) throw prodErr;
 
     return NextResponse.json({ products: products ?? [] });

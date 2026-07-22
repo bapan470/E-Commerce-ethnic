@@ -63,6 +63,7 @@ export async function fetchProductBySlugServer(slug: string): Promise<Product | 
     .from('products')
     .select(`${CUSTOMER_SAFE_PRODUCT_COLUMNS}, product_variants(slug, images, is_default)`)
     .eq('slug', slug)
+    .eq('approval_status', 'live')
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
@@ -74,6 +75,7 @@ export async function fetchProductsServer(): Promise<Product[]> {
   const { data, error } = await supabase
     .from('products')
     .select(`${CUSTOMER_SAFE_PRODUCT_COLUMNS}, product_variants(slug, images, is_default)`)
+    .eq('approval_status', 'live')
     .order('created_at', { ascending: false });
   if (error) throw error;
   return (data as unknown as ProductRow[]).map(mapRowToProduct);
