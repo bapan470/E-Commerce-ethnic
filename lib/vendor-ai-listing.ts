@@ -123,14 +123,21 @@ export async function generateVendorListing(input: VendorAIInput): Promise<Vendo
       ]
     : promptText;
 
-  // NOTE: keep this well under the hosting platform's function timeout.
-  // Netlify's default function timeout is only 10s, so 55s was causing
-  // the whole function (and this fetch) to get killed mid-flight, which
-  // left the product stuck in pending_review forever. 8s gives the NIM
-  // call a real chance while still leaving headroom for the rest of the
-  // route (DB update, email) to run within a 10s budget.
+  // The calling route (/api/vendor/ai-process/[id]) declares
+  // `export const maxDuration = 60`, and this app is hosted on Vercel
+  // (not Netlify — an earlier version of this comment assumed Netlify's
+  // 10s hard limit, which doesn't apply here and was never correct for
+  // this deployment). The NVIDIA vision-language model routinely takes
+  // 20-55s to respond on the free tier — see app/api/admin/generate-listing/
+  // route.ts, which already uses a 55s timeout for this exact model/call
+  // and works reliably. An 8s timeout was aborting almost every request,
+  // which is why vendor products were going live with empty AI fields
+  // (name/fabric/category from the vendor's own submission, but no
+  // description/origin/occasion/highlights — those only ever come from
+  // this call). 50s leaves ~10s of headroom within the 60s function
+  // budget for the DB update + vendor email that follow.
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8_000);
+  const timeout = setTimeout(() => controller.abort(), 50_000);
 
   let res: Response;
   try {

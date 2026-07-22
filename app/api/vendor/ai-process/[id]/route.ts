@@ -5,12 +5,16 @@ import { generateVendorListing } from '@/lib/vendor-ai-listing';
 import { sendEmail } from '@/lib/email';
 import { vendorProductLiveEmail, vendorProductEditLiveEmail } from '@/lib/email-templates';
 
-// Allow up to 60 seconds on platforms that support it (e.g. Vercel).
-// NOTE: this has no effect on Netlify — its default function timeout is
-// only 10s regardless of this value. See the try/catch + fallback below,
-// and lib/vendor-ai-listing.ts's 8s internal timeout, which together make
-// sure the product still gets published even if the function gets killed
-// before AI finishes.
+// Allow up to 60 seconds (Vercel Hobby's max) — this app is hosted on
+// Vercel, and the NVIDIA vision-language model call this route makes
+// (see lib/vendor-ai-listing.ts) routinely needs 20-55s to respond on
+// the free tier. The try/catch + fallback below, and the DB-level
+// stuck-listing safety net (lib/cron-jobs.ts::runStuckVendorListingsJob,
+// now also run inline whenever the vendor/admin products page loads —
+// see app/api/vendor/products/route.ts and
+// app/api/admin/vendor-products/route.ts), make sure the product still
+// gets published even if this function is ever killed mid-flight for
+// any reason (cold start, network blip, etc).
 export const maxDuration = 60;
 
 /**

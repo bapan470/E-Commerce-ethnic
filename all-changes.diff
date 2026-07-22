@@ -111,6 +111,33 @@ index 7a35758..4050324 100644
      if (action === 'reject') {
        const rejection_reason = String(body?.rejection_reason || '').trim();
        if (!rejection_reason) {
+diff --git a/app/api/vendor/ai-process/[id]/route.ts b/app/api/vendor/ai-process/[id]/route.ts
+index 3ad1d3f..645bfbd 100644
+--- a/app/api/vendor/ai-process/[id]/route.ts
++++ b/app/api/vendor/ai-process/[id]/route.ts
+@@ -5,12 +5,16 @@ import { generateVendorListing } from '@/lib/vendor-ai-listing';
+ import { sendEmail } from '@/lib/email';
+ import { vendorProductLiveEmail, vendorProductEditLiveEmail } from '@/lib/email-templates';
+ 
+-// Allow up to 60 seconds on platforms that support it (e.g. Vercel).
+-// NOTE: this has no effect on Netlify — its default function timeout is
+-// only 10s regardless of this value. See the try/catch + fallback below,
+-// and lib/vendor-ai-listing.ts's 8s internal timeout, which together make
+-// sure the product still gets published even if the function gets killed
+-// before AI finishes.
++// Allow up to 60 seconds (Vercel Hobby's max) — this app is hosted on
++// Vercel, and the NVIDIA vision-language model call this route makes
++// (see lib/vendor-ai-listing.ts) routinely needs 20-55s to respond on
++// the free tier. The try/catch + fallback below, and the DB-level
++// stuck-listing safety net (lib/cron-jobs.ts::runStuckVendorListingsJob,
++// now also run inline whenever the vendor/admin products page loads —
++// see app/api/vendor/products/route.ts and
++// app/api/admin/vendor-products/route.ts), make sure the product still
++// gets published even if this function is ever killed mid-flight for
++// any reason (cold start, network blip, etc).
+ export const maxDuration = 60;
+ 
+ /**
 diff --git a/app/api/vendor/products/route.ts b/app/api/vendor/products/route.ts
 index fc99c5a..a80e06f 100644
 --- a/app/api/vendor/products/route.ts
@@ -322,6 +349,39 @@ index 32efa18..95badbc 100644
  // ----------------------------- Vendor settlement (weekly) -----------------------------
  export async function runVendorSettlementJob() {
    const supabase = getSupabaseAdmin();
+diff --git a/lib/vendor-ai-listing.ts b/lib/vendor-ai-listing.ts
+index eec84d5..3f96cd1 100644
+--- a/lib/vendor-ai-listing.ts
++++ b/lib/vendor-ai-listing.ts
+@@ -123,14 +123,21 @@ export async function generateVendorListing(input: VendorAIInput): Promise<Vendo
+       ]
+     : promptText;
+ 
+-  // NOTE: keep this well under the hosting platform's function timeout.
+-  // Netlify's default function timeout is only 10s, so 55s was causing
+-  // the whole function (and this fetch) to get killed mid-flight, which
+-  // left the product stuck in pending_review forever. 8s gives the NIM
+-  // call a real chance while still leaving headroom for the rest of the
+-  // route (DB update, email) to run within a 10s budget.
++  // The calling route (/api/vendor/ai-process/[id]) declares
++  // `export const maxDuration = 60`, and this app is hosted on Vercel
++  // (not Netlify — an earlier version of this comment assumed Netlify's
++  // 10s hard limit, which doesn't apply here and was never correct for
++  // this deployment). The NVIDIA vision-language model routinely takes
++  // 20-55s to respond on the free tier — see app/api/admin/generate-listing/
++  // route.ts, which already uses a 55s timeout for this exact model/call
++  // and works reliably. An 8s timeout was aborting almost every request,
++  // which is why vendor products were going live with empty AI fields
++  // (name/fabric/category from the vendor's own submission, but no
++  // description/origin/occasion/highlights — those only ever come from
++  // this call). 50s leaves ~10s of headroom within the 60s function
++  // budget for the DB update + vendor email that follow.
+   const controller = new AbortController();
+-  const timeout = setTimeout(() => controller.abort(), 8_000);
++  const timeout = setTimeout(() => controller.abort(), 50_000);
+ 
+   let res: Response;
+   try {
 diff --git a/lib/vendor-api.ts b/lib/vendor-api.ts
 index 606180b..1b4ea85 100644
 --- a/lib/vendor-api.ts
