@@ -1,24 +1,12 @@
 {
   "crons": [
     {
-      "path": "/api/cron/abandoned-carts",
-      "schedule": "30 21 * * *"
-    },
-    {
-      "path": "/api/cron/email-automation",
-      "schedule": "0 4 * * *"
+      "path": "/api/cron/daily-jobs",
+      "schedule": "0 21 * * *"
     },
     {
       "path": "/api/cron/vendor-order-timeout",
-      "schedule": "0 * * * *"
-    },
-    {
-      "path": "/api/cron/vendor-settlement",
-      "schedule": "0 3 * * 1"
-    },
-    {
-      "path": "/api/cron/vendor-return-timers",
-      "schedule": "0 2 * * *"
+      "schedule": "30 21 * * *"
     }
   ]
 }
