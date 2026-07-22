@@ -300,8 +300,41 @@ export async function runStuckVendorListingsJob() {
     }
   }
 
-  return { checked: stuckProducts?.length ?? 0, published, errors };
+  // 'awaiting_stock' was the old manual-review flow's holding status
+  // (Admin > Vendor Submissions > "Approve"). That manual gate has been
+  // removed — nothing sets this status anymore — but nothing ever moved
+  // 'awaiting_stock' rows to 'live' either, so any product an admin had
+  // previously approved under the old flow was stuck there permanently.
+  // Publish those immediately (no time threshold needed; this status is
+  // fully retired going forward, so anything sitting here is legacy).
+  const { data: awaitingStockProducts, error: awaitingErr } = await supabase
+    .from('products')
+    .select('id, name, vendor_id')
+    .eq('approval_status', 'awaiting_stock');
+
+  if (awaitingErr) throw awaitingErr;
+
+  let publishedFromAwaitingStock = 0;
+  for (const product of awaitingStockProducts ?? []) {
+    try {
+      const { error: updateError } = await supabase
+        .from('products')
+        .update({ approval_status: 'live' })
+        .eq('id', product.id);
+      if (updateError) throw updateError;
+      publishedFromAwaitingStock++;
+    } catch (itemErr: any) {
+      errors.push(`product ${product.id} (awaiting_stock): ${itemErr?.message || itemErr}`);
+    }
+  }
+
+  return {
+    checked: (stuckProducts?.length ?? 0) + (awaitingStockProducts?.length ?? 0),
+    published: published + publishedFromAwaitingStock,
+    errors,
+  };
 }
+
 
 // ----------------------------- Vendor settlement (weekly) -----------------------------
 export async function runVendorSettlementJob() {

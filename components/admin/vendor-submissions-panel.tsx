@@ -19,7 +19,6 @@ import { Input } from '@/components/ui/input';
 import { formatINR } from '@/lib/format';
 import {
   fetchAdminVendorProducts,
-  approveAdminVendorProduct,
   rejectAdminVendorProduct,
   updateAdminVendorProductPrice,
   type AdminVendorProductRow,
@@ -31,15 +30,15 @@ const STATUS_META: Record<
   { label: string; icon: typeof Clock; className: string }
 > = {
   draft: { label: 'Draft', icon: Clock, className: 'bg-muted text-muted-foreground' },
-  pending_review: { label: 'Pending Review', icon: Clock, className: 'bg-amber-100 text-amber-700' },
-  awaiting_stock: { label: 'Awaiting Stock', icon: Warehouse, className: 'bg-blue-100 text-blue-700' },
+  pending_review: { label: 'Processing (AI)', icon: Clock, className: 'bg-amber-100 text-amber-700' },
+  awaiting_stock: { label: 'Awaiting Stock (legacy)', icon: Warehouse, className: 'bg-blue-100 text-blue-700' },
   live: { label: 'Live', icon: CheckCircle2, className: 'bg-green-100 text-green-700' },
   rejected: { label: 'Rejected', icon: XCircle, className: 'bg-red-100 text-red-700' },
 };
 
 const TABS: { value: VendorProductApprovalStatus; label: string }[] = [
-  { value: 'pending_review', label: 'Pending Review' },
-  { value: 'awaiting_stock', label: 'Awaiting Stock' },
+  { value: 'pending_review', label: 'Processing (AI)' },
+  { value: 'awaiting_stock', label: 'Awaiting Stock (legacy)' },
   { value: 'live', label: 'Live' },
   { value: 'rejected', label: 'Rejected' },
 ];
@@ -47,7 +46,7 @@ const TABS: { value: VendorProductApprovalStatus; label: string }[] = [
 export default function VendorSubmissionsPanel() {
   const [products, setProducts] = useState<AdminVendorProductRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<VendorProductApprovalStatus>('pending_review');
+  const [activeTab, setActiveTab] = useState<VendorProductApprovalStatus>('live');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [priceDraft, setPriceDraft] = useState<Record<string, string>>({});
   const [reasonDraft, setReasonDraft] = useState<Record<string, string>>({});
@@ -93,29 +92,6 @@ export default function VendorSubmissionsPanel() {
     for (const p of products) c[p.approval_status]++;
     return c;
   }, [products]);
-
-  const handleApprove = async (p: AdminVendorProductRow) => {
-    const raw = priceDraft[p.id];
-    const final_price = raw !== undefined && raw !== '' ? Number(raw) : undefined;
-    if (raw !== undefined && raw !== '' && (!Number.isFinite(final_price) || (final_price as number) < 0)) {
-      toast.error('Enter a valid final price first');
-      return;
-    }
-    if (final_price === undefined && p.final_price == null) {
-      toast.error('Set a final price before approving');
-      return;
-    }
-    setBusyId(p.id);
-    try {
-      await approveAdminVendorProduct(p.id, final_price);
-      toast.success(`${p.name} approved — awaiting stock confirmation`);
-      await load();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to approve product');
-    } finally {
-      setBusyId(null);
-    }
-  };
 
   const handleReject = async (p: AdminVendorProductRow) => {
     const reason = (reasonDraft[p.id] || '').trim();
@@ -164,7 +140,7 @@ export default function VendorSubmissionsPanel() {
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">Admin</p>
           <h1 className="mt-1 font-serif text-3xl font-bold text-primary sm:text-4xl">Vendor Submissions</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Products submitted by vendors — review, price, approve or reject before they go live.
+            Products submitted by vendors — AI writes the full listing and publishes it live automatically, no manual approval needed. You can reject a submission any time if something's wrong.
           </p>
         </div>
       </div>
@@ -291,6 +267,12 @@ export default function VendorSubmissionsPanel() {
                 </div>
 
                 {p.approval_status === 'pending_review' && (
+                  <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                    AI is generating this listing now — it'll go live automatically within a minute or two, no action needed here. You can still reject it below if something's wrong.
+                  </div>
+                )}
+
+                {p.approval_status !== 'rejected' && (
                   <div className="mt-3 space-y-2">
                     <textarea
                       placeholder="Rejection reason (required only if rejecting)"
@@ -299,24 +281,14 @@ export default function VendorSubmissionsPanel() {
                       value={reasonDraft[p.id] || ''}
                       onChange={(e) => setReasonDraft((d) => ({ ...d, [p.id]: e.target.value }))}
                     />
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        className="bg-primary"
-                        disabled={busyId === p.id}
-                        onClick={() => handleApprove(p)}
-                      >
-                        {busyId === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Approve'}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        disabled={busyId === p.id}
-                        onClick={() => handleReject(p)}
-                      >
-                        Reject
-                      </Button>
-                    </div>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={busyId === p.id}
+                      onClick={() => handleReject(p)}
+                    >
+                      {busyId === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Reject'}
+                    </Button>
                   </div>
                 )}
 

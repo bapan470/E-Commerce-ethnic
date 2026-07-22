@@ -81,18 +81,24 @@ export async function GET(req: Request) {
   }
 }
 
-// PUT — three actions on a single vendor-submitted product:
+// PUT — two actions on a single vendor-submitted product:
 //   { id, action: 'update_price', final_price }
-//     Admin edits/confirms the price before approving. Doesn't touch
-//     approval_status.
-//   { id, action: 'approve', final_price? }
-//     Sets approval_status -> 'awaiting_stock'. If final_price is
-//     included it's saved first (so "edit + approve in one click"
-//     works); either way final_price must already be a non-negative
-//     number by this point. Also copies final_price into the
-//     customer-facing `price` column, ready for whenever it goes live.
+//     Admin edits/confirms the price. Doesn't touch approval_status —
+//     works on a product in any status (pending_review, live, etc.).
 //   { id, action: 'reject', rejection_reason }
 //     rejection_reason is mandatory — sets approval_status -> 'rejected'.
+//     Kept as a manual safety valve (e.g. a policy-violating photo) even
+//     though publishing itself is now fully automatic — see note below.
+//
+// NOTE: there used to be a third action, 'approve', which moved a
+// product from 'pending_review' to 'awaiting_stock' as a manual admin
+// gate before anything could go live. That's been removed entirely:
+// every vendor product now goes pending_review -> (AI enrichment) ->
+// live automatically with no human step (see
+// /api/vendor/ai-process/[id] and lib/vendor-ai-listing.ts). The old
+// 'awaiting_stock' status is retired — nothing sets it anymore, and
+// runStuckVendorListingsJob() (lib/cron-jobs.ts) force-publishes any
+// leftover rows still sitting in it from the old flow.
 export async function PUT(req: Request) {
   if (!(await requireAdmin())) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -132,47 +138,6 @@ export async function PUT(req: Request) {
         .select(ADMIN_VENDOR_PRODUCT_COLUMNS)
         .single();
       if (error) throw error;
-      return NextResponse.json({ success: true, product: updated });
-    }
-
-    if (action === 'approve') {
-      let final_price = existing.final_price as number | null;
-      if (body?.final_price !== undefined && body?.final_price !== null && body?.final_price !== '') {
-        const parsed = Number(body.final_price);
-        if (!Number.isFinite(parsed) || parsed < 0) {
-          return NextResponse.json({ error: 'final_price must be a non-negative number' }, { status: 400 });
-        }
-        final_price = parsed;
-      }
-      if (final_price === null || final_price === undefined || !Number.isFinite(final_price)) {
-        return NextResponse.json({ error: 'Set a final price before approving' }, { status: 400 });
-      }
-
-      const { data: updated, error } = await supabase
-        .from('products')
-        .update({
-          approval_status: 'awaiting_stock',
-          final_price,
-          price: final_price,
-          rejection_reason: null,
-        })
-        .eq('id', id)
-        .select(ADMIN_VENDOR_PRODUCT_COLUMNS)
-        .single();
-      if (error) throw error;
-
-      const vendorInfo = (existing as any).vendors;
-      if (vendorInfo) {
-        notifyVendorProductStatus({
-          business_name: vendorInfo.business_name,
-          email: vendorInfo.email,
-          whatsapp: vendorInfo.whatsapp,
-          product_name: existing.name,
-          status: 'awaiting_stock',
-          final_price,
-        }).catch(() => {});
-      }
-
       return NextResponse.json({ success: true, product: updated });
     }
 

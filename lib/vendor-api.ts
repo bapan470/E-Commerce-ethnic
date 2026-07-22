@@ -323,25 +323,6 @@ export async function updateAdminVendorProductPrice(
   return body.product as AdminVendorProductRow;
 }
 
-/** Approves a submission -> approval_status = 'awaiting_stock'. Pass
- *  final_price to save any last edit and approve in the same call. */
-export async function approveAdminVendorProduct(
-  id: string,
-  final_price?: number
-): Promise<AdminVendorProductRow> {
-  const res = await fetch('/api/admin/vendor-products', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, action: 'approve', final_price }),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || 'Failed to approve product');
-  }
-  const body = await res.json();
-  return body.product as AdminVendorProductRow;
-}
-
 /** Rejects a submission. reason is mandatory. */
 export async function rejectAdminVendorProduct(
   id: string,
