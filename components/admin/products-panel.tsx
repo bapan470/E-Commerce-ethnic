@@ -264,11 +264,17 @@ export default function ProductsPanel() {
   const [vendorIdByProductId, setVendorIdByProductId] = useState<Record<string, string>>({});
   const [vendorOptions, setVendorOptions] = useState<{ id: string; name: string }[]>([]);
   const [variantCountById, setVariantCountById] = useState<Record<string, number>>({});
+  const [variantColorsById, setVariantColorsById] = useState<
+    Record<string, { color: string; color_hex: string | null }[]>
+  >({});
 
   useEffect(() => {
     fetch('/api/admin/product-variant-counts')
-      .then((res) => (res.ok ? res.json() : { counts: {} }))
-      .then((data) => setVariantCountById(data.counts ?? {}))
+      .then((res) => (res.ok ? res.json() : { counts: {}, colors: {} }))
+      .then((data) => {
+        setVariantCountById(data.counts ?? {});
+        setVariantColorsById(data.colors ?? {});
+      })
       .catch(() => {
         // Non-fatal — the catalog just won't show the colour-count badge this session.
       });
@@ -854,9 +860,21 @@ export default function ProductsPanel() {
                       {p.fabric || '—'} · {p.origin || '—'} {p.sku ? `· SKU ${p.sku}` : ''}
                     </p>
                     {(variantCountById[p.id] ?? 0) > 0 && (
-                      <p className="text-xs text-primary">
-                        {variantCountById[p.id]} colour{variantCountById[p.id] === 1 ? '' : 's'}
-                      </p>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                        {(variantColorsById[p.id] ?? []).map((v, i) => (
+                          <span
+                            key={i}
+                            className="inline-flex items-center gap-1 text-xs text-primary"
+                            title={v.color}
+                          >
+                            <span
+                              className="h-2.5 w-2.5 shrink-0 rounded-full border border-border"
+                              style={{ backgroundColor: v.color_hex || '#d4d4d4' }}
+                            />
+                            {v.color}
+                          </span>
+                        ))}
+                      </div>
                     )}
                   </button>
                 </div>
@@ -948,6 +966,24 @@ export default function ProductsPanel() {
                 ? 'Update the details of this product.'
                 : 'Fill in the details to add a new product to the catalog.'}
             </DialogDescription>
+            {editing && (variantColorsById[editing.id]?.length ?? 0) > 0 && (
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <span className="text-xs font-medium text-muted-foreground">Colours:</span>
+                {(variantColorsById[editing.id] ?? []).map((v, i) => (
+                  <span
+                    key={i}
+                    className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-xs"
+                    title={v.color}
+                  >
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 rounded-full border border-border"
+                      style={{ backgroundColor: v.color_hex || '#d4d4d4' }}
+                    />
+                    {v.color}
+                  </span>
+                ))}
+              </div>
+            )}
           </DialogHeader>
 
           <form onSubmit={onSubmit} className="grid gap-4 py-2">
