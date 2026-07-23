@@ -1,5 +1,24 @@
 import { AdminCollectionRow } from './types';
 
+/** One vendor's automatic "<Vendor>'s Collection" page -- read-only here;
+ *  managed by approving/suspending the vendor on Admin > Vendors instead. */
+export interface AdminVendorCollectionRow {
+  id: string;
+  name: string;
+  slug: string;
+  product_count: number;
+  created_at: string;
+}
+
+/** Every approved vendor's auto-generated storefront collection, with a
+ *  live product count each. */
+export async function fetchAdminVendorCollections(): Promise<AdminVendorCollectionRow[]> {
+  const res = await fetch('/api/admin/vendor-collections', { cache: 'no-store' });
+  if (!res.ok) return parseError(res, 'Failed to load vendor collections');
+  const body = await res.json();
+  return body.collections as AdminVendorCollectionRow[];
+}
+
 async function parseError(res: Response, fallback: string): Promise<never> {
   const body = await res.json().catch(() => ({}));
   throw new Error(body?.error || fallback);

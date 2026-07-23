@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, FormEvent } from 'react';
-import { Plus, Pencil, Trash2, Search, X, ExternalLink, Layers } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, X, ExternalLink, Layers, Store } from 'lucide-react';
 import { toast } from 'sonner';
 import { useProducts } from '@/lib/cart-context';
 import {
@@ -10,6 +10,8 @@ import {
   createAdminCollection,
   updateAdminCollection,
   deleteAdminCollection,
+  fetchAdminVendorCollections,
+  AdminVendorCollectionRow,
 } from '@/lib/admin-collections-api';
 import { AdminCollectionRow } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -38,10 +40,15 @@ const slugify = (s: string) =>
 
 type StatusFilter = 'all' | 'active' | 'inactive';
 
+type Row =
+  | { source: 'admin'; data: AdminCollectionRow }
+  | { source: 'vendor'; data: AdminVendorCollectionRow };
+
 export default function CollectionsPanel() {
   const { products } = useProducts();
 
   const [collections, setCollections] = useState<AdminCollectionRow[]>([]);
+  const [vendorCollections, setVendorCollections] = useState<AdminVendorCollectionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -70,36 +77,52 @@ export default function CollectionsPanel() {
     } finally {
       setLoading(false);
     }
+    try {
+      const vendorRows = await fetchAdminVendorCollections();
+      setVendorCollections(vendorRows);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load vendor collections');
+    }
   };
 
   useEffect(() => {
     load();
   }, []);
 
+  const allRows: Row[] = useMemo(
+    () => [
+      ...collections.map((c): Row => ({ source: 'admin', data: c })),
+      ...vendorCollections.map((v): Row => ({ source: 'vendor', data: v })),
+    ],
+    [collections, vendorCollections]
+  );
+
   const counts = useMemo(
     () => ({
-      all: collections.length,
-      active: collections.filter((c) => c.is_active).length,
-      inactive: collections.filter((c) => !c.is_active).length,
+      all: allRows.length,
+      active: allRows.filter((r) => (r.source === 'admin' ? r.data.is_active : true)).length,
+      inactive: allRows.filter((r) => (r.source === 'admin' ? !r.data.is_active : false)).length,
     }),
-    [collections]
+    [allRows]
   );
 
   const filtered = useMemo(() => {
-    let list = collections;
-    if (statusFilter === 'active') list = list.filter((c) => c.is_active);
-    if (statusFilter === 'inactive') list = list.filter((c) => !c.is_active);
+    let list = allRows;
+    if (statusFilter === 'active') list = list.filter((r) => (r.source === 'admin' ? r.data.is_active : true));
+    if (statusFilter === 'inactive') list = list.filter((r) => (r.source === 'admin' ? !r.data.is_active : false));
     const q = searchQuery.trim().toLowerCase();
     if (q) {
-      list = list.filter(
-        (c) =>
-          c.name.toLowerCase().includes(q) ||
-          c.slug.toLowerCase().includes(q) ||
-          (c.description ?? '').toLowerCase().includes(q)
-      );
+      list = list.filter((r) => {
+        const d = r.data;
+        return (
+          d.name.toLowerCase().includes(q) ||
+          d.slug.toLowerCase().includes(q) ||
+          (r.source === 'admin' && (r.data.description ?? '').toLowerCase().includes(q))
+        );
+      });
     }
     return list;
-  }, [collections, statusFilter, searchQuery]);
+  }, [allRows, statusFilter, searchQuery]);
 
   const filteredProducts = useMemo(() => {
     const q = productSearch.trim().toLowerCase();
@@ -195,8 +218,8 @@ export default function CollectionsPanel() {
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">Admin</p>
           <h1 className="mt-1 font-serif text-3xl font-bold text-primary sm:text-4xl">Collections</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Curated product groups you manage directly — separate from the automatic
-            &ldquo;&lt;Vendor&gt;&rsquo;s Collection&rdquo; pages. Each one gets its own page at /collection/[slug].
+            Curated product groups you manage directly, shown together with every approved vendor&rsquo;s
+            automatic &ldquo;&lt;Vendor&gt;&rsquo;s Collection&rdquo; page (marked <Store className="inline h-3 w-3 align-text-top" />, read-only here — manage those from the Vendors tab). Each one gets its own page at /collection/[slug].
           </p>
         </div>
         <Button onClick={openNew} className="bg-primary">
@@ -256,59 +279,79 @@ export default function CollectionsPanel() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((c) => (
-              <tr key={c.id} className="border-t">
-                <td className="px-4 py-3 text-sm font-medium">{c.name}</td>
-                <td className="px-4 py-3 text-sm text-muted-foreground">
-                  <a
-                    href={`/collection/${c.slug}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 hover:text-primary hover:underline"
-                  >
-                    {c.slug}
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                </td>
-                <td className="px-4 py-3 text-sm text-muted-foreground">
-                  {c.product_count} {c.product_count === 1 ? 'product' : 'products'}
-                </td>
-                <td className="px-4 py-3 text-sm">
-                  <Badge
-                    className={
-                      c.is_active
-                        ? 'bg-green-100 text-green-700 hover:bg-green-100'
-                        : 'bg-muted text-muted-foreground hover:bg-muted'
-                    }
-                  >
-                    {c.is_active ? 'Active' : 'Inactive'}
-                  </Badge>
-                </td>
-                <td className="px-4 py-3 text-sm">
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => openEdit(c)}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-destructive hover:bg-destructive/10"
-                      onClick={() => setConfirmTarget(c)}
+            {filtered.map((r) => {
+              const d = r.data;
+              return (
+                <tr key={`${r.source}-${d.id}`} className="border-t">
+                  <td className="px-4 py-3 text-sm font-medium">
+                    <div className="flex items-center gap-2">
+                      {r.source === 'vendor' && (
+                        <span title="Vendor's automatic collection">
+                          <Store className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        </span>
+                      )}
+                      {d.name}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground">
+                    <a
+                      href={`/collection/${d.slug}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 hover:text-primary hover:underline"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {!loading && collections.length > 0 && filtered.length === 0 && (
+                      {d.slug}
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-muted-foreground">
+                    {d.product_count} {d.product_count === 1 ? 'product' : 'products'}
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    {r.source === 'vendor' ? (
+                      <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">Vendor</Badge>
+                    ) : (
+                      <Badge
+                        className={
+                          r.data.is_active
+                            ? 'bg-green-100 text-green-700 hover:bg-green-100'
+                            : 'bg-muted text-muted-foreground hover:bg-muted'
+                        }
+                      >
+                        {r.data.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    {r.source === 'vendor' ? (
+                      <span className="text-xs text-muted-foreground">Manage in Vendors tab</span>
+                    ) : (
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" onClick={() => openEdit(r.data)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-destructive hover:bg-destructive/10"
+                          onClick={() => setConfirmTarget(r.data)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {!loading && allRows.length > 0 && filtered.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
                   No collections match your search/filter.
                 </td>
               </tr>
             )}
-            {!loading && collections.length === 0 && (
+            {!loading && allRows.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-4 py-10 text-center text-sm text-muted-foreground">
                   <Layers className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
