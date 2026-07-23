@@ -238,10 +238,13 @@ export async function createProduct(input: Partial<ProductRow>): Promise<Product
     price: input.price,
     // Phase 2 migration made `final_price` NOT NULL (it's the price the
     // storefront/order flow actually reads for vendor-sourced products).
-    // Admin-added catalog products have no separate vendor negotiation,
-    // so it's always just `price` here -- omitting it entirely was
-    // causing every admin "Add Product" insert to fail the constraint.
-    final_price: input.final_price ?? input.price,
+    // `final_price` is deliberately absent from the ProductRow type (it's
+    // internal-only, see the comment on CUSTOMER_SAFE_PRODUCT_COLUMNS
+    // above), and the admin form has no separate field for it -- admin
+    // catalog products have no vendor negotiation, so it's always just
+    // `price`. Omitting this entirely was causing every admin "Add
+    // Product" insert to fail the NOT NULL constraint.
+    final_price: input.price,
     mrp: input.mrp,
     category_id: input.category_id,
     category_name: input.category_name,
