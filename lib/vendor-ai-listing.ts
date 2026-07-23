@@ -86,6 +86,60 @@ Respond with ONLY a JSON object (no markdown fences, no preamble) with these exa
 }`;
 }
 
+/**
+ * Checks whether another live product already has this exact title
+ * (case-insensitive) and, if so, deterministically appends a distinguishing
+ * detail the AI itself already generated for this item (colour, border,
+ * ornamentation, pattern, origin, or occasion — whichever isn't already
+ * present in the title text) so the two listings read differently.
+ *
+ * This is a plain DB lookup + string tweak, not a second AI call — a repeat
+ * vision-model call would add another 20-55s on top of the one this route
+ * already makes, risking the 60s function budget. Titles are already meant
+ * to vary because the prompt grounds them in the actual photo, but two
+ * genuinely similar-looking items (e.g. a restocked batch in the same
+ * colour) can still land on the same wording, so this is the hard guarantee.
+ */
+export async function ensureUniqueVendorTitle(
+  admin: { from: (table: string) => any },
+  listing: VendorAIListing,
+  excludeProductId: string
+): Promise<string> {
+  const baseName = listing.name;
+
+  const { data: matches, error } = await admin
+    .from('products')
+    .select('id')
+    .ilike('name', baseName)
+    .neq('id', excludeProductId);
+
+  if (error) {
+    console.error('[vendor-ai-listing] uniqueness check failed, keeping AI title as-is:', error);
+    return baseName;
+  }
+  if (!matches || matches.length === 0) return baseName;
+
+  const lowerBase = baseName.toLowerCase();
+  const candidates = [
+    listing.colors?.[0],
+    listing.highlights?.border,
+    listing.highlights?.ornamentation,
+    listing.highlights?.saree_pattern,
+    listing.pattern,
+    listing.origin,
+    listing.occasion?.[0],
+  ].filter((v): v is string => !!v && v.trim() !== '' && !lowerBase.includes(v.toLowerCase()));
+
+  if (candidates.length > 0) {
+    return `${baseName} – ${candidates[0]}`;
+  }
+
+  // Every distinguishing detail the AI generated is already in the title
+  // and it's still an exact duplicate (e.g. a visually identical restocked
+  // batch) — number it so the title text itself is never repeated.
+  return `${baseName} (Batch ${matches.length + 1})`;
+}
+
 /** Calls NVIDIA NIM to generate a full product listing from vendor-submitted basics.
  *  Returns null if NVIDIA_API_KEY is not set or the AI call fails — callers
  *  should still publish the product with basic fields in that case. */

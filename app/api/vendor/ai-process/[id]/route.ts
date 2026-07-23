@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser, getSupabaseServer } from '@/lib/supabase-server-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { generateVendorListing } from '@/lib/vendor-ai-listing';
+import { generateVendorListing, ensureUniqueVendorTitle } from '@/lib/vendor-ai-listing';
 import { buildSlug } from '@/lib/slug-utils';
 import { sendEmail } from '@/lib/email';
 import { vendorProductLiveEmail, vendorProductEditLiveEmail } from '@/lib/email-templates';
@@ -155,8 +155,20 @@ async function handleAiProcess({
     images: Array.isArray(product.images) ? product.images : [],
   });
 
+  // Hoisted so the vendor-notification email below (sent regardless of
+  // which branch runs) can reference the actual final title.
+  let finalName: string | undefined;
+
   // ── Update product to live ─────────────────────────────────────────────
   if (listing) {
+    // Guarantee no two products end up with an identical title text — see
+    // ensureUniqueVendorTitle's own comment for why this is a DB check +
+    // deterministic tweak rather than a second AI call. Only done on first
+    // publish; edits keep whatever title the vendor/AI produced this time
+    // (same reasoning as slug below — an edit re-running this check could
+    // needlessly rename an already-live, possibly-shared product title).
+    finalName = isEdit ? listing.name : await ensureUniqueVendorTitle(admin, listing, productId);
+
     // The vendor's original submission got a placeholder slug (derived from
     // whatever raw name they typed, e.g. "Cotton Blend") back in
     // POST /api/vendor/products, purely so the row could exist before AI
@@ -168,12 +180,12 @@ async function handleAiProcess({
     // differs). Only do this on first publish (`!isEdit`) — edits
     // deliberately never change the slug, to avoid breaking a URL that may
     // already be shared/indexed (see the [id]/route.ts PATCH comment).
-    const nextSlug = isEdit ? product.slug : buildSlug(listing.name);
+    const nextSlug = isEdit ? product.slug : buildSlug(finalName);
 
     const { error: updateErr } = await admin
       .from('products')
       .update({
-        name: listing.name,
+        name: finalName,
         slug: nextSlug,
         description: listing.description,
         fabric: listing.fabric,
@@ -197,8 +209,8 @@ async function handleAiProcess({
       const { error: retryErr } = await admin
         .from('products')
         .update({
-          name: listing.name,
-          slug: isEdit ? product.slug : buildSlug(listing.name),
+          name: finalName,
+          slug: isEdit ? product.slug : buildSlug(finalName),
           description: listing.description,
           fabric: listing.fabric,
           origin: listing.origin,
@@ -240,7 +252,7 @@ async function handleAiProcess({
   if (vendorEmail) {
     const emailInput = {
       vendorName: vendorDisplayName,
-      productName: listing?.name || product.name,
+      productName: finalName || product.name,
     };
     const { subject, html } = isEdit
       ? vendorProductEditLiveEmail(emailInput)
