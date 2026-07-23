@@ -3,6 +3,7 @@ import { getCurrentUser, getSupabaseServer } from '@/lib/supabase-server-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { suggestVendorProductPrice } from '@/lib/ai-pricing';
 import { runStuckVendorListingsJob } from '@/lib/cron-jobs';
+import { buildSlug } from '@/lib/slug-utils';
 
 // Fields the VENDOR is ever allowed to see about their own submissions.
 // Deliberately excludes vendor_id (redundant — it's their own id anyway)
@@ -14,21 +15,6 @@ const VENDOR_PRODUCT_COLUMNS = [
   'final_price', 'is_dead_stock', 'approval_status', 'barcode',
   'rejection_reason', 'created_at',
 ].join(', ');
-
-const slugify = (s: string) =>
-  s
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-');
-
-function randomSuffix(len = 5) {
-  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-  let out = '';
-  for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
-  return out;
-}
 
 // GET — everything the logged-in vendor has ever submitted, newest
 // first. RLS (own_select_vendor_products, Phase 2 migration) already
@@ -182,7 +168,7 @@ export async function POST(req: Request) {
 
     const insertPayload = {
       name,
-      slug: `${slugify(name) || 'product'}-${randomSuffix()}`,
+      slug: buildSlug(name),
       price: livePrice,
       category_id,
       category_name,
@@ -237,7 +223,7 @@ export async function POST(req: Request) {
     if (error?.code === '23505' && error.message?.includes('slug')) {
       const retry = await admin
         .from('products')
-        .insert({ ...insertPayload, slug: `${slugify(name) || 'product'}-${randomSuffix()}` })
+        .insert({ ...insertPayload, slug: buildSlug(name) })
         .select(VENDOR_PRODUCT_COLUMNS)
         .single();
       created = retry.data;

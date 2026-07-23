@@ -46,7 +46,7 @@ Fill in sensible, realistic details for an Indian handloom ethnic-wear store whe
 
 Respond with ONLY a JSON object (no markdown fences, no preamble) with these exact keys:
 {
-  "name": "SEO-friendly product title, 40-70 characters, includes fabric/craft + product type + distinguishing detail. No marketing fluff.",
+  "name": "SEO-friendly product title, 40-70 characters. Must combine: (1) the fabric/craft type, (2) the product type, (3) the exact base colour of THIS specific photographed item (e.g. 'Green', 'Black', 'Maroon'), and (4) one concrete visual detail that is actually visible in THIS photo (e.g. the specific motif, border style, or embroidery placement — not a generic word like 'floral' if you can see it's actually a vine or booti pattern). Two different products must never end up with an identical title — if you were shown a different photo, colour, or motif, the title must read differently too. No marketing fluff, no filler adjectives that don't come from the photo.",
   "description": "2-3 short paragraphs (120-180 words total) covering fabric/weave/craft, look and feel, occasion fit, and a care tip. Warm, boutique-style language. No emojis.",
   "fabric": "full fabric name, e.g. 'Pure Kanjivaram Silk'",
   "origin": "weave region, e.g. 'Kanchipuram, Tamil Nadu'",

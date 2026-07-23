@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser, getSupabaseServer } from '@/lib/supabase-server-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { generateVendorListing } from '@/lib/vendor-ai-listing';
+import { buildSlug } from '@/lib/slug-utils';
 import { sendEmail } from '@/lib/email';
 import { vendorProductLiveEmail, vendorProductEditLiveEmail } from '@/lib/email-templates';
 
@@ -156,10 +157,24 @@ async function handleAiProcess({
 
   // ── Update product to live ─────────────────────────────────────────────
   if (listing) {
+    // The vendor's original submission got a placeholder slug (derived from
+    // whatever raw name they typed, e.g. "Cotton Blend") back in
+    // POST /api/vendor/products, purely so the row could exist before AI
+    // ran. Now that the AI has generated the real, SEO title, the slug
+    // (and therefore the live product URL) should be derived from THAT
+    // title instead — otherwise the URL and the on-page title never match,
+    // and near-duplicate AI titles across products all end up looking the
+    // same in the address bar too (only the trailing random suffix
+    // differs). Only do this on first publish (`!isEdit`) — edits
+    // deliberately never change the slug, to avoid breaking a URL that may
+    // already be shared/indexed (see the [id]/route.ts PATCH comment).
+    const nextSlug = isEdit ? product.slug : buildSlug(listing.name);
+
     const { error: updateErr } = await admin
       .from('products')
       .update({
         name: listing.name,
+        slug: nextSlug,
         description: listing.description,
         fabric: listing.fabric,
         origin: listing.origin,
@@ -174,7 +189,35 @@ async function handleAiProcess({
       })
       .eq('id', productId);
 
-    if (updateErr) {
+    // Extremely unlikely slug collision (two vendors' AI titles slugifying
+    // to the same base + same 5-char random suffix) — retry once with a
+    // fresh suffix, same pattern as the initial-insert retry in
+    // app/api/vendor/products/route.ts.
+    if (updateErr?.code === '23505' && updateErr.message?.includes('slug')) {
+      const { error: retryErr } = await admin
+        .from('products')
+        .update({
+          name: listing.name,
+          slug: isEdit ? product.slug : buildSlug(listing.name),
+          description: listing.description,
+          fabric: listing.fabric,
+          origin: listing.origin,
+          occasion: listing.occasion,
+          material: listing.material,
+          pattern: listing.pattern,
+          gender: listing.gender,
+          meta_description: listing.meta_description,
+          colors: Array.isArray(listing.colors) ? listing.colors : [],
+          highlights: listing.highlights ?? {},
+          approval_status: 'live',
+        })
+        .eq('id', productId);
+
+      if (retryErr) {
+        console.error('[vendor/ai-process] failed to update product to live (with AI, after slug retry)', productId, retryErr);
+        await admin.from('products').update({ approval_status: 'live' }).eq('id', productId);
+      }
+    } else if (updateErr) {
       console.error('[vendor/ai-process] failed to update product to live (with AI)', productId, updateErr);
       // Fall back: at minimum set status to live without AI fields
       await admin.from('products').update({ approval_status: 'live' }).eq('id', productId);
