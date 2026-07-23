@@ -210,12 +210,38 @@ export async function countProductsInCategory(categoryId: string): Promise<numbe
   return count ?? 0;
 }
 
+/**
+ * Supabase/Postgrest errors are plain objects (never `instanceof Error`),
+ * so `err instanceof Error ? err.message : 'Save failed'` in the admin
+ * panel was always falling through to the generic fallback and hiding
+ * the real constraint/RLS violation message. This pulls a readable
+ * message out of any shape we might catch.
+ */
+export function extractErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === 'object') {
+    const anyErr = err as { message?: unknown; error_description?: unknown; details?: unknown; hint?: unknown };
+    if (typeof anyErr.message === 'string' && anyErr.message) return anyErr.message;
+    if (typeof anyErr.error_description === 'string' && anyErr.error_description) return anyErr.error_description;
+    if (typeof anyErr.details === 'string' && anyErr.details) return anyErr.details;
+    if (typeof anyErr.hint === 'string' && anyErr.hint) return anyErr.hint;
+  }
+  if (typeof err === 'string' && err) return err;
+  return fallback;
+}
+
 export async function createProduct(input: Partial<ProductRow>): Promise<Product> {
   const payload = {
     name: input.name,
     slug: input.slug,
     description: input.description,
     price: input.price,
+    // Phase 2 migration made `final_price` NOT NULL (it's the price the
+    // storefront/order flow actually reads for vendor-sourced products).
+    // Admin-added catalog products have no separate vendor negotiation,
+    // so it's always just `price` here -- omitting it entirely was
+    // causing every admin "Add Product" insert to fail the constraint.
+    final_price: input.final_price ?? input.price,
     mrp: input.mrp,
     category_id: input.category_id,
     category_name: input.category_name,

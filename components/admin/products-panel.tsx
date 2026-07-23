@@ -10,6 +10,7 @@ import {
   updateProduct,
   deleteProduct,
   uploadProductImage,
+  extractErrorMessage,
 } from '@/lib/products-api';
 import { generateProductSku } from '@/lib/sku';
 import { searchPresets, ColorPreset } from '@/lib/color-presets';
@@ -582,7 +583,7 @@ export default function ProductsPanel() {
       }
       setOpen(false);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Save failed');
+      toast.error(extractErrorMessage(err, 'Save failed'));
     } finally {
       setSaving(false);
     }
@@ -595,7 +596,7 @@ export default function ProductsPanel() {
       toast.success('Product deleted');
       await refresh();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Delete failed');
+      toast.error(extractErrorMessage(err, 'Delete failed'));
     } finally {
       setConfirmId(null);
     }
@@ -615,7 +616,7 @@ export default function ProductsPanel() {
         triggerRestockNotifications(p.id);
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Update failed');
+      toast.error(extractErrorMessage(err, 'Update failed'));
     }
   };
 
