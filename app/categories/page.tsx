@@ -72,32 +72,30 @@ export default function CategoriesPage() {
       .filter((c) => c.count > 0);
   }, [categories, products]);
 
-  // With a handful of categories, grouping by keyword just collapses them
-  // into one useless "everything" chip (e.g. "Cotton Sarees" and "Silk
-  // Sarees" both becoming a single "Sarees" chip). So below a threshold we
-  // filter by the literal category names instead — every category gets
-  // its own tappable chip. Once there are enough categories that a flat
-  // list of chips would itself be overwhelming, we switch to the broader
-  // keyword groups.
-  const useLiteralNames = rows.length <= 8;
-
+  // Always group by type (Sarees, Kurti, Lehenga, ...) instead of by the
+  // literal category name. This way "Cotton Sarees" and "Silk Sarees" both
+  // roll up under one "Sarees" chip, and tapping it shows every saree
+  // category together. A brand-new category created in admin is matched
+  // against GROUP_RULES automatically by name — if it matches an existing
+  // keyword (e.g. a new "Georgette Sarees" category matches /saree/i) it
+  // simply joins that chip with zero code changes. If it matches nothing,
+  // it falls into a base "Other" chip instead of disappearing, so the
+  // filter bar never needs manual updates when categories are added.
+  //
   // Only show chips that actually have at least one visible category
   // behind them, in a stable order (not alphabetical — Sarees/Kurti/
   // Lehenga first since those are the highest-traffic types when grouped).
   const groups = useMemo(() => {
-    if (useLiteralNames) {
-      return ['All', ...rows.map((c) => c.name)];
-    }
     const present = new Set(rows.map((c) => c.group));
     const ordered = GROUP_RULES.map((g) => g.label).filter((g) => present.has(g));
     if (present.has('Other')) ordered.push('Other');
     return ['All', ...ordered];
-  }, [rows, useLiteralNames]);
+  }, [rows]);
 
   const visibleRows = useMemo(() => {
     if (activeGroup === 'All') return rows;
-    return rows.filter((c) => (useLiteralNames ? c.name === activeGroup : c.group === activeGroup));
-  }, [rows, activeGroup, useLiteralNames]);
+    return rows.filter((c) => c.group === activeGroup);
+  }, [rows, activeGroup]);
 
   return (
     <div className="container-boutique py-8 pb-24 md:pb-12">
