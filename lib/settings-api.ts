@@ -35,6 +35,46 @@ export async function saveStoreInfo(info: StoreInfo) {
   if (error) throw error;
 }
 
+// ---------------------------------------------------------------------
+// Social media links — shown as icons in the storefront footer.
+// Any field left blank is simply hidden on the footer, so admins don't
+// have to fill in every platform.
+// ---------------------------------------------------------------------
+export interface SocialLinks {
+  instagram: string;
+  facebook: string;
+  youtube: string;
+  twitter: string;
+  linkedin: string;
+  whatsapp: string; // full wa.me link or number, e.g. https://wa.me/918001234567
+}
+
+const DEFAULT_SOCIAL_LINKS: SocialLinks = {
+  instagram: '',
+  facebook: '',
+  youtube: '',
+  twitter: '',
+  linkedin: '',
+  whatsapp: '',
+};
+
+export async function fetchSocialLinks(): Promise<SocialLinks> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'social_links')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_SOCIAL_LINKS;
+  return { ...DEFAULT_SOCIAL_LINKS, ...(data.value as Partial<SocialLinks>) };
+}
+
+export async function saveSocialLinks(links: SocialLinks) {
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ key: 'social_links', value: links }, { onConflict: 'key' });
+  if (error) throw error;
+}
+
 export interface SiteBanner {
   image_url: string;
   link_url?: string;

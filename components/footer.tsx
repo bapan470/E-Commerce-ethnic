@@ -1,13 +1,36 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Instagram, Facebook, Mail, Phone } from 'lucide-react';
+import { Instagram, Facebook, Youtube, Twitter, Linkedin, MessageCircle, Mail, Phone } from 'lucide-react';
 import NewsletterSignup from './newsletter-signup';
 import { useCart } from '@/lib/cart-context';
 import { markCheckoutEntry } from '@/lib/checkout-return';
+import { fetchSocialLinks, fetchStoreInfo, SocialLinks, StoreInfo } from '@/lib/settings-api';
 
 export default function Footer() {
   const { clearBuyNow } = useCart();
+  const [social, setSocial] = useState<SocialLinks | null>(null);
+  const [store, setStore] = useState<StoreInfo | null>(null);
+
+  useEffect(() => {
+    fetchSocialLinks().then(setSocial).catch(() => {});
+    fetchStoreInfo().then(setStore).catch(() => {});
+  }, []);
+
+  // Admin > Settings > Social Media Links controls which icons show up —
+  // any platform left blank there is simply skipped here.
+  const socialIcons = social
+    ? [
+        { key: 'instagram', href: social.instagram, label: 'Instagram', Icon: Instagram },
+        { key: 'facebook', href: social.facebook, label: 'Facebook', Icon: Facebook },
+        { key: 'youtube', href: social.youtube, label: 'YouTube', Icon: Youtube },
+        { key: 'twitter', href: social.twitter, label: 'Twitter / X', Icon: Twitter },
+        { key: 'linkedin', href: social.linkedin, label: 'LinkedIn', Icon: Linkedin },
+        { key: 'whatsapp', href: social.whatsapp, label: 'WhatsApp', Icon: MessageCircle },
+      ].filter((s) => s.href && s.href.trim())
+    : [];
+
   return (
     <footer className="mt-16 border-t border-border/60 bg-primary text-primary-foreground">
       <div className="container-boutique grid gap-10 py-12 sm:grid-cols-2 lg:grid-cols-4">
@@ -49,23 +72,45 @@ export default function Footer() {
           <h4 className="text-sm font-semibold uppercase tracking-wider text-secondary">
             Connect
           </h4>
-          <div className="mt-3 flex gap-3">
-            <a href="#" aria-label="Instagram" className="rounded-full bg-primary-foreground/10 p-2 transition-colors hover:bg-secondary hover:text-secondary-foreground">
-              <Instagram className="h-4 w-4" />
-            </a>
-            <a href="#" aria-label="Facebook" className="rounded-full bg-primary-foreground/10 p-2 transition-colors hover:bg-secondary hover:text-secondary-foreground">
-              <Facebook className="h-4 w-4" />
-            </a>
-            <a href="mailto:hello@aruhihandlooms.com" aria-label="Email" className="rounded-full bg-primary-foreground/10 p-2 transition-colors hover:bg-secondary hover:text-secondary-foreground">
-              <Mail className="h-4 w-4" />
-            </a>
-            <a href="tel:+918001234567" aria-label="Phone" className="rounded-full bg-primary-foreground/10 p-2 transition-colors hover:bg-secondary hover:text-secondary-foreground">
-              <Phone className="h-4 w-4" />
-            </a>
+          <div className="mt-3 flex flex-wrap gap-3">
+            {socialIcons.map(({ key, href, label, Icon }) => (
+              <a
+                key={key}
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={label}
+                className="rounded-full bg-primary-foreground/10 p-2 transition-colors hover:bg-secondary hover:text-secondary-foreground"
+              >
+                <Icon className="h-4 w-4" />
+              </a>
+            ))}
+            {store?.support_email && (
+              <a
+                href={`mailto:${store.support_email}`}
+                aria-label="Email"
+                className="rounded-full bg-primary-foreground/10 p-2 transition-colors hover:bg-secondary hover:text-secondary-foreground"
+              >
+                <Mail className="h-4 w-4" />
+              </a>
+            )}
+            {store?.support_phone && (
+              <a
+                href={`tel:${store.support_phone.replace(/\s+/g, '')}`}
+                aria-label="Phone"
+                className="rounded-full bg-primary-foreground/10 p-2 transition-colors hover:bg-secondary hover:text-secondary-foreground"
+              >
+                <Phone className="h-4 w-4" />
+              </a>
+            )}
           </div>
-          <p className="mt-4 text-xs text-primary-foreground/70">
-            +91 80012 34567<br />Mon–Sat, 10am–7pm IST
-          </p>
+          {store?.support_phone && (
+            <p className="mt-4 text-xs text-primary-foreground/70">
+              {store.support_phone}
+              <br />
+              Mon–Sat, 10am–7pm IST
+            </p>
+          )}
           <h4 className="mt-5 text-sm font-semibold uppercase tracking-wider text-secondary">
             Newsletter
           </h4>

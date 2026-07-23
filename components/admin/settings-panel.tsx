@@ -17,6 +17,9 @@ import {
   fetchAiChatSettings,
   saveAiChatSettings,
   AI_CHAT_MODEL_OPTIONS,
+  SocialLinks,
+  fetchSocialLinks,
+  saveSocialLinks,
 } from '@/lib/settings-api';
 import { uploadProductImage } from '@/lib/products-api';
 import {
@@ -60,6 +63,9 @@ export default function SettingsPanel() {
   const [testingAiChat, setTestingAiChat] = useState(false);
   const [aiTestResult, setAiTestResult] = useState<any>(null);
 
+  const [socialForm, setSocialForm] = useState<SocialLinks | null>(null);
+  const [savingSocial, setSavingSocial] = useState(false);
+
   useEffect(() => {
     fetchStoreInfo()
       .then(setForm)
@@ -85,6 +91,10 @@ export default function SettingsPanel() {
     fetchAiChatSettings()
       .then(setAiChatForm)
       .catch(() => toast.error('Failed to load AI chat settings'));
+
+    fetchSocialLinks()
+      .then(setSocialForm)
+      .catch(() => toast.error('Failed to load social media links'));
   }, []);
 
   const onSubmit = async (e: FormEvent) => {
@@ -140,6 +150,20 @@ export default function SettingsPanel() {
       toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSavingAiChat(false);
+    }
+  };
+
+  const onSubmitSocial = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!socialForm) return;
+    setSavingSocial(true);
+    try {
+      await saveSocialLinks(socialForm);
+      toast.success('Social media links saved');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSavingSocial(false);
     }
   };
 
@@ -313,6 +337,81 @@ export default function SettingsPanel() {
           <Save className="mr-1.5 h-4 w-4" /> {saving ? 'Saving…' : 'Save Settings'}
         </Button>
       </form>
+
+      <div className="mt-8">
+        <h2 className="font-serif text-2xl font-bold text-primary">Social Media Links</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Paste the full profile link for each platform you use. Leave any field blank
+          to hide that icon on the storefront footer — no code needed.
+        </p>
+      </div>
+
+      {!socialForm ? (
+        <p className="py-4 text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <form
+          onSubmit={onSubmitSocial}
+          className="mt-4 grid max-w-xl gap-4 rounded-lg border border-border/60 bg-card p-5"
+        >
+          <div className="grid gap-1.5">
+            <Label htmlFor="social-instagram">Instagram</Label>
+            <Input
+              id="social-instagram"
+              value={socialForm.instagram}
+              onChange={(e) => setSocialForm((f) => f && { ...f, instagram: e.target.value })}
+              placeholder="https://instagram.com/aruhihandlooms"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="social-facebook">Facebook</Label>
+            <Input
+              id="social-facebook"
+              value={socialForm.facebook}
+              onChange={(e) => setSocialForm((f) => f && { ...f, facebook: e.target.value })}
+              placeholder="https://facebook.com/aruhihandlooms"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="social-youtube">YouTube</Label>
+            <Input
+              id="social-youtube"
+              value={socialForm.youtube}
+              onChange={(e) => setSocialForm((f) => f && { ...f, youtube: e.target.value })}
+              placeholder="https://youtube.com/@aruhihandlooms"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="social-twitter">Twitter / X</Label>
+            <Input
+              id="social-twitter"
+              value={socialForm.twitter}
+              onChange={(e) => setSocialForm((f) => f && { ...f, twitter: e.target.value })}
+              placeholder="https://x.com/aruhihandlooms"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="social-linkedin">LinkedIn</Label>
+            <Input
+              id="social-linkedin"
+              value={socialForm.linkedin}
+              onChange={(e) => setSocialForm((f) => f && { ...f, linkedin: e.target.value })}
+              placeholder="https://linkedin.com/company/aruhihandlooms"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="social-whatsapp">WhatsApp</Label>
+            <Input
+              id="social-whatsapp"
+              value={socialForm.whatsapp}
+              onChange={(e) => setSocialForm((f) => f && { ...f, whatsapp: e.target.value })}
+              placeholder="https://wa.me/918001234567"
+            />
+          </div>
+          <Button type="submit" disabled={savingSocial} className="mt-2 w-fit bg-primary">
+            <Save className="mr-1.5 h-4 w-4" /> {savingSocial ? 'Saving…' : 'Save Social Links'}
+          </Button>
+        </form>
+      )}
 
       <div className="mt-8">
         <h2 className="font-serif text-2xl font-bold text-primary">Site Banner</h2>
