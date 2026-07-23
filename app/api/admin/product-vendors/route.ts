@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 /**
  * GET /api/admin/product-vendors
@@ -20,17 +20,20 @@ export async function GET() {
   }
 
   try {
-    const supabase = getServerSupabase();
+    const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from('products')
-      .select('id, vendor_id, vendors(id, business_name)')
+      .select('id, vendor_id, vendors(id, business_name, owner_name)')
       .not('vendor_id', 'is', null);
     if (error) throw error;
 
     const rows = (data ?? []).map((p: any) => ({
       product_id: p.id as string,
       vendor_id: p.vendor_id as string,
-      vendor_name: (p.vendors?.business_name as string | undefined) || 'Vendor',
+      vendor_name:
+        (p.vendors?.business_name as string | undefined) ||
+        (p.vendors?.owner_name as string | undefined) ||
+        'Vendor',
     }));
 
     return NextResponse.json({ rows });
