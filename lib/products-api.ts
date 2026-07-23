@@ -95,6 +95,27 @@ export function mapRowToProduct(row: ProductRow): Product {
   };
 }
 
+/**
+ * Batch-attaches each product's vendor storefront collection (name + slug)
+ * via the `product_collections` view -- a safe, product_id-keyed lookup
+ * that avoids ever selecting `products.vendor_id` in a customer-facing
+ * query (see the comment on CUSTOMER_SAFE_PRODUCT_COLUMNS above). Mutates
+ * nothing; returns new Product objects. Products with no approved vendor
+ * (no matching row in the view) simply get `collection: null`.
+ */
+async function attachCollections(products: Product[]): Promise<Product[]> {
+  if (products.length === 0) return products;
+  const { data, error } = await supabase
+    .from('product_collections')
+    .select('product_id, business_name, storefront_slug')
+    .in('product_id', products.map((p) => p.id));
+  if (error || !data) return products.map((p) => ({ ...p, collection: null }));
+  const bySlug = new Map(
+    data.map((row: any) => [row.product_id, { name: row.business_name, slug: row.storefront_slug }])
+  );
+  return products.map((p) => ({ ...p, collection: bySlug.get(p.id) ?? null }));
+}
+
 export async function fetchProducts(): Promise<Product[]> {
   const { data, error } = await supabase
     .from('products')
@@ -102,7 +123,8 @@ export async function fetchProducts(): Promise<Product[]> {
     .eq('approval_status', 'live')
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data as unknown as ProductRow[]).map(mapRowToProduct);
+  const products = (data as unknown as ProductRow[]).map(mapRowToProduct);
+  return attachCollections(products);
 }
 
 export async function fetchProductBySlug(slug: string): Promise<Product | null> {
@@ -114,7 +136,9 @@ export async function fetchProductBySlug(slug: string): Promise<Product | null> 
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  return mapRowToProduct(data as unknown as ProductRow);
+  const product = mapRowToProduct(data as unknown as ProductRow);
+  const [withCollection] = await attachCollections([product]);
+  return withCollection;
 }
 
 /** Used by the checkout order-bump (settings store a product id, not a slug). */

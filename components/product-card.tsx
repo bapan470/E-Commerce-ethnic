@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { ShoppingBag, Star } from 'lucide-react';
 import { Product } from '@/lib/types';
 import { formatINR, discountPct } from '@/lib/format';
@@ -25,12 +26,27 @@ export default function ProductCard({
   compact?: boolean;
 }) {
   const { addItem } = useCart();
+  const router = useRouter();
 
   const quickAdd = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     const size = product.sizes[0];
     addItem(product, size, 1);
+  };
+
+  // The category and collection labels sit inside the card's outer <Link>,
+  // so a nested <a> isn't valid HTML -- instead these stop the click from
+  // bubbling to the card link and navigate imperatively themselves.
+  const goToCategory = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    router.push(`/shop?category=${encodeURIComponent(product.category)}`);
+  };
+  const goToCollection = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (product.collection) router.push(`/collection/${product.collection.slug}`);
   };
 
   const discount = discountPct(product.price, product.mrp);
@@ -112,8 +128,24 @@ export default function ProductCard({
       </div>
 
       <div className={`flex flex-1 flex-col gap-1 ${compact ? 'p-2.5' : 'p-4'}`}>
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary">
-          {product.category}
+        <p className="flex flex-wrap items-center gap-x-1.5 text-[11px] font-semibold uppercase tracking-wider text-secondary">
+          <span
+            onClick={goToCategory}
+            className="cursor-pointer hover:underline"
+          >
+            {product.category}
+          </span>
+          {product.collection && (
+            <>
+              <span className="text-secondary/40">·</span>
+              <span
+                onClick={goToCollection}
+                className="cursor-pointer text-foreground/60 hover:underline"
+              >
+                {product.collection.name}
+              </span>
+            </>
+          )}
         </p>
         <h3 className={`line-clamp-2 font-serif font-semibold leading-snug text-foreground ${compact ? 'text-xs' : 'text-sm'}`}>
           {product.name}

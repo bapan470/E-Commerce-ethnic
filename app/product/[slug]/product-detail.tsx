@@ -629,8 +629,21 @@ function ProductInfo({
       <div>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
-              {product.category}
+            <p className="flex flex-wrap items-center gap-x-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
+              <Link href={`/shop?category=${encodeURIComponent(product.category)}`} className="hover:underline">
+                {product.category}
+              </Link>
+              {product.collection && (
+                <>
+                  <span className="text-secondary/40">·</span>
+                  <Link
+                    href={`/collection/${product.collection.slug}`}
+                    className="text-foreground/60 hover:underline"
+                  >
+                    {product.collection.name}
+                  </Link>
+                </>
+              )}
             </p>
             <h1 className="mt-1 font-serif text-base font-bold text-primary sm:text-xl">
               {product.name}

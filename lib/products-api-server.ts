@@ -88,6 +88,27 @@ export function mapRowToProduct(row: ProductRow): Product {
   };
 }
 
+/**
+ * Batch-attaches each product's vendor storefront collection (name + slug)
+ * via the `product_collections` view -- kept in sync with the identical
+ * helper in lib/products-api.ts. Avoids ever selecting `products.vendor_id`
+ * in a customer-facing query. Products with no approved vendor simply get
+ * `collection: null`.
+ */
+async function attachCollectionsServer(products: Product[]): Promise<Product[]> {
+  if (products.length === 0) return products;
+  const supabase = getServerSupabase();
+  const { data, error } = await supabase
+    .from('product_collections')
+    .select('product_id, business_name, storefront_slug')
+    .in('product_id', products.map((p) => p.id));
+  if (error || !data) return products.map((p) => ({ ...p, collection: null }));
+  const byId = new Map(
+    data.map((row: any) => [row.product_id, { name: row.business_name, slug: row.storefront_slug }])
+  );
+  return products.map((p) => ({ ...p, collection: byId.get(p.id) ?? null }));
+}
+
 export async function fetchProductBySlugServer(slug: string): Promise<Product | null> {
   const supabase = getServerSupabase();
   const { data, error } = await supabase
@@ -98,7 +119,9 @@ export async function fetchProductBySlugServer(slug: string): Promise<Product | 
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  return mapRowToProduct(data as unknown as ProductRow);
+  const product = mapRowToProduct(data as unknown as ProductRow);
+  const [withCollection] = await attachCollectionsServer([product]);
+  return withCollection;
 }
 
 export async function fetchProductsServer(): Promise<Product[]> {
@@ -109,7 +132,8 @@ export async function fetchProductsServer(): Promise<Product[]> {
     .eq('approval_status', 'live')
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return (data as unknown as ProductRow[]).map(mapRowToProduct);
+  const products = (data as unknown as ProductRow[]).map(mapRowToProduct);
+  return attachCollectionsServer(products);
 }
 
 export async function fetchCategoriesServer(): Promise<CategoryRow[]> {

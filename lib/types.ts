@@ -90,6 +90,11 @@ export interface Product {
   /** First image of the default colour variant, used as the card thumbnail
    *  in place of the base product's own photos when variants exist. */
   default_variant_image?: string | null;
+  /** The vendor's public storefront collection this product belongs to --
+   *  e.g. "Aruhi Weaves's Collection" at /collection/aruhi-weaves-a1b2c3.
+   *  Null/undefined if the product has no approved vendor. Shown next to
+   *  the category label on the product card and PDP, both clickable. */
+  collection?: { name: string; slug: string } | null;
   rating: number;
   reviews: number;
   featured?: boolean;
