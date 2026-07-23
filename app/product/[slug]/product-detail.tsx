@@ -175,11 +175,50 @@ export default function ProductDetail() {
     };
   }, [baseProduct, variant, params.slug]);
 
+  // Synthetic stand-in for the base product's own colour (e.g. the
+  // original "Green" a vendor listed with before ever adding a variant).
+  // It never has its own row in product_variants -- only added colours do
+  // -- so VariantSwatches needs this to keep showing it in the swatch list
+  // once other colours exist. id '__base__' flags it in handleSelectVariant
+  // below so we reset to the base product instead of trying to fetch a
+  // variant row that doesn't exist.
+  const baseVariant: ProductVariant | null = useMemo(() => {
+    if (!baseProduct) return null;
+    const color = baseProduct.colors?.[0];
+    if (!color) return null;
+    return {
+      id: '__base__',
+      product_id: baseProduct.id,
+      color,
+      color_hex: null,
+      slug: baseProduct.slug,
+      images: baseProduct.images,
+      video: baseProduct.video_url ?? null,
+      price_override: null,
+      meta_title: null,
+      meta_description: null,
+      is_default: true,
+      sku: baseProduct.sku ?? null,
+      rating: null,
+      reviews: null,
+      created_at: baseProduct.created_at ?? '',
+    };
+  }, [baseProduct]);
+
   // Switching colour never navigates — it just swaps state on the page
   // that's already mounted, so nothing reloads or re-fetches the product.
   // The thumbnail/price/colour change instantly using data we already have;
   // sizes (needed for stock accuracy) fill in a moment later in the background.
   const handleSelectVariant = (v: ProductVariant) => {
+    // Picking the base product's own colour (synthetic, id '__base__') --
+    // there's no product_variants row to fetch, so just drop back to the
+    // base product itself (same state fetchVariantBySlug-based defaulting
+    // uses in reverse, above).
+    if (v.id === '__base__') {
+      setVariant(null);
+      window.history.replaceState(window.history.state, '', `/product/${v.slug}`);
+      return;
+    }
     setVariant((prev) => ({ ...v, sizes: prev?.slug === v.slug ? prev.sizes : [] }));
     // Pass the EXISTING history.state through instead of null. Next.js's App
     // Router attaches its own internal navigation data to each history
@@ -454,8 +493,9 @@ export default function ProductDetail() {
           <div className="px-4 sm:px-0">
             <VariantSwatches
               productId={baseProduct.id}
-              activeSlug={variant?.slug}
+              activeSlug={variant?.slug ?? baseProduct.slug}
               onSelect={handleSelectVariant}
+              baseVariant={baseVariant}
             />
           </div>
         </div>

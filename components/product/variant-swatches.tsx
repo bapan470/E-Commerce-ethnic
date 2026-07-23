@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { fetchVariantsForProduct, ProductVariant } from '@/lib/variants-api';
 
@@ -8,22 +8,49 @@ export default function VariantSwatches({
   productId,
   activeSlug,
   onSelect,
+  baseVariant,
 }: {
   productId: string;
   /** Currently viewed variant slug, or undefined when on the base product page. */
   activeSlug?: string;
   /** Called with the clicked variant; the parent swaps images/price/sizes in place — no page navigation. */
   onSelect: (variant: ProductVariant) => void;
+  /**
+   * The base product's own colour, represented as a synthetic ProductVariant
+   * (id: '__base__') so it can sit in this same list. A product's original
+   * colour lives only on the `products` row, never in `product_variants` --
+   * so without this, the moment a vendor added their first *real* variant
+   * (e.g. White), the product's original colour (e.g. Green) would silently
+   * vanish from the swatch list, leaving only the newly-added ones. Pass
+   * `null` when the base product has no colour worth showing.
+   */
+  baseVariant: ProductVariant | null;
 }) {
-  const [variants, setVariants] = useState<ProductVariant[]>([]);
+  const [fetchedVariants, setFetchedVariants] = useState<ProductVariant[]>([]);
 
   useEffect(() => {
     fetchVariantsForProduct(productId)
-      .then(setVariants)
-      .catch(() => setVariants([]));
+      .then(setFetchedVariants)
+      .catch(() => setFetchedVariants([]));
   }, [productId]);
 
-  if (variants.length === 0) return null;
+  // Prepend the base product's own colour, unless a real variant row
+  // already represents it (matched by slug or by colour name, case-
+  // insensitive) -- avoids showing the same colour twice.
+  const variants = useMemo(() => {
+    if (!baseVariant) return fetchedVariants;
+    const alreadyRepresented = fetchedVariants.some(
+      (v) =>
+        v.slug === baseVariant.slug ||
+        v.color.trim().toLowerCase() === baseVariant.color.trim().toLowerCase()
+    );
+    return alreadyRepresented ? fetchedVariants : [baseVariant, ...fetchedVariants];
+  }, [fetchedVariants, baseVariant]);
+
+  // Nothing to switch between if the vendor hasn't added any extra
+  // colours yet -- same as before, only showing the base colour alone
+  // would just be noise.
+  if (fetchedVariants.length === 0) return null;
 
   return (
     <div>
