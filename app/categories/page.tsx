@@ -18,14 +18,14 @@ const TINTS = [
   'bg-secondary/10',
 ];
 
-// The categories table has no "group/type" column, so on mobile — where
-// showing 15-20 individual categories in one long list is overwhelming —
-// we derive a broad group from each category's name (e.g. "Banarasi
-// Sarees" and "Cotton Sarees" both fall under "Sarees"). This powers the
-// top filter row; tapping a chip narrows the list below it instead of
-// showing everything at once. Falls back to "Other" for anything that
-// doesn't match a known keyword, so a brand-new admin-created category
-// never disappears — it just lands in "Other" until re-classified.
+// Broad "type" groups used only when there are enough categories that a
+// keyword grouping is actually useful (e.g. 10+ categories spanning many
+// saree/kurti/lehenga variants). With only a couple of categories, tapping
+// a chip should just show that exact category, so we fall back to the
+// literal category names in that case (see `groups` below). Falls back to
+// "Other" for anything that doesn't match a known keyword, so a brand-new
+// admin-created category never disappears — it just lands in "Other"
+// until re-classified.
 const GROUP_RULES: { label: string; test: (name: string) => boolean }[] = [
   { label: 'Sarees', test: (n) => /saree/i.test(n) },
   { label: 'Kurti', test: (n) => /kurt[ai]/i.test(n) },
@@ -72,20 +72,32 @@ export default function CategoriesPage() {
       .filter((c) => c.count > 0);
   }, [categories, products]);
 
-  // Only show group chips that actually have at least one visible
-  // category in them, in a stable, sensible order (not alphabetical —
-  // Sarees/Kurti/Lehenga first since those are the highest-traffic types).
+  // With a handful of categories, grouping by keyword just collapses them
+  // into one useless "everything" chip (e.g. "Cotton Sarees" and "Silk
+  // Sarees" both becoming a single "Sarees" chip). So below a threshold we
+  // filter by the literal category names instead — every category gets
+  // its own tappable chip. Once there are enough categories that a flat
+  // list of chips would itself be overwhelming, we switch to the broader
+  // keyword groups.
+  const useLiteralNames = rows.length <= 8;
+
+  // Only show chips that actually have at least one visible category
+  // behind them, in a stable order (not alphabetical — Sarees/Kurti/
+  // Lehenga first since those are the highest-traffic types when grouped).
   const groups = useMemo(() => {
+    if (useLiteralNames) {
+      return ['All', ...rows.map((c) => c.name)];
+    }
     const present = new Set(rows.map((c) => c.group));
     const ordered = GROUP_RULES.map((g) => g.label).filter((g) => present.has(g));
     if (present.has('Other')) ordered.push('Other');
     return ['All', ...ordered];
-  }, [rows]);
+  }, [rows, useLiteralNames]);
 
-  const visibleRows = useMemo(
-    () => (activeGroup === 'All' ? rows : rows.filter((c) => c.group === activeGroup)),
-    [rows, activeGroup]
-  );
+  const visibleRows = useMemo(() => {
+    if (activeGroup === 'All') return rows;
+    return rows.filter((c) => (useLiteralNames ? c.name === activeGroup : c.group === activeGroup));
+  }, [rows, activeGroup, useLiteralNames]);
 
   return (
     <div className="container-boutique py-8 pb-24 md:pb-12">
