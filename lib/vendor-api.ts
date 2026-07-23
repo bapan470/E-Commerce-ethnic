@@ -751,3 +751,82 @@ export function downloadAdminVendorMonthlyReport(month: string, format: 'csv' | 
   a.click();
   a.remove();
 }
+
+/* ------------------------------------------------------------------ */
+/* Vendor colour/size variants (add-ons to an already-live product)   */
+/* ------------------------------------------------------------------ */
+
+export interface VendorVariantSize {
+  id: string;
+  size: string;
+  stock_quantity: number;
+  sku: string | null;
+}
+
+export interface VendorVariant {
+  id: string;
+  product_id: string;
+  color: string;
+  slug: string;
+  images: string[];
+  price_override: number | null;
+  sku: string | null;
+  is_default: boolean;
+  created_at: string;
+  sizes: VendorVariantSize[];
+}
+
+export async function fetchMyVendorVariants(productId: string): Promise<VendorVariant[]> {
+  const res = await fetch(`/api/vendor/variants?product_id=${productId}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to load variants');
+  }
+  const data = await res.json();
+  return data.variants ?? [];
+}
+
+export interface CreateVendorVariantInput {
+  product_id: string;
+  color: string;
+  images: string[];
+  price_override?: number | null;
+  sizes: { size: string; stock_quantity: number }[];
+}
+
+export async function createVendorVariant(input: CreateVendorVariantInput): Promise<VendorVariant> {
+  const res = await fetch('/api/vendor/variants', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to add variant');
+  return data.variant;
+}
+
+export interface UpdateVendorVariantInput {
+  color?: string;
+  images?: string[];
+  price_override?: number | null;
+  sizes?: { size: string; stock_quantity: number }[];
+}
+
+export async function updateVendorVariant(id: string, input: UpdateVendorVariantInput): Promise<VendorVariant> {
+  const res = await fetch(`/api/vendor/variants/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to update variant');
+  return data.variant;
+}
+
+export async function deleteVendorVariant(id: string): Promise<void> {
+  const res = await fetch(`/api/vendor/variants/${id}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to delete variant');
+  }
+}

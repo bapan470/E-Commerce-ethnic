@@ -11,6 +11,7 @@ import {
   type VendorProductRow,
   type VendorProductApprovalStatus,
 } from '@/lib/vendor-api';
+import VendorVariantsManager from '@/components/vendor/vendor-variants-manager';
 
 const PRODUCT_STATUS_META: Record<VendorProductApprovalStatus, { label: string; className: string }> = {
   draft: { label: 'Draft', className: 'bg-muted text-muted-foreground border-border' },
@@ -150,14 +151,19 @@ export default function VendorProductsPage() {
                         ₹{p.final_price ?? p.ai_suggested_price}
                       </p>
                     )}
-                    {canEdit && (
-                      <Link href={`/vendor/dashboard/products/edit-product/${p.id}`}>
-                        <Button variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs">
-                          <Pencil className="h-3 w-3" />
-                          Edit
-                        </Button>
-                      </Link>
-                    )}
+                    <div className="flex gap-2">
+                      {canEdit && (
+                        <Link href={`/vendor/dashboard/products/edit-product/${p.id}`}>
+                          <Button variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs">
+                            <Pencil className="h-3 w-3" />
+                            Edit
+                          </Button>
+                        </Link>
+                      )}
+                      {p.approval_status === 'live' && (
+                        <VendorVariantsManager productId={p.id} productName={p.name} />
+                      )}
+                    </div>
                   </div>
                 </div>
               );

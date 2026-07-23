@@ -254,20 +254,60 @@ export default function ProductsPanel() {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [stockFilter, setStockFilter] = useState<'all' | 'in' | 'out' | 'low'>('all');
+  const [vendorFilter, setVendorFilter] = useState('all');
+
+  // product_id -> vendor business name, fetched separately from the shared
+  // useProducts() hook (which is also used by the storefront and only
+  // returns live products with no vendor join). Products absent from this
+  // map are in-house catalog items with no vendor.
+  const [vendorNameById, setVendorNameById] = useState<Record<string, string>>({});
+  const [vendorIdByProductId, setVendorIdByProductId] = useState<Record<string, string>>({});
+  const [vendorOptions, setVendorOptions] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    fetch('/api/admin/product-vendors')
+      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((data) => {
+        const rows: { product_id: string; vendor_id: string; vendor_name: string }[] = data.rows ?? [];
+        const nameMap: Record<string, string> = {};
+        const idMap: Record<string, string> = {};
+        const vendorsSeen = new Map<string, string>();
+        for (const r of rows) {
+          nameMap[r.product_id] = r.vendor_name;
+          idMap[r.product_id] = r.vendor_id;
+          vendorsSeen.set(r.vendor_id, r.vendor_name);
+        }
+        setVendorNameById(nameMap);
+        setVendorIdByProductId(idMap);
+        setVendorOptions(
+          Array.from(vendorsSeen, ([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name))
+        );
+      })
+      .catch(() => {
+        // Non-fatal — the catalog just won't show vendor names/filter this session.
+      });
+  }, []);
 
   const filteredProducts = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return products.filter((p) => {
+      const vendorName = vendorNameById[p.id];
+
       const matchesQuery =
         !q ||
         p.name.toLowerCase().includes(q) ||
         (p.sku ?? '').toLowerCase().includes(q) ||
         (p.fabric ?? '').toLowerCase().includes(q) ||
         (p.origin ?? '').toLowerCase().includes(q) ||
-        p.category.toLowerCase().includes(q);
+        p.category.toLowerCase().includes(q) ||
+        (vendorName ?? '').toLowerCase().includes(q);
 
       const matchesCategory =
         categoryFilter === 'all' || p.category === categoryFilter;
+
+      const matchesVendor =
+        vendorFilter === 'all' ||
+        (vendorFilter === 'in-house' ? !vendorName : vendorIdByProductId[p.id] === vendorFilter);
 
       const matchesStock =
         stockFilter === 'all'
@@ -280,9 +320,9 @@ export default function ProductsPanel() {
             p.stock_quantity <= (p.low_stock_threshold ?? 5)
           : p.inStock && p.stock_quantity > 0;
 
-      return matchesQuery && matchesCategory && matchesStock;
+      return matchesQuery && matchesCategory && matchesStock && matchesVendor;
     });
-  }, [products, searchQuery, categoryFilter, stockFilter]);
+  }, [products, searchQuery, categoryFilter, stockFilter, vendorFilter, vendorNameById, vendorIdByProductId, vendorOptions]);
 
   useEffect(() => {
     refresh();
@@ -613,7 +653,7 @@ export default function ProductsPanel() {
           <p className="mt-1 text-sm text-muted-foreground">
             {loading
               ? 'Loading…'
-              : searchQuery || categoryFilter !== 'all' || stockFilter !== 'all'
+              : searchQuery || categoryFilter !== 'all' || stockFilter !== 'all' || vendorFilter !== 'all'
               ? `${filteredProducts.length} of ${products.length} products · stored in Supabase`
               : `${products.length} products · stored in Supabase`}
           </p>
@@ -724,7 +764,22 @@ export default function ProductsPanel() {
               </SelectContent>
             </Select>
 
-            {(searchQuery || categoryFilter !== 'all' || stockFilter !== 'all') && (
+            <Select value={vendorFilter} onValueChange={setVendorFilter}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="All Vendors" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Vendors</SelectItem>
+                <SelectItem value="in-house">In-house (no vendor)</SelectItem>
+                {vendorOptions.map((v) => (
+                  <SelectItem key={v.id} value={v.id}>
+                    {v.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {(searchQuery || categoryFilter !== 'all' || stockFilter !== 'all' || vendorFilter !== 'all') && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -732,6 +787,7 @@ export default function ProductsPanel() {
                   setSearchQuery('');
                   setCategoryFilter('all');
                   setStockFilter('all');
+                  setVendorFilter('all');
                 }}
               >
                 Reset
@@ -754,10 +810,11 @@ export default function ProductsPanel() {
       ) : (
         <div className="overflow-hidden rounded-lg border border-border/60 bg-card">
           <div className="hidden grid-cols-12 gap-3 border-b border-border/60 bg-muted/40 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground sm:grid">
-            <div className="col-span-5">Product</div>
+            <div className="col-span-4">Product</div>
+            <div className="col-span-2">Vendor</div>
             <div className="col-span-2">Category</div>
             <div className="col-span-2">Price</div>
-            <div className="col-span-2">Stock</div>
+            <div className="col-span-1">Stock</div>
             <div className="col-span-1 text-right">Actions</div>
           </div>
           <ul className="flex flex-col divide-y divide-border/60">
@@ -766,7 +823,7 @@ export default function ProductsPanel() {
                 key={p.id}
                 className="grid grid-cols-2 gap-3 px-4 py-3 sm:grid-cols-12 sm:items-center"
               >
-                <div className="col-span-2 flex items-center gap-3 sm:col-span-5">
+                <div className="col-span-2 flex items-center gap-3 sm:col-span-4">
                   <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-md bg-muted">
                     <Image
                       src={p.images[0] || 'https://placehold.co/48x60?text=No+Image'}
@@ -788,6 +845,15 @@ export default function ProductsPanel() {
                     </p>
                   </button>
                 </div>
+                <div className="col-span-2 text-sm sm:col-span-2">
+                  {vendorNameById[p.id] ? (
+                    <Badge variant="outline" className="font-normal">
+                      {vendorNameById[p.id]}
+                    </Badge>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">In-house</span>
+                  )}
+                </div>
                 <div className="col-span-1 text-sm sm:col-span-2">
                   <Badge variant="outline" className="font-normal">{p.category}</Badge>
                 </div>
@@ -799,7 +865,7 @@ export default function ProductsPanel() {
                     </span>
                   )}
                 </div>
-                <div className="col-span-2 flex items-center gap-1 sm:col-span-2">
+                <div className="col-span-2 flex items-center gap-1 sm:col-span-1">
                   <button
                     onClick={() => quickStockUpdate(p, -1)}
                     className="rounded-md border border-border px-2 py-1 text-xs hover:border-primary/50"
