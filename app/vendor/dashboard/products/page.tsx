@@ -3,16 +3,31 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { Loader2, Boxes, PackagePlus, Barcode as BarcodeIcon, Pencil, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, Boxes, PackagePlus, Barcode as BarcodeIcon, Pencil, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from '@/components/ui/dialog';
+import {
   fetchMyVendorProducts,
   fetchMyVendorVariantCounts,
+  deleteVendorProduct,
   type VendorProductRow,
   type VendorProductApprovalStatus,
 } from '@/lib/vendor-api';
 import VendorVariantsManager from '@/components/vendor/vendor-variants-manager';
+
+/** Statuses where the vendor can delete the product outright (same rule as
+ *  editing — 'awaiting_stock' is blocked server-side too since that stock is
+ *  already committed to a pickup). */
+const DELETABLE_STATUSES: VendorProductApprovalStatus[] = ['live', 'rejected', 'draft'];
 
 const PRODUCT_STATUS_META: Record<VendorProductApprovalStatus, { label: string; className: string }> = {
   draft: { label: 'Draft', className: 'bg-muted text-muted-foreground border-border' },
@@ -36,7 +51,29 @@ export default function VendorProductsPage() {
   const [products, setProducts] = useState<VendorProductRow[]>([]);
   const [variantCounts, setVariantCounts] = useState<Record<string, number>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<VendorProductRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const onDeleteProduct = async () => {
+    if (!confirmDelete) return;
+    setDeleting(true);
+    try {
+      await deleteVendorProduct(confirmDelete.id);
+      setProducts((prev) => prev.filter((p) => p.id !== confirmDelete.id));
+      setVariantCounts((prev) => {
+        const next = { ...prev };
+        delete next[confirmDelete.id];
+        return next;
+      });
+      toast.success('Product deleted');
+      setConfirmDelete(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete product');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const load = () => {
     fetchMyVendorProducts()
@@ -181,6 +218,17 @@ export default function VendorProductsPage() {
                             {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                           </Button>
                         )}
+                        {DELETABLE_STATUSES.includes(p.approval_status) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 gap-1 px-2 text-xs text-destructive hover:text-destructive"
+                            onClick={() => setConfirmDelete(p)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            Delete
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -198,6 +246,30 @@ export default function VendorProductsPage() {
           </div>
         )}
       </div>
+
+      <Dialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-serif text-xl text-primary">Delete this product?</DialogTitle>
+            <DialogDescription>
+              This removes &quot;{confirmDelete?.name}&quot; and all of its colour variations permanently. This cannot be
+              undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancel</Button>
+            </DialogClose>
+            <Button
+              onClick={onDeleteProduct}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -130,3 +130,90 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   return NextResponse.json({ product: updated });
 }
+
+// Order-item stages that mean an order for this product is still being
+// fulfilled — a product must not be deleted while one of these is open,
+// since the vendor still owes that order a pickup/handover.
+const IN_FLIGHT_STAGES = [
+  'placed',
+  'vendor_accepted',
+  'picked_from_vendor',
+  'received_at_warehouse',
+  'packed',
+  'shipped_to_customer',
+  'quality_hold',
+];
+
+/**
+ * DELETE /api/vendor/products/[id]
+ *
+ * Permanently removes one of this vendor's own products. Colour variations
+ * (product_variants) cascade-delete automatically at the DB level.
+ * order_items.product_id is ON DELETE SET NULL, so past order history is
+ * preserved (order_items keeps its own product_name copy) — but we still
+ * refuse to delete while an order for this product is actively in flight,
+ * since the vendor still needs to hand that stock over.
+ */
+export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ error: 'Please log in first' }, { status: 401 });
+
+  const productId = params.id;
+  const supabase = await getSupabaseServer();
+  const admin = getSupabaseAdmin();
+
+  const { data: vendor, error: vendorErr } = await supabase
+    .from('vendors')
+    .select('id, status')
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (vendorErr || !vendor) {
+    return NextResponse.json({ error: 'No vendor profile found for this account' }, { status: 403 });
+  }
+  if (vendor.status === 'suspended') {
+    return NextResponse.json({ error: 'Your vendor account has been suspended' }, { status: 403 });
+  }
+
+  // Make sure this product actually belongs to this vendor
+  const { data: existing, error: fetchErr } = await admin
+    .from('products')
+    .select('id, vendor_id, approval_status')
+    .eq('id', productId)
+    .eq('vendor_id', vendor.id)
+    .maybeSingle();
+
+  if (fetchErr || !existing) {
+    return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+  }
+  if (existing.approval_status === 'awaiting_stock') {
+    return NextResponse.json(
+      { error: 'This product is awaiting stock pickup and cannot be deleted right now. Contact us if you need help.' },
+      { status: 409 }
+    );
+  }
+
+  // Refuse to delete while an order for this product is still being fulfilled.
+  const { count: inFlightCount, error: orderCheckErr } = await admin
+    .from('order_items')
+    .select('id', { count: 'exact', head: true })
+    .eq('product_id', productId)
+    .in('stage', IN_FLIGHT_STAGES);
+
+  if (orderCheckErr) {
+    return NextResponse.json({ error: orderCheckErr.message }, { status: 500 });
+  }
+  if (inFlightCount && inFlightCount > 0) {
+    return NextResponse.json(
+      { error: 'This product has an order still being fulfilled and cannot be deleted until it completes.' },
+      { status: 409 }
+    );
+  }
+
+  const { error: deleteErr } = await admin.from('products').delete().eq('id', productId);
+  if (deleteErr) {
+    return NextResponse.json({ error: deleteErr.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ success: true });
+}

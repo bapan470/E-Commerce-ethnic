@@ -291,6 +291,17 @@ export async function updateVendorProduct(
   return body.product as VendorProductRow;
 }
 
+/** Permanently deletes one of this vendor's own products (and its colour
+ *  variations, which cascade-delete in the database). Blocked server-side
+ *  if the product has any order still in flight. */
+export async function deleteVendorProduct(id: string): Promise<void> {
+  const res = await fetch(`/api/vendor/products/${id}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to delete product');
+  }
+}
+
 /** Fire-and-forget: tells the server to run AI enrichment for the given
  *  product ID, then publish it live and email the vendor.
  *  Pass isEdit=true when this follows an edit (uses the edit email template).
