@@ -61,6 +61,28 @@ export interface VendorApplicationInput {
   expected_category?: string;
 }
 
+/** Result of checking whether a prospective business name would collide
+ *  with an existing vendor storefront or admin collection (they share the
+ *  /collection/[slug] URL space) -- backs the live warning on the
+ *  /sell-with-us form. `conflict` is null when the name is free. */
+export interface VendorNameConflict {
+  name: string;
+  slug: string;
+  type: 'vendor' | 'collection';
+}
+
+export async function checkVendorNameAvailability(name: string): Promise<VendorNameConflict | null> {
+  if (!name.trim()) return null;
+  try {
+    const res = await fetch(`/api/vendor/check-name?name=${encodeURIComponent(name.trim())}`);
+    if (!res.ok) return null;
+    const body = await res.json();
+    return (body.conflict as VendorNameConflict | null) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------
 // Vendor-facing (logged-in customer applying / managing their own vendor account)
 // ---------------------------------------------------------------------

@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { notifyVendorApplicationStatus } from '@/lib/vendor-notifications';
+import { generateUniqueCollectionSlug } from '@/lib/collection-slug';
 
 async function requireAdmin() {
   const cookie = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? null;
@@ -70,6 +71,22 @@ export async function PUT(req: Request) {
     }
     if (hasShowPublicRating) {
       updates.show_public_rating = show_public_rating;
+    }
+
+    // First time a vendor goes 'approved', give them their public storefront
+    // slug -- clean, name-derived, and only suffixed (-2, -3, ...) if it
+    // actually collides with another vendor's slug or an admin collection.
+    if (status === 'approved') {
+      const { data: existing } = await supabase
+        .from('vendors')
+        .select('business_name, storefront_slug')
+        .eq('id', id)
+        .maybeSingle();
+      if (existing && !existing.storefront_slug) {
+        updates.storefront_slug = await generateUniqueCollectionSlug(supabase, existing.business_name, {
+          excludeVendorId: id,
+        });
+      }
     }
 
     const { data: updated, error } = await supabase

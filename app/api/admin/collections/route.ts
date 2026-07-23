@@ -2,20 +2,13 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { generateUniqueCollectionSlug, slugifyName } from '@/lib/collection-slug';
 
 async function requireAdmin() {
   const cookie = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? null;
   const verified = await verifyAdminToken(cookie);
   return verified.valid;
 }
-
-const slugify = (s: string) =>
-  s
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-');
 
 // GET — every admin-managed collection, newest first, with a product count
 // per collection (used by the Collections panel list + search + filter).
@@ -76,24 +69,15 @@ export async function POST(req: Request) {
   }
 
   const admin = getSupabaseAdmin();
-  const baseSlug = slugify(requestedSlug || name) || 'collection';
 
   try {
     // Guarantee a unique slug even if the requested one collides with an
     // existing collection, or with a vendor's storefront slug (both share
-    // the /collection/[slug] URL space).
-    let slug = baseSlug;
-    let suffix = 1;
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const [{ data: collisionCollection }, { data: collisionVendor }] = await Promise.all([
-        admin.from('collections').select('id').eq('slug', slug).maybeSingle(),
-        admin.from('vendors').select('id').eq('storefront_slug', slug).maybeSingle(),
-      ]);
-      if (!collisionCollection && !collisionVendor) break;
-      suffix += 1;
-      slug = `${baseSlug}-${suffix}`;
-    }
+    // the /collection/[slug] URL space). Prefers the clean requested/name
+    // slug and only appends -2, -3, ... on an actual collision.
+    const slug = requestedSlug
+      ? await generateUniqueCollectionSlug(admin, requestedSlug)
+      : await generateUniqueCollectionSlug(admin, name);
 
     const { data: collection, error } = await admin
       .from('collections')

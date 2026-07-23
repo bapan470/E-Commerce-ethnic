@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/lib/auth-context';
-import { fetchMyVendorProfile, submitVendorApplication, type VendorProfile } from '@/lib/vendor-api';
+import { fetchMyVendorProfile, submitVendorApplication, checkVendorNameAvailability, type VendorProfile, type VendorNameConflict } from '@/lib/vendor-api';
 
 const EMPTY_FORM = {
   business_name: '',
@@ -35,6 +35,28 @@ export default function SellWithUsPage() {
   const [profile, setProfile] = useState<VendorProfile | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
+  const [nameConflict, setNameConflict] = useState<VendorNameConflict | null>(null);
+
+  // Debounced live check: warns before submitting if this business name
+  // would collide with an existing vendor's or admin collection's page
+  // (both share the /collection/[slug] URL space).
+  useEffect(() => {
+    const name = form.business_name.trim();
+    if (!name) {
+      setNameConflict(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      checkVendorNameAvailability(name).then((conflict) => {
+        if (!cancelled) setNameConflict(conflict);
+      });
+    }, 500);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [form.business_name]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -185,6 +207,15 @@ export default function SellWithUsPage() {
           <div>
             <Label>Business Name *</Label>
             <Input required value={form.business_name} onChange={handleChange('business_name')} />
+            {nameConflict && (
+              <p className="mt-1 text-xs text-amber-600">
+                &ldquo;{nameConflict.name}&rdquo; is already in use —{' '}
+                <Link href={`/collection/${nameConflict.slug}`} target="_blank" className="underline">
+                  view that collection
+                </Link>
+                . You can still apply; a number will be added to your storefront link if needed.
+              </p>
+            )}
           </div>
           <div>
             <Label>Owner Name *</Label>
