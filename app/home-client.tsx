@@ -151,7 +151,7 @@ export default function HomeClient() {
                 variant="outline"
                 className="w-full justify-center border-primary-foreground/30 bg-transparent text-primary-foreground transition-all duration-300 hover:scale-[1.02] hover:bg-primary-foreground/10 sm:w-auto"
               >
-                <Link href="/shop?category=Bridal">Explore Bridal</Link>
+                <Link href="/shop?category=Silk%20Sarees">Explore Silk Sarees</Link>
               </Button>
             </div>
             <div
@@ -345,7 +345,7 @@ export default function HomeClient() {
           <div className="absolute -right-10 top-0 h-40 w-40 rounded-full bg-secondary/30 blur-3xl" />
           <div className="relative max-w-xl">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
-              Bridal Edit
+              Wedding Edit
             </p>
             <h2 className="mt-2 font-serif text-3xl font-bold sm:text-4xl">
               Your Wedding, Woven in Gold
@@ -358,8 +358,8 @@ export default function HomeClient() {
               asChild
               className="mt-5 bg-secondary text-secondary-foreground hover:bg-secondary/90"
             >
-              <Link href="/shop?category=Bridal" className="gap-2">
-                Explore Bridal <ArrowRight className="h-4 w-4" />
+              <Link href="/shop?category=Lehenga" className="gap-2">
+                Explore Lehengas <ArrowRight className="h-4 w-4" />
               </Link>
             </Button>
           </div>
