@@ -15,9 +15,13 @@ import {
   ChevronDown,
   ChevronUp,
   Eye,
+  Store,
+  ExternalLink,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,6 +35,7 @@ import {
 import {
   fetchAdminVendors,
   updateAdminVendorStatus,
+  updateAdminVendorShowRating,
   reviewAdminVendorBankUpdate,
   closeVendorAccount,
   fetchAdminVendorKyc,
@@ -242,6 +247,19 @@ export default function VendorsPanel() {
     }
   };
 
+  // Public storefront (/store/[slug]) rating/review summary toggle.
+  // Optimistic update — the switch flips immediately, then reverts with
+  // a toast if the request fails.
+  const handleToggleShowRating = async (v: AdminVendorRow, next: boolean) => {
+    setVendors((prev) => prev.map((x) => (x.id === v.id ? { ...x, show_public_rating: next } : x)));
+    try {
+      await updateAdminVendorShowRating(v.id, next);
+    } catch (err) {
+      setVendors((prev) => prev.map((x) => (x.id === v.id ? { ...x, show_public_rating: !next } : x)));
+      toast.error(err instanceof Error ? err.message : 'Failed to update vendor');
+    }
+  };
+
   // Phase 4C, point 5 — full off-boarding: return stock immediately
   // (skips the 90/60-day timers), finalize any pending settlement, then
   // suspend. Distinct from the plain "Suspend" button below, which only
@@ -284,7 +302,8 @@ export default function VendorsPanel() {
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">Admin</p>
           <h1 className="mt-1 font-serif text-3xl font-bold text-primary sm:text-4xl">Vendors</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Internal sourcing vendors — never shown on the customer-facing site.
+            Approved vendors get a public storefront at /store/[slug], linked from their products
+            as "&lt;Vendor&gt;'s Collection". Toggle the rating summary per vendor below.
           </p>
         </div>
       </div>
@@ -346,6 +365,31 @@ export default function VendorsPanel() {
                       <p className="mt-1 text-xs text-muted-foreground">Category: {v.expected_category}</p>
                     )}
                     <VendorKycSection vendorId={v.id} />
+
+                    {v.status === 'approved' && v.storefront_slug && (
+                      <div className="mt-3 flex flex-wrap items-center gap-3 rounded-md border border-border/60 bg-muted/20 p-2.5">
+                        <a
+                          href={`/store/${v.storefront_slug}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+                        >
+                          <Store className="h-3.5 w-3.5" />
+                          View public storefront
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            id={`show-rating-${v.id}`}
+                            checked={v.show_public_rating}
+                            onCheckedChange={(checked) => handleToggleShowRating(v, checked)}
+                          />
+                          <Label htmlFor={`show-rating-${v.id}`} className="text-xs text-muted-foreground">
+                            Show rating/reviews on storefront
+                          </Label>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
 

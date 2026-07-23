@@ -5,7 +5,7 @@ import { Product, ProductRow, CategoryRow, Category } from './types';
 // products-api.ts. mapRowToProduct() already drops vendor_id since it's
 // not on the Product type, but selecting it explicitly here too means
 // it's never even fetched for SSR'd customer pages.
-const CUSTOMER_SAFE_PRODUCT_COLUMNS = [
+export const CUSTOMER_SAFE_PRODUCT_COLUMNS = [
   'id', 'name', 'slug', 'description', 'price', 'mrp',
   'category_id', 'category_name', 'fabric', 'origin', 'colors', 'sizes',
   'occasion', 'gender', 'age_group', 'material', 'pattern', 'images',

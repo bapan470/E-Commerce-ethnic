@@ -35,6 +35,14 @@ export interface VendorProfile {
   status: 'pending' | 'approved' | 'rejected' | 'suspended';
   admin_note: string | null;
   created_at: string;
+  /** URL-safe handle for the vendor's public storefront, e.g. /store/aruhi-weaves. */
+  storefront_slug: string | null;
+  /** Admin-only toggle (Admin > Vendors). When true, the public storefront
+   *  page and the "<Vendor>'s Collection" widget on product pages show an
+   *  aggregate rating/review summary for this vendor. When false, the
+   *  same pages still show the vendor's product listing, just without
+   *  that rating block. */
+  show_public_rating: boolean;
 }
 
 export interface VendorApplicationInput {
@@ -133,6 +141,21 @@ export async function updateAdminVendorStatus(
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id, status, admin_note }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to update vendor');
+  }
+}
+
+/** Admin-only: turn the public rating/review summary on the vendor's
+ *  storefront page (and the "<Vendor>'s Collection" widget) on or off.
+ *  Doesn't touch approval status or anything else. */
+export async function updateAdminVendorShowRating(id: string, show_public_rating: boolean): Promise<void> {
+  const res = await fetch('/api/admin/vendors', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, show_public_rating }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));

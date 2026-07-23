@@ -28,6 +28,7 @@ import ProductGallery from '@/components/product/product-gallery';
 import ProductVideo from '@/components/product/product-video';
 import MobileStickyCartBar from '@/components/product/mobile-sticky-cart-bar';
 import RelatedProducts from '@/components/product/related-products';
+import VendorCollection from '@/components/product/vendor-collection';
 import RecentlyViewedSection from '@/components/product/recently-viewed';
 import NotifyMeForm from '@/components/product/notify-me-form';
 import LowStockBadge from '@/components/growth/low-stock-badge';
@@ -567,6 +568,8 @@ export default function ProductDetail() {
       <FrequentlyBoughtTogether productId={baseProduct.id} />
 
       <RelatedProducts current={product} allProducts={products} />
+
+      <VendorCollection productId={baseProduct.id} />
 
       <RecentlyViewedSection excludeId={product.id} />
 

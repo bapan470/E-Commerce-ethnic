@@ -45,17 +45,36 @@ export async function PUT(req: Request) {
   const id = body?.id as string | undefined;
   const status = body?.status as string | undefined;
   const admin_note = body?.admin_note ? String(body.admin_note) : null;
+  // Public-storefront rating toggle — optional, independent of status.
+  // Explicit `in` check (not just truthiness) so `false` is honoured.
+  const hasShowPublicRating = typeof body?.show_public_rating === 'boolean';
+  const show_public_rating = hasShowPublicRating ? (body.show_public_rating as boolean) : undefined;
 
-  if (!id || !status || !['pending', 'approved', 'rejected', 'suspended'].includes(status)) {
+  if (!id) {
+    return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+  }
+  if (status && !['pending', 'approved', 'rejected', 'suspended'].includes(status)) {
+    return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+  }
+  if (!status && !hasShowPublicRating) {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
   }
 
   const supabase = getSupabaseAdmin();
 
   try {
+    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (status) {
+      updates.status = status;
+      updates.admin_note = admin_note;
+    }
+    if (hasShowPublicRating) {
+      updates.show_public_rating = show_public_rating;
+    }
+
     const { data: updated, error } = await supabase
       .from('vendors')
-      .update({ status, admin_note, updated_at: new Date().toISOString() })
+      .update(updates)
       .eq('id', id)
       .select('*')
       .single();
