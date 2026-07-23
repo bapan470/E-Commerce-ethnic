@@ -20,7 +20,16 @@ export default function ProductCarousel({
   return (
     <section className="mt-8">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="font-serif text-xl font-bold text-primary sm:text-2xl">{title}</h2>
+        {viewAllHref ? (
+          <Link
+            href={viewAllHref}
+            className="font-serif text-xl font-bold text-primary transition-colors hover:text-secondary sm:text-2xl"
+          >
+            {title}
+          </Link>
+        ) : (
+          <h2 className="font-serif text-xl font-bold text-primary sm:text-2xl">{title}</h2>
+        )}
         {viewAllHref && (
           <Link
             href={viewAllHref}
