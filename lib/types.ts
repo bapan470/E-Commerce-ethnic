@@ -1,10 +1,20 @@
+/**
+ * A product's category name. Categories are admin-managed (Admin >
+ * Categories, backed by the `categories` table) rather than a fixed
+ * list — this union covers the common built-in ones for editor
+ * convenience/autocomplete, but any category name the admin creates
+ * (e.g. "Banarasi Sarees", "Kurta Sets") is valid too, hence the
+ * trailing `(string & {})` escape hatch that keeps autocomplete
+ * without rejecting other admin-created names.
+ */
 export type Category =
   | 'Silk Sarees'
   | 'Cotton Sarees'
   | 'Lehenga'
   | 'Anarkali'
   | 'Kurti'
-  | 'Bridal';
+  | 'Bridal'
+  | (string & {});
 
 /**
  * Extra "Product Highlights" attributes shown on the PDP in the Meesho-style

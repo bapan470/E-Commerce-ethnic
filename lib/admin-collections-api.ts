@@ -1,5 +1,28 @@
 import { AdminCollectionRow } from './types';
 
+/** A collection tile for the public storefront (homepage "Shop by
+ *  Collection" row) — only ever contains active collections that have
+ *  at least one live product, each with a thumbnail pulled from that
+ *  product. See app/api/collections/route.ts. */
+export interface PublicCollectionRow {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  product_count: number;
+  thumbnail: string | null;
+}
+
+/** Public, unauthenticated — every active collection with ≥1 live
+ *  product. Safe to call from the homepage for any visitor. */
+export async function fetchPublicCollections(): Promise<PublicCollectionRow[]> {
+  const res = await fetch('/api/collections', { cache: 'no-store' });
+  if (!res.ok) return [];
+  const body = await res.json().catch(() => ({ collections: [] }));
+  return (body.collections as PublicCollectionRow[]) ?? [];
+}
+
+
 /** One vendor's automatic "<Vendor>'s Collection" page -- read-only here;
  *  managed by approving/suspending the vendor on Admin > Vendors instead. */
 export interface AdminVendorCollectionRow {

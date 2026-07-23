@@ -34,7 +34,7 @@ const slugify = (s: string) =>
     .replace(/-+/g, '-');
 
 export default function CategoriesPanel() {
-  const { categories, loading, refresh } = useProducts();
+  const { categories, products, loading, refresh } = useProducts();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CategoryRow | null>(null);
   const [name, setName] = useState('');
@@ -55,6 +55,17 @@ export default function CategoriesPanel() {
         (c.description ?? '').toLowerCase().includes(q)
     );
   }, [categories, searchQuery]);
+
+  // Live product count per category, shown as its own column so the admin
+  // can see at a glance how many products sit in each category — matched
+  // by name, the same way the storefront's "Shop by Category" row does.
+  const productCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const c of categories) {
+      map.set(c.id, products.filter((p) => p.category === c.name).length);
+    }
+    return map;
+  }, [categories, products]);
 
   useEffect(() => {
     refresh();
@@ -175,6 +186,7 @@ export default function CategoriesPanel() {
               <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">Slug</th>
               <th className="px-4 py-3">Description</th>
+              <th className="px-4 py-3">Products</th>
               <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
@@ -184,6 +196,17 @@ export default function CategoriesPanel() {
                 <td className="px-4 py-3 text-sm font-medium">{c.name}</td>
                 <td className="px-4 py-3 text-sm text-muted-foreground">{c.slug}</td>
                 <td className="px-4 py-3 text-sm text-muted-foreground">{c.description || '—'}</td>
+                <td className="px-4 py-3 text-sm">
+                  <span
+                    className={
+                      (productCounts.get(c.id) ?? 0) > 0
+                        ? 'inline-flex min-w-[1.5rem] justify-center rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary'
+                        : 'inline-flex min-w-[1.5rem] justify-center rounded-full bg-muted px-2 py-0.5 text-muted-foreground'
+                    }
+                  >
+                    {productCounts.get(c.id) ?? 0}
+                  </span>
+                </td>
                 <td className="px-4 py-3 text-sm">
                   <div className="flex gap-2">
                     <Button size="sm" variant="outline" onClick={() => openEdit(c)}>
@@ -203,14 +226,14 @@ export default function CategoriesPanel() {
             ))}
             {!loading && categories.length > 0 && filteredCategories.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
                   No categories match your search.
                 </td>
               </tr>
             )}
             {!loading && categories.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
                   No categories yet. Add one to get started.
                 </td>
               </tr>
