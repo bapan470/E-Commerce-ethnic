@@ -91,7 +91,10 @@ Respond with ONLY a JSON object (no markdown fences, no preamble) with these exa
  *  should still publish the product with basic fields in that case. */
 export async function generateVendorListing(input: VendorAIInput): Promise<VendorAIListing | null> {
   const apiKey = process.env.NVIDIA_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) {
+    console.error('[vendor-ai-listing] NVIDIA_API_KEY is not set — skipping AI generation, product will publish with basic fields only');
+    return null;
+  }
 
   // Fetch and convert the first image to base64 for vision analysis.
   // A 10s timeout (matching app/api/admin/generate-listing/route.ts) stops a

@@ -224,6 +224,7 @@ async function handleAiProcess({
     }
   } else {
     // AI unavailable or failed — publish anyway with the vendor's basic fields
+    console.error('[vendor/ai-process] generateVendorListing returned null — publishing product', productId, 'with basic fields only (name/slug/description/highlights will NOT be AI-generated). Check NVIDIA_API_KEY and the [vendor-ai-listing] logs above for the actual cause.');
     const { error: updateErr } = await admin
       .from('products')
       .update({ approval_status: 'live' })
