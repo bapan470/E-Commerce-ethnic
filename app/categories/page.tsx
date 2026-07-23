@@ -31,6 +31,7 @@ const GROUP_RULES: { label: string; test: (name: string) => boolean }[] = [
   { label: 'Kurti', test: (n) => /kurt[ai]/i.test(n) },
   { label: 'Lehenga', test: (n) => /lehenga/i.test(n) },
   { label: 'Suits', test: (n) => /suit|anarkali/i.test(n) },
+  { label: 'Bridal', test: (n) => /bridal/i.test(n) },
   { label: 'Gowns', test: (n) => /gown/i.test(n) },
   { label: 'Palazzo', test: (n) => /palazzo/i.test(n) },
   { label: 'Blouse', test: (n) => /blouse/i.test(n) },
@@ -58,7 +59,6 @@ export default function CategoriesPage() {
   // it until it has something in it.
   const rows = useMemo(() => {
     return categories
-      .filter((c) => !/bridal/i.test(c.name))
       .map((c) => {
         const inCat = products.filter((p) => p.category === c.name);
         const thumbs = inCat
