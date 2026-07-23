@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { ChevronRight, ImageOff } from 'lucide-react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useProducts } from '@/lib/cart-context';
 import { Skeleton } from '@/components/ui/skeleton';
 import { blurDataURL } from '@/lib/utils';
@@ -18,8 +18,32 @@ const TINTS = [
   'bg-secondary/10',
 ];
 
+// The categories table has no "group/type" column, so on mobile — where
+// showing 15-20 individual categories in one long list is overwhelming —
+// we derive a broad group from each category's name (e.g. "Banarasi
+// Sarees" and "Cotton Sarees" both fall under "Sarees"). This powers the
+// top filter row; tapping a chip narrows the list below it instead of
+// showing everything at once. Falls back to "Other" for anything that
+// doesn't match a known keyword, so a brand-new admin-created category
+// never disappears — it just lands in "Other" until re-classified.
+const GROUP_RULES: { label: string; test: (name: string) => boolean }[] = [
+  { label: 'Sarees', test: (n) => /saree/i.test(n) },
+  { label: 'Kurti', test: (n) => /kurt[ai]/i.test(n) },
+  { label: 'Lehenga', test: (n) => /lehenga/i.test(n) },
+  { label: 'Suits', test: (n) => /suit|anarkali/i.test(n) },
+  { label: 'Bridal', test: (n) => /bridal/i.test(n) },
+  { label: 'Gowns', test: (n) => /gown/i.test(n) },
+  { label: 'Palazzo', test: (n) => /palazzo/i.test(n) },
+  { label: 'Fabric & Accessories', test: (n) => /dupatta|stole|blouse|dress material|fabric/i.test(n) },
+];
+
+function groupFor(name: string): string {
+  return GROUP_RULES.find((g) => g.test(name))?.label ?? 'Other';
+}
+
 export default function CategoriesPage() {
   const { products, categories, loading } = useProducts();
+  const [activeGroup, setActiveGroup] = useState('All');
 
   // Fully dynamic: every row is derived from whatever categories exist in
   // Supabase right now, and the circular thumbnails are pulled live from
@@ -27,18 +51,39 @@ export default function CategoriesPage() {
   // in admin → a new row appears here automatically. Delete one → it's
   // gone. Add/remove/replace product photos → the circles update with them,
   // no code change needed anywhere.
+  //
+  // Categories with zero products are dropped entirely — a shopper tapping
+  // into an empty category is a dead end, so it's better to just not show
+  // it until it has something in it.
   const rows = useMemo(() => {
-    return categories.map((c) => {
-      const inCat = products.filter((p) => p.category === c.name);
-      const thumbs = inCat
-        .slice()
-        .sort((a, b) => Number(!!b.featured) - Number(!!a.featured))
-        .slice(0, 3)
-        .map((p) => p.images[0])
-        .filter(Boolean) as string[];
-      return { ...c, count: inCat.length, thumbs };
-    });
+    return categories
+      .map((c) => {
+        const inCat = products.filter((p) => p.category === c.name);
+        const thumbs = inCat
+          .slice()
+          .sort((a, b) => Number(!!b.featured) - Number(!!a.featured))
+          .slice(0, 3)
+          .map((p) => p.images[0])
+          .filter(Boolean) as string[];
+        return { ...c, count: inCat.length, thumbs, group: groupFor(c.name) };
+      })
+      .filter((c) => c.count > 0);
   }, [categories, products]);
+
+  // Only show group chips that actually have at least one visible
+  // category in them, in a stable, sensible order (not alphabetical —
+  // Sarees/Kurti/Lehenga first since those are the highest-traffic types).
+  const groups = useMemo(() => {
+    const present = new Set(rows.map((c) => c.group));
+    const ordered = GROUP_RULES.map((g) => g.label).filter((g) => present.has(g));
+    if (present.has('Other')) ordered.push('Other');
+    return ['All', ...ordered];
+  }, [rows]);
+
+  const visibleRows = useMemo(
+    () => (activeGroup === 'All' ? rows : rows.filter((c) => c.group === activeGroup)),
+    [rows, activeGroup]
+  );
 
   return (
     <div className="container-boutique py-8 pb-24 md:pb-12">
@@ -52,9 +97,28 @@ export default function CategoriesPage() {
         <p className="mt-2 text-sm text-muted-foreground">
           {loading
             ? 'Loading…'
-            : `${categories.length} ${categories.length === 1 ? 'category' : 'categories'}`}
+            : `${rows.length} ${rows.length === 1 ? 'category' : 'categories'}`}
         </p>
       </div>
+
+      {!loading && groups.length > 2 && (
+        <div className="no-scrollbar mb-5 -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+          {groups.map((g) => (
+            <button
+              key={g}
+              type="button"
+              onClick={() => setActiveGroup(g)}
+              className={`shrink-0 rounded-full border px-4 py-1.5 text-sm font-medium transition-colors ${
+                activeGroup === g
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : 'border-border bg-background text-foreground hover:bg-muted'
+              }`}
+            >
+              {g}
+            </button>
+          ))}
+        </div>
+      )}
 
       {loading ? (
         <div className="flex flex-col gap-3">
@@ -66,12 +130,17 @@ export default function CategoriesPage() {
         <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border py-20 text-center">
           <p className="font-serif text-lg font-semibold">No categories yet</p>
           <p className="text-sm text-muted-foreground">
-            Categories added from the admin panel will show up here.
+            Categories with products will show up here.
           </p>
+        </div>
+      ) : visibleRows.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border py-20 text-center">
+          <p className="font-serif text-lg font-semibold">Nothing in {activeGroup} yet</p>
+          <p className="text-sm text-muted-foreground">Try another filter above.</p>
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {rows.map((c, i) => (
+          {visibleRows.map((c, i) => (
             <Link
               key={c.id}
               href={`/shop?category=${encodeURIComponent(c.name)}`}
