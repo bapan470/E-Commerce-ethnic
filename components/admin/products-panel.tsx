@@ -457,6 +457,7 @@ export default function ProductsPanel() {
         fabric: listing.fabric || f.fabric,
         origin: listing.origin || f.origin,
         occasion: Array.isArray(listing.occasion) ? listing.occasion.join(', ') : f.occasion,
+        colors: f.colors || (Array.isArray(listing.colors) ? listing.colors.join(', ') : f.colors),
         material: f.material || listing.material || f.material,
         pattern: f.pattern || listing.pattern || f.pattern,
         gender: f.gender !== 'female' ? f.gender : listing.gender || f.gender,

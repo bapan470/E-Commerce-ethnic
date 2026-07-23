@@ -60,6 +60,7 @@ interface GeneratedListing {
   pattern: string;
   gender: string;
   meta_description: string;
+  colors: string[];
   highlights: GeneratedHighlights;
 }
 
@@ -104,6 +105,7 @@ Respond with ONLY a JSON object (no markdown fences, no preamble) with these exa
   "pattern": "single Google Shopping pattern value, e.g. 'Solid', 'Zari Border', 'Floral Print', 'Striped'",
   "gender": "one of exactly: female, male, unisex",
   "meta_description": "a single SEO meta-description sentence, 140-160 characters, enticing and keyword-rich, ending without ellipsis",
+  "colors": ["exactly ONE value -- the single base colour this exact product/photo is sold in, e.g. 'Maroon'. Do NOT list every decorative/embroidery/border colour visible -- this value becomes the colour swatch shown to shoppers, so extra colours here make the product look like it comes in colours it doesn't. If colours were already given above, keep that value as-is."],
   "highlights": {
     "border": "e.g. 'Lace', 'Zari', 'Temple Border', 'Woven Design' — leave '' if not applicable (e.g. a kurti with no saree-style border)",
     "border_width": "e.g. 'Small Border', 'Broad Border', 'No Border' — leave '' if not applicable",
@@ -282,6 +284,14 @@ export async function POST(req: Request) {
         { error: 'AI returned an unexpected response format. Please try again.' },
         { status: 502 }
       );
+    }
+
+    // Safety net: the prompt asks for exactly one base colour, but a vision
+    // model won't always follow that perfectly -- extra values here would
+    // show up as fake colour swatches on the product page (see
+    // resolveAllColors() in lib/products-api.ts).
+    if (Array.isArray(parsed.colors) && parsed.colors.length > 1) {
+      parsed.colors = parsed.colors.slice(0, 1);
     }
 
     return NextResponse.json({ listing: parsed });
