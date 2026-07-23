@@ -69,7 +69,10 @@ export default function HomeClient() {
   }, [categories, products]);
 
   const visibleCategories = useMemo(
-    () => categories.filter((c) => (categoryCounts.get(c.id) ?? 0) > 0),
+    () =>
+      categories.filter(
+        (c) => (categoryCounts.get(c.id) ?? 0) > 0 && !/bridal/i.test(c.name)
+      ),
     [categories, categoryCounts]
   );
 
