@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import { Loader2, Boxes, PackagePlus, Barcode as BarcodeIcon, Pencil } from 'lucide-react';
+import { Loader2, Boxes, PackagePlus, Barcode as BarcodeIcon, Pencil, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
   fetchMyVendorProducts,
+  fetchMyVendorVariantCounts,
   type VendorProductRow,
   type VendorProductApprovalStatus,
 } from '@/lib/vendor-api';
@@ -33,6 +34,8 @@ const POLL_INTERVAL = 12_000;
 export default function VendorProductsPage() {
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<VendorProductRow[]>([]);
+  const [variantCounts, setVariantCounts] = useState<Record<string, number>>({});
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = () => {
@@ -45,6 +48,7 @@ export default function VendorProductsPage() {
         toast.error(err instanceof Error ? err.message : 'Failed to load your products');
         setLoading(false);
       });
+    fetchMyVendorVariantCounts().then(setVariantCounts);
   };
 
   // Auto-refresh while any product is still in 'pending_review' (being processed).
@@ -108,63 +112,86 @@ export default function VendorProductsPage() {
             {products.map((p) => {
               const meta = PRODUCT_STATUS_META[p.approval_status];
               const canEdit = EDITABLE_STATUSES.includes(p.approval_status);
+              const isLive = p.approval_status === 'live';
+              const count = variantCounts[p.id] ?? 0;
+              const isExpanded = expandedId === p.id;
               return (
-                <div
-                  key={p.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/60 p-3"
-                >
-                  <div className="flex items-center gap-3">
-                    {p.images[0] && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={p.images[0]}
-                        alt=""
-                        className="h-12 w-12 rounded-md border border-border/60 object-cover"
-                      />
-                    )}
-                    <div>
-                      <p className="text-sm font-medium">{p.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {p.category_name} · Qty {p.available_quantity}
-                      </p>
-                      {p.barcode && (
-                        <p className="mt-0.5 flex items-center gap-1 font-mono text-xs text-muted-foreground">
-                          <BarcodeIcon className="h-3 w-3" /> {p.barcode}
+                <div key={p.id} className="rounded-md border border-border/60 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-3">
+                      {p.images[0] && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={p.images[0]}
+                          alt=""
+                          className="h-12 w-12 rounded-md border border-border/60 object-cover"
+                        />
+                      )}
+                      <div>
+                        <p className="text-sm font-medium">{p.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {p.category_name} · Qty {p.available_quantity}
                         </p>
-                      )}
-                      {p.approval_status === 'rejected' && p.rejection_reason && (
-                        <p className="mt-0.5 text-xs text-red-600">Reason: {p.rejection_reason}</p>
-                      )}
-                      {p.approval_status === 'pending_review' && (
-                        <p className="mt-0.5 text-xs text-amber-600">
-                          Your listing is being prepared. You&apos;ll receive an email when it goes live.
-                        </p>
-                      )}
+                        {p.barcode && (
+                          <p className="mt-0.5 flex items-center gap-1 font-mono text-xs text-muted-foreground">
+                            <BarcodeIcon className="h-3 w-3" /> {p.barcode}
+                          </p>
+                        )}
+                        {isLive && count > 0 && (
+                          <p className="mt-0.5 text-xs text-primary">
+                            {count} variation{count === 1 ? '' : 's'}
+                          </p>
+                        )}
+                        {p.approval_status === 'rejected' && p.rejection_reason && (
+                          <p className="mt-0.5 text-xs text-red-600">Reason: {p.rejection_reason}</p>
+                        )}
+                        {p.approval_status === 'pending_review' && (
+                          <p className="mt-0.5 text-xs text-amber-600">
+                            Your listing is being prepared. You&apos;ll receive an email when it goes live.
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex flex-col items-end gap-2">
-                    <Badge variant="outline" className={meta.className}>
-                      {meta.label}
-                    </Badge>
-                    {(p.final_price ?? p.ai_suggested_price) != null && (
-                      <p className="text-xs text-muted-foreground">
-                        ₹{p.final_price ?? p.ai_suggested_price}
-                      </p>
-                    )}
-                    <div className="flex gap-2">
-                      {canEdit && (
-                        <Link href={`/vendor/dashboard/products/edit-product/${p.id}`}>
-                          <Button variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs">
-                            <Pencil className="h-3 w-3" />
-                            Edit
+                    <div className="flex flex-col items-end gap-2">
+                      <Badge variant="outline" className={meta.className}>
+                        {meta.label}
+                      </Badge>
+                      {(p.final_price ?? p.ai_suggested_price) != null && (
+                        <p className="text-xs text-muted-foreground">
+                          ₹{p.final_price ?? p.ai_suggested_price}
+                        </p>
+                      )}
+                      <div className="flex gap-2">
+                        {canEdit && (
+                          <Link href={`/vendor/dashboard/products/edit-product/${p.id}`}>
+                            <Button variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs">
+                              <Pencil className="h-3 w-3" />
+                              Edit
+                            </Button>
+                          </Link>
+                        )}
+                        {isLive && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 gap-1 px-2 text-xs"
+                            onClick={() => setExpandedId(isExpanded ? null : p.id)}
+                          >
+                            {count > 0 ? `${count} variation${count === 1 ? '' : 's'}` : 'Variations'}
+                            {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                           </Button>
-                        </Link>
-                      )}
-                      {p.approval_status === 'live' && (
-                        <VendorVariantsManager productId={p.id} productName={p.name} />
-                      )}
+                        )}
+                      </div>
                     </div>
                   </div>
+                  {isLive && (
+                    <VendorVariantsManager
+                      productId={p.id}
+                      productName={p.name}
+                      expanded={isExpanded}
+                      onCountChange={(c) => setVariantCounts((prev) => ({ ...prev, [p.id]: c }))}
+                    />
+                  )}
                 </div>
               );
             })}

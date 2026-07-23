@@ -776,6 +776,14 @@ export interface VendorVariant {
   sizes: VendorVariantSize[];
 }
 
+/** Bulk variant-count lookup for the vendor's whole product list (one call, not N). */
+export async function fetchMyVendorVariantCounts(): Promise<Record<string, number>> {
+  const res = await fetch('/api/vendor/variants/counts');
+  if (!res.ok) return {};
+  const data = await res.json();
+  return data.counts ?? {};
+}
+
 export async function fetchMyVendorVariants(productId: string): Promise<VendorVariant[]> {
   const res = await fetch(`/api/vendor/variants?product_id=${productId}`);
   if (!res.ok) {

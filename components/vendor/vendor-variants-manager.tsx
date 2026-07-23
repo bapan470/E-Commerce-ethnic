@@ -2,7 +2,7 @@
 
 import { useEffect, useState, FormEvent } from 'react';
 import Image from 'next/image';
-import { Plus, Pencil, Trash2, Upload, Loader2, Palette } from 'lucide-react';
+import { Plus, Pencil, Trash2, Upload, Loader2 } from 'lucide-react';
 import {
   fetchMyVendorVariants,
   createVendorVariant,
@@ -42,20 +42,24 @@ const emptyForm = (): FormState => ({
 interface Props {
   productId: string;
   productName: string;
-  /** trigger element — rendered as a plain button the parent controls */
-  triggerLabel?: string;
+  /** Whether the inline panel is expanded (controlled by the parent row's chevron). */
+  expanded: boolean;
+  /** Notifies the parent of the current variant count, so it can show
+   *  "3 variations" in the collapsed row without opening the panel. */
+  onCountChange?: (count: number) => void;
 }
 
 /**
- * Lets an approved vendor add colour/size variations to a product that is
- * already live on the site. Deliberately simpler than the admin variant
- * manager (no AI colour detection, no "import from URL") to keep the vendor
- * flow quick — vendors just upload a photo per colour and set sizes/stock.
+ * Inline (non-modal) colour/size variant panel for a vendor's own product.
+ * Rendered directly under the product row when the row's chevron is
+ * expanded — lets the vendor view, edit, or delete existing colours, and
+ * add new ones, without leaving the page. Deliberately simpler than the
+ * admin variant manager (no AI colour detection, no "import from URL").
  */
-export default function VendorVariantsManager({ productId, productName, triggerLabel = 'Add Variation' }: Props) {
-  const [open, setOpen] = useState(false);
+export default function VendorVariantsManager({ productId, productName, expanded, onCountChange }: Props) {
   const [variants, setVariants] = useState<VendorVariant[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<VendorVariant | null>(null);
@@ -67,17 +71,20 @@ export default function VendorVariantsManager({ productId, productName, triggerL
   const load = async () => {
     setLoading(true);
     try {
-      setVariants(await fetchMyVendorVariants(productId));
+      const data = await fetchMyVendorVariants(productId);
+      setVariants(data);
+      onCountChange?.(data.length);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load variants');
     } finally {
       setLoading(false);
+      setLoaded(true);
     }
   };
 
   useEffect(() => {
-    if (open) load();
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (expanded && !loaded) load();
+  }, [expanded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openNew = () => {
     setEditing(null);
@@ -167,63 +174,55 @@ export default function VendorVariantsManager({ productId, productName, triggerL
     }
   };
 
+  if (!expanded) return null;
+
   return (
     <>
-      <Button variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs" onClick={() => setOpen(true)}>
-        <Palette className="h-3 w-3" />
-        {triggerLabel}
-      </Button>
+      <div className="mt-2 rounded-md border border-border/60 bg-muted/20 p-3">
+        <p className="mb-2 text-xs font-medium text-muted-foreground">
+          Colour variations for &quot;{productName}&quot;
+        </p>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="font-serif text-xl text-primary">Colour Variations — {productName}</DialogTitle>
-            <DialogDescription>
-              Add extra colours/sizes for this product. Each colour gets its own photos and stock per size.
-            </DialogDescription>
-          </DialogHeader>
-
-          {loading ? (
-            <div className="py-8 text-center">
-              <Loader2 className="mx-auto h-5 w-5 animate-spin text-primary" />
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {variants.length === 0 && (
-                <p className="py-4 text-center text-sm text-muted-foreground">No colour variations yet.</p>
-              )}
-              {variants.map((v) => (
-                <div key={v.id} className="flex items-center justify-between gap-3 rounded-md border border-border/60 p-3">
-                  <div className="flex items-center gap-3">
-                    {v.images[0] && (
-                      <div className="relative h-12 w-12 overflow-hidden rounded-md border border-border/60">
-                        <Image src={v.images[0]} alt={v.color} fill sizes="48px" className="object-cover" />
-                      </div>
-                    )}
-                    <div>
-                      <p className="text-sm font-medium">{v.color}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {v.sizes.map((s) => `${s.size} (${s.stock_quantity})`).join(', ')}
-                      </p>
+        {loading ? (
+          <div className="py-4 text-center">
+            <Loader2 className="mx-auto h-5 w-5 animate-spin text-primary" />
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {variants.length === 0 && (
+              <p className="py-2 text-sm text-muted-foreground">No colour variations yet.</p>
+            )}
+            {variants.map((v) => (
+              <div key={v.id} className="flex items-center justify-between gap-3 rounded-md border border-border/60 bg-card p-2.5">
+                <div className="flex items-center gap-3">
+                  {v.images[0] && (
+                    <div className="relative h-11 w-11 overflow-hidden rounded-md border border-border/60">
+                      <Image src={v.images[0]} alt={v.color} fill sizes="44px" className="object-cover" />
                     </div>
-                  </div>
-                  <div className="flex gap-1.5">
-                    <Button variant="outline" size="sm" className="h-7 px-2" onClick={() => openEdit(v)}>
-                      <Pencil className="h-3 w-3" />
-                    </Button>
-                    <Button variant="outline" size="sm" className="h-7 px-2 text-destructive" onClick={() => setConfirmDelete(v)}>
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+                  )}
+                  <div>
+                    <p className="text-sm font-medium">{v.color}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {v.sizes.map((s) => `${s.size} (${s.stock_quantity})`).join(', ')}
+                    </p>
                   </div>
                 </div>
-              ))}
-              <Button variant="outline" size="sm" className="mt-2 w-fit" onClick={openNew}>
-                <Plus className="mr-1.5 h-3.5 w-3.5" /> Add colour
-              </Button>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+                <div className="flex gap-1.5">
+                  <Button variant="outline" size="sm" className="h-7 px-2" onClick={() => openEdit(v)}>
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-7 px-2 text-destructive" onClick={() => setConfirmDelete(v)}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+            <Button variant="outline" size="sm" className="mt-1 w-fit" onClick={openNew}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" /> Add colour
+            </Button>
+          </div>
+        )}
+      </div>
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="max-h-[85vh] max-w-lg overflow-y-auto">

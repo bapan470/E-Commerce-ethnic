@@ -263,6 +263,16 @@ export default function ProductsPanel() {
   const [vendorNameById, setVendorNameById] = useState<Record<string, string>>({});
   const [vendorIdByProductId, setVendorIdByProductId] = useState<Record<string, string>>({});
   const [vendorOptions, setVendorOptions] = useState<{ id: string; name: string }[]>([]);
+  const [variantCountById, setVariantCountById] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    fetch('/api/admin/product-variant-counts')
+      .then((res) => (res.ok ? res.json() : { counts: {} }))
+      .then((data) => setVariantCountById(data.counts ?? {}))
+      .catch(() => {
+        // Non-fatal — the catalog just won't show the colour-count badge this session.
+      });
+  }, []);
 
   useEffect(() => {
     fetch('/api/admin/product-vendors')
@@ -843,6 +853,11 @@ export default function ProductsPanel() {
                     <p className="text-xs text-muted-foreground">
                       {p.fabric || '—'} · {p.origin || '—'} {p.sku ? `· SKU ${p.sku}` : ''}
                     </p>
+                    {(variantCountById[p.id] ?? 0) > 0 && (
+                      <p className="text-xs text-primary">
+                        {variantCountById[p.id]} colour{variantCountById[p.id] === 1 ? '' : 's'}
+                      </p>
+                    )}
                   </button>
                 </div>
                 <div className="col-span-2 text-sm sm:col-span-2">
