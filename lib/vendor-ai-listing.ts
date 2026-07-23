@@ -55,7 +55,7 @@ Respond with ONLY a JSON object (no markdown fences, no preamble) with these exa
   "pattern": "single Google Shopping pattern value, e.g. 'Zari Border'",
   "gender": "one of exactly: female, male, unisex",
   "meta_description": "SEO meta-description, 140-160 characters, enticing and keyword-rich",
-  "colors": ["main colors visible in product, 1-4 values, e.g. 'Maroon', 'Gold'"],
+  "colors": ["exactly ONE value -- the single base colour this exact photographed item is sold in, e.g. 'Maroon'. Do NOT list every decorative/embroidery/border colour visible in the photo -- this value becomes the colour swatch shown to shoppers, so extra colours here make the product look like it comes in colours it doesn't."],
   "highlights": {
     "border": "e.g. 'Zari', 'Temple Border' — leave empty string if not applicable",
     "border_width": "e.g. 'Small Border', 'Broad Border' — leave empty string if not applicable",
@@ -208,6 +208,16 @@ export async function generateVendorListing(input: VendorAIInput): Promise<Vendo
   if (!parsed) {
     console.error('[vendor-ai-listing] non-JSON model response:', text.slice(0, 300));
     return null;
+  }
+
+  // Safety net: the prompt asks for exactly one base colour, but a vision
+  // model won't always follow that perfectly. `colors` here represents this
+  // product's own swatch (merged with real product_variants colours by
+  // resolveAllColors in lib/products-api.ts / products-api-server.ts), so
+  // any extra values that slip through would show up as fake colour dots
+  // on the product card for colours that were never actually listed.
+  if (Array.isArray(parsed.colors) && parsed.colors.length > 1) {
+    parsed.colors = parsed.colors.slice(0, 1);
   }
 
   return parsed;
