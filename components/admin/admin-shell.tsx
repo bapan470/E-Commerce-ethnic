@@ -7,6 +7,7 @@ import {
   BarChart3,
   Package,
   FolderTree,
+  Layers,
   Star,
   ShoppingCart,
   Users,
@@ -39,6 +40,7 @@ export type AdminSection =
   | 'analytics'
   | 'products'
   | 'categories'
+  | 'collections'
   | 'reviews'
   | 'orders'
   | 'customers'
@@ -82,6 +84,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { value: 'products', label: 'Products', icon: Package },
       { value: 'categories', label: 'Categories', icon: FolderTree },
+      { value: 'collections', label: 'Collections', icon: Layers },
       { value: 'reviews', label: 'Reviews', icon: Star },
     ],
   },

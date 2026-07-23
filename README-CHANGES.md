@@ -1,75 +1,82 @@
-# Vendor Collection — round 2 changes
+# Admin > Collections — naya feature
 
-## Kya-kya fix kiya
+## Kya bana
 
-1. **URL rename: `/store/[slug]` → `/collection/[slug]`**
-   `https://www.aruhihandlooms.com/store/pixtalemory-bdc385` ab
-   `https://www.aruhihandlooms.com/collection/pixtalemory-bdc385` banega.
-   - `app/store/` folder → `app/collection/` (page + client component renamed)
-   - `app/api/store/[slug]/route.ts` → `app/api/collection/[slug]/route.ts`
-   - Har jagah jahan `/store/...` link banta tha (admin panel, vendor
-     collection widget, fetch call) — sab `/collection/...` par update kar
-     diya.
-   - **Note:** agar Google me pehle se `/store/...` URL index ho chuka hai
-     ya kisi ne share kiya hai, to purana URL ab 404 dega (koi redirect
-     set nahi kiya, kyunki abhi tak koi live traffic/SEO history nahi thi).
-     Agar future me chahiye to `/store/[slug]` par ek redirect add kar sakte
-     hain — bata dijiyega.
+**Admin sidebar me naya tab: "Collections"** (Catalog group me, Categories ke
+neeche). Ye vendor collections se alag hai — ye poori tarah admin-managed
+hain, koi vendor inhe touch nahi kar sakta.
 
-2. **Eyebrow label "COLLECTION" — jaise "BRIDAL" tag hota hai**
-   - Product page ke "<Vendor>'s Collection" carousel me ab title ke upar
-     chhota "COLLECTION" tag dikhega (bilkul "BRIDAL" jaisa style), aur
-     title me sirf vendor ka naam dikhega (jaise product page pe "BRIDAL"
-     ke neeche product ka naam hota hai).
-   - **Dono (eyebrow tag + vendor naam) click karne par** `/collection/
-     [slug]` par jaate hain — plus "View All" bhi wahi jaata hai.
-   - Standalone collection page (`/collection/[slug]`) par eyebrow text
-     "Vendor Collection" se badal ke sirf **"Collection"** kar diya, jaisa
-     aapne bola.
+Panel me hai:
+- **"Add New Collection" button** — naam, slug (auto-generate hota hai naam
+  se, chaho to manually bhi de sakte ho), description, Active/Inactive
+  toggle, aur ek **product picker** (search + checkbox list) jisse products
+  select karke collection me daal sakte ho.
+- **Product count** — har collection row me kitne products hain wo dikhta
+  hai.
+- **Search box** — name/slug/description se filter.
+- **Filter tabs** — All / Active / Inactive.
+- Har collection ka apna public link `/collection/[slug]` bhi row me
+  clickable hai.
+- Edit aur Delete dono options hain (delete se sirf grouping hatti hai,
+  products delete nahi hote).
 
-3. **Total rating/review bug fix (asli wajah mil gayi)**
-   Admin me toggle "Show rating/reviews on storefront" ON hone ke bawajood
-   collection page par total rating/review nahi dikh raha tha — isiliye
-   kyunki purana code sirf `products` table ke `rating`/`reviews` columns
-   ka sum leta tha. Ye columns sirf **seed/placeholder values** hain jo
-   tab tak dikhte hain jab tak product par koi asli review na ho — isi
-   wajah se zyadatar products "0 reviews" dikhate hain, jabki asli reviews
-   `reviews` table me store hote hain (jo single product page use karta
-   hai, isi liye wahan sahi count dikhta tha).
+## Kaise kaam karta hai (technical)
 
-   Ab collection page ka total bhi **`reviews` table se live data** leke
-   calculate hota hai (approved reviews), aur jis product ka koi live
-   review abhi tak nahi hai sirf uske liye seed value fallback hoti hai —
-   exactly wahi logic jo single product page already use karta hai. Ab
-   total sahi calculate hoke top pe dikhega.
+1. **Naya DB migration**: `supabase/migrations/20260814000000_admin_collections.sql`
+   - `collections` table (id, name, slug, description, is_active, timestamps)
+   - `collection_products` table (collection_id + product_id junction, with
+     position for ordering)
+   - Dono tables par RLS on hai lekin **koi public/authenticated policy nahi**
+     — matlab sirf service-role (yani sirf `/api/admin/collections/*` jo
+     admin-login cookie check karta hai) inhe touch kar sakta hai. Vendors
+     table jaisa hi secure pattern.
+   - **Isko bhi Supabase SQL editor me run karna hoga**, tabhi ye feature
+     kaam karega (jaise pichli baar bataya tha vendor storefront migration
+     ke liye).
+
+2. **Admin API**: `app/api/admin/collections/route.ts` (list + create) aur
+   `app/api/admin/collections/[id]/route.ts` (get one with product ids,
+   update, delete). Dono admin-session cookie check karte hain — bina admin
+   login ke koi bhi request 401 milegi.
+
+3. **Public page reuse**: `/collection/[slug]` route (jo pichli baar vendor
+   ke liye bana tha) ab **dono serve karta hai** — pehle vendor slug check
+   karta hai, agar nahi mila to admin collection slug check karta hai (sirf
+   Active collections dikhti hain, Inactive 404 dega). Same rating-total
+   calculation (live reviews table se) admin collections ke liye bhi apply
+   hoti hai — koi extra toggle nahi lagaya kyunki admin collection ka koi
+   "vendor" nahi hai jiske liye hide karna ho.
 
 ## Files is zip me
 ```
-app/api/collection/[slug]/route.ts        (naya — pehle /api/store/[slug]/route.ts tha)
-app/collection/[slug]/page.tsx            (naya path)
-app/collection/[slug]/collection-page-client.tsx  (naya path, renamed from store-page-client.tsx)
-components/admin/vendors-panel.tsx
-components/product/product-carousel.tsx
-components/product/vendor-collection.tsx
-lib/vendor-storefront-api.ts
-changes.diff   -> full diff, git rename detection ke saath
+app/admin/page.tsx                                  (Collections panel register kiya)
+app/api/admin/collections/route.ts                  (naya)
+app/api/admin/collections/[id]/route.ts              (naya)
+app/api/collection/[slug]/route.ts                   (extended — admin collections bhi serve karta hai)
+app/collection/[slug]/collection-page-client.tsx      (pichli baar se, no change is round)
+app/collection/[slug]/page.tsx                        (pichli baar se, no change is round)
+components/admin/admin-shell.tsx                      (naya sidebar item: Collections)
+components/admin/collections-panel.tsx                (naya — poora UI)
+components/admin/vendors-panel.tsx                    (pichli baar se)
+components/product/product-carousel.tsx               (pichli baar se)
+components/product/vendor-collection.tsx              (pichli baar se)
+lib/admin-collections-api.ts                          (naya — client fetch helpers)
+lib/types.ts                                          (naya AdminCollectionRow type add kiya)
+lib/vendor-storefront-api.ts                           (pichli baar se)
+supabase/migrations/20260814000000_admin_collections.sql   (naya — RUN KARNA ZAROORI HAI)
+changes.diff                                          (poora diff, rename-aware)
 ```
 
 ## Apply kaise karein
-Sabse aasaan tarika — apne local clone me:
-
 ```bash
 git apply changes.diff
 ```
+Fir zaroori: **Supabase SQL editor me `20260814000000_admin_collections.sql`
+run karna na bhoolein**, warna Admin > Collections tab khulega lekin
+save/list requests fail hongi.
 
-Agar `git apply` conflict de (kyunki aapne beech me kuch aur change kiya
-ho), to manually in files ko overwrite kar dijiye, **aur purana folder
-`app/store/` + `app/api/store/` delete kar dijiye** (naya `/collection`
-path already inclusive hai, dono ek saath rakhne ki zaroorat nahi).
-
-Phir normal tarike se:
 ```bash
 git add -A
-git commit -m "Rename vendor storefront to /collection, fix rating totals, add eyebrow tag"
+git commit -m "Add admin-managed Collections (separate from vendor collections)"
 git push
 ```

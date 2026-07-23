@@ -118,6 +118,20 @@ export interface CategoryRow {
   description?: string | null;
 }
 
+/** An admin-created, curated collection (distinct from the auto-generated
+ *  per-vendor collection) -- e.g. "Diwali Specials". Managed entirely from
+ *  Admin > Collections; shows publicly at /collection/[slug]. */
+export interface AdminCollectionRow {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  is_active: boolean;
+  product_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Address {
   id: string;
   user_id: string;
