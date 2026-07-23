@@ -8,6 +8,11 @@ import {
 } from '@/lib/cron-jobs';
 
 export const dynamic = 'force-dynamic';
+// runStuckVendorListingsJob (one of the jobs run below) now retries AI
+// generation for a small batch of recovered products before falling
+// back, which can take a while — give this route the full Vercel Hobby
+// budget so it isn't killed mid-batch.
+export const maxDuration = 60;
 
 // ---------------------------------------------------------------------
 // Consolidated daily cron.

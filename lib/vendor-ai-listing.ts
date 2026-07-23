@@ -2,6 +2,8 @@
 // Called by /api/vendor/ai-process/[id] after a vendor publishes or edits a product.
 // Uses the same NVIDIA NIM vision-language model as the admin generate-listing route.
 
+import { buildSlug } from '@/lib/slug-utils';
+
 const MODEL = 'meta/llama-3.2-11b-vision-instruct';
 const NIM_ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions';
 
@@ -278,4 +280,105 @@ export async function generateVendorListing(input: VendorAIInput): Promise<Vendo
   }
 
   return parsed;
+}
+
+/** Minimal shape of a `products` row this helper needs — callers pass
+ *  whatever subset they already fetched. */
+export interface VendorProductForAIPublish {
+  id: string;
+  name: string;
+  fabric: string | null;
+  category_name: string | null;
+  images: unknown;
+  slug: string;
+}
+
+export interface VendorAIPublishResult {
+  /** The title actually saved (AI-generated + made unique, or the vendor's
+   *  original name if AI was unavailable/failed). */
+  finalName: string;
+  /** True only if the AI call succeeded and its fields were saved. */
+  aiApplied: boolean;
+}
+
+/**
+ * Runs AI generation for a vendor product and publishes it live — the exact
+ * same logic that used to live only inline in
+ * app/api/vendor/ai-process/[id]/route.ts. Pulled out here so it can also be
+ * reused by lib/cron-jobs.ts::runStuckVendorListingsJob, which previously
+ * force-published stuck listings with `approval_status: 'live'` ONLY,
+ * skipping AI entirely — so a listing that got stuck (e.g. a Vercel Hobby
+ * function killed mid-flight) went live permanently with the vendor's raw
+ * placeholder name/slug and no AI description/highlights, instead of ever
+ * getting the real generated listing. Every caller of this function now
+ * gets one consistent behaviour: try AI first, and only fall back to a bare
+ * publish if the AI call itself genuinely fails.
+ *
+ * `isEdit` controls the same two things it always has: whether the title is
+ * forced unique against other live products (skipped on edits, so an
+ * already-shared title isn't needlessly renamed), and whether the slug is
+ * regenerated from the new title (skipped on edits, so a live product's URL
+ * never changes and doesn't break anything already shared/indexed).
+ */
+export async function publishVendorProductWithAI(
+  admin: { from: (table: string) => any },
+  product: VendorProductForAIPublish,
+  isEdit: boolean
+): Promise<VendorAIPublishResult> {
+  const listing = await generateVendorListing({
+    name: product.name,
+    fabric: product.fabric ?? '',
+    category: product.category_name ?? '',
+    images: Array.isArray(product.images) ? (product.images as string[]) : [],
+  });
+
+  if (!listing) {
+    // AI unavailable or failed — publish anyway with the vendor's basic
+    // fields, same as before. Callers should log the reason on their side.
+    await admin.from('products').update({ approval_status: 'live' }).eq('id', product.id);
+    return { finalName: product.name, aiApplied: false };
+  }
+
+  const finalName = isEdit ? listing.name : await ensureUniqueVendorTitle(admin, listing, product.id);
+  const nextSlug = isEdit ? product.slug : buildSlug(finalName);
+
+  const patch = {
+    name: finalName,
+    slug: nextSlug,
+    description: listing.description,
+    fabric: listing.fabric,
+    origin: listing.origin,
+    occasion: listing.occasion,
+    material: listing.material,
+    pattern: listing.pattern,
+    gender: listing.gender,
+    meta_description: listing.meta_description,
+    colors: Array.isArray(listing.colors) ? listing.colors : [],
+    highlights: listing.highlights ?? {},
+    approval_status: 'live' as const,
+  };
+
+  const { error: updateErr } = await admin.from('products').update(patch).eq('id', product.id);
+
+  // Extremely unlikely slug collision (two vendors' AI titles slugifying to
+  // the same base + same 5-char random suffix) — retry once with a fresh
+  // suffix.
+  if (updateErr?.code === '23505' && updateErr.message?.includes('slug')) {
+    const { error: retryErr } = await admin
+      .from('products')
+      .update({ ...patch, slug: isEdit ? product.slug : buildSlug(finalName) })
+      .eq('id', product.id);
+
+    if (retryErr) {
+      console.error('[vendor-ai-listing] failed to publish with AI fields after slug retry:', product.id, retryErr);
+      await admin.from('products').update({ approval_status: 'live' }).eq('id', product.id);
+      return { finalName, aiApplied: false };
+    }
+  } else if (updateErr) {
+    console.error('[vendor-ai-listing] failed to publish with AI fields:', product.id, updateErr);
+    await admin.from('products').update({ approval_status: 'live' }).eq('id', product.id);
+    return { finalName, aiApplied: false };
+  }
+
+  return { finalName, aiApplied: true };
 }

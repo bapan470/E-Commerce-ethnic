@@ -5,6 +5,11 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { notifyVendorProductStatus } from '@/lib/vendor-notifications';
 import { runStuckVendorListingsJob } from '@/lib/cron-jobs';
 
+// Same reasoning as app/api/vendor/products/route.ts — the stuck-listings
+// safety net now retries AI generation (up to ~50s) for a small batch
+// before falling back, so this route needs the full Vercel Hobby budget too.
+export const maxDuration = 60;
+
 // ---------------------------------------------------------------------
 // Phase 2, Part 5 — Admin "Vendor Submissions".
 //

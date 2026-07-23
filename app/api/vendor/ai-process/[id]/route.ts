@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser, getSupabaseServer } from '@/lib/supabase-server-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { generateVendorListing, ensureUniqueVendorTitle } from '@/lib/vendor-ai-listing';
-import { buildSlug } from '@/lib/slug-utils';
+import { publishVendorProductWithAI } from '@/lib/vendor-ai-listing';
 import { sendEmail } from '@/lib/email';
 import { vendorProductLiveEmail, vendorProductEditLiveEmail } from '@/lib/email-templates';
 
@@ -147,105 +146,17 @@ async function handleAiProcess({
     return NextResponse.json({ error: 'Product not found' }, { status: 404 });
   }
 
-  // ── Run AI generation ──────────────────────────────────────────────────
-  const listing = await generateVendorListing({
-    name: product.name,
-    fabric: product.fabric ?? '',
-    category: product.category_name ?? '',
-    images: Array.isArray(product.images) ? product.images : [],
-  });
+  // ── Run AI generation and publish (shared with the stuck-listings cron
+  //    job in lib/cron-jobs.ts — see publishVendorProductWithAI's own
+  //    comment for why this now lives in one place) ─────────────────────
+  const { finalName, aiApplied } = await publishVendorProductWithAI(admin, product, isEdit);
 
-  // Hoisted so the vendor-notification email below (sent regardless of
-  // which branch runs) can reference the actual final title.
-  let finalName: string | undefined;
-
-  // ── Update product to live ─────────────────────────────────────────────
-  if (listing) {
-    // Guarantee no two products end up with an identical title text — see
-    // ensureUniqueVendorTitle's own comment for why this is a DB check +
-    // deterministic tweak rather than a second AI call. Only done on first
-    // publish; edits keep whatever title the vendor/AI produced this time
-    // (same reasoning as slug below — an edit re-running this check could
-    // needlessly rename an already-live, possibly-shared product title).
-    finalName = isEdit ? listing.name : await ensureUniqueVendorTitle(admin, listing, productId);
-
-    // The vendor's original submission got a placeholder slug (derived from
-    // whatever raw name they typed, e.g. "Cotton Blend") back in
-    // POST /api/vendor/products, purely so the row could exist before AI
-    // ran. Now that the AI has generated the real, SEO title, the slug
-    // (and therefore the live product URL) should be derived from THAT
-    // title instead — otherwise the URL and the on-page title never match,
-    // and near-duplicate AI titles across products all end up looking the
-    // same in the address bar too (only the trailing random suffix
-    // differs). Only do this on first publish (`!isEdit`) — edits
-    // deliberately never change the slug, to avoid breaking a URL that may
-    // already be shared/indexed (see the [id]/route.ts PATCH comment).
-    const nextSlug = isEdit ? product.slug : buildSlug(finalName);
-
-    const { error: updateErr } = await admin
-      .from('products')
-      .update({
-        name: finalName,
-        slug: nextSlug,
-        description: listing.description,
-        fabric: listing.fabric,
-        origin: listing.origin,
-        occasion: listing.occasion,
-        material: listing.material,
-        pattern: listing.pattern,
-        gender: listing.gender,
-        meta_description: listing.meta_description,
-        colors: Array.isArray(listing.colors) ? listing.colors : [],
-        highlights: listing.highlights ?? {},
-        approval_status: 'live',
-      })
-      .eq('id', productId);
-
-    // Extremely unlikely slug collision (two vendors' AI titles slugifying
-    // to the same base + same 5-char random suffix) — retry once with a
-    // fresh suffix, same pattern as the initial-insert retry in
-    // app/api/vendor/products/route.ts.
-    if (updateErr?.code === '23505' && updateErr.message?.includes('slug')) {
-      const { error: retryErr } = await admin
-        .from('products')
-        .update({
-          name: finalName,
-          slug: isEdit ? product.slug : buildSlug(finalName),
-          description: listing.description,
-          fabric: listing.fabric,
-          origin: listing.origin,
-          occasion: listing.occasion,
-          material: listing.material,
-          pattern: listing.pattern,
-          gender: listing.gender,
-          meta_description: listing.meta_description,
-          colors: Array.isArray(listing.colors) ? listing.colors : [],
-          highlights: listing.highlights ?? {},
-          approval_status: 'live',
-        })
-        .eq('id', productId);
-
-      if (retryErr) {
-        console.error('[vendor/ai-process] failed to update product to live (with AI, after slug retry)', productId, retryErr);
-        await admin.from('products').update({ approval_status: 'live' }).eq('id', productId);
-      }
-    } else if (updateErr) {
-      console.error('[vendor/ai-process] failed to update product to live (with AI)', productId, updateErr);
-      // Fall back: at minimum set status to live without AI fields
-      await admin.from('products').update({ approval_status: 'live' }).eq('id', productId);
-    }
-  } else {
-    // AI unavailable or failed — publish anyway with the vendor's basic fields
-    console.error('[vendor/ai-process] generateVendorListing returned null — publishing product', productId, 'with basic fields only (name/slug/description/highlights will NOT be AI-generated). Check NVIDIA_API_KEY and the [vendor-ai-listing] logs above for the actual cause.');
-    const { error: updateErr } = await admin
-      .from('products')
-      .update({ approval_status: 'live' })
-      .eq('id', productId);
-
-    if (updateErr) {
-      console.error('[vendor/ai-process] failed to update product to live (no AI)', productId, updateErr);
-      return NextResponse.json({ error: 'Failed to publish product' }, { status: 500 });
-    }
+  if (!aiApplied) {
+    console.error(
+      '[vendor/ai-process] generateVendorListing returned null or the DB update failed — published',
+      productId,
+      'with basic fields only (name/slug/description/highlights will NOT be AI-generated). Check NVIDIA_API_KEY and the [vendor-ai-listing] logs above for the actual cause.'
+    );
   }
 
   // ── Send email notification to the vendor ─────────────────────────────

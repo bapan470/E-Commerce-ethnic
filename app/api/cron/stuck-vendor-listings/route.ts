@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import { runStuckVendorListingsJob } from '@/lib/cron-jobs';
 
 export const dynamic = 'force-dynamic';
+// The safety net now retries AI generation (up to ~50s per item) for a
+// small batch of recovered products before falling back — needs Vercel
+// Hobby's full 60s budget.
+export const maxDuration = 60;
 
 // Standalone route for the stuck-vendor-listings safety net (see
 // lib/cron-jobs.ts::runStuckVendorListingsJob for what it does and why).

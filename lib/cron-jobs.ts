@@ -24,7 +24,14 @@
 import { getServerSupabase } from '@/lib/supabase-server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { sendEmail } from '@/lib/email';
-import { cartRecoveryEmail, welcomeSeriesEmail, winbackEmail } from '@/lib/email-templates';
+import {
+  cartRecoveryEmail,
+  welcomeSeriesEmail,
+  winbackEmail,
+  vendorProductLiveEmail,
+  vendorProductEditLiveEmail,
+} from '@/lib/email-templates';
+import { publishVendorProductWithAI } from '@/lib/vendor-ai-listing';
 
 // ----------------------------- Abandoned carts -----------------------------
 export async function runAbandonedCartsJob() {
@@ -262,15 +269,33 @@ export async function runVendorReturnTimersJob() {
 }
 
 // ----------------------------- Stuck vendor listings (safety net) -----------------------------
-// Vendor products go to 'pending_review' right after creation, and are
-// supposed to flip to 'live' once /api/vendor/ai-process/[id] finishes
-// (with or without AI-generated fields). If that route's function gets
-// killed mid-flight (e.g. platform function timeout) or the client's
-// fire-and-forget call never lands, a product can get stuck in
-// pending_review forever. This job is the safety net: anything that's
-// been pending_review for longer than STUCK_MINUTES gets force-published
-// as-is, so vendors never lose a listing permanently.
+// Vendor products go to 'pending_review' right after creation (or after an
+// edit), and are supposed to flip to 'live' once /api/vendor/ai-process/[id]
+// finishes. If that route's function gets killed mid-flight (e.g. Vercel
+// Hobby's 60s function budget) or the client's fire-and-forget call never
+// lands, a product can get stuck in pending_review forever.
+//
+// This job is the safety net: anything that's been pending_review for
+// longer than STUCK_MINUTES gets recovered. It used to just force
+// `approval_status: 'live'` with no other changes, which meant a stuck
+// listing went live PERMANENTLY with the vendor's raw placeholder
+// name/slug and no AI description/highlights — the AI step was simply
+// skipped, not retried. It now actually retries AI generation first (via
+// the same publishVendorProductWithAI helper the normal ai-process route
+// uses), so a listing that got stuck still ends up with its real
+// generated title, matching slug, description and highlights — it only
+// falls back to a bare publish if the AI call itself genuinely fails
+// (e.g. NVIDIA_API_KEY missing, model error).
+//
+// AI recovery is capped to a small batch per run (STUCK_AI_BATCH_LIMIT) —
+// each AI call can take up to ~50s, and this job also runs inline from
+// page loads (see app/api/vendor/products/route.ts) and alongside other
+// jobs in /api/cron/daily-jobs, both of which need to stay within Vercel's
+// function time budget. Anything beyond the batch on a given run still
+// gets a bare publish so nothing is ever left stuck indefinitely — it
+// will simply get the AI treatment on the NEXT run instead (oldest-first).
 const STUCK_MINUTES = 10;
+const STUCK_AI_BATCH_LIMIT = 3;
 
 export async function runStuckVendorListingsJob() {
   const supabase = getSupabaseAdmin();
@@ -278,16 +303,72 @@ export async function runStuckVendorListingsJob() {
 
   const { data: stuckProducts, error } = await supabase
     .from('products')
-    .select('id, name, vendor_id, approval_status_changed_at')
+    .select('id, name, fabric, category_name, images, slug, vendor_id, vendor_edit_count, approval_status_changed_at')
     .eq('approval_status', 'pending_review')
-    .lte('approval_status_changed_at', cutoff);
+    .lte('approval_status_changed_at', cutoff)
+    .order('approval_status_changed_at', { ascending: true });
 
   if (error) throw error;
+
+  const toRecoverWithAI = (stuckProducts ?? []).slice(0, STUCK_AI_BATCH_LIMIT);
+  const toBarePublish = (stuckProducts ?? []).slice(STUCK_AI_BATCH_LIMIT);
 
   let published = 0;
   const errors: string[] = [];
 
-  for (const product of stuckProducts ?? []) {
+  // Preload vendor contact info for the batch that's getting the email
+  // notification (same notification the normal ai-process route sends).
+  const vendorIds = Array.from(new Set(toRecoverWithAI.map((p) => p.vendor_id).filter(Boolean)));
+  const vendorMap = new Map<string, { email: string; displayName: string }>();
+  if (vendorIds.length > 0) {
+    const { data: vendors } = await supabase
+      .from('vendors')
+      .select('id, email, business_name, owner_name')
+      .in('id', vendorIds);
+    for (const v of vendors ?? []) {
+      vendorMap.set(v.id, {
+        email: (v.email || '').trim(),
+        displayName: v.owner_name || v.business_name || 'Vendor',
+      });
+    }
+  }
+
+  for (const product of toRecoverWithAI) {
+    try {
+      // A row that's been edited before (vendor_edit_count > 0) is being
+      // re-processed as an edit — same rule as the normal ai-process
+      // route: keep its existing slug, don't re-run the unique-title check.
+      const isEdit = Number(product.vendor_edit_count ?? 0) > 0;
+      const { finalName, aiApplied } = await publishVendorProductWithAI(supabase, product, isEdit);
+      if (!aiApplied) {
+        errors.push(`product ${product.id}: AI unavailable/failed, published with basic fields only`);
+      }
+      published++;
+
+      const vendorInfo = product.vendor_id ? vendorMap.get(product.vendor_id) : undefined;
+      if (vendorInfo?.email) {
+        const emailInput = { vendorName: vendorInfo.displayName, productName: finalName || product.name };
+        const { subject, html } = isEdit
+          ? vendorProductEditLiveEmail(emailInput)
+          : vendorProductLiveEmail(emailInput);
+        await sendEmail({ to: vendorInfo.email, subject, html }).catch((emailErr) => {
+          console.error('[runStuckVendorListingsJob] email send failed for', vendorInfo.email, emailErr);
+        });
+      }
+    } catch (itemErr: any) {
+      errors.push(`product ${product.id}: ${itemErr?.message || itemErr}`);
+      // Even if the AI-recovery path itself threw, don't leave the row
+      // stuck — fall back to a bare publish.
+      try {
+        await supabase.from('products').update({ approval_status: 'live' }).eq('id', product.id);
+        published++;
+      } catch (fallbackErr: any) {
+        errors.push(`product ${product.id}: fallback publish also failed: ${fallbackErr?.message || fallbackErr}`);
+      }
+    }
+  }
+
+  for (const product of toBarePublish) {
     try {
       const { error: updateError } = await supabase
         .from('products')

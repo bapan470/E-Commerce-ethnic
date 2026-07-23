@@ -5,6 +5,13 @@ import { suggestVendorProductPrice } from '@/lib/ai-pricing';
 import { runStuckVendorListingsJob } from '@/lib/cron-jobs';
 import { buildSlug } from '@/lib/slug-utils';
 
+// The self-healing stuck-listings safety net below (runStuckVendorListingsJob)
+// now actually retries AI generation (up to ~50s) for a small batch of
+// recovered products instead of an instant bare-publish — needs the same
+// 60s (Vercel Hobby max) budget as /api/vendor/ai-process/[id], or the
+// platform would kill this GET request before the recovery finishes.
+export const maxDuration = 60;
+
 // Fields the VENDOR is ever allowed to see about their own submissions.
 // Deliberately excludes vendor_id (redundant — it's their own id anyway)
 // and anything that would matter for other vendors. This route is never
