@@ -34,9 +34,10 @@ export default function VendorCollection({ productId }: { productId: string }) {
 
   return (
     <ProductCarousel
-      title={`${vendor.name}'s Collection`}
+      eyebrow="Collection"
+      title={vendor.name}
       products={products}
-      viewAllHref={`/store/${vendor.slug}`}
+      viewAllHref={`/collection/${vendor.slug}`}
     />
   );
 }

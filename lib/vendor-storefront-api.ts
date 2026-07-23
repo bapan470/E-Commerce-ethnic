@@ -27,12 +27,12 @@ export interface VendorStorefront {
   products: Product[];
 }
 
-/** Fetches the full public storefront for a vendor by their storefront
- *  slug -- backs /store/[slug]. Returns `{ vendor: null, ... }` if the
- *  slug doesn't match an approved vendor. */
+/** Fetches the full public collection page for a vendor by their
+ *  storefront slug -- backs /collection/[slug]. Returns
+ *  `{ vendor: null, ... }` if the slug doesn't match an approved vendor. */
 export async function fetchVendorStorefront(slug: string): Promise<VendorStorefront> {
   try {
-    const res = await fetch(`/api/store/${slug}`, { cache: 'no-store' });
+    const res = await fetch(`/api/collection/${slug}`, { cache: 'no-store' });
     if (!res.ok) return { vendor: null, showRating: false, rating: null, reviewCount: null, products: [] };
     return (await res.json()) as VendorStorefront;
   } catch {

@@ -6,10 +6,15 @@ import { Product } from '@/lib/types';
 import ProductCard from '@/components/product-card';
 
 export default function ProductCarousel({
+  eyebrow,
   title,
   products,
   viewAllHref,
 }: {
+  /** Small uppercase label shown above the title, e.g. "Collection" --
+   *  same visual pattern as the "BRIDAL" category tag above a product
+   *  title. Also becomes a link when viewAllHref is set. */
+  eyebrow?: string;
   title: string;
   products: Product[];
   /** Shown as a "View All" link in the section header when provided. */
@@ -20,16 +25,29 @@ export default function ProductCarousel({
   return (
     <section className="mt-8">
       <div className="mb-4 flex items-center justify-between">
-        {viewAllHref ? (
-          <Link
-            href={viewAllHref}
-            className="font-serif text-xl font-bold text-primary transition-colors hover:text-secondary sm:text-2xl"
-          >
-            {title}
-          </Link>
-        ) : (
-          <h2 className="font-serif text-xl font-bold text-primary sm:text-2xl">{title}</h2>
-        )}
+        <div>
+          {eyebrow &&
+            (viewAllHref ? (
+              <Link
+                href={viewAllHref}
+                className="block text-xs font-semibold uppercase tracking-[0.15em] text-secondary transition-colors hover:text-primary"
+              >
+                {eyebrow}
+              </Link>
+            ) : (
+              <p className="text-xs font-semibold uppercase tracking-[0.15em] text-secondary">{eyebrow}</p>
+            ))}
+          {viewAllHref ? (
+            <Link
+              href={viewAllHref}
+              className="font-serif text-xl font-bold text-primary transition-colors hover:text-secondary sm:text-2xl"
+            >
+              {title}
+            </Link>
+          ) : (
+            <h2 className="font-serif text-xl font-bold text-primary sm:text-2xl">{title}</h2>
+          )}
+        </div>
         {viewAllHref && (
           <Link
             href={viewAllHref}

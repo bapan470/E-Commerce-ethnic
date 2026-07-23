@@ -1,22 +1,400 @@
+diff --git a/app/api/collection/[slug]/route.ts b/app/api/collection/[slug]/route.ts
+new file mode 100644
+index 0000000..fb00d4a
+--- /dev/null
++++ b/app/api/collection/[slug]/route.ts
+@@ -0,0 +1,113 @@
++import { NextResponse } from 'next/server';
++import { getSupabaseAdmin } from '@/lib/supabase-admin';
++import { mapRowToProduct, CUSTOMER_SAFE_PRODUCT_COLUMNS } from '@/lib/products-api-server';
++import { ProductRow } from '@/lib/types';
++
++/**
++ * GET /api/collection/[slug]
++ *
++ * Public collection page for one vendor: /collection/[slug] renders
++ * this. Reads only from `vendor_public_profiles` (approved vendors,
++ * safe columns only -- see the storefront migration) plus each of the
++ * vendor's live products.
++ *
++ * The aggregate rating/review count is computed from the live
++ * `reviews` table (approved reviews only), the same source the
++ * single-product page uses -- NOT from the `products.rating` /
++ * `products.reviews` columns, which are just admin-set seed numbers
++ * shown before a product has any real reviews and otherwise go stale.
++ * For a product with at least one live approved review, its live
++ * average/count is used; for a product with none yet, its seed
++ * rating/reviews are used instead (same "seed until real reviews
++ * exist" rule as the product page) so freshly-seeded products still
++ * contribute. The result is only included in the response when the
++ * vendor's `show_public_rating` toggle (Admin > Vendors) is on --
++ * when it's off, `rating`/`reviewCount` come back null and the page
++ * shows the plain product listing with no rating summary block.
++ */
++export async function GET(
++  _req: Request,
++  { params }: { params: { slug: string } }
++) {
++  const admin = getSupabaseAdmin();
++
++  try {
++    const { data: vendor, error: vendorErr } = await admin
++      .from('vendor_public_profiles')
++      .select('id, business_name, storefront_slug, show_public_rating, created_at')
++      .eq('storefront_slug', params.slug)
++      .maybeSingle();
++
++    if (vendorErr || !vendor) {
++      return NextResponse.json({ vendor: null }, { status: 404 });
++    }
++
++    const { data: rows, error: rowsErr } = await admin
++      .from('products')
++      .select(CUSTOMER_SAFE_PRODUCT_COLUMNS)
++      .eq('vendor_id', vendor.id)
++      .eq('approval_status', 'live')
++      .order('created_at', { ascending: false });
++
++    if (rowsErr) throw rowsErr;
++
++    const productRows = (rows ?? []) as unknown as ProductRow[];
++    const products = productRows.map(mapRowToProduct);
++
++    let rating: number | null = null;
++    let reviewCount: number | null = null;
++    if (vendor.show_public_rating && productRows.length > 0) {
++      const productIds = productRows.map((p) => p.id);
++      const { data: liveReviews, error: reviewsErr } = await admin
++        .from('reviews')
++        .select('product_id, rating')
++        .in('product_id', productIds)
++        .eq('is_approved', true);
++
++      if (reviewsErr) throw reviewsErr;
++
++      // Group live approved reviews by product.
++      const liveByProduct = new Map<string, { count: number; sum: number }>();
++      for (const r of liveReviews ?? []) {
++        const entry = liveByProduct.get(r.product_id) ?? { count: 0, sum: 0 };
++        entry.count += 1;
++        entry.sum += Number(r.rating) || 0;
++        liveByProduct.set(r.product_id, entry);
++      }
++
++      // Per product: prefer its live approved reviews; fall back to the
++      // admin-set seed rating/reviews only when it has none yet.
++      let totalCount = 0;
++      let weightedSum = 0;
++      for (const p of productRows) {
++        const live = liveByProduct.get(p.id);
++        if (live && live.count > 0) {
++          totalCount += live.count;
++          weightedSum += live.sum;
++        } else if ((p.reviews ?? 0) > 0) {
++          totalCount += p.reviews ?? 0;
++          weightedSum += (p.rating ?? 0) * (p.reviews ?? 0);
++        }
++      }
++
++      reviewCount = totalCount;
++      rating = totalCount > 0 ? weightedSum / totalCount : null;
++    }
++
++    return NextResponse.json({
++      vendor: {
++        id: vendor.id,
++        name: vendor.business_name,
++        slug: vendor.storefront_slug,
++        since: vendor.created_at,
++      },
++      showRating: vendor.show_public_rating,
++      rating,
++      reviewCount,
++      products,
++    });
++  } catch (err) {
++    console.error('[collection]', params.slug, 'failed', err);
++    return NextResponse.json({ vendor: null }, { status: 500 });
++  }
++}
+diff --git a/app/api/store/[slug]/route.ts b/app/api/store/[slug]/route.ts
+deleted file mode 100644
+index 3bf4f22..0000000
+--- a/app/api/store/[slug]/route.ts
++++ /dev/null
+@@ -1,79 +0,0 @@
+-import { NextResponse } from 'next/server';
+-import { getSupabaseAdmin } from '@/lib/supabase-admin';
+-import { mapRowToProduct, CUSTOMER_SAFE_PRODUCT_COLUMNS } from '@/lib/products-api-server';
+-import { ProductRow } from '@/lib/types';
+-
+-/**
+- * GET /api/store/[slug]
+- *
+- * Public storefront for one vendor: /store/[slug] renders this. Reads
+- * only from `vendor_public_profiles` (approved vendors, safe columns
+- * only -- see the storefront migration) plus each of the vendor's live
+- * products.
+- *
+- * The aggregate rating/review count is computed as a reviews-weighted
+- * average across the vendor's own products (each product already
+- * carries its own `rating`/`reviews` aggregate, so this reuses those
+- * rather than re-scanning the raw `reviews` table). It's only included
+- * in the response when the vendor's `show_public_rating` toggle
+- * (Admin > Vendors) is on -- when it's off, `rating`/`reviewCount` come
+- * back null and the page shows the plain product listing with no
+- * rating summary block.
+- */
+-export async function GET(
+-  _req: Request,
+-  { params }: { params: { slug: string } }
+-) {
+-  const admin = getSupabaseAdmin();
+-
+-  try {
+-    const { data: vendor, error: vendorErr } = await admin
+-      .from('vendor_public_profiles')
+-      .select('id, business_name, storefront_slug, show_public_rating, created_at')
+-      .eq('storefront_slug', params.slug)
+-      .maybeSingle();
+-
+-    if (vendorErr || !vendor) {
+-      return NextResponse.json({ vendor: null }, { status: 404 });
+-    }
+-
+-    const { data: rows, error: rowsErr } = await admin
+-      .from('products')
+-      .select(CUSTOMER_SAFE_PRODUCT_COLUMNS)
+-      .eq('vendor_id', vendor.id)
+-      .eq('approval_status', 'live')
+-      .order('created_at', { ascending: false });
+-
+-    if (rowsErr) throw rowsErr;
+-
+-    const productRows = (rows ?? []) as unknown as ProductRow[];
+-    const products = productRows.map(mapRowToProduct);
+-
+-    let rating: number | null = null;
+-    let reviewCount: number | null = null;
+-    if (vendor.show_public_rating) {
+-      const totalReviews = productRows.reduce((sum, p) => sum + (p.reviews ?? 0), 0);
+-      reviewCount = totalReviews;
+-      rating =
+-        totalReviews > 0
+-          ? productRows.reduce((sum, p) => sum + (p.rating ?? 0) * (p.reviews ?? 0), 0) / totalReviews
+-          : null;
+-    }
+-
+-    return NextResponse.json({
+-      vendor: {
+-        id: vendor.id,
+-        name: vendor.business_name,
+-        slug: vendor.storefront_slug,
+-        since: vendor.created_at,
+-      },
+-      showRating: vendor.show_public_rating,
+-      rating,
+-      reviewCount,
+-      products,
+-    });
+-  } catch (err) {
+-    console.error('[store]', params.slug, 'failed', err);
+-    return NextResponse.json({ vendor: null }, { status: 500 });
+-  }
+-}
+diff --git a/app/store/[slug]/store-page-client.tsx b/app/collection/[slug]/collection-page-client.tsx
+similarity index 97%
+rename from app/store/[slug]/store-page-client.tsx
+rename to app/collection/[slug]/collection-page-client.tsx
+index 86046d3..d04985e 100644
+--- a/app/store/[slug]/store-page-client.tsx
++++ b/app/collection/[slug]/collection-page-client.tsx
+@@ -7,7 +7,7 @@ import ProductCard from '@/components/product-card';
+ import { Skeleton } from '@/components/ui/skeleton';
+ import { fetchVendorStorefront, VendorStorefront } from '@/lib/vendor-storefront-api';
+ 
+-export default function StorePageClient() {
++export default function CollectionPageClient() {
+   const params = useParams<{ slug: string }>();
+   const [data, setData] = useState<VendorStorefront | null>(null);
+   const [loading, setLoading] = useState(true);
+@@ -43,7 +43,7 @@ export default function StorePageClient() {
+     return (
+       <div className="container-boutique py-20 text-center">
+         <Store className="mx-auto h-10 w-10 text-muted-foreground" />
+-        <h1 className="mt-4 font-serif text-2xl font-bold text-primary">Store not found</h1>
++        <h1 className="mt-4 font-serif text-2xl font-bold text-primary">Collection not found</h1>
+         <p className="mt-2 text-sm text-muted-foreground">
+           This vendor page doesn&apos;t exist or isn&apos;t available right now.
+         </p>
+@@ -57,7 +57,7 @@ export default function StorePageClient() {
+     <div className="container-boutique py-8 pb-24 md:pb-8">
+       <div className="mb-8">
+         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
+-          Vendor Collection
++          Collection
+         </p>
+         <h1 className="mt-1 font-serif text-3xl font-bold text-primary sm:text-4xl">
+           {vendor.name}
+diff --git a/app/store/[slug]/page.tsx b/app/collection/[slug]/page.tsx
+similarity index 79%
+rename from app/store/[slug]/page.tsx
+rename to app/collection/[slug]/page.tsx
+index 928177b..1e8df17 100644
+--- a/app/store/[slug]/page.tsx
++++ b/app/collection/[slug]/page.tsx
+@@ -1,6 +1,6 @@
+ import { Metadata } from 'next';
+ import { getSupabaseAdmin } from '@/lib/supabase-admin';
+-import StorePageClient from './store-page-client';
++import CollectionPageClient from './collection-page-client';
+ 
+ type Params = { params: { slug: string } };
+ 
+@@ -15,7 +15,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
+ 
+     if (!vendor) {
+       return {
+-        title: 'Store not found | Aruhi Handlooms',
++        title: 'Collection not found | Aruhi Handlooms',
+         robots: { index: false, follow: true },
+       };
+     }
+@@ -29,6 +29,6 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
+   }
+ }
+ 
+-export default function StorePage() {
+-  return <StorePageClient />;
++export default function CollectionPage() {
++  return <CollectionPageClient />;
+ }
+diff --git a/components/admin/vendors-panel.tsx b/components/admin/vendors-panel.tsx
+index 091660a..da0a339 100644
+--- a/components/admin/vendors-panel.tsx
++++ b/components/admin/vendors-panel.tsx
+@@ -247,7 +247,7 @@ export default function VendorsPanel() {
+     }
+   };
+ 
+-  // Public storefront (/store/[slug]) rating/review summary toggle.
++  // Public collection page (/collection/[slug]) rating/review summary toggle.
+   // Optimistic update — the switch flips immediately, then reverts with
+   // a toast if the request fails.
+   const handleToggleShowRating = async (v: AdminVendorRow, next: boolean) => {
+@@ -302,8 +302,8 @@ export default function VendorsPanel() {
+           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">Admin</p>
+           <h1 className="mt-1 font-serif text-3xl font-bold text-primary sm:text-4xl">Vendors</h1>
+           <p className="mt-1 text-sm text-muted-foreground">
+-            Approved vendors get a public storefront at /store/[slug], linked from their products
+-            as "&lt;Vendor&gt;'s Collection". Toggle the rating summary per vendor below.
++            Approved vendors get a public collection page at /collection/[slug], linked from their
++            products as "&lt;Vendor&gt;'s Collection". Toggle the rating summary per vendor below.
+           </p>
+         </div>
+       </div>
+@@ -369,13 +369,13 @@ export default function VendorsPanel() {
+                     {v.status === 'approved' && v.storefront_slug && (
+                       <div className="mt-3 flex flex-wrap items-center gap-3 rounded-md border border-border/60 bg-muted/20 p-2.5">
+                         <a
+-                          href={`/store/${v.storefront_slug}`}
++                          href={`/collection/${v.storefront_slug}`}
+                           target="_blank"
+                           rel="noreferrer"
+                           className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+                         >
+                           <Store className="h-3.5 w-3.5" />
+-                          View public storefront
++                          View public collection
+                           <ExternalLink className="h-3 w-3" />
+                         </a>
+                         <div className="flex items-center gap-2">
 diff --git a/components/product/product-carousel.tsx b/components/product/product-carousel.tsx
-index f1ac113..235f468 100644
+index f1ac113..9be46ee 100644
 --- a/components/product/product-carousel.tsx
 +++ b/components/product/product-carousel.tsx
-@@ -20,7 +20,16 @@ export default function ProductCarousel({
+@@ -6,10 +6,15 @@ import { Product } from '@/lib/types';
+ import ProductCard from '@/components/product-card';
+ 
+ export default function ProductCarousel({
++  eyebrow,
+   title,
+   products,
+   viewAllHref,
+ }: {
++  /** Small uppercase label shown above the title, e.g. "Collection" --
++   *  same visual pattern as the "BRIDAL" category tag above a product
++   *  title. Also becomes a link when viewAllHref is set. */
++  eyebrow?: string;
+   title: string;
+   products: Product[];
+   /** Shown as a "View All" link in the section header when provided. */
+@@ -20,7 +25,29 @@ export default function ProductCarousel({
    return (
      <section className="mt-8">
        <div className="mb-4 flex items-center justify-between">
 -        <h2 className="font-serif text-xl font-bold text-primary sm:text-2xl">{title}</h2>
-+        {viewAllHref ? (
-+          <Link
-+            href={viewAllHref}
-+            className="font-serif text-xl font-bold text-primary transition-colors hover:text-secondary sm:text-2xl"
-+          >
-+            {title}
-+          </Link>
-+        ) : (
-+          <h2 className="font-serif text-xl font-bold text-primary sm:text-2xl">{title}</h2>
-+        )}
++        <div>
++          {eyebrow &&
++            (viewAllHref ? (
++              <Link
++                href={viewAllHref}
++                className="block text-xs font-semibold uppercase tracking-[0.15em] text-secondary transition-colors hover:text-primary"
++              >
++                {eyebrow}
++              </Link>
++            ) : (
++              <p className="text-xs font-semibold uppercase tracking-[0.15em] text-secondary">{eyebrow}</p>
++            ))}
++          {viewAllHref ? (
++            <Link
++              href={viewAllHref}
++              className="font-serif text-xl font-bold text-primary transition-colors hover:text-secondary sm:text-2xl"
++            >
++              {title}
++            </Link>
++          ) : (
++            <h2 className="font-serif text-xl font-bold text-primary sm:text-2xl">{title}</h2>
++          )}
++        </div>
          {viewAllHref && (
            <Link
              href={viewAllHref}
+diff --git a/components/product/vendor-collection.tsx b/components/product/vendor-collection.tsx
+index 58c9616..fe71df8 100644
+--- a/components/product/vendor-collection.tsx
++++ b/components/product/vendor-collection.tsx
+@@ -34,9 +34,10 @@ export default function VendorCollection({ productId }: { productId: string }) {
+ 
+   return (
+     <ProductCarousel
+-      title={`${vendor.name}'s Collection`}
++      eyebrow="Collection"
++      title={vendor.name}
+       products={products}
+-      viewAllHref={`/store/${vendor.slug}`}
++      viewAllHref={`/collection/${vendor.slug}`}
+     />
+   );
+ }
+diff --git a/lib/vendor-storefront-api.ts b/lib/vendor-storefront-api.ts
+index d5e507e..2a91661 100644
+--- a/lib/vendor-storefront-api.ts
++++ b/lib/vendor-storefront-api.ts
+@@ -27,12 +27,12 @@ export interface VendorStorefront {
+   products: Product[];
+ }
+ 
+-/** Fetches the full public storefront for a vendor by their storefront
+- *  slug -- backs /store/[slug]. Returns `{ vendor: null, ... }` if the
+- *  slug doesn't match an approved vendor. */
++/** Fetches the full public collection page for a vendor by their
++ *  storefront slug -- backs /collection/[slug]. Returns
++ *  `{ vendor: null, ... }` if the slug doesn't match an approved vendor. */
+ export async function fetchVendorStorefront(slug: string): Promise<VendorStorefront> {
+   try {
+-    const res = await fetch(`/api/store/${slug}`, { cache: 'no-store' });
++    const res = await fetch(`/api/collection/${slug}`, { cache: 'no-store' });
+     if (!res.ok) return { vendor: null, showRating: false, rating: null, reviewCount: null, products: [] };
+     return (await res.json()) as VendorStorefront;
+   } catch {
