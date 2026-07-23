@@ -22,6 +22,36 @@ function resolveDefaultVariant(row: ProductRow) {
   return variants.find((v) => v.is_default) ?? variants[0];
 }
 
+/**
+ * Every distinct colour this product comes in: the base product's own
+ * `colors` entry plus every colour recorded on a `product_variants` row,
+ * de-duplicated case-insensitively. Kept in sync with the identical helper
+ * in lib/products-api.ts. A vendor's originally-listed colour only ever
+ * lives on the `products` row itself -- never in `product_variants` -- so
+ * without merging the two here, a product's card on shop/category pages
+ * would only ever show colours added *after* the initial listing, silently
+ * dropping the very first one.
+ */
+function resolveAllColors(row: ProductRow): string[] {
+  const seen = new Set<string>();
+  const all: string[] = [];
+  for (const c of row.colors ?? []) {
+    const key = c.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    all.push(c);
+  }
+  for (const v of row.product_variants ?? []) {
+    const c = v.color;
+    if (!c) continue;
+    const key = c.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    all.push(c);
+  }
+  return all;
+}
+
 export function mapRowToProduct(row: ProductRow): Product {
   const defaultVariant = resolveDefaultVariant(row);
   return {
@@ -35,6 +65,7 @@ export function mapRowToProduct(row: ProductRow): Product {
     fabric: row.fabric ?? '',
     origin: row.origin ?? '',
     colors: row.colors ?? [],
+    all_colors: resolveAllColors(row),
     sizes: row.sizes ?? ['Free Size'],
     occasion: row.occasion ?? [],
     gender: row.gender || 'female',
@@ -61,7 +92,7 @@ export async function fetchProductBySlugServer(slug: string): Promise<Product | 
   const supabase = getServerSupabase();
   const { data, error } = await supabase
     .from('products')
-    .select(`${CUSTOMER_SAFE_PRODUCT_COLUMNS}, product_variants(slug, images, is_default)`)
+    .select(`${CUSTOMER_SAFE_PRODUCT_COLUMNS}, product_variants(slug, images, is_default, color)`)
     .eq('slug', slug)
     .eq('approval_status', 'live')
     .maybeSingle();
@@ -74,7 +105,7 @@ export async function fetchProductsServer(): Promise<Product[]> {
   const supabase = getServerSupabase();
   const { data, error } = await supabase
     .from('products')
-    .select(`${CUSTOMER_SAFE_PRODUCT_COLUMNS}, product_variants(slug, images, is_default)`)
+    .select(`${CUSTOMER_SAFE_PRODUCT_COLUMNS}, product_variants(slug, images, is_default, color)`)
     .eq('approval_status', 'live')
     .order('created_at', { ascending: false });
   if (error) throw error;

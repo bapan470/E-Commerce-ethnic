@@ -60,6 +60,18 @@ export interface Product {
   fabric: string;
   origin: string;
   colors: string[];
+  /**
+   * Every distinct colour this product comes in -- the base product's own
+   * colour plus every colour added later as a `product_variants` row,
+   * de-duplicated. `colors` above is left untouched (many places rely on
+   * `colors[0]` meaning "this exact item/variant's own colour" -- e.g. the
+   * cart/checkout use it to tell two colours of the same product apart).
+   * This field exists purely so product cards on shop/category pages can
+   * show a dot for every colour the product actually comes in, instead of
+   * just the one recorded on the base row. Undefined/empty falls back to
+   * `colors` wherever it's read.
+   */
+  all_colors?: string[];
   sizes: string[];
   occasion: string[];
   gender: string;
@@ -190,9 +202,10 @@ export interface ProductRow {
   video_url: string | null;
   sku: string | null;
   highlights: ProductHighlights | null;
-  /** Embedded via `product_variants(slug, images, is_default)` in the list
-   *  queries -- used to resolve the default colour variant for cards. */
-  product_variants?: { slug: string; images: string[] | null; is_default: boolean }[] | null;
+  /** Embedded via `product_variants(slug, images, is_default, color)` in the
+   *  list queries -- used to resolve the default colour variant for cards,
+   *  and (via `color`) to build the full swatch-dot list on the card. */
+  product_variants?: { slug: string; images: string[] | null; is_default: boolean; color?: string | null }[] | null;
   stock_quantity: number;
   low_stock_threshold?: number;
   rating: number;

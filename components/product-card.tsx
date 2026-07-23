@@ -140,23 +140,26 @@ export default function ProductCard({
           )}
         </div>
 
-        {product.colors.length > 0 && (
-          <div className="mt-1 flex items-center gap-1">
-            {product.colors.slice(0, 4).map((c, i) => (
-              <span
-                key={i}
-                title={c}
-                className="h-3.5 w-3.5 rounded-full border border-border/70"
-                style={{ backgroundColor: c.toLowerCase().replace(/\s+/g, '') }}
-              />
-            ))}
-            {product.colors.length > 4 && (
-              <span className="text-[10px] text-muted-foreground">
-                +{product.colors.length - 4}
-              </span>
-            )}
-          </div>
-        )}
+        {(() => {
+          // `all_colors` merges the base product's own colour with every
+          // colour added later as a variant, so this always reflects every
+          // colour the product actually comes in (falls back to `colors`
+          // for any product shape that predates this field).
+          const swatchColors = product.all_colors?.length ? product.all_colors : product.colors;
+          if (swatchColors.length === 0) return null;
+          return (
+            <div className="mt-1 flex flex-wrap items-center gap-1">
+              {swatchColors.map((c, i) => (
+                <span
+                  key={i}
+                  title={c}
+                  className="h-3.5 w-3.5 shrink-0 rounded-full border border-border/70"
+                  style={{ backgroundColor: c.toLowerCase().replace(/\s+/g, '') }}
+                />
+              ))}
+            </div>
+          );
+        })()}
       </div>
     </Link>
   );
