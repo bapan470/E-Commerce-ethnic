@@ -418,18 +418,33 @@ async function publishThreadsContainer(
   return publishJson.id || null;
 }
 
+/** Outcome of a publishProductToSocial() call — the API route and the
+ *  client-side Share buttons use this to show an honest success/failure
+ *  toast instead of always assuming success. */
+export interface PublishResult {
+  /** True only if at least one requested platform actually posted. */
+  posted: boolean;
+  /** Human-readable reason nothing was posted (config/gating issue), when posted is false and there were no hard errors. */
+  reason?: string;
+  /** Hard errors returned by the Graph API calls themselves, if any were attempted. */
+  errors?: string[];
+}
+
 /**
  * Posts a single product to Facebook and/or Instagram per whatever's
  * enabled in settings, then stamps social_posted_at so it never gets
  * posted twice. Designed to be called fire-and-forget with .catch() —
  * a social-post failure must NEVER block or unwind the product actually
- * going live in the store.
+ * going live in the store. Returns a PublishResult so callers (the API
+ * route, and ultimately the admin Share button) can tell the difference
+ * between "actually posted" and "silently skipped" instead of assuming
+ * success just because nothing threw.
  */
 export async function publishProductToSocial(
   admin: SupabaseClient,
   product: ProductForSocial,
   options?: { force?: boolean; platform?: SocialPlatform }
-): Promise<void> {
+): Promise<PublishResult> {
   const { platform } = options ?? {};
   // Per-platform gating: when a specific platform is requested (one of the
   // three separate admin Share buttons), only that platform's "already
@@ -439,18 +454,31 @@ export async function publishProductToSocial(
   const alreadyPostedThisPlatform = platform
     ? Boolean(product.social_post_ids?.[`${platform}_post_id`] ?? product.social_post_ids?.[`${platform}_media_id`])
     : Boolean(product.social_posted_at);
-  if (alreadyPostedThisPlatform && !options?.force) return; // already posted once — don't duplicate
+  if (alreadyPostedThisPlatform && !options?.force) {
+    // already posted once — don't duplicate
+    return { posted: false, reason: 'Already posted once. Use re-share to force a repost.' };
+  }
 
   const settings = await fetchSocialPublishSettingsServer(admin);
   const wantFacebook = (!platform || platform === 'facebook') && settings.facebook_enabled;
   const wantInstagram = (!platform || platform === 'instagram') && settings.instagram_enabled;
   const wantThreads = (!platform || platform === 'threads') && settings.threads_enabled;
   const anyEnabled = wantFacebook || wantInstagram || wantThreads;
-  if (!anyEnabled) return;
+  if (!anyEnabled) {
+    return {
+      posted: false,
+      reason: 'Not enabled — turn it on in Admin > Marketing > Social Auto-Post.',
+    };
+  }
   const hasUsableCredentials =
     ((wantFacebook || wantInstagram) && settings.access_token) ||
     (wantThreads && settings.threads_access_token);
-  if (!hasUsableCredentials) return;
+  if (!hasUsableCredentials) {
+    return {
+      posted: false,
+      reason: 'Missing access token — add it in Admin > Marketing > Social Auto-Post.',
+    };
+  }
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://your-store.example.com';
 
@@ -491,21 +519,35 @@ export async function publishProductToSocial(
   // it must never wipe out a sibling platform's post id.
   const postIds: Record<string, string> = { ...(product.social_post_ids ?? {}) };
   const errors: string[] = [];
+  // Tracks whether we actually attempted at least one platform below (vs.
+  // every requested platform being skipped for missing Page/Account IDs),
+  // and whether any attempt actually succeeded — these decide the final
+  // `posted` flag returned to the caller.
+  let attemptedAny = false;
 
-  if (wantFacebook && settings.facebook_page_id) {
-    try {
-      const id = await postToFacebook(settings, caption, finalImageUrls);
-      if (id) postIds.facebook_post_id = id;
-    } catch (err) {
-      console.error('[social-publish] Facebook post failed for product', product.id, err);
-      errors.push(String(err));
+  if (wantFacebook) {
+    if (!settings.facebook_page_id) {
+      errors.push('Facebook enabled but Page ID is missing in Marketing settings.');
+    } else {
+      attemptedAny = true;
+      try {
+        const id = await postToFacebook(settings, caption, finalImageUrls);
+        if (id) postIds.facebook_post_id = id;
+      } catch (err) {
+        console.error('[social-publish] Facebook post failed for product', product.id, err);
+        errors.push(String(err));
+      }
     }
   }
 
-  if (wantInstagram && settings.instagram_business_account_id) {
-    if (finalImageUrls.length === 0) {
+  if (wantInstagram) {
+    if (!settings.instagram_business_account_id) {
+      errors.push('Instagram enabled but Business Account ID is missing in Marketing settings.');
+    } else if (finalImageUrls.length === 0) {
       console.error('[social-publish] Instagram skipped for product', product.id, '— no image');
+      errors.push('Instagram requires at least one product image.');
     } else {
+      attemptedAny = true;
       try {
         const id = await postToInstagram(settings, caption, finalImageUrls);
         if (id) postIds.instagram_media_id = id;
@@ -516,14 +558,30 @@ export async function publishProductToSocial(
     }
   }
 
-  if (wantThreads && settings.threads_user_id) {
-    try {
-      const id = await postToThreads(settings, caption, finalImageUrls);
-      if (id) postIds.threads_post_id = id;
-    } catch (err) {
-      console.error('[social-publish] Threads post failed for product', product.id, err);
-      errors.push(String(err));
+  if (wantThreads) {
+    if (!settings.threads_user_id) {
+      errors.push('Threads enabled but User ID is missing in Marketing settings.');
+    } else {
+      attemptedAny = true;
+      try {
+        const id = await postToThreads(settings, caption, finalImageUrls);
+        if (id) postIds.threads_post_id = id;
+      } catch (err) {
+        console.error('[social-publish] Threads post failed for product', product.id, err);
+        errors.push(String(err));
+      }
     }
+  }
+
+  const newlyPosted =
+    postIds.facebook_post_id !== product.social_post_ids?.facebook_post_id ||
+    postIds.instagram_media_id !== product.social_post_ids?.instagram_media_id ||
+    postIds.threads_post_id !== product.social_post_ids?.threads_post_id;
+
+  if (!attemptedAny) {
+    // Every requested platform was missing its Page/Account ID — nothing
+    // was ever attempted, so don't stamp social_posted_at at all.
+    return { posted: false, reason: errors[0] ?? 'Platform is missing required IDs in Marketing settings.', errors };
   }
 
   // Stamp as posted even on partial failure, so a permanently-broken
@@ -535,4 +593,10 @@ export async function publishProductToSocial(
     .from('products')
     .update({ social_posted_at: new Date().toISOString(), social_post_ids: postIds })
     .eq('id', product.id);
+
+  return {
+    posted: newlyPosted,
+    reason: newlyPosted ? undefined : errors[0] ?? 'Post did not succeed on any platform.',
+    errors: errors.length > 0 ? errors : undefined,
+  };
 }

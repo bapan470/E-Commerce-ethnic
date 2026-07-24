@@ -55,7 +55,19 @@ export async function POST(req: Request) {
   }
 
   try {
-    await publishProductToSocial(admin, product, { force: Boolean(force), platform });
+    const result = await publishProductToSocial(admin, product, { force: Boolean(force), platform });
+    if (!result.posted) {
+      // Previously this branch didn't exist — publishProductToSocial()
+      // returned void, so any silent skip (auto-post disabled, missing
+      // token/Page ID/Instagram Business Account ID, already-posted, or
+      // a Graph API error) still came back here as `{ ok: true }`, and
+      // the admin Share button showed a false "Shared!" toast even
+      // though nothing was actually posted to Facebook/Instagram.
+      return NextResponse.json(
+        { ok: false, error: result.reason ?? 'Nothing was posted — check Marketing > Social Auto-Post settings.' },
+        { status: 200 }
+      );
+    }
     return NextResponse.json({ ok: true });
   } catch (err) {
     // Non-fatal from the caller's point of view — the product is already
