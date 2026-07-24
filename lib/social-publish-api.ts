@@ -122,23 +122,71 @@ function buildCaption(template: string, product: ProductForSocial, siteUrl: stri
 async function postToFacebook(
   settings: SocialPublishSettings,
   caption: string,
-  imageUrl: string | undefined
+  imageUrls: string[]
 ): Promise<string | null> {
-  const endpoint = imageUrl
-    ? `${GRAPH_API_BASE}/${settings.facebook_page_id}/photos`
-    : `${GRAPH_API_BASE}/${settings.facebook_page_id}/feed`;
-
-  const body = new URLSearchParams({
-    access_token: settings.access_token,
-    ...(imageUrl ? { url: imageUrl, caption } : { message: caption }),
-  });
-
-  const res = await fetch(endpoint, { method: 'POST', body });
-  const json = await res.json();
-  if (!res.ok || json.error) {
-    throw new Error(`Facebook post failed: ${json?.error?.message || res.statusText}`);
+  if (imageUrls.length === 0) {
+    // Text-only post.
+    const res = await fetch(`${GRAPH_API_BASE}/${settings.facebook_page_id}/feed`, {
+      method: 'POST',
+      body: new URLSearchParams({ access_token: settings.access_token, message: caption }),
+    });
+    const json = await res.json();
+    if (!res.ok || json.error) {
+      throw new Error(`Facebook post failed: ${json?.error?.message || res.statusText}`);
+    }
+    return json.id || null;
   }
-  return json.post_id || json.id || null;
+
+  if (imageUrls.length === 1) {
+    // Single photo post — photo + caption in one call.
+    const res = await fetch(`${GRAPH_API_BASE}/${settings.facebook_page_id}/photos`, {
+      method: 'POST',
+      body: new URLSearchParams({
+        access_token: settings.access_token,
+        url: imageUrls[0],
+        caption,
+      }),
+    });
+    const json = await res.json();
+    if (!res.ok || json.error) {
+      throw new Error(`Facebook post failed: ${json?.error?.message || res.statusText}`);
+    }
+    return json.post_id || json.id || null;
+  }
+
+  // Multiple photos — Facebook's multi-photo post model: upload each photo
+  // "unpublished" (it won't appear on its own), then create one feed post
+  // that attaches all of them together as a single multi-image post.
+  const photoIds: string[] = [];
+  for (const url of imageUrls) {
+    const res = await fetch(`${GRAPH_API_BASE}/${settings.facebook_page_id}/photos`, {
+      method: 'POST',
+      body: new URLSearchParams({
+        access_token: settings.access_token,
+        url,
+        published: 'false',
+      }),
+    });
+    const json = await res.json();
+    if (!res.ok || json.error || !json.id) {
+      throw new Error(`Facebook photo upload failed: ${json?.error?.message || res.statusText}`);
+    }
+    photoIds.push(json.id);
+  }
+
+  const feedRes = await fetch(`${GRAPH_API_BASE}/${settings.facebook_page_id}/feed`, {
+    method: 'POST',
+    body: new URLSearchParams({
+      access_token: settings.access_token,
+      message: caption,
+      attached_media: JSON.stringify(photoIds.map((id) => ({ media_fbid: id }))),
+    }),
+  });
+  const feedJson = await feedRes.json();
+  if (!feedRes.ok || feedJson.error) {
+    throw new Error(`Facebook multi-photo post failed: ${feedJson?.error?.message || feedRes.statusText}`);
+  }
+  return feedJson.id || null;
 }
 
 /**
@@ -175,36 +223,84 @@ async function waitForContainerReady(
 async function postToInstagram(
   settings: SocialPublishSettings,
   caption: string,
-  imageUrl: string
+  imageUrls: string[]
 ): Promise<string | null> {
-  // Step 1: create a media container.
-  const createRes = await fetch(
+  if (imageUrls.length === 0) return null; // Instagram requires at least one image.
+
+  if (imageUrls.length === 1) {
+    // Single-image post: create container, wait, publish.
+    const createRes = await fetch(
+      `${GRAPH_API_BASE}/${settings.instagram_business_account_id}/media`,
+      {
+        method: 'POST',
+        body: new URLSearchParams({
+          image_url: imageUrls[0],
+          caption,
+          access_token: settings.access_token,
+        }),
+      }
+    );
+    const createJson = await createRes.json();
+    if (!createRes.ok || createJson.error || !createJson.id) {
+      throw new Error(`Instagram container create failed: ${createJson?.error?.message || createRes.statusText}`);
+    }
+    await waitForContainerReady(GRAPH_API_BASE, createJson.id, settings.access_token);
+    return publishInstagramContainer(settings, createJson.id);
+  }
+
+  // Carousel (2-10 images; Meta caps carousels at 10 items).
+  const items = imageUrls.slice(0, 10);
+  const childIds: string[] = [];
+  for (const url of items) {
+    const childRes = await fetch(
+      `${GRAPH_API_BASE}/${settings.instagram_business_account_id}/media`,
+      {
+        method: 'POST',
+        body: new URLSearchParams({
+          image_url: url,
+          is_carousel_item: 'true',
+          access_token: settings.access_token,
+        }),
+      }
+    );
+    const childJson = await childRes.json();
+    if (!childRes.ok || childJson.error || !childJson.id) {
+      throw new Error(`Instagram carousel item failed: ${childJson?.error?.message || childRes.statusText}`);
+    }
+    await waitForContainerReady(GRAPH_API_BASE, childJson.id, settings.access_token);
+    childIds.push(childJson.id);
+  }
+
+  const carouselRes = await fetch(
     `${GRAPH_API_BASE}/${settings.instagram_business_account_id}/media`,
     {
       method: 'POST',
       body: new URLSearchParams({
-        image_url: imageUrl,
+        media_type: 'CAROUSEL',
+        children: childIds.join(','),
         caption,
         access_token: settings.access_token,
       }),
     }
   );
-  const createJson = await createRes.json();
-  if (!createRes.ok || createJson.error || !createJson.id) {
-    throw new Error(`Instagram container create failed: ${createJson?.error?.message || createRes.statusText}`);
+  const carouselJson = await carouselRes.json();
+  if (!carouselRes.ok || carouselJson.error || !carouselJson.id) {
+    throw new Error(`Instagram carousel create failed: ${carouselJson?.error?.message || carouselRes.statusText}`);
   }
+  await waitForContainerReady(GRAPH_API_BASE, carouselJson.id, settings.access_token);
+  return publishInstagramContainer(settings, carouselJson.id);
+}
 
-  // Give Meta a moment to finish processing the image before publishing —
-  // publishing too early is a common silent-failure cause.
-  await waitForContainerReady(GRAPH_API_BASE, createJson.id, settings.access_token);
-
-  // Step 2: publish the container.
+async function publishInstagramContainer(
+  settings: SocialPublishSettings,
+  creationId: string
+): Promise<string | null> {
   const publishRes = await fetch(
     `${GRAPH_API_BASE}/${settings.instagram_business_account_id}/media_publish`,
     {
       method: 'POST',
       body: new URLSearchParams({
-        creation_id: createJson.id,
+        creation_id: creationId,
         access_token: settings.access_token,
       }),
     }
@@ -219,33 +315,91 @@ async function postToInstagram(
 async function postToThreads(
   settings: SocialPublishSettings,
   caption: string,
-  imageUrl: string | undefined
+  imageUrls: string[]
 ): Promise<string | null> {
-  // Step 1: create a media container (TEXT if no image, IMAGE if there is one).
-  const createParams = new URLSearchParams({
-    access_token: settings.threads_access_token,
-    text: caption,
-    media_type: imageUrl ? 'IMAGE' : 'TEXT',
-  });
-  if (imageUrl) createParams.set('image_url', imageUrl);
-
-  const createRes = await fetch(`${THREADS_API_BASE}/${settings.threads_user_id}/threads`, {
-    method: 'POST',
-    body: createParams,
-  });
-  const createJson = await createRes.json();
-  if (!createRes.ok || createJson.error || !createJson.id) {
-    throw new Error(`Threads container create failed: ${createJson?.error?.message || createRes.statusText}`);
+  if (imageUrls.length === 0) {
+    // Text-only thread.
+    const createRes = await fetch(`${THREADS_API_BASE}/${settings.threads_user_id}/threads`, {
+      method: 'POST',
+      body: new URLSearchParams({
+        access_token: settings.threads_access_token,
+        text: caption,
+        media_type: 'TEXT',
+      }),
+    });
+    const createJson = await createRes.json();
+    if (!createRes.ok || createJson.error || !createJson.id) {
+      throw new Error(`Threads container create failed: ${createJson?.error?.message || createRes.statusText}`);
+    }
+    await waitForContainerReady(THREADS_API_BASE, createJson.id, settings.threads_access_token);
+    return publishThreadsContainer(settings, createJson.id);
   }
 
-  // Same async-processing caveat as Instagram — wait before publishing.
-  await waitForContainerReady(THREADS_API_BASE, createJson.id, settings.threads_access_token);
+  if (imageUrls.length === 1) {
+    const createRes = await fetch(`${THREADS_API_BASE}/${settings.threads_user_id}/threads`, {
+      method: 'POST',
+      body: new URLSearchParams({
+        access_token: settings.threads_access_token,
+        text: caption,
+        media_type: 'IMAGE',
+        image_url: imageUrls[0],
+      }),
+    });
+    const createJson = await createRes.json();
+    if (!createRes.ok || createJson.error || !createJson.id) {
+      throw new Error(`Threads container create failed: ${createJson?.error?.message || createRes.statusText}`);
+    }
+    await waitForContainerReady(THREADS_API_BASE, createJson.id, settings.threads_access_token);
+    return publishThreadsContainer(settings, createJson.id);
+  }
 
-  // Step 2: publish the container.
+  // Carousel (Threads accepts up to 10-20 items depending on API version;
+  // we cap at 10 to stay consistent with Instagram's limit).
+  const items = imageUrls.slice(0, 10);
+  const childIds: string[] = [];
+  for (const url of items) {
+    const childRes = await fetch(`${THREADS_API_BASE}/${settings.threads_user_id}/threads`, {
+      method: 'POST',
+      body: new URLSearchParams({
+        access_token: settings.threads_access_token,
+        media_type: 'IMAGE',
+        image_url: url,
+        is_carousel_item: 'true',
+      }),
+    });
+    const childJson = await childRes.json();
+    if (!childRes.ok || childJson.error || !childJson.id) {
+      throw new Error(`Threads carousel item failed: ${childJson?.error?.message || childRes.statusText}`);
+    }
+    await waitForContainerReady(THREADS_API_BASE, childJson.id, settings.threads_access_token);
+    childIds.push(childJson.id);
+  }
+
+  const carouselRes = await fetch(`${THREADS_API_BASE}/${settings.threads_user_id}/threads`, {
+    method: 'POST',
+    body: new URLSearchParams({
+      access_token: settings.threads_access_token,
+      media_type: 'CAROUSEL',
+      children: childIds.join(','),
+      text: caption,
+    }),
+  });
+  const carouselJson = await carouselRes.json();
+  if (!carouselRes.ok || carouselJson.error || !carouselJson.id) {
+    throw new Error(`Threads carousel create failed: ${carouselJson?.error?.message || carouselRes.statusText}`);
+  }
+  await waitForContainerReady(THREADS_API_BASE, carouselJson.id, settings.threads_access_token);
+  return publishThreadsContainer(settings, carouselJson.id);
+}
+
+async function publishThreadsContainer(
+  settings: SocialPublishSettings,
+  creationId: string
+): Promise<string | null> {
   const publishRes = await fetch(`${THREADS_API_BASE}/${settings.threads_user_id}/threads_publish`, {
     method: 'POST',
     body: new URLSearchParams({
-      creation_id: createJson.id,
+      creation_id: creationId,
       access_token: settings.threads_access_token,
     }),
   });
@@ -265,9 +419,10 @@ async function postToThreads(
  */
 export async function publishProductToSocial(
   admin: SupabaseClient,
-  product: ProductForSocial
+  product: ProductForSocial,
+  options?: { force?: boolean }
 ): Promise<void> {
-  if (product.social_posted_at) return; // already posted once — don't duplicate
+  if (product.social_posted_at && !options?.force) return; // already posted once — don't duplicate
 
   const settings = await fetchSocialPublishSettingsServer(admin);
   const anyEnabled = settings.facebook_enabled || settings.instagram_enabled || settings.threads_enabled;
@@ -278,15 +433,45 @@ export async function publishProductToSocial(
   if (!hasUsableCredentials) return;
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://your-store.example.com';
-  const caption = buildCaption(settings.caption_template, product, siteUrl);
-  const imageUrl = (product.images || [])[0];
+
+  // If this product has color variants (each with its own images/SEO page),
+  // pull them in as ONE combined post rather than posting once per variant.
+  // Carousels get materially better engagement/reach than a burst of
+  // near-duplicate single-image posts, and it doesn't eat into the
+  // platforms' daily post-count limits as fast. See the "variation
+  // products" discussion for why this was chosen over per-variant posts.
+  const { data: variants } = await admin
+    .from('product_variants')
+    .select('color, images')
+    .eq('product_id', product.id)
+    .order('is_default', { ascending: false })
+    .order('created_at', { ascending: true });
+
+  let caption = buildCaption(settings.caption_template, product, siteUrl);
+
+  const imageUrls = [...(product.images || [])].filter(Boolean);
+  if (variants && variants.length > 0) {
+    const colors: string[] = [];
+    for (const v of variants) {
+      if (v.color) colors.push(v.color);
+      const firstVariantImage = (v.images || []).find(Boolean);
+      if (firstVariantImage && !imageUrls.includes(firstVariantImage)) {
+        imageUrls.push(firstVariantImage);
+      }
+    }
+    if (colors.length > 0) {
+      caption += `\n\nAvailable in: ${colors.join(', ')}`;
+    }
+  }
+  // Meta caps carousels at 10 items across Instagram/Threads.
+  const finalImageUrls = imageUrls.slice(0, 10);
 
   const postIds: Record<string, string> = {};
   const errors: string[] = [];
 
   if (settings.facebook_enabled && settings.facebook_page_id) {
     try {
-      const id = await postToFacebook(settings, caption, imageUrl);
+      const id = await postToFacebook(settings, caption, finalImageUrls);
       if (id) postIds.facebook_post_id = id;
     } catch (err) {
       console.error('[social-publish] Facebook post failed for product', product.id, err);
@@ -295,11 +480,11 @@ export async function publishProductToSocial(
   }
 
   if (settings.instagram_enabled && settings.instagram_business_account_id) {
-    if (!imageUrl) {
+    if (finalImageUrls.length === 0) {
       console.error('[social-publish] Instagram skipped for product', product.id, '— no image');
     } else {
       try {
-        const id = await postToInstagram(settings, caption, imageUrl);
+        const id = await postToInstagram(settings, caption, finalImageUrls);
         if (id) postIds.instagram_media_id = id;
       } catch (err) {
         console.error('[social-publish] Instagram post failed for product', product.id, err);
@@ -310,7 +495,7 @@ export async function publishProductToSocial(
 
   if (settings.threads_enabled && settings.threads_user_id) {
     try {
-      const id = await postToThreads(settings, caption, imageUrl);
+      const id = await postToThreads(settings, caption, finalImageUrls);
       if (id) postIds.threads_post_id = id;
     } catch (err) {
       console.error('[social-publish] Threads post failed for product', product.id, err);

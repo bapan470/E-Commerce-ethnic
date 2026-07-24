@@ -322,11 +322,11 @@ export function triggerVendorAIProcess(id: string, isEdit = false): Promise<Resp
  *  Social Auto-Post settings. Used after Admin > Products > "Add Product",
  *  since that insert happens directly from the browser and the Meta access
  *  token must never be exposed client-side. Callers should `.catch(() => {})`. */
-export function triggerSocialAutoPost(productId: string): Promise<Response> {
+export function triggerSocialAutoPost(productId: string, force = false): Promise<Response> {
   return fetch('/api/social/publish', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ productId }),
+    body: JSON.stringify({ productId, force }),
     keepalive: true,
   });
 }

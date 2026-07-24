@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { productId } = await req.json().catch(() => ({ productId: null }));
+  const { productId, force } = await req.json().catch(() => ({ productId: null, force: false }));
   if (!productId) {
     return NextResponse.json({ error: 'productId required' }, { status: 400 });
   }
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    await publishProductToSocial(admin, product);
+    await publishProductToSocial(admin, product, { force: Boolean(force) });
     return NextResponse.json({ ok: true });
   } catch (err) {
     // Non-fatal from the caller's point of view — the product is already

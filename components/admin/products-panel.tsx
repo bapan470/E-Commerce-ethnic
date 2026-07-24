@@ -3,7 +3,7 @@
 import { useState, FormEvent, useEffect, useMemo, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles, Link2, Palette, Wand2, Search, X, Truck, Package } from 'lucide-react';
+import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles, Link2, Palette, Wand2, Search, X, Truck, Package, Share2, CheckCircle2 } from 'lucide-react';
 import { useProducts } from '@/lib/cart-context';
 import {
   createProduct,
@@ -269,6 +269,44 @@ export default function ProductsPanel() {
   const [variantColorsById, setVariantColorsById] = useState<
     Record<string, { color: string; color_hex: string | null }[]>
   >({});
+  // product_id -> social_posted_at (ISO string) | null. Drives the
+  // Share/✓ Posted button state per row in the catalog list.
+  const [socialStatusById, setSocialStatusById] = useState<Record<string, string | null>>({});
+  const [sharingId, setSharingId] = useState<string | null>(null);
+  const [reshareConfirmId, setReshareConfirmId] = useState<string | null>(null);
+
+  const loadSocialStatus = useCallback(() => {
+    fetch('/api/admin/product-social-status')
+      .then((res) => (res.ok ? res.json() : { statusById: {} }))
+      .then((data) => setSocialStatusById(data.statusById ?? {}))
+      .catch(() => {
+        // Non-fatal — the Share button just won't know past-posted state
+        // this session; it'll still work, defaulting to the "Share" state.
+      });
+  }, []);
+
+  useEffect(() => {
+    loadSocialStatus();
+  }, [loadSocialStatus]);
+
+  const shareProduct = async (productId: string, force: boolean) => {
+    setSharingId(productId);
+    try {
+      const res = await triggerSocialAutoPost(productId, force);
+      const data = await res.json().catch(() => ({ ok: false }));
+      if (data.ok) {
+        toast.success(force ? 'Re-shared to social media' : 'Shared to social media');
+      } else {
+        toast.error(data.error || 'Share failed — check that Social Auto-Post is configured in Marketing settings');
+      }
+    } catch {
+      toast.error('Share failed — network error');
+    } finally {
+      setSharingId(null);
+      setReshareConfirmId(null);
+      loadSocialStatus();
+    }
+  };
 
   useEffect(() => {
     fetch('/api/admin/product-variant-counts')
@@ -928,6 +966,33 @@ export default function ProductsPanel() {
                   )}
                 </div>
                 <div className="col-span-2 flex justify-end gap-1 sm:col-span-1">
+                  {socialStatusById[p.id] ? (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => setReshareConfirmId(p.id)}
+                      aria-label="Posted — click to re-share"
+                      title={`Already posted to social on ${new Date(socialStatusById[p.id] as string).toLocaleDateString()}. Click to re-share (confirmation required).`}
+                      className="text-emerald-600 hover:text-emerald-700"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                    </Button>
+                  ) : (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => shareProduct(p.id, false)}
+                      disabled={sharingId === p.id}
+                      aria-label="Share to social media"
+                      title="Post this product to Facebook / Instagram / Threads now"
+                    >
+                      {sharingId === p.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Share2 className="h-4 w-4" />
+                      )}
+                    </Button>
+                  )}
                   <Button
                     size="icon"
                     variant="ghost"
@@ -1770,6 +1835,41 @@ export default function ProductsPanel() {
             </DialogClose>
             <Button onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Re-share confirm — this product was already posted once. Posting
+          the exact same product/images again is the kind of repeated,
+          near-duplicate content Meta's spam systems watch for, so this is
+          deliberately a click-through confirmation rather than a one-click
+          action. */}
+      <Dialog open={!!reshareConfirmId} onOpenChange={(o) => !o && setReshareConfirmId(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-xl text-primary">
+              Share this product again?
+            </DialogTitle>
+            <DialogDescription>
+              This product was already posted to social media once. Posting the same product
+              repeatedly can look like duplicate/spam content to Facebook, Instagram, and Threads,
+              which risks your account getting restricted. Only re-share if something meaningfully
+              changed (price drop, restock, new photos).
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancel</Button>
+            </DialogClose>
+            <Button
+              onClick={() => reshareConfirmId && shareProduct(reshareConfirmId, true)}
+              disabled={sharingId === reshareConfirmId}
+            >
+              {sharingId === reshareConfirmId ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+              Yes, share again
             </Button>
           </DialogFooter>
         </DialogContent>
