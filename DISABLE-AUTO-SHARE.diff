@@ -1,0 +1,89 @@
+diff --git a/app/api/vendor/ai-process/[id]/route.ts b/app/api/vendor/ai-process/[id]/route.ts
+index b8ea021..c9a18e5 100644
+--- a/app/api/vendor/ai-process/[id]/route.ts
++++ b/app/api/vendor/ai-process/[id]/route.ts
+@@ -4,7 +4,6 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
+ import { publishVendorProductWithAI } from '@/lib/vendor-ai-listing';
+ import { sendEmail } from '@/lib/email';
+ import { vendorProductLiveEmail, vendorProductEditLiveEmail } from '@/lib/email-templates';
+-import { publishProductToSocial } from '@/lib/social-publish-api';
+ 
+ // Allow up to 60 seconds (Vercel Hobby's max) — this app is hosted on
+ // Vercel, and the NVIDIA vision-language model call this route makes
+@@ -175,22 +174,9 @@ async function handleAiProcess({
+     });
+   }
+ 
+-  // ── Auto-post to Facebook / Instagram ──────────────────────────────────
+-  // Re-fetch the row so the caption uses the AI-finalized name/description/
+-  // price rather than the vendor's raw draft. Never allowed to fail the
+-  // request — the product is already live regardless of what happens here.
+-  if (!isEdit) {
+-    const { data: freshProduct } = await admin
+-      .from('products')
+-      .select('id, name, slug, description, price, images, social_posted_at')
+-      .eq('id', productId)
+-      .maybeSingle();
+-    if (freshProduct) {
+-      await publishProductToSocial(admin, freshProduct).catch((err) => {
+-        console.error('[vendor/ai-process] social auto-post failed for', productId, err);
+-      });
+-    }
+-  }
++  // Social posting is no longer automatic here — the product goes live,
++  // but Facebook/Instagram/Threads posting now only happens when the
++  // admin clicks the Share button on this product (POST /api/social/publish).
+ 
+   return NextResponse.json({ ok: true });
+ }
+diff --git a/components/admin/products-panel.tsx b/components/admin/products-panel.tsx
+index 8242318..663bafb 100644
+--- a/components/admin/products-panel.tsx
++++ b/components/admin/products-panel.tsx
+@@ -613,10 +613,8 @@ export default function ProductsPanel() {
+       } else {
+         const created = await createProduct(payload);
+         toast.success('Product added — now add colour variants below, or close to finish.');
+-        // Fire-and-forget: auto-post this new product to Facebook/Instagram
+-        // per Admin > Marketing > Social Auto-Post settings. Never blocks
+-        // or fails the "product added" flow above.
+-        triggerSocialAutoPost(created.id).catch(() => {});
++        // No auto-post here — social sharing only happens when the admin
++        // clicks the Share button on this product's row (see shareProduct()).
+         // Keep the dialog open, switched into "edit" mode for the product we
+         // just created, so colour/size variants can be added right here
+         // without hunting for a separate tab.
+diff --git a/lib/cron-jobs.ts b/lib/cron-jobs.ts
+index c6c621c..761b6a2 100644
+--- a/lib/cron-jobs.ts
++++ b/lib/cron-jobs.ts
+@@ -32,7 +32,6 @@ import {
+   vendorProductEditLiveEmail,
+ } from '@/lib/email-templates';
+ import { publishVendorProductWithAI } from '@/lib/vendor-ai-listing';
+-import { publishProductToSocial } from '@/lib/social-publish-api';
+ 
+ // ----------------------------- Abandoned carts -----------------------------
+ export async function runAbandonedCartsJob() {
+@@ -357,18 +356,9 @@ export async function runStuckVendorListingsJob() {
+         });
+       }
+ 
+-      if (!isEdit) {
+-        const { data: freshProduct } = await supabase
+-          .from('products')
+-          .select('id, name, slug, description, price, images, social_posted_at')
+-          .eq('id', product.id)
+-          .maybeSingle();
+-        if (freshProduct) {
+-          await publishProductToSocial(supabase, freshProduct).catch((socialErr) => {
+-            console.error('[runStuckVendorListingsJob] social auto-post failed for', product.id, socialErr);
+-          });
+-        }
+-      }
++      // Social posting is no longer automatic — even for listings recovered
++      // by this safety-net job. Facebook/Instagram/Threads posting only
++      // happens when the admin clicks the Share button on the product.
+     } catch (itemErr: any) {
+       errors.push(`product ${product.id}: ${itemErr?.message || itemErr}`);
+       // Even if the AI-recovery path itself threw, don't leave the row
