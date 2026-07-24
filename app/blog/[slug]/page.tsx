@@ -11,6 +11,43 @@ import { blurDataURL } from '@/lib/utils';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
+// Parses the `[anchor text](category:Category Name)` markup that the AI
+// blog generator (and, optionally, manual authors) can embed in
+// body_paragraphs, turning it into a real internal <Link> to that
+// category's page. Any category name that doesn't resolve to a real,
+// live category is rendered as plain text instead — so a stale/renamed
+// category can never produce a dead link on the live site.
+const CATEGORY_LINK_RE = /\[([^\]]+)\]\(category:([^)]+)\)/g;
+
+function renderParagraphWithLinks(paragraph: string, categoryNameToSlug: Map<string, string>) {
+  const parts: (string | JSX.Element)[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+  CATEGORY_LINK_RE.lastIndex = 0;
+  while ((match = CATEGORY_LINK_RE.exec(paragraph)) !== null) {
+    const [full, anchorText, categoryName] = match;
+    if (match.index > lastIndex) parts.push(paragraph.slice(lastIndex, match.index));
+    const slug = categoryNameToSlug.get(categoryName.trim().toLowerCase());
+    if (slug) {
+      parts.push(
+        <Link
+          key={`link-${key++}`}
+          href={`/category/${slug}`}
+          className="font-medium text-primary underline underline-offset-2 hover:opacity-80"
+        >
+          {anchorText}
+        </Link>
+      );
+    } else {
+      parts.push(anchorText);
+    }
+    lastIndex = match.index + full.length;
+  }
+  if (lastIndex < paragraph.length) parts.push(paragraph.slice(lastIndex));
+  return parts;
+}
+
 type Params = { params: { slug: string } };
 
 export async function generateStaticParams() {
@@ -62,12 +99,17 @@ export default async function BlogPostPage({ params }: Params) {
 
   // Resolve the post's related category to its real slug so the CTA at the
   // bottom links to the SEO category page (/category/[slug]) rather than
-  // hardcoding a URL that could drift if the category is renamed.
+  // hardcoding a URL that could drift if the category is renamed. Also
+  // build a name->slug map for any in-content `[text](category:Name)`
+  // links inside body_paragraphs (see app/api/admin/generate-blog-post).
   let relatedCategorySlug: string | null = null;
-  if (post.related_category_name) {
+  const categoryNameToSlug = new Map<string, string>();
+  {
     const categories = await fetchCategoriesServer();
-    relatedCategorySlug =
-      categories.find((c) => c.name === post.related_category_name)?.slug ?? null;
+    for (const c of categories) categoryNameToSlug.set(c.name.toLowerCase(), c.slug);
+    if (post.related_category_name) {
+      relatedCategorySlug = categoryNameToSlug.get(post.related_category_name.toLowerCase()) ?? null;
+    }
   }
 
   const url = `${SITE_URL}/blog/${post.slug}`;
@@ -128,7 +170,7 @@ export default async function BlogPostPage({ params }: Params) {
       <div className="mt-8 max-w-none text-foreground">
         {post.body_paragraphs.map((para, i) => (
           <p key={i} className="mb-4 leading-relaxed text-foreground/90">
-            {para}
+            {renderParagraphWithLinks(para, categoryNameToSlug)}
           </p>
         ))}
       </div>

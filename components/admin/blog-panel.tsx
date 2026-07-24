@@ -137,7 +137,7 @@ export default function BlogPanel() {
       setSlug(data.slug || '');
       setExcerpt(data.excerpt || '');
       setKeywords(Array.isArray(data.keywords) ? data.keywords.join(', ') : '');
-      setCoverImage('');
+      setCoverImage(data.suggested_cover_image || '');
       setBodyText(bodyToText(data.body_paragraphs || []));
       setReadMinutes(data.read_minutes || 5);
       const matchedCategory = categories.find(
@@ -146,7 +146,11 @@ export default function BlogPanel() {
       setRelatedCategory(matchedCategory ? matchedCategory.name : 'none');
       setPublished(false);
       setOpen(true);
-      toast.success('Draft generated — review and add a cover image before publishing');
+      toast.success(
+        data.suggested_cover_image
+          ? 'Draft generated with a product photo as cover — review before publishing'
+          : 'Draft generated — review and add a cover image before publishing'
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'AI generation failed');
     } finally {
@@ -554,6 +558,12 @@ export default function BlogPanel() {
                 onChange={(e) => setBodyText(e.target.value)}
                 placeholder={'First paragraph…\n\nSecond paragraph…'}
               />
+              <p className="text-xs text-muted-foreground">
+                Tip: link a phrase to a category page inline with{' '}
+                <code className="rounded bg-muted px-1">[text](category:Category Name)</code> — e.g.{' '}
+                <code className="rounded bg-muted px-1">[Banarasi silk saree](category:Silk Sarees)</code>. The
+                category name must match a real category exactly, or it renders as plain text.
+              </p>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-1.5">

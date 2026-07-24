@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
+import { getServerSupabase } from '@/lib/supabase-server';
 
 // Same free-tier NVIDIA NIM setup already used by
 // app/api/admin/generate-listing/route.ts and lib/vendor-ai-listing.ts —
@@ -19,6 +20,7 @@ interface GeneratedPost {
   body_paragraphs: string[];
   read_minutes: number;
   related_category_name: string;
+  suggested_cover_image: string;
 }
 
 const slugify = (s: string) =>
@@ -29,16 +31,36 @@ const slugify = (s: string) =>
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-');
 
-function buildPrompt(topic: string, extraKeywords: string) {
+// In-content links use `[anchor text](category:Exact Category Name)`. Kept
+// as plain text markup (no DB/schema change) and parsed by the public blog
+// page into real <Link>s. Anything that doesn't match a real category name
+// is stripped back to plain anchor text below — so a broken/hallucinated
+// category name can never render as a dead link on the live site.
+const CATEGORY_LINK_RE = /\[([^\]]+)\]\(category:([^)]+)\)/g;
+
+function sanitizeInlineLinks(paragraph: string, validNames: Set<string>): string {
+  return paragraph.replace(CATEGORY_LINK_RE, (full, anchorText, categoryName) => {
+    const trimmed = categoryName.trim();
+    return validNames.has(trimmed.toLowerCase()) ? full : anchorText;
+  });
+}
+
+function buildPrompt(topic: string, extraKeywords: string, categoryNames: string[]) {
+  const categoryList = categoryNames.length > 0 ? categoryNames.join(', ') : '(no categories available)';
   return `You are an SEO content writer for "Aruhi Handlooms", an Indian ethnic-wear e-commerce store selling handwoven sarees, lehengas, bridal wear and kurtis. Their existing blog targets real search-intent, long-tail keywords (often Hinglish) in a warm, boutique-style, no-fuss voice — practical how-to and guide content, not generic marketing fluff.
 
 Write a full blog post for this topic: "${topic}"
 ${extraKeywords ? `Additional keywords/context to weave in naturally: ${extraKeywords}` : ''}
 
+The store's ACTUAL live product categories are exactly: ${categoryList}
+Do not invent or use any category name outside this exact list.
+
 Requirements:
 - 6 to 8 paragraphs, each 3-6 sentences, genuinely useful and specific (real technique, real fabric names, real practical detail) — not vague filler.
+- CRITICAL — avoid repetition across paragraphs: if the post covers multiple outfit types (e.g. saree, lehenga, kurti), each one needs its own genuinely distinct styling advice, fabric detail, and occasion fit. Do not reuse the same color/pairing suggestion ("neutral color like beige or cream, paired with a white or light-colored blouse") more than once in the whole post — that reads as generic AI filler and hurts both readability and SEO.
 - Written for an Indian audience shopping for ethnic wear online.
-- No emojis, no markdown formatting, no headers inside paragraphs — plain prose paragraphs only.
+- No emojis, no markdown formatting, no headers inside paragraphs — plain prose paragraphs only, EXCEPT for the in-content category links described below.
+- In 2 to 4 of the paragraphs (not all), naturally weave in ONE in-content link per paragraph using this exact syntax: [natural anchor text](category:Exact Category Name) — the category name must be copied exactly from the list above. Example: "you could reach for a [Banarasi silk saree](category:Silk Sarees) in a warm gold tone". Only link where it's a genuinely relevant, natural mention — never force it, never link the same category twice.
 - Naturally mention relevant fabrics/crafts (e.g. Banarasi, Kanjivaram, Chanderi, Tussar, Mysore Silk, Georgette) only where genuinely relevant to the topic — don't force it.
 
 Respond with ONLY a JSON object (no markdown fences, no preamble) with these exact keys:
@@ -46,9 +68,8 @@ Respond with ONLY a JSON object (no markdown fences, no preamble) with these exa
   "title": "SEO title, 45-70 characters, includes the main keyword naturally",
   "excerpt": "meta description / listing summary, 140-160 characters, makes someone want to click",
   "keywords": ["3-5 realistic search-intent keyword phrases a real shopper would type, mix of Hinglish and English where natural"],
-  "body_paragraphs": ["paragraph 1", "paragraph 2", "... 6 to 8 paragraphs total"],
-  "read_minutes": integer estimate based on total word count (roughly 200 words per minute),
-  "related_category_name": "single best-matching product category name for a 'Shop this' link, one of exactly: Silk Sarees, Cotton Sarees, Lehenga, Kurtis, Bridal Wear, Sarees — pick whichever fits the topic best, or empty string if none fit"
+  "body_paragraphs": ["paragraph 1", "paragraph 2", "... 6 to 8 paragraphs total, with category links embedded per the syntax above"],
+  "related_category_name": "the single BEST-matching category from the exact list above for a final 'Shop this collection' button — must be copied exactly from the list, or empty string if genuinely none fit"
 }`;
 }
 
@@ -75,8 +96,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Give a topic or pick a trending idea to generate from.' }, { status: 400 });
   }
 
+  // Real, live category names — this is what actually fixes "related
+  // category: None" and dead-end inline links: the AI is only ever allowed
+  // to reference categories that genuinely exist and have products, instead
+  // of guessing from a hardcoded list that can drift out of sync with the
+  // real catalog.
+  const supabase = getServerSupabase();
+  const { data: categoriesData } = await supabase.from('categories').select('name');
+  const categoryNames: string[] = (categoriesData ?? []).map((c: any) => String(c.name)).filter(Boolean);
+  const validNameSet = new Set(categoryNames.map((n) => n.toLowerCase()));
+
   try {
-    const promptText = buildPrompt(topic, extraKeywords);
+    const promptText = buildPrompt(topic, extraKeywords, categoryNames);
 
     const nimController = new AbortController();
     const nimTimeout = setTimeout(() => nimController.abort(), 55_000);
@@ -139,14 +170,50 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'AI returned an unexpected format. Please try again.' }, { status: 502 });
     }
 
+    const bodyParagraphs = parsed.body_paragraphs
+      .filter((p) => typeof p === 'string' && p.trim().length > 0)
+      .map((p) => sanitizeInlineLinks(p, validNameSet));
+
+    // Estimated by us from the actual generated word count (~200 wpm),
+    // rather than trusting the model's own guess, which was frequently off
+    // (e.g. claiming 8 minutes for a ~500-word post).
+    const totalWords = bodyParagraphs.join(' ').split(/\s+/).filter(Boolean).length;
+    const readMinutes = Math.max(2, Math.round(totalWords / 200));
+
+    const relatedRaw = (parsed.related_category_name || '').trim();
+    const relatedCategoryName = validNameSet.has(relatedRaw.toLowerCase())
+      ? categoryNames.find((n) => n.toLowerCase() === relatedRaw.toLowerCase()) || ''
+      : '';
+
+    // Pull a real product photo from that category to suggest as the cover
+    // image — a live catalog photo converts better than a generic stock
+    // image, and it saves the manual "go find a URL" step for the admin.
+    // Best-effort: if nothing's found (empty category, no images), the
+    // admin just gets an empty cover field like before, nothing breaks.
+    let suggestedCoverImage = '';
+    if (relatedCategoryName) {
+      const { data: productRows } = await supabase
+        .from('products')
+        .select('images')
+        .eq('category_name', relatedCategoryName)
+        .eq('approval_status', 'live')
+        .order('created_at', { ascending: false })
+        .limit(10);
+      const withImages = (productRows ?? []).find(
+        (p: any) => Array.isArray(p.images) && p.images.length > 0
+      );
+      if (withImages) suggestedCoverImage = withImages.images[0];
+    }
+
     const result: GeneratedPost = {
       title: parsed.title.trim(),
       slug: slugify(parsed.title),
       excerpt: (parsed.excerpt || '').trim(),
       keywords: Array.isArray(parsed.keywords) ? parsed.keywords.filter(Boolean) : [],
-      body_paragraphs: parsed.body_paragraphs.filter((p) => typeof p === 'string' && p.trim().length > 0),
-      read_minutes: Number.isFinite(parsed.read_minutes) && parsed.read_minutes > 0 ? Math.round(parsed.read_minutes) : 5,
-      related_category_name: (parsed.related_category_name || '').trim(),
+      body_paragraphs: bodyParagraphs,
+      read_minutes: readMinutes,
+      related_category_name: relatedCategoryName,
+      suggested_cover_image: suggestedCoverImage,
     };
 
     return NextResponse.json(result);
