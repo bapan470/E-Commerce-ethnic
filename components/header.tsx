@@ -103,7 +103,13 @@ export default function Header() {
   useEffect(() => {
     const wasOnCheckout = pathnameRef.current?.startsWith('/checkout');
     const nowOnCheckout = pathname.startsWith('/checkout');
-    if (wasOnCheckout && !nowOnCheckout) {
+    // /login and /signup are intentional detours from checkout (e.g. the
+    // resell-login prompt sends the shopper there with ?next=/checkout) —
+    // they bring the shopper straight back to /checkout once they're done,
+    // so this recovery logic must not treat that as a "left checkout" event
+    // and bounce them to wherever they were before checkout instead.
+    const nowOnAuthDetour = pathname === '/login' || pathname === '/signup';
+    if (wasOnCheckout && !nowOnCheckout && !nowOnAuthDetour) {
       const returnPath = recoverFromCheckout(getCheckoutReturnPath());
       if (returnPath && returnPath !== pathname + window.location.search) {
         router.replace(returnPath);
