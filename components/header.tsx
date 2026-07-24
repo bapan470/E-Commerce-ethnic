@@ -78,12 +78,20 @@ export default function Header() {
 
   const handleBack = () => {
     if (pathname.startsWith('/checkout')) {
-      const returnPath = recoverFromCheckout(getCheckoutReturnPath());
-      // replace, not push: pushing here would leave the /checkout entry
-      // still sitting in browser history, so a second back tap (from the
-      // product page) would land right back on it — a checkout <-> product
-      // loop. Replacing swaps /checkout out of history entirely.
-      router.replace(returnPath || '/');
+      // /checkout is always entered via router.push (Buy Now, cart drawer,
+      // cart page), so the page we want is already one step back in real
+      // browser history — a native back cleanly consumes that pushed
+      // /checkout entry and lands exactly there, with no duplicate entries.
+      // The pathname-watcher effect below silently corrects the landing
+      // spot (via replace, never push) if native back ever lands somewhere
+      // other than what markCheckoutEntry recorded, so this stays reliable
+      // even when history doesn't behave as expected.
+      recoverFromCheckout(getCheckoutReturnPath());
+      if (typeof window !== 'undefined' && window.history.length > 1) {
+        window.history.back();
+      } else {
+        router.replace(getCheckoutReturnPath() || '/');
+      }
       return;
     }
     if (typeof window !== 'undefined' && window.history.length > 1) {
