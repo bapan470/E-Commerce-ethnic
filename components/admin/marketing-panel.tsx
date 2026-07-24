@@ -22,6 +22,11 @@ import {
   saveAnalyticsSettings,
 } from '@/lib/marketing-api';
 import {
+  SocialPublishSettings,
+  fetchSocialPublishSettings,
+  saveSocialPublishSettings,
+} from '@/lib/settings-api';
+import {
   GrowthSettings,
   DEFAULT_GROWTH_SETTINGS,
   fetchGrowthSettings,
@@ -70,6 +75,7 @@ export default function MarketingPanel() {
             <TabsTrigger value="feed">Merchant Feed</TabsTrigger>
             <TabsTrigger value="seo">SEO</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
+            <TabsTrigger value="social-publish">Social Auto-Post</TabsTrigger>
           </TabsList>
 
           <TabsContent value="legal"><LegalPagesTab /></TabsContent>
@@ -80,6 +86,7 @@ export default function MarketingPanel() {
           <TabsContent value="feed"><MerchantFeedTab /></TabsContent>
           <TabsContent value="seo"><SeoTab /></TabsContent>
           <TabsContent value="analytics"><AnalyticsTab /></TabsContent>
+          <TabsContent value="social-publish"><SocialPublishTab /></TabsContent>
         </Tabs>
       </CardContent>
     </Card>
@@ -623,6 +630,136 @@ function AnalyticsTab() {
       <Button type="submit" disabled={saving} className="gap-2 bg-primary">
         <Save className="h-4 w-4" />
         {saving ? 'Saving...' : 'Save Analytics Settings'}
+      </Button>
+    </form>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Social Auto-Post: automatically posts every product that goes live —
+// vendor-submitted (after AI processing) or admin-added directly — to a
+// Facebook Page and/or linked Instagram Business account via the Meta
+// Graph API. Actual posting happens server-side in
+// lib/social-publish-api.ts; this tab only stores the settings.
+// ---------------------------------------------------------------------
+
+function SocialPublishTab() {
+  const [settings, setSettings] = useState<SocialPublishSettings | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetchSocialPublishSettings()
+      .then(setSettings)
+      .catch(() => toast.error('Failed to load social auto-post settings'));
+  }, []);
+
+  const onSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!settings) return;
+    setSaving(true);
+    try {
+      await saveSocialPublishSettings(settings);
+      toast.success('Social auto-post settings saved');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!settings) return <p className="py-6 text-sm text-muted-foreground">Loading...</p>;
+
+  return (
+    <form onSubmit={onSubmit} className="mt-4 max-w-lg space-y-6">
+      <p className="text-xs text-muted-foreground">
+        When on, every product that goes live — vendor-submitted (after AI processing) or added
+        directly by you — is posted automatically. No manual step needed for either. Requires a
+        Meta App with a long-lived Page Access Token (permissions: pages_manage_posts,
+        pages_read_engagement, instagram_content_publish, instagram_basic).
+      </p>
+
+      <div className="space-y-3 rounded-lg border border-border p-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <Label htmlFor="fb-enabled">Facebook Page</Label>
+            <p className="text-xs text-muted-foreground">Posts as a Page post with the product photo.</p>
+          </div>
+          <Switch
+            id="fb-enabled"
+            checked={settings.facebook_enabled}
+            onCheckedChange={(checked) => setSettings({ ...settings, facebook_enabled: checked })}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="fb-page-id">Facebook Page ID</Label>
+          <Input
+            id="fb-page-id"
+            value={settings.facebook_page_id}
+            onChange={(e) => setSettings({ ...settings, facebook_page_id: e.target.value })}
+            placeholder="1234567890123456"
+          />
+        </div>
+      </div>
+
+      <div className="space-y-3 rounded-lg border border-border p-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <Label htmlFor="ig-enabled">Instagram</Label>
+            <p className="text-xs text-muted-foreground">
+              Requires an Instagram Business/Creator account linked to the Page above.
+            </p>
+          </div>
+          <Switch
+            id="ig-enabled"
+            checked={settings.instagram_enabled}
+            onCheckedChange={(checked) => setSettings({ ...settings, instagram_enabled: checked })}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="ig-account-id">Instagram Business Account ID</Label>
+          <Input
+            id="ig-account-id"
+            value={settings.instagram_business_account_id}
+            onChange={(e) => setSettings({ ...settings, instagram_business_account_id: e.target.value })}
+            placeholder="17841400000000000"
+          />
+          <p className="text-xs text-muted-foreground">
+            Graph API Explorer → GET /&#123;page-id&#125;?fields=instagram_business_account
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="meta-token">Page Access Token</Label>
+        <Input
+          id="meta-token"
+          type="password"
+          value={settings.access_token}
+          onChange={(e) => setSettings({ ...settings, access_token: e.target.value })}
+          placeholder="EAAG..."
+        />
+        <p className="text-xs text-muted-foreground">
+          A single long-lived Page token is used for both Facebook and Instagram — that&apos;s how
+          the Graph API works for a linked Instagram Business account.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="caption-template">Post Caption Template</Label>
+        <Textarea
+          id="caption-template"
+          rows={5}
+          value={settings.caption_template}
+          onChange={(e) => setSettings({ ...settings, caption_template: e.target.value })}
+        />
+        <p className="text-xs text-muted-foreground">
+          Placeholders: {'{name}'}, {'{price}'}, {'{description}'}, {'{url}'}
+        </p>
+      </div>
+
+      <Button type="submit" disabled={saving} className="gap-2 bg-primary">
+        <Save className="h-4 w-4" />
+        {saving ? 'Saving...' : 'Save Social Auto-Post Settings'}
       </Button>
     </form>
   );

@@ -102,6 +102,50 @@ export async function saveSiteBanner(banner: SiteBanner) {
   if (error) throw error;
 }
 
+// ---------------------------------------------------------------------
+// Social auto-publish (Facebook Page + Instagram) — Admin > Marketing >
+// Social Auto-Post. When enabled, every product that goes live — vendor-
+// submitted (after AI processing) or admin-added directly — is
+// automatically posted. The actual Graph API calls happen server-only in
+// lib/social-publish-api.ts (which stays out of the client bundle); this
+// is deliberately a plain local type/default, not imported from there,
+// so this settings form can stay a normal client-side module.
+// ---------------------------------------------------------------------
+export interface SocialPublishSettings {
+  facebook_enabled: boolean;
+  instagram_enabled: boolean;
+  access_token: string;
+  facebook_page_id: string;
+  instagram_business_account_id: string;
+  caption_template: string;
+}
+
+const DEFAULT_SOCIAL_PUBLISH_SETTINGS: SocialPublishSettings = {
+  facebook_enabled: false,
+  instagram_enabled: false,
+  access_token: '',
+  facebook_page_id: '',
+  instagram_business_account_id: '',
+  caption_template: '✨ New Arrival: {name}\n\n{description}\n\nPrice: ₹{price}\nShop now: {url}',
+};
+
+export async function fetchSocialPublishSettings(): Promise<SocialPublishSettings> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'social_publish')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_SOCIAL_PUBLISH_SETTINGS;
+  return { ...DEFAULT_SOCIAL_PUBLISH_SETTINGS, ...(data.value as Partial<SocialPublishSettings>) };
+}
+
+export async function saveSocialPublishSettings(settings: SocialPublishSettings) {
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ key: 'social_publish', value: settings }, { onConflict: 'key' });
+  if (error) throw error;
+}
+
 export type EmailProvider = 'resend' | 'zeptomail' | '';
 
 export interface EmailSettings {

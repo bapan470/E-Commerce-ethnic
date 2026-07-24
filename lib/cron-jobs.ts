@@ -32,6 +32,7 @@ import {
   vendorProductEditLiveEmail,
 } from '@/lib/email-templates';
 import { publishVendorProductWithAI } from '@/lib/vendor-ai-listing';
+import { publishProductToSocial } from '@/lib/social-publish-api';
 
 // ----------------------------- Abandoned carts -----------------------------
 export async function runAbandonedCartsJob() {
@@ -354,6 +355,19 @@ export async function runStuckVendorListingsJob() {
         await sendEmail({ to: vendorInfo.email, subject, html }).catch((emailErr) => {
           console.error('[runStuckVendorListingsJob] email send failed for', vendorInfo.email, emailErr);
         });
+      }
+
+      if (!isEdit) {
+        const { data: freshProduct } = await supabase
+          .from('products')
+          .select('id, name, slug, description, price, images, social_posted_at')
+          .eq('id', product.id)
+          .maybeSingle();
+        if (freshProduct) {
+          await publishProductToSocial(supabase, freshProduct).catch((socialErr) => {
+            console.error('[runStuckVendorListingsJob] social auto-post failed for', product.id, socialErr);
+          });
+        }
       }
     } catch (itemErr: any) {
       errors.push(`product ${product.id}: ${itemErr?.message || itemErr}`);

@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { publishVendorProductWithAI } from '@/lib/vendor-ai-listing';
 import { sendEmail } from '@/lib/email';
 import { vendorProductLiveEmail, vendorProductEditLiveEmail } from '@/lib/email-templates';
+import { publishProductToSocial } from '@/lib/social-publish-api';
 
 // Allow up to 60 seconds (Vercel Hobby's max) — this app is hosted on
 // Vercel, and the NVIDIA vision-language model call this route makes
@@ -172,6 +173,23 @@ async function handleAiProcess({
       // Non-fatal — product is already live; just log the failure
       console.error('[vendor/ai-process] email send failed for', vendorEmail, err);
     });
+  }
+
+  // ── Auto-post to Facebook / Instagram ──────────────────────────────────
+  // Re-fetch the row so the caption uses the AI-finalized name/description/
+  // price rather than the vendor's raw draft. Never allowed to fail the
+  // request — the product is already live regardless of what happens here.
+  if (!isEdit) {
+    const { data: freshProduct } = await admin
+      .from('products')
+      .select('id, name, slug, description, price, images, social_posted_at')
+      .eq('id', productId)
+      .maybeSingle();
+    if (freshProduct) {
+      await publishProductToSocial(admin, freshProduct).catch((err) => {
+        console.error('[vendor/ai-process] social auto-post failed for', productId, err);
+      });
+    }
   }
 
   return NextResponse.json({ ok: true });

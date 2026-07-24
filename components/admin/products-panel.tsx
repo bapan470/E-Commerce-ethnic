@@ -21,6 +21,7 @@ import {
   fetchAdminVendorProducts,
   type AdminVendorProductRow,
   type VendorProductApprovalStatus,
+  triggerSocialAutoPost,
 } from '@/lib/vendor-api';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -574,6 +575,10 @@ export default function ProductsPanel() {
       } else {
         const created = await createProduct(payload);
         toast.success('Product added — now add colour variants below, or close to finish.');
+        // Fire-and-forget: auto-post this new product to Facebook/Instagram
+        // per Admin > Marketing > Social Auto-Post settings. Never blocks
+        // or fails the "product added" flow above.
+        triggerSocialAutoPost(created.id).catch(() => {});
         // Keep the dialog open, switched into "edit" mode for the product we
         // just created, so colour/size variants can be added right here
         // without hunting for a separate tab.
