@@ -141,6 +141,37 @@ async function postToFacebook(
   return json.post_id || json.id || null;
 }
 
+/**
+ * Instagram/Threads media containers are processed asynchronously by
+ * Meta's servers — publishing immediately after create() can fail
+ * (silently, from our fire-and-forget caller's perspective) if the
+ * container isn't ready yet. This polls the container's status_code
+ * and waits for FINISHED (or bails on ERROR) before we try to publish.
+ * Images are usually ready in 1-3 seconds; we allow up to ~20s.
+ */
+async function waitForContainerReady(
+  apiBase: string,
+  containerId: string,
+  accessToken: string
+): Promise<void> {
+  const maxAttempts = 10;
+  const delayMs = 2000;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const res = await fetch(
+      `${apiBase}/${containerId}?fields=status_code&access_token=${encodeURIComponent(accessToken)}`
+    );
+    const json = await res.json();
+    if (json.status_code === 'FINISHED') return;
+    if (json.status_code === 'ERROR') {
+      throw new Error(`Media container processing failed: ${json?.status || 'ERROR'}`);
+    }
+    // IN_PROGRESS or EXPIRED (too soon to tell) — wait and retry.
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  // Didn't confirm FINISHED in time — try the publish anyway rather than
+  // giving up; many containers are actually ready but status lags.
+}
+
 async function postToInstagram(
   settings: SocialPublishSettings,
   caption: string,
@@ -162,6 +193,10 @@ async function postToInstagram(
   if (!createRes.ok || createJson.error || !createJson.id) {
     throw new Error(`Instagram container create failed: ${createJson?.error?.message || createRes.statusText}`);
   }
+
+  // Give Meta a moment to finish processing the image before publishing —
+  // publishing too early is a common silent-failure cause.
+  await waitForContainerReady(GRAPH_API_BASE, createJson.id, settings.access_token);
 
   // Step 2: publish the container.
   const publishRes = await fetch(
@@ -203,6 +238,9 @@ async function postToThreads(
     throw new Error(`Threads container create failed: ${createJson?.error?.message || createRes.statusText}`);
   }
 
+  // Same async-processing caveat as Instagram — wait before publishing.
+  await waitForContainerReady(THREADS_API_BASE, createJson.id, settings.threads_access_token);
+
   // Step 2: publish the container.
   const publishRes = await fetch(`${THREADS_API_BASE}/${settings.threads_user_id}/threads_publish`, {
     method: 'POST',
@@ -232,8 +270,12 @@ export async function publishProductToSocial(
   if (product.social_posted_at) return; // already posted once — don't duplicate
 
   const settings = await fetchSocialPublishSettingsServer(admin);
-  if (!settings.facebook_enabled && !settings.instagram_enabled) return;
-  if (!settings.access_token) return;
+  const anyEnabled = settings.facebook_enabled || settings.instagram_enabled || settings.threads_enabled;
+  if (!anyEnabled) return;
+  const hasUsableCredentials =
+    ((settings.facebook_enabled || settings.instagram_enabled) && settings.access_token) ||
+    (settings.threads_enabled && settings.threads_access_token);
+  if (!hasUsableCredentials) return;
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://your-store.example.com';
   const caption = buildCaption(settings.caption_template, product, siteUrl);
