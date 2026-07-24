@@ -6,8 +6,9 @@ import {
   fetchPublishedBlogPostsServer,
   fetchPublishedBlogPostBySlugServer,
 } from '@/lib/blog-api-server';
-import { fetchCategoriesServer } from '@/lib/products-api-server';
+import { fetchCategoriesServer, fetchProductBySlugServer } from '@/lib/products-api-server';
 import { blurDataURL } from '@/lib/utils';
+import BlogProductCard from '@/components/blog/blog-product-card';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
@@ -18,6 +19,15 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms
 // live category is rendered as plain text instead — so a stale/renamed
 // category can never produce a dead link on the live site.
 const CATEGORY_LINK_RE = /\[([^\]]+)\]\(category:([^)]+)\)/g;
+
+// Inline product cards: a whole paragraph consisting of `{{product:slug}}`
+// (inserted via the "Insert product card" button in the admin blog editor)
+// renders as a BlogProductCard instead of prose. Block-level rather than
+// the inline `[text](category:Name)` syntax above because a product card
+// needs its own image/price/CTA, not just a text link. A slug that no
+// longer resolves to a live product (deleted/unpublished since the post
+// was written) is simply dropped — never a broken card on the live site.
+const PRODUCT_CARD_RE = /^\{\{product:([a-z0-9-]+)\}\}$/i;
 
 function renderParagraphWithLinks(paragraph: string, categoryNameToSlug: Map<string, string>) {
   const parts: (string | JSX.Element)[] = [];
@@ -112,6 +122,23 @@ export default async function BlogPostPage({ params }: Params) {
     }
   }
 
+  // Resolve any `{{product:slug}}` markers in the body to real, live
+  // products up front, in parallel, so rendering below is a pure lookup.
+  const productSlugs = Array.from(
+    new Set(
+      post.body_paragraphs
+        .map((p) => p.trim().match(PRODUCT_CARD_RE)?.[1])
+        .filter((s): s is string => Boolean(s))
+    )
+  );
+  const productBySlug = new Map<string, Awaited<ReturnType<typeof fetchProductBySlugServer>>>();
+  if (productSlugs.length > 0) {
+    const products = await Promise.all(
+      productSlugs.map((s) => fetchProductBySlugServer(s).catch(() => null))
+    );
+    productSlugs.forEach((s, i) => productBySlug.set(s, products[i]));
+  }
+
   const url = `${SITE_URL}/blog/${post.slug}`;
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -168,11 +195,18 @@ export default async function BlogPostPage({ params }: Params) {
       </div>
 
       <div className="mt-8 max-w-none text-foreground">
-        {post.body_paragraphs.map((para, i) => (
-          <p key={i} className="mb-4 leading-relaxed text-foreground/90">
-            {renderParagraphWithLinks(para, categoryNameToSlug)}
-          </p>
-        ))}
+        {post.body_paragraphs.map((para, i) => {
+          const productSlug = para.trim().match(PRODUCT_CARD_RE)?.[1];
+          if (productSlug) {
+            const product = productBySlug.get(productSlug);
+            return product ? <BlogProductCard key={i} product={product} /> : null;
+          }
+          return (
+            <p key={i} className="mb-4 leading-relaxed text-foreground/90">
+              {renderParagraphWithLinks(para, categoryNameToSlug)}
+            </p>
+          );
+        })}
       </div>
 
       {relatedCategorySlug && (

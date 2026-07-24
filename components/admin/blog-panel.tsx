@@ -1,7 +1,19 @@
 'use client';
 
-import { useEffect, useMemo, useState, FormEvent } from 'react';
-import { Plus, Pencil, Trash2, Search, X, Eye, EyeOff, Sparkles, TrendingUp, Loader2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, FormEvent } from 'react';
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Search,
+  X,
+  Eye,
+  EyeOff,
+  Sparkles,
+  TrendingUp,
+  Loader2,
+  ShoppingBag,
+} from 'lucide-react';
 import { useProducts } from '@/lib/cart-context';
 import {
   fetchBlogPostsAdmin,
@@ -10,6 +22,7 @@ import {
   deleteBlogPost,
 } from '@/lib/blog-api';
 import { BlogPostRow } from '@/lib/types';
+import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -53,7 +66,7 @@ const textToBody = (text: string) =>
     .filter(Boolean);
 
 export default function BlogPanel() {
-  const { categories } = useProducts();
+  const { categories, products } = useProducts();
   const [posts, setPosts] = useState<BlogPostRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -82,6 +95,14 @@ export default function BlogPanel() {
   const [keywordGaps, setKeywordGaps] = useState<string[]>([]);
   const [gapsLoading, setGapsLoading] = useState(false);
   const [gapsNote, setGapsNote] = useState<string | null>(null);
+  const [suggestingCover, setSuggestingCover] = useState(false);
+
+  // Inline "product card" insertion — lets an admin drop a real product
+  // (image + name + price + Shop Now link) into the middle of a blog post,
+  // via the `{{product:slug}}` marker parsed by app/blog/[slug]/page.tsx.
+  const bodyTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const [productPickerOpen, setProductPickerOpen] = useState(false);
+  const [productSearch, setProductSearch] = useState('');
 
   const loadKeywordGaps = async () => {
     setGapsLoading(true);
@@ -156,6 +177,75 @@ export default function BlogPanel() {
     } finally {
       setAiGenerating(false);
     }
+  };
+
+  // Manual counterpart to the auto-suggestion the AI generator does — lets
+  // an admin pull a real, live product photo for the currently selected
+  // "Related category" into the Cover image field. Also how old posts that
+  // shipped with generic/broken stock-photo URLs get fixed: open the post,
+  // pick a related category if it doesn't have one yet, click Suggest.
+  const suggestCoverFromCategory = async () => {
+    if (relatedCategory === 'none') {
+      toast.error('Pick a related category first, then suggest an image');
+      return;
+    }
+    setSuggestingCover(true);
+    try {
+      const res = await fetch('/api/admin/blog-suggest-cover-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category_name: relatedCategory }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'No product photo found for that category');
+      setCoverImage(data.image);
+      toast.success('Cover image set from a live product photo');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not suggest an image');
+    } finally {
+      setSuggestingCover(false);
+    }
+  };
+
+  const filteredPickerProducts = useMemo(() => {
+    const q = productSearch.trim().toLowerCase();
+    const list = q
+      ? products.filter(
+          (p) => p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q)
+        )
+      : products;
+    return list.slice(0, 20);
+  }, [products, productSearch]);
+
+  // Inserts `{{product:slug}}` as its own paragraph at the textarea's
+  // current cursor position (falls back to appending at the end if the
+  // textarea ref isn't available for some reason). Surrounded by blank
+  // lines so textToBody() splits it out as its own paragraph, and the
+  // public blog page renders it as a product card instead of prose.
+  const insertProductCard = (slug: string) => {
+    const marker = `{{product:${slug}}}`;
+    const textarea = bodyTextareaRef.current;
+    if (textarea) {
+      const start = textarea.selectionStart ?? bodyText.length;
+      const end = textarea.selectionEnd ?? bodyText.length;
+      const before = bodyText.slice(0, start);
+      const after = bodyText.slice(end);
+      const needsLeadingBreak = before.length > 0 && !before.endsWith('\n\n');
+      const needsTrailingBreak = after.length > 0 && !after.startsWith('\n\n');
+      const insertion = `${needsLeadingBreak ? '\n\n' : ''}${marker}${needsTrailingBreak ? '\n\n' : ''}`;
+      const nextText = before + insertion + after;
+      setBodyText(nextText);
+      const cursorPos = before.length + insertion.length;
+      requestAnimationFrame(() => {
+        textarea.focus();
+        textarea.setSelectionRange(cursorPos, cursorPos);
+      });
+    } else {
+      setBodyText((prev) => (prev.trim() ? `${prev}\n\n${marker}\n\n` : marker));
+    }
+    setProductPickerOpen(false);
+    setProductSearch('');
+    toast.success('Product card inserted into the body');
   };
 
   const load = async () => {
@@ -540,19 +630,54 @@ export default function BlogPanel() {
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="post-cover">Cover image URL</Label>
-              <Input
-                id="post-cover"
-                value={coverImage}
-                onChange={(e) => setCoverImage(e.target.value)}
-                placeholder="https://…"
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="post-cover"
+                  value={coverImage}
+                  onChange={(e) => setCoverImage(e.target.value)}
+                  placeholder="https://…"
+                  className="flex-1"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={suggestCoverFromCategory}
+                  disabled={suggestingCover}
+                  className="shrink-0 whitespace-nowrap"
+                >
+                  {suggestingCover ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5" />
+                  )}
+                  <span className="ml-1.5 hidden sm:inline">Suggest from category</span>
+                  <span className="ml-1.5 sm:hidden">Suggest</span>
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Pulls a live product photo from the &quot;Related category&quot; below. Use this to
+                fix old posts that have a broken or generic stock image, too.
+              </p>
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="post-body">
-                Body — separate paragraphs with a blank line
-              </Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="post-body">
+                  Body — separate paragraphs with a blank line
+                </Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setProductPickerOpen(true)}
+                  className="h-7 gap-1.5 text-xs"
+                >
+                  <ShoppingBag className="h-3.5 w-3.5" />
+                  Insert product card
+                </Button>
+              </div>
               <Textarea
                 id="post-body"
+                ref={bodyTextareaRef}
                 rows={10}
                 value={bodyText}
                 onChange={(e) => setBodyText(e.target.value)}
@@ -563,6 +688,8 @@ export default function BlogPanel() {
                 <code className="rounded bg-muted px-1">[text](category:Category Name)</code> — e.g.{' '}
                 <code className="rounded bg-muted px-1">[Banarasi silk saree](category:Silk Sarees)</code>. The
                 category name must match a real category exactly, or it renders as plain text.
+                Place your cursor where you want a product card and click &quot;Insert product
+                card&quot; above to drop in a full image + price + Shop Now card.
               </p>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -619,6 +746,68 @@ export default function BlogPanel() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={productPickerOpen}
+        onOpenChange={(o) => {
+          setProductPickerOpen(o);
+          if (!o) setProductSearch('');
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-xl text-primary">
+              Insert a product card
+            </DialogTitle>
+            <DialogDescription>
+              Pick a live product — it&apos;ll drop into the body as a card with its photo, name,
+              price, and a Shop Now link.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={productSearch}
+              onChange={(e) => setProductSearch(e.target.value)}
+              placeholder="Search products by name or category…"
+              className="pl-9"
+              autoFocus
+            />
+          </div>
+          <div className="max-h-80 space-y-1 overflow-y-auto">
+            {filteredPickerProducts.length === 0 && (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                No live products match that search.
+              </p>
+            )}
+            {filteredPickerProducts.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => insertProductCard(p.default_variant_slug || p.slug)}
+                className="flex w-full items-center gap-3 rounded-lg border border-transparent p-2 text-left hover:border-border hover:bg-muted/50"
+              >
+                <div className="h-12 w-10 shrink-0 overflow-hidden rounded bg-muted">
+                  {(p.default_variant_image || p.images[0]) && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={p.default_variant_image || p.images[0]}
+                      alt={p.name}
+                      className="h-full w-full object-cover"
+                    />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">{p.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {p.category} · {formatINR(p.price)}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
         </DialogContent>
       </Dialog>
 
