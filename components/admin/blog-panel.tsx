@@ -299,6 +299,23 @@ export default function BlogPanel() {
     setOpen(true);
   };
 
+  // The public /blog pages only self-heal within 60s (see `revalidate` in
+  // app/blog/page.tsx) since posts are written straight to Supabase from
+  // here, not through a server route. This best-effort ping makes a save
+  // show up on the live site right away instead of the admin having to
+  // wait. Never blocks or fails the actual save if it errors.
+  const revalidateBlogPages = async (slug: string, previousSlug?: string) => {
+    try {
+      await fetch('/api/admin/revalidate-blog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug, previous_slug: previousSlug || '' }),
+      });
+    } catch {
+      // Ignore -- the 60s ISR window still catches it either way.
+    }
+  };
+
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
@@ -329,9 +346,11 @@ export default function BlogPanel() {
       if (editing) {
         await updateBlogPost(editing.id, payload);
         toast.success('Post updated');
+        await revalidateBlogPages(payload.slug, editing.slug);
       } else {
         await createBlogPost({ ...payload, published_at: new Date().toISOString() });
         toast.success('Post added');
+        await revalidateBlogPages(payload.slug);
       }
       setOpen(false);
       await load();
@@ -346,6 +365,7 @@ export default function BlogPanel() {
     try {
       await updateBlogPost(p.id, { published: !p.published });
       toast.success(p.published ? 'Post unpublished' : 'Post published');
+      await revalidateBlogPages(p.slug);
       await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update');
@@ -357,6 +377,7 @@ export default function BlogPanel() {
     try {
       await deleteBlogPost(confirmTarget.id);
       toast.success('Post deleted');
+      await revalidateBlogPages(confirmTarget.slug);
       await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Delete failed');

@@ -12,6 +12,11 @@ import BlogProductCard from '@/components/blog/blog-product-card';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
+// See the matching comment in app/blog/page.tsx -- same reasoning applies
+// here: without this, a newly-published or edited post's own page would
+// also be served stale/missing from the last deploy's static build.
+export const revalidate = 60;
+
 // Parses the `[anchor text](category:Category Name)` markup that the AI
 // blog generator (and, optionally, manual authors) can embed in
 // body_paragraphs, turning it into a real internal <Link> to that

@@ -6,6 +6,15 @@ import { blurDataURL } from '@/lib/utils';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
+// Without this, Next.js treats this page as fully static -- built once at
+// deploy time and never refetched -- so a post added/edited in the admin
+// panel (which writes straight to Supabase from the browser) would never
+// appear here until the next deploy. 60s keeps it near-live while still
+// caching between requests; the admin panel also pings
+// /api/admin/revalidate-blog right after a save for a near-instant update
+// instead of waiting out this window.
+export const revalidate = 60;
+
 export const metadata: Metadata = {
   title: 'Blog | Aruhi Handlooms',
   description:
