@@ -57,7 +57,11 @@ export interface SocialPublishSettings {
   threads_access_token: string;
   threads_user_id: string;
   // Template for the post caption. {name}, {price}, {url}, {description}
-  // are replaced with the product's actual values.
+  // are replaced with the product's actual values. {mrp} and
+  // {discount_percent} are also available — both resolve to an empty
+  // string when the product has no MRP set or isn't actually discounted,
+  // so a template line like "{discount_percent}% OFF" quietly disappears
+  // instead of printing "0% OFF" or "% OFF".
   caption_template: string;
 }
 
@@ -105,6 +109,10 @@ interface ProductForSocial {
   slug: string;
   description?: string | null;
   price: number;
+  // Original/strike-through price shown on the product card (Admin >
+  // Products "MRP" column). Optional — older rows or products with no
+  // discount simply won't have {mrp}/{discount_percent} populated.
+  mrp?: number | null;
   images?: string[] | null;
   social_posted_at?: string | null;
   social_post_ids?: Record<string, string> | null;
@@ -117,12 +125,23 @@ interface ProductForSocial {
  *  buttons in Admin > Products. */
 export type SocialPlatform = 'facebook' | 'instagram' | 'threads';
 
+/** Same rule as lib/format.ts's discountPct(): an MRP only counts as a
+ *  real discount if it's actually higher than the selling price — avoids
+ *  showing "0% off" or a negative discount for non-discounted products. */
+function discountPercentForCaption(price: number, mrp?: number | null): number {
+  if (!mrp || mrp <= price) return 0;
+  return Math.round(((mrp - price) / mrp) * 100);
+}
+
 function buildCaption(template: string, product: ProductForSocial, siteUrl: string): string {
   const description = (product.description || '').slice(0, 300);
   const url = `${siteUrl.replace(/\/$/, '')}/product/${product.slug}`;
+  const discountPercent = discountPercentForCaption(product.price, product.mrp);
   return template
     .replaceAll('{name}', product.name || '')
     .replaceAll('{price}', String(product.price ?? ''))
+    .replaceAll('{mrp}', product.mrp ? String(product.mrp) : '')
+    .replaceAll('{discount_percent}', discountPercent > 0 ? String(discountPercent) : '')
     .replaceAll('{url}', url)
     .replaceAll('{description}', description);
 }

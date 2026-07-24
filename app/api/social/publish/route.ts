@@ -46,7 +46,7 @@ export async function POST(req: Request) {
 
   const { data: product, error } = await admin
     .from('products')
-    .select('id, name, slug, description, price, images, social_posted_at, social_post_ids')
+    .select('id, name, slug, description, price, mrp, images, social_posted_at, social_post_ids')
     .eq('id', productId)
     .maybeSingle();
 
