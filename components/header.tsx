@@ -23,6 +23,7 @@ const navLinks = [
   { href: '/shop?category=Lehenga', label: 'Lehenga' },
   { href: '/shop?category=Bridal', label: 'Bridal' },
   { href: '/shop?category=Kurti', label: 'Kurti' },
+  { href: '/blog', label: 'Blog' },
 ];
 
 export default function Header() {

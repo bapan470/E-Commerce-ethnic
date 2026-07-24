@@ -2,6 +2,7 @@ import { MetadataRoute } from 'next';
 import { getServerSupabase } from '@/lib/supabase-server';
 import { ProductRow, CategoryRow } from '@/lib/types';
 import { LEGAL_PAGE_TITLES } from '@/lib/marketing-api';
+import { getAllBlogPosts } from '@/lib/blog-data';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
@@ -80,11 +81,26 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   ];
 
   const categoryPages: MetadataRoute.Sitemap = categories.map((c) => ({
-    url: `${SITE_URL}/shop?category=${encodeURIComponent(c.name)}`,
+    url: `${SITE_URL}/category/${c.slug}`,
     lastModified: new Date(),
     changeFrequency: 'weekly' as const,
     priority: 0.7,
   }));
+
+  const blogPages: MetadataRoute.Sitemap = [
+    {
+      url: `${SITE_URL}/blog`,
+      lastModified: new Date(),
+      changeFrequency: 'weekly',
+      priority: 0.6,
+    },
+    ...getAllBlogPosts().map((p) => ({
+      url: `${SITE_URL}/blog/${p.slug}`,
+      lastModified: new Date(p.updatedAt || p.publishedAt),
+      changeFrequency: 'monthly' as const,
+      priority: 0.5,
+    })),
+  ];
 
   const legalPages: MetadataRoute.Sitemap = Object.keys(LEGAL_PAGE_TITLES).map((slug) => ({
     url: `${SITE_URL}/legal/${slug}`,
@@ -115,5 +131,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     };
   });
 
-  return [...staticPages, ...categoryPages, ...legalPages, ...productPages, ...variantPages];
+  return [
+    ...staticPages,
+    ...categoryPages,
+    ...blogPages,
+    ...legalPages,
+    ...productPages,
+    ...variantPages,
+  ];
 }

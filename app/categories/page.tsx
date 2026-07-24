@@ -155,7 +155,7 @@ export default function CategoriesPage() {
           {visibleRows.map((c, i) => (
             <Link
               key={c.id}
-              href={`/shop?category=${encodeURIComponent(c.name)}`}
+              href={`/category/${c.slug}`}
               className={`group flex items-center justify-between gap-4 rounded-2xl px-5 py-4 transition-transform active:scale-[0.98] ${TINTS[i % TINTS.length]}`}
             >
               <div className="min-w-0">
