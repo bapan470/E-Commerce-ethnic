@@ -1,12 +1,15 @@
 // ---------------------------------------------------------------------
 // Generates a vertical (9:16) slideshow video from a product's images,
-// with a price/name overlay, entirely in the browser — no server-side
-// video processing, no ffmpeg, no paid AI video API. Uses two native
-// browser APIs:
+// with a price/name overlay AND a soft ambient background track,
+// entirely in the browser — no server-side video processing, no ffmpeg,
+// no paid AI video/music API. Uses three native browser APIs:
 //   - <canvas> to draw each frame (image + Ken Burns zoom + text overlay)
-//   - MediaRecorder + canvas.captureStream() to record those frames into
-//     a real video file (WebM/VP9, which Meta's Graph API accepts as a
-//     video_url source for Reels/Facebook video/Threads video).
+//   - Web Audio API to synthesize a copyright-free ambient pad (no real
+//     song — just oscillators + envelopes — so there's zero licensing
+//     risk when this gets posted to Facebook/Instagram/Threads)
+//   - MediaRecorder + canvas.captureStream() to record video+audio into
+//     a real video file (WebM/VP9+Opus, which Meta's Graph API accepts
+//     as a video_url source for Reels/Facebook video/Threads video).
 //
 // This file is browser-only ('use client' components import it) — it
 // uses document.createElement('canvas') and other DOM APIs that don't
@@ -31,6 +34,12 @@ export interface SlideshowOptions {
   height?: number;
   /** Called with 0-1 progress as slides render, for a progress bar in the UI. */
   onProgress?: (fraction: number) => void;
+  /** Add a soft, synth-generated ambient background track (free, no
+   *  copyrighted audio). Default true. */
+  includeMusic?: boolean;
+  /** Background music volume, 0-1. Default 0.35 (kept low so it never
+   *  competes with the platform's own auto-captions/sound). */
+  musicVolume?: number;
 }
 
 const FPS = 30;
@@ -162,10 +171,83 @@ function drawOverlay(
   }
 }
 
+// ---------------------------------------------------------------------
+// Background music — generated entirely with the Web Audio API (simple
+// oscillators + envelopes), NOT a real recorded song. This keeps it
+// completely free and copyright-safe (no licensed track, no royalty
+// fees, nothing that could trigger Meta's audio-rights matching when
+// the video is posted to Facebook/Instagram/Threads).
+// ---------------------------------------------------------------------
+
+// A calm, warm pentatonic scale (in Hz) that sounds pleasant in almost
+// any order — avoids needing real melody/chord-progression design.
+const AMBIENT_SCALE_HZ = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33, 659.25];
+
 /**
- * Generates the slideshow video and resolves with a Blob (video/webm).
- * Typical size for a 4-image, 10s vertical video: roughly 1.5-3MB.
+ * Builds a soft ambient pad + gentle arpeggio loop for `durationSeconds`,
+ * routed into `destination` (a MediaStreamAudioDestinationNode so its
+ * output can be merged into the recorded video's audio track).
+ * Returns a stop() function to cut the music early if recording ends
+ * sooner than expected.
  */
+function startBackgroundMusic(
+  audioCtx: AudioContext,
+  destination: MediaStreamAudioDestinationNode,
+  durationSeconds: number,
+  volume: number
+): () => void {
+  const masterGain = audioCtx.createGain();
+  masterGain.gain.value = volume;
+
+  // Gentle lowpass so the synth tones sound soft/warm rather than harsh.
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 1800;
+  masterGain.connect(filter);
+  filter.connect(destination);
+
+  const activeNodes: (OscillatorNode | AudioNode)[] = [];
+  const noteInterval = 0.9; // seconds between arpeggio notes
+  const noteLength = 1.6; // each note rings out longer than the interval, for overlap/pad feel
+  const totalNotes = Math.ceil(durationSeconds / noteInterval) + 2;
+
+  for (let i = 0; i < totalNotes; i++) {
+    const startTime = audioCtx.currentTime + i * noteInterval;
+    const freq = AMBIENT_SCALE_HZ[i % AMBIENT_SCALE_HZ.length];
+
+    const osc = audioCtx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+
+    const noteGain = audioCtx.createGain();
+    // Soft attack, slow release — avoids any clicking and keeps it ambient.
+    noteGain.gain.setValueAtTime(0, startTime);
+    noteGain.gain.linearRampToValueAtTime(0.5, startTime + 0.4);
+    noteGain.gain.linearRampToValueAtTime(0, startTime + noteLength);
+
+    osc.connect(noteGain);
+    noteGain.connect(masterGain);
+    osc.start(startTime);
+    osc.stop(startTime + noteLength + 0.05);
+    activeNodes.push(osc, noteGain);
+  }
+
+  return () => {
+    for (const node of activeNodes) {
+      if (node instanceof OscillatorNode) {
+        try {
+          node.stop();
+        } catch {
+          // Already stopped — fine to ignore.
+        }
+      }
+    }
+    masterGain.disconnect();
+    filter.disconnect();
+  };
+}
+
+
 export async function generateSlideshowVideo(opts: SlideshowOptions): Promise<Blob> {
   const width = opts.width ?? 1080;
   const height = opts.height ?? 1920;
@@ -181,14 +263,34 @@ export async function generateSlideshowVideo(opts: SlideshowOptions): Promise<Bl
 
   const loadedImages = await Promise.all(images.map(loadImage));
 
-  const stream = canvas.captureStream(FPS);
+  const videoStream = canvas.captureStream(FPS);
+
+  // ---- Background music (optional, on by default) ----------------------
+  const includeMusic = opts.includeMusic ?? true;
+  const totalDurationSeconds = images.length * secondsPerSlide;
+  let audioCtx: AudioContext | null = null;
+  let stopMusic: (() => void) | null = null;
+  let combinedStream = videoStream;
+
+  if (includeMusic) {
+    audioCtx = new AudioContext();
+    const destinationNode = audioCtx.createMediaStreamDestination();
+    stopMusic = startBackgroundMusic(audioCtx, destinationNode, totalDurationSeconds, opts.musicVolume ?? 0.35);
+    combinedStream = new MediaStream([
+      ...videoStream.getVideoTracks(),
+      ...destinationNode.stream.getAudioTracks(),
+    ]);
+  }
+
   const mimeCandidates = [
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
     'video/webm;codecs=vp9',
     'video/webm;codecs=vp8',
     'video/webm',
   ];
   const mimeType = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) ?? 'video/webm';
-  const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 4_000_000 });
+  const recorder = new MediaRecorder(combinedStream, { mimeType, videoBitsPerSecond: 4_000_000 });
 
   const chunks: BlobPart[] = [];
   recorder.ondataavailable = (e) => {
@@ -241,5 +343,9 @@ export async function generateSlideshowVideo(opts: SlideshowOptions): Promise<Bl
   });
 
   recorder.stop();
+  stopMusic?.();
+  audioCtx?.close().catch(() => {
+    // Non-fatal — the context is torn down when the tab/component unmounts either way.
+  });
   return recordingDone;
 }
