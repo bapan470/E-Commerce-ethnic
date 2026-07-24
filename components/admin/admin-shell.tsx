@@ -32,6 +32,7 @@ import {
   Landmark,
   RotateCcw,
   FileBarChart,
+  Newspaper,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import NotificationBell from './notification-bell';
@@ -41,6 +42,7 @@ export type AdminSection =
   | 'products'
   | 'categories'
   | 'collections'
+  | 'blog'
   | 'reviews'
   | 'orders'
   | 'customers'
@@ -85,6 +87,7 @@ const NAV_GROUPS: NavGroup[] = [
       { value: 'products', label: 'Products', icon: Package },
       { value: 'categories', label: 'Categories', icon: FolderTree },
       { value: 'collections', label: 'Collections', icon: Layers },
+      { value: 'blog', label: 'Blog', icon: Newspaper },
       { value: 'reviews', label: 'Reviews', icon: Star },
     ],
   },

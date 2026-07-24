@@ -2,7 +2,10 @@ import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { getAllBlogPosts, getBlogPostBySlug } from '@/lib/blog-data';
+import {
+  fetchPublishedBlogPostsServer,
+  fetchPublishedBlogPostBySlugServer,
+} from '@/lib/blog-api-server';
 import { fetchCategoriesServer } from '@/lib/products-api-server';
 import { blurDataURL } from '@/lib/utils';
 
@@ -11,11 +14,12 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms
 type Params = { params: { slug: string } };
 
 export async function generateStaticParams() {
-  return getAllBlogPosts().map((p) => ({ slug: p.slug }));
+  const posts = await fetchPublishedBlogPostsServer();
+  return posts.map((p) => ({ slug: p.slug }));
 }
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
-  const post = getBlogPostBySlug(params.slug);
+  const post = await fetchPublishedBlogPostBySlugServer(params.slug);
   if (!post) {
     return { title: 'Post not found | Aruhi Handlooms', robots: { index: false, follow: true } };
   }
@@ -34,15 +38,15 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
       url,
       siteName: 'Aruhi Handlooms',
       type: 'article',
-      images: [{ url: post.coverImage, width: 1200, height: 630, alt: post.title }],
-      publishedTime: post.publishedAt,
-      modifiedTime: post.updatedAt || post.publishedAt,
+      images: [{ url: post.cover_image, width: 1200, height: 630, alt: post.title }],
+      publishedTime: post.published_at,
+      modifiedTime: post.updated_at || post.published_at,
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description: post.excerpt,
-      images: [post.coverImage],
+      images: [post.cover_image],
     },
     robots: {
       index: true,
@@ -53,17 +57,17 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 }
 
 export default async function BlogPostPage({ params }: Params) {
-  const post = getBlogPostBySlug(params.slug);
+  const post = await fetchPublishedBlogPostBySlugServer(params.slug);
   if (!post) notFound();
 
   // Resolve the post's related category to its real slug so the CTA at the
   // bottom links to the SEO category page (/category/[slug]) rather than
   // hardcoding a URL that could drift if the category is renamed.
   let relatedCategorySlug: string | null = null;
-  if (post.relatedCategory) {
+  if (post.related_category_name) {
     const categories = await fetchCategoriesServer();
     relatedCategorySlug =
-      categories.find((c) => c.name === post.relatedCategory)?.slug ?? null;
+      categories.find((c) => c.name === post.related_category_name)?.slug ?? null;
   }
 
   const url = `${SITE_URL}/blog/${post.slug}`;
@@ -72,9 +76,9 @@ export default async function BlogPostPage({ params }: Params) {
     '@type': 'Article',
     headline: post.title,
     description: post.excerpt,
-    image: post.coverImage,
-    datePublished: post.publishedAt,
-    dateModified: post.updatedAt || post.publishedAt,
+    image: post.cover_image,
+    datePublished: post.published_at,
+    dateModified: post.updated_at || post.published_at,
     author: { '@type': 'Organization', name: 'Aruhi Handlooms' },
     publisher: { '@type': 'Organization', name: 'Aruhi Handlooms' },
     mainEntityOfPage: url,
@@ -99,18 +103,18 @@ export default async function BlogPostPage({ params }: Params) {
 
       <h1 className="font-serif text-2xl font-bold text-primary sm:text-4xl">{post.title}</h1>
       <p className="mt-2 text-xs text-muted-foreground">
-        {new Date(post.publishedAt).toLocaleDateString('en-IN', {
+        {new Date(post.published_at).toLocaleDateString('en-IN', {
           day: 'numeric',
           month: 'short',
           year: 'numeric',
         })}
         {' · '}
-        {post.readMinutes} min read
+        {post.read_minutes} min read
       </p>
 
       <div className="relative mt-6 aspect-[16/9] w-full overflow-hidden rounded-2xl bg-muted">
         <Image
-          src={post.coverImage}
+          src={post.cover_image}
           alt={post.title}
           fill
           sizes="(max-width: 768px) 100vw, 768px"
@@ -122,7 +126,7 @@ export default async function BlogPostPage({ params }: Params) {
       </div>
 
       <div className="mt-8 max-w-none text-foreground">
-        {post.body.map((para, i) => (
+        {post.body_paragraphs.map((para, i) => (
           <p key={i} className="mb-4 leading-relaxed text-foreground/90">
             {para}
           </p>
@@ -132,7 +136,7 @@ export default async function BlogPostPage({ params }: Params) {
       {relatedCategorySlug && (
         <div className="mt-10 rounded-2xl border border-border bg-muted/40 p-6 text-center">
           <p className="font-serif text-lg font-semibold text-foreground">
-            Shop the {post.relatedCategory} collection
+            Shop the {post.related_category_name} collection
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
             Handpicked pieces, straight from the weavers.
@@ -141,7 +145,7 @@ export default async function BlogPostPage({ params }: Params) {
             href={`/category/${relatedCategorySlug}`}
             className="mt-4 inline-block rounded-full bg-primary px-6 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
           >
-            Browse {post.relatedCategory}
+            Browse {post.related_category_name}
           </Link>
         </div>
       )}

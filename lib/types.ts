@@ -133,6 +133,24 @@ export interface CategoryRow {
   description?: string | null;
 }
 
+/** Managed from Admin > Blog (`blog_posts` table). Public pages only ever
+ *  read rows where `published` is true; the admin panel reads everything. */
+export interface BlogPostRow {
+  id: string;
+  slug: string;
+  title: string;
+  excerpt: string;
+  keywords: string[];
+  cover_image: string;
+  body_paragraphs: string[];
+  read_minutes: number;
+  related_category_name: string | null;
+  published: boolean;
+  published_at: string;
+  updated_at: string;
+  created_at: string;
+}
+
 /** An admin-created, curated collection (distinct from the auto-generated
  *  per-vendor collection) -- e.g. "Diwali Specials". Managed entirely from
  *  Admin > Collections; shows publicly at /collection/[slug]. */

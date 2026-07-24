@@ -2,7 +2,7 @@ import { MetadataRoute } from 'next';
 import { getServerSupabase } from '@/lib/supabase-server';
 import { ProductRow, CategoryRow } from '@/lib/types';
 import { LEGAL_PAGE_TITLES } from '@/lib/marketing-api';
-import { getAllBlogPosts } from '@/lib/blog-data';
+import { fetchPublishedBlogPostsServer } from '@/lib/blog-api-server';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
@@ -52,7 +52,7 @@ function toAbsoluteImageUrls(images: string[] | null | undefined): string[] {
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [products, categories, variants] = await Promise.all([
+  const [products, categories, variants, blogPosts] = await Promise.all([
     fetchAllRows<Pick<ProductRow, 'slug' | 'updated_at' | 'images'>>(
       'products',
       'slug, updated_at, images',
@@ -63,6 +63,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       'product_variants',
       'slug, created_at, images'
     ),
+    fetchPublishedBlogPostsServer(),
   ]);
 
   const staticPages: MetadataRoute.Sitemap = [
@@ -94,9 +95,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: 'weekly',
       priority: 0.6,
     },
-    ...getAllBlogPosts().map((p) => ({
+    ...blogPosts.map((p) => ({
       url: `${SITE_URL}/blog/${p.slug}`,
-      lastModified: new Date(p.updatedAt || p.publishedAt),
+      lastModified: new Date(p.updated_at || p.published_at),
       changeFrequency: 'monthly' as const,
       priority: 0.5,
     })),

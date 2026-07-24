@@ -7,6 +7,7 @@ import ProductsPanel from '@/components/admin/products-panel';
 import OrdersPanel from '@/components/admin/orders-panel';
 import CategoriesPanel from '@/components/admin/categories-panel';
 import CollectionsPanel from '@/components/admin/collections-panel';
+import BlogPanel from '@/components/admin/blog-panel';
 import ReviewsPanel from '@/components/admin/reviews-panel';
 import CouponsPanel from '@/components/admin/coupons-panel';
 import SettingsPanel from '@/components/admin/settings-panel';
@@ -34,6 +35,7 @@ const PANELS: Record<AdminSection, React.ComponentType> = {
   products: ProductsPanel,
   categories: CategoriesPanel,
   collections: CollectionsPanel,
+  blog: BlogPanel,
   reviews: ReviewsPanel,
   orders: OrdersPanel,
   customers: CustomersPanel,

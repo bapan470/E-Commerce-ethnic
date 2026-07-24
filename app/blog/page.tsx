@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 import Link from 'next/link';
 import Image from 'next/image';
-import { getAllBlogPosts } from '@/lib/blog-data';
+import { fetchPublishedBlogPostsServer } from '@/lib/blog-api-server';
 import { blurDataURL } from '@/lib/utils';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
@@ -21,8 +21,8 @@ export const metadata: Metadata = {
   },
 };
 
-export default function BlogIndexPage() {
-  const posts = getAllBlogPosts();
+export default async function BlogIndexPage() {
+  const posts = await fetchPublishedBlogPostsServer();
 
   return (
     <div className="container-boutique py-8 pb-24 md:pb-12">
@@ -48,7 +48,7 @@ export default function BlogIndexPage() {
           >
             <div className="relative aspect-[16/10] w-full overflow-hidden bg-muted">
               <Image
-                src={post.coverImage}
+                src={post.cover_image}
                 alt={post.title}
                 fill
                 sizes="(max-width: 768px) 100vw, 33vw"
@@ -59,13 +59,13 @@ export default function BlogIndexPage() {
             </div>
             <div className="flex flex-1 flex-col gap-2 p-5">
               <p className="text-xs text-muted-foreground">
-                {new Date(post.publishedAt).toLocaleDateString('en-IN', {
+                {new Date(post.published_at).toLocaleDateString('en-IN', {
                   day: 'numeric',
                   month: 'short',
                   year: 'numeric',
                 })}
                 {' · '}
-                {post.readMinutes} min read
+                {post.read_minutes} min read
               </p>
               <h2 className="font-serif text-lg font-semibold text-foreground group-hover:text-primary sm:text-xl">
                 {post.title}
