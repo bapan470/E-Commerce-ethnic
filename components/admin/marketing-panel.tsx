@@ -798,7 +798,9 @@ function SocialPublishTab() {
           onChange={(e) => setSettings({ ...settings, caption_template: e.target.value })}
         />
         <p className="text-xs text-muted-foreground">
-          Placeholders: {'{name}'}, {'{price}'}, {'{description}'}, {'{url}'}
+          Placeholders: {'{name}'}, {'{price}'}, {'{description}'}, {'{url}'}, {'{mrp}'}, {'{discount_percent}'}
+          <br />
+          {'{mrp}'} and {'{discount_percent}'} are left blank automatically for products with no MRP or no discount — no need to check for that yourself.
         </p>
       </div>
 
