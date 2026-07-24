@@ -619,3 +619,170 @@ export async function publishProductToSocial(
     errors: errors.length > 0 ? errors : undefined,
   };
 }
+
+// ---------------------------------------------------------------------
+// VIDEO posting (Admin > Products > "Generate Video" → per-platform Post
+// Video buttons). Separate from the photo/carousel flow above because:
+//   - it's always manually triggered (never auto-post-on-publish)
+//   - video containers take much longer to process than photos, so the
+//     polling window below is wider
+//   - Instagram requires media_type=REELS specifically for video (a plain
+//     "VIDEO" media_type on the /media endpoint is for Stories, which
+//     aren't shareable/postable the same way)
+// ---------------------------------------------------------------------
+
+/** Same as waitForContainerReady but with a longer timeout — Meta can take
+ *  30-90s to finish transcoding a video, vs 1-3s for a photo. */
+async function waitForVideoContainerReady(
+  apiBase: string,
+  containerId: string,
+  accessToken: string
+): Promise<void> {
+  const maxAttempts = 30;
+  const delayMs = 4000; // up to ~2 minutes total
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const res = await fetch(
+      `${apiBase}/${containerId}?fields=status_code&access_token=${encodeURIComponent(accessToken)}`
+    );
+    const json = await res.json();
+    if (json.status_code === 'FINISHED') return;
+    if (json.status_code === 'ERROR') {
+      throw new Error(`Video processing failed: ${json?.status || 'ERROR'}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  // Didn't confirm in time — try publishing anyway, same fallback logic as photos.
+}
+
+async function postVideoToInstagram(
+  settings: SocialPublishSettings,
+  caption: string,
+  videoUrl: string
+): Promise<string | null> {
+  const createRes = await fetch(`${GRAPH_API_BASE}/${settings.instagram_business_account_id}/media`, {
+    method: 'POST',
+    body: new URLSearchParams({
+      media_type: 'REELS',
+      video_url: videoUrl,
+      caption,
+      access_token: settings.access_token,
+    }),
+  });
+  const createJson = await createRes.json();
+  if (!createRes.ok || createJson.error || !createJson.id) {
+    throw new Error(`Instagram Reels container create failed: ${createJson?.error?.message || createRes.statusText}`);
+  }
+  await waitForVideoContainerReady(GRAPH_API_BASE, createJson.id, settings.access_token);
+  return publishInstagramContainer(settings, createJson.id);
+}
+
+async function postVideoToFacebook(
+  settings: SocialPublishSettings,
+  caption: string,
+  videoUrl: string
+): Promise<string | null> {
+  // Facebook's /{page-id}/videos endpoint uploads-by-URL and publishes
+  // in one call (no separate container/publish step like Instagram).
+  const res = await fetch(`${GRAPH_API_BASE}/${settings.facebook_page_id}/videos`, {
+    method: 'POST',
+    body: new URLSearchParams({
+      file_url: videoUrl,
+      description: caption,
+      access_token: settings.access_token,
+    }),
+  });
+  const json = await res.json();
+  if (!res.ok || json.error) {
+    throw new Error(`Facebook video post failed: ${json?.error?.message || res.statusText}`);
+  }
+  return json.id || null;
+}
+
+async function postVideoToThreads(
+  settings: SocialPublishSettings,
+  caption: string,
+  videoUrl: string
+): Promise<string | null> {
+  const createRes = await fetch(`${THREADS_API_BASE}/${settings.threads_user_id}/threads`, {
+    method: 'POST',
+    body: new URLSearchParams({
+      access_token: settings.threads_access_token,
+      text: caption,
+      media_type: 'VIDEO',
+      video_url: videoUrl,
+    }),
+  });
+  const createJson = await createRes.json();
+  if (!createRes.ok || createJson.error || !createJson.id) {
+    throw new Error(`Threads video container create failed: ${createJson?.error?.message || createRes.statusText}`);
+  }
+  await waitForVideoContainerReady(THREADS_API_BASE, createJson.id, settings.threads_access_token);
+  return publishThreadsContainer(settings, createJson.id);
+}
+
+export interface VideoProductForSocial {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  price: number;
+  video_url?: string | null;
+  social_post_ids?: Record<string, string> | null;
+}
+
+/**
+ * Posts a product's already-generated slideshow video (products.video_url,
+ * set by /api/admin/product-video/upload) to one platform. Always
+ * manually triggered from the admin's per-platform "Post Video" buttons —
+ * never part of the auto-post-on-publish flow, so there's no `force`
+ * concept here: re-clicking simply posts again (each platform naturally
+ * allows re-uploading a video as a new post).
+ */
+export async function publishVideoToSocial(
+  admin: SupabaseClient,
+  product: VideoProductForSocial,
+  platform: SocialPlatform
+): Promise<PublishResult> {
+  if (!product.video_url) {
+    return { posted: false, reason: 'No video generated yet for this product — use "Generate Video" first.' };
+  }
+
+  const settings = await fetchSocialPublishSettingsServer(admin);
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://your-store.example.com';
+  const caption = buildCaption(settings.caption_template, product, siteUrl);
+
+  if (platform === 'facebook' && !settings.facebook_enabled) {
+    return { posted: false, reason: 'Facebook is not enabled in Marketing settings.' };
+  }
+  if (platform === 'instagram' && !settings.instagram_enabled) {
+    return { posted: false, reason: 'Instagram is not enabled in Marketing settings.' };
+  }
+  if (platform === 'threads' && !settings.threads_enabled) {
+    return { posted: false, reason: 'Threads is not enabled in Marketing settings.' };
+  }
+
+  const postIds: Record<string, string> = { ...(product.social_post_ids ?? {}) };
+  try {
+    if (platform === 'facebook') {
+      if (!settings.facebook_page_id) return { posted: false, reason: 'Facebook Page ID is missing in Marketing settings.' };
+      const id = await postVideoToFacebook(settings, caption, product.video_url);
+      if (id) postIds.facebook_video_post_id = id;
+    } else if (platform === 'instagram') {
+      if (!settings.instagram_business_account_id) {
+        return { posted: false, reason: 'Instagram Business Account ID is missing in Marketing settings.' };
+      }
+      const id = await postVideoToInstagram(settings, caption, product.video_url);
+      if (id) postIds.instagram_video_media_id = id;
+    } else {
+      if (!settings.threads_user_id) return { posted: false, reason: 'Threads User ID is missing in Marketing settings.' };
+      const id = await postVideoToThreads(settings, caption, product.video_url);
+      if (id) postIds.threads_video_post_id = id;
+    }
+  } catch (err) {
+    console.error(`[social-publish] ${platform} video post failed for product`, product.id, err);
+    return { posted: false, reason: String(err) };
+  }
+
+  await admin.from('products').update({ social_post_ids: postIds }).eq('id', product.id);
+  return { posted: true };
+}

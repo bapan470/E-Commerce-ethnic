@@ -3,7 +3,7 @@
 import { useState, FormEvent, useEffect, useMemo, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles, Link2, Palette, Wand2, Search, X, Truck, Package, Facebook, Instagram, CheckCircle2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles, Link2, Palette, Wand2, Search, X, Truck, Package, Facebook, Instagram, CheckCircle2, Video } from 'lucide-react';
 import { useProducts } from '@/lib/cart-context';
 import {
   createProduct,
@@ -12,6 +12,7 @@ import {
   uploadProductImage,
   extractErrorMessage,
 } from '@/lib/products-api';
+import { generateSlideshowVideo } from '@/lib/slideshow-video-generator';
 import { generateProductSku } from '@/lib/sku';
 import { searchPresets, ColorPreset } from '@/lib/color-presets';
 import { Product, CategoryRow, ProductHighlights } from '@/lib/types';
@@ -22,8 +23,9 @@ import {
   type AdminVendorProductRow,
   type VendorProductApprovalStatus,
   triggerSocialAutoPost,
+  triggerVideoPublish,
 } from '@/lib/vendor-api';
-import { formatINR } from '@/lib/format';
+import { formatINR, discountPct } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -374,6 +376,74 @@ export default function ProductsPanel() {
       setSharingKey(null);
       setReshareConfirm(null);
       loadSocialStatus();
+    }
+  };
+
+  // ---------------------------------------------------------------------
+  // "Generate Video" (Admin > Products) — builds a vertical slideshow
+  // video client-side from the product's images + price, uploads it, and
+  // stamps products.video_url. Once a video exists, three "Post Video"
+  // icons (Facebook / Instagram Reels / Threads) appear for that row.
+  // ---------------------------------------------------------------------
+  const [generatingVideoId, setGeneratingVideoId] = useState<string | null>(null);
+  const [videoProgress, setVideoProgress] = useState(0);
+  // Local override so a freshly-generated video shows its "Post Video"
+  // icons immediately, without needing a full product-list refetch.
+  const [videoUrlOverrideById, setVideoUrlOverrideById] = useState<Record<string, string>>({});
+  const [postingVideoKey, setPostingVideoKey] = useState<string | null>(null);
+
+  const generateVideoForProduct = async (p: Product) => {
+    if (!p.images || p.images.length === 0) {
+      toast.error('This product has no images to build a video from.');
+      return;
+    }
+    setGeneratingVideoId(p.id);
+    setVideoProgress(0);
+    try {
+      const discount = discountPct(p.price, p.mrp);
+      const blob = await generateSlideshowVideo({
+        images: p.images,
+        name: p.name,
+        priceText: formatINR(p.price),
+        mrpText: discount > 0 && p.mrp ? formatINR(p.mrp) : undefined,
+        discountBadge: discount > 0 ? `${discount}% OFF` : undefined,
+        onProgress: setVideoProgress,
+      });
+
+      const formData = new FormData();
+      formData.append('file', blob, `${p.id}.webm`);
+      formData.append('productId', p.id);
+      const res = await fetch('/api/admin/product-video/upload', { method: 'POST', body: formData });
+      const data = await res.json().catch(() => ({ ok: false }));
+      if (!data.ok) {
+        toast.error(data.error || 'Video upload failed');
+        return;
+      }
+      setVideoUrlOverrideById((prev) => ({ ...prev, [p.id]: data.videoUrl }));
+      toast.success('Video generated! You can now post it to Facebook / Instagram / Threads.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Video generation failed');
+    } finally {
+      setGeneratingVideoId(null);
+      setVideoProgress(0);
+    }
+  };
+
+  const postVideo = async (productId: string, platform: SocialPlatform) => {
+    const key = `video:${productId}:${platform}`;
+    setPostingVideoKey(key);
+    try {
+      const res = await triggerVideoPublish(productId, platform);
+      const data = await res.json().catch(() => ({ ok: false }));
+      if (data.ok) {
+        toast.success(`Video posted to ${SOCIAL_PLATFORM_LABEL[platform]}`);
+      } else {
+        toast.error(data.error || `${SOCIAL_PLATFORM_LABEL[platform]} video post failed`);
+      }
+    } catch {
+      toast.error(`${SOCIAL_PLATFORM_LABEL[platform]} video post failed — network error`);
+    } finally {
+      setPostingVideoKey(null);
     }
   };
 
@@ -1068,6 +1138,68 @@ export default function ProductsPanel() {
                       </Button>
                     );
                   })}
+                  {(() => {
+                    const videoUrl = videoUrlOverrideById[p.id] ?? p.video_url;
+                    if (!videoUrl) {
+                      return (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => generateVideoForProduct(p)}
+                          disabled={generatingVideoId === p.id}
+                          aria-label="Generate slideshow video"
+                          title="Generate a vertical slideshow video from this product's images"
+                        >
+                          {generatingVideoId === p.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Video className="h-4 w-4" />
+                          )}
+                        </Button>
+                      );
+                    }
+                    return (
+                      <>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => generateVideoForProduct(p)}
+                          disabled={generatingVideoId === p.id}
+                          aria-label="Regenerate slideshow video"
+                          title="Video ready — click to regenerate"
+                          className="text-emerald-600 hover:text-emerald-700"
+                        >
+                          {generatingVideoId === p.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Video className="h-4 w-4" />
+                          )}
+                        </Button>
+                        {(['facebook', 'instagram', 'threads'] as const).map((platform) => {
+                          const vKey = `video:${p.id}:${platform}`;
+                          const Icon = SOCIAL_PLATFORM_ICON[platform];
+                          const label = SOCIAL_PLATFORM_LABEL[platform];
+                          return (
+                            <Button
+                              key={vKey}
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => postVideo(p.id, platform)}
+                              disabled={postingVideoKey === vKey}
+                              aria-label={`Post video to ${label}`}
+                              title={`Post the generated video to ${label} now`}
+                            >
+                              {postingVideoKey === vKey ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Icon className="h-4 w-4" />
+                              )}
+                            </Button>
+                          );
+                        })}
+                      </>
+                    );
+                  })()}
                   <Button
                     size="icon"
                     variant="ghost"

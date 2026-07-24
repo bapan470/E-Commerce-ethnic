@@ -339,6 +339,21 @@ export function triggerSocialAutoPost(
   });
 }
 
+/** Posts a product's already-generated slideshow video (see
+ *  lib/slideshow-video-generator.ts + /api/admin/product-video/upload)
+ *  to one platform. Used by the per-platform "Post Video" buttons shown
+ *  once Admin > Products > "Generate Video" has produced a video_url. */
+export function triggerVideoPublish(
+  productId: string,
+  platform: 'facebook' | 'instagram' | 'threads'
+): Promise<Response> {
+  return fetch('/api/social/publish-video', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ productId, platform }),
+  });
+}
+
 // ---------------------------------------------------------------------
 // Phase 2, Part 5 — Admin "Vendor Submissions" (Admin > Products tab)
 // ---------------------------------------------------------------------

@@ -1,0 +1,245 @@
+// ---------------------------------------------------------------------
+// Generates a vertical (9:16) slideshow video from a product's images,
+// with a price/name overlay, entirely in the browser — no server-side
+// video processing, no ffmpeg, no paid AI video API. Uses two native
+// browser APIs:
+//   - <canvas> to draw each frame (image + Ken Burns zoom + text overlay)
+//   - MediaRecorder + canvas.captureStream() to record those frames into
+//     a real video file (WebM/VP9, which Meta's Graph API accepts as a
+//     video_url source for Reels/Facebook video/Threads video).
+//
+// This file is browser-only ('use client' components import it) — it
+// uses document.createElement('canvas') and other DOM APIs that don't
+// exist server-side.
+// ---------------------------------------------------------------------
+
+export interface SlideshowOptions {
+  /** Product image URLs, in the order they should appear. */
+  images: string[];
+  /** Product name, shown as a caption near the bottom. */
+  name: string;
+  /** Formatted price string to show prominently, e.g. "₹499". */
+  priceText: string;
+  /** Original MRP, shown struck-through next to priceText if there's a discount. */
+  mrpText?: string;
+  /** e.g. "45% OFF" — shown as a small badge, omitted if no discount. */
+  discountBadge?: string;
+  /** Seconds each image is shown for. Default 2.5. */
+  secondsPerSlide?: number;
+  /** Output canvas size — 9:16 vertical (Reels/Stories). Default 1080x1920. */
+  width?: number;
+  height?: number;
+  /** Called with 0-1 progress as slides render, for a progress bar in the UI. */
+  onProgress?: (fraction: number) => void;
+}
+
+const FPS = 30;
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    // Needed so the browser doesn't taint the canvas — requires the
+    // storage bucket/CDN serving these images to send permissive CORS
+    // headers, which Supabase's public buckets do by default.
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`Could not load image: ${src}`));
+    img.src = src;
+  });
+}
+
+/** Draws `img` into the canvas "cover"-style (fills the frame, cropping
+ *  overflow) with a slow zoom (Ken Burns) driven by `progress` (0-1 across
+ *  this slide's duration). */
+function drawCoverFrame(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  width: number,
+  height: number,
+  progress: number
+) {
+  const zoom = 1 + 0.08 * progress; // slow 8% zoom over the slide's duration
+  const imgRatio = img.width / img.height;
+  const frameRatio = width / height;
+
+  let drawWidth: number;
+  let drawHeight: number;
+  if (imgRatio > frameRatio) {
+    drawHeight = height * zoom;
+    drawWidth = drawHeight * imgRatio;
+  } else {
+    drawWidth = width * zoom;
+    drawHeight = drawWidth / imgRatio;
+  }
+  const x = (width - drawWidth) / 2;
+  const y = (height - drawHeight) / 2;
+
+  ctx.drawImage(img, x, y, drawWidth, drawHeight);
+}
+
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let current = '';
+  for (const word of words) {
+    const test = current ? `${current} ${word}` : word;
+    if (ctx.measureText(test).width > maxWidth && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = test;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+function drawOverlay(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  opts: SlideshowOptions
+) {
+  // Bottom gradient scrim so white text stays readable over any photo.
+  const scrimHeight = height * 0.32;
+  const gradient = ctx.createLinearGradient(0, height - scrimHeight, 0, height);
+  gradient.addColorStop(0, 'rgba(0,0,0,0)');
+  gradient.addColorStop(1, 'rgba(0,0,0,0.75)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, height - scrimHeight, width, scrimHeight);
+
+  // Discount badge, top-right.
+  if (opts.discountBadge) {
+    ctx.font = `bold ${Math.round(width * 0.045)}px sans-serif`;
+    const badgeText = opts.discountBadge;
+    const paddingX = width * 0.03;
+    const textWidth = ctx.measureText(badgeText).width;
+    const badgeW = textWidth + paddingX * 2;
+    const badgeH = width * 0.09;
+    const badgeX = width - badgeW - width * 0.05;
+    const badgeY = height * 0.05;
+    ctx.fillStyle = '#7a1e35';
+    ctx.beginPath();
+    ctx.roundRect(badgeX, badgeY, badgeW, badgeH, badgeH / 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(badgeText, badgeX + badgeW / 2, badgeY + badgeH / 2 + 2);
+  }
+
+  // Product name, wrapped, above the price.
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `600 ${Math.round(width * 0.052)}px sans-serif`;
+  const nameLines = wrapText(ctx, opts.name, width * 0.9).slice(0, 2);
+  let textY = height - scrimHeight + width * 0.16;
+  for (const line of nameLines) {
+    ctx.fillText(line, width * 0.05, textY);
+    textY += width * 0.065;
+  }
+
+  // Price (large), with MRP struck through beside it if discounted.
+  ctx.font = `bold ${Math.round(width * 0.09)}px sans-serif`;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(opts.priceText, width * 0.05, textY + width * 0.09);
+
+  if (opts.mrpText) {
+    const priceWidth = ctx.measureText(opts.priceText).width;
+    ctx.font = `${Math.round(width * 0.05)}px sans-serif`;
+    ctx.fillStyle = 'rgba(255,255,255,0.65)';
+    const mrpX = width * 0.05 + priceWidth + width * 0.03;
+    const mrpY = textY + width * 0.09;
+    ctx.fillText(opts.mrpText, mrpX, mrpY);
+    const mrpWidth = ctx.measureText(opts.mrpText).width;
+    ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+    ctx.lineWidth = Math.max(1, width * 0.003);
+    ctx.beginPath();
+    ctx.moveTo(mrpX, mrpY - width * 0.018);
+    ctx.lineTo(mrpX + mrpWidth, mrpY - width * 0.018);
+    ctx.stroke();
+  }
+}
+
+/**
+ * Generates the slideshow video and resolves with a Blob (video/webm).
+ * Typical size for a 4-image, 10s vertical video: roughly 1.5-3MB.
+ */
+export async function generateSlideshowVideo(opts: SlideshowOptions): Promise<Blob> {
+  const width = opts.width ?? 1080;
+  const height = opts.height ?? 1920;
+  const secondsPerSlide = opts.secondsPerSlide ?? 2.5;
+  const images = opts.images.slice(0, 10); // sane cap
+  if (images.length === 0) throw new Error('No images to build a video from.');
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas 2D context not available in this browser.');
+
+  const loadedImages = await Promise.all(images.map(loadImage));
+
+  const stream = canvas.captureStream(FPS);
+  const mimeCandidates = [
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm',
+  ];
+  const mimeType = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) ?? 'video/webm';
+  const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 4_000_000 });
+
+  const chunks: BlobPart[] = [];
+  recorder.ondataavailable = (e) => {
+    if (e.data.size > 0) chunks.push(e.data);
+  };
+
+  const recordingDone = new Promise<Blob>((resolve, reject) => {
+    recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }));
+    recorder.onerror = (e) => reject(e);
+  });
+
+  recorder.start();
+
+  const totalFrames = Math.round(images.length * secondsPerSlide * FPS);
+  const framesPerSlide = Math.round(secondsPerSlide * FPS);
+  let frameCount = 0;
+
+  await new Promise<void>((resolve) => {
+    let rafId: number;
+    const frameIntervalMs = 1000 / FPS;
+    let lastTime = performance.now();
+
+    const renderFrame = (now: number) => {
+      if (now - lastTime < frameIntervalMs) {
+        rafId = requestAnimationFrame(renderFrame);
+        return;
+      }
+      lastTime = now;
+
+      const slideIndex = Math.min(Math.floor(frameCount / framesPerSlide), loadedImages.length - 1);
+      const slideProgress = (frameCount % framesPerSlide) / framesPerSlide;
+
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = '#000000';
+      ctx.fillRect(0, 0, width, height);
+      drawCoverFrame(ctx, loadedImages[slideIndex], width, height, slideProgress);
+      drawOverlay(ctx, width, height, opts);
+
+      frameCount++;
+      opts.onProgress?.(Math.min(1, frameCount / totalFrames));
+
+      if (frameCount < totalFrames) {
+        rafId = requestAnimationFrame(renderFrame);
+      } else {
+        cancelAnimationFrame(rafId);
+        resolve();
+      }
+    };
+    rafId = requestAnimationFrame(renderFrame);
+  });
+
+  recorder.stop();
+  return recordingDone;
+}
