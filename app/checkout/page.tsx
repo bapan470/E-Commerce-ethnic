@@ -1538,16 +1538,19 @@ export default function CheckoutPage() {
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel onClick={() => setShowResaleLoginPrompt(false)}>
+                  <AlertDialogCancel type="button" onClick={() => setShowResaleLoginPrompt(false)}>
                     Cancel
                   </AlertDialogCancel>
                   <AlertDialogAction
+                    type="button"
                     onClick={goToResaleSignup}
                     className="bg-secondary text-secondary-foreground hover:bg-secondary/90"
                   >
                     Create Account
                   </AlertDialogAction>
-                  <AlertDialogAction onClick={goToResaleLogin}>Log In</AlertDialogAction>
+                  <AlertDialogAction type="button" onClick={goToResaleLogin}>
+                    Log In
+                  </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
@@ -1562,8 +1565,12 @@ export default function CheckoutPage() {
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel onClick={confirmResaleNo}>No</AlertDialogCancel>
-                  <AlertDialogAction onClick={confirmResaleYes}>Yes</AlertDialogAction>
+                  <AlertDialogCancel type="button" onClick={confirmResaleNo}>
+                    No
+                  </AlertDialogCancel>
+                  <AlertDialogAction type="button" onClick={confirmResaleYes}>
+                    Yes
+                  </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
