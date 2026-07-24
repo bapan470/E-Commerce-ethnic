@@ -79,7 +79,11 @@ export default function Header() {
   const handleBack = () => {
     if (pathname.startsWith('/checkout')) {
       const returnPath = recoverFromCheckout(getCheckoutReturnPath());
-      router.push(returnPath || '/');
+      // replace, not push: pushing here would leave the /checkout entry
+      // still sitting in browser history, so a second back tap (from the
+      // product page) would land right back on it — a checkout <-> product
+      // loop. Replacing swaps /checkout out of history entirely.
+      router.replace(returnPath || '/');
       return;
     }
     if (typeof window !== 'undefined' && window.history.length > 1) {
