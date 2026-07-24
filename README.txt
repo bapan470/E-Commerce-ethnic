@@ -1,65 +1,54 @@
-Rating & Review — split into two clear steps
-==============================================
+SOCIAL SHARE BUTTONS — Facebook / Instagram / Threads (separate buttons)
+=========================================================================
 
-4 files -- 1 new, 3 replaced. Copy at the same relative paths:
-
-  lib/reviews-api.ts                                  (replace)
-  components/product/reviews-section.tsx              (replace)
-  components/account/delivered-item-review.tsx         (NEW file)
-  app/account/orders/[id]/page.tsx                     (replace)
-
-No DB migration needed -- the `reviews` table's UPDATE policy already
-allows a user to update their own row (checked in
-supabase/migrations/20260717000000_full_feature_schema.sql).
-
-What changed
+WHAT CHANGED
 ------------
+Admin > Products (Manage Products / products-panel.tsx) now shows THREE
+separate icon buttons per product row instead of one combined "Share"
+button — one each for Facebook, Instagram, and Threads. Each button:
+  - Shares ONLY that platform when clicked (not all three at once).
+  - Shows its own "✓ Posted" state once that specific platform has been
+    posted to (independent of the other two).
+  - Has its own re-share confirmation dialog.
 
-1. Product page ("Reviews" tab) -- Rate this product / Write a review
-   Ab do saaf steps mein bant gaya hai:
+FILES IN THIS ZIP (replace at the same path in your repo)
+-----------------------------------------------------------
+  components/admin/products-panel.tsx
+  app/api/social/publish/route.ts
+  app/api/admin/product-social-status/route.ts
+  lib/social-publish-api.ts
+  lib/vendor-api.ts
 
-   Step 1 -- "Rate this product": sirf stars + "Submit Rating" button.
-   Star tap karke submit karte hi rating turant save ho jaati hai (koi
-   title/comment zaroori nahi).
+CHANGES.diff — unified diff of the same 5 files, in case you'd rather
+review/apply it with `git apply CHANGES.diff` from the repo root instead
+of copying files over by hand.
 
-   Step 2 -- "Write a review" (optional, alag button se khulta hai):
-   title + comment + photos, apni already-saved rating ke saath. Ye same
-   review row ko UPDATE karta hai (naya function `updateMyReview` in
-   lib/reviews-api.ts) -- naya review nahi banta.
-
-   Left panel ab teen states dikhata hai:
-     - Koi rating nahi di -> "Rate this product" button
-     - Rating di, likha kuch nahi -> "You rated this X★" + "Add a written
-       review" button
-     - Likha hua review bhi hai -> "You reviewed this product" /
-       "awaiting approval" (jaisa pehle tha)
-
-   Written content add/update hone par review dobara `is_approved: false`
-   ho jaata hai -- naya text bhi ek baar admin se moderate hokar hi
-   dikhega (rating khud turant count ho jaati hai, kyunki wo already-
-   approved trigger se turant products.rating me sync hoti hai).
-
-2. Account > Orders > [order] -- delivered order ke har item ke neeche
-   ek chhota inline widget (naya component
-   components/account/delivered-item-review.tsx):
-
-     - Order "delivered" hone par har item ke neeche turant "Rate this
-       product" stars dikhte hain -- ek tap = rating submit.
-     - Rating dene ke baad wahi widget "Add a written review" prompt
-       dikhata hai (same rate -> review order, jaisa aapne bola).
-     - Already likha hua review hai to "You reviewed this product" /
-       "awaiting approval" dikhta hai.
-
-   Sirf un items ke liye dikhta hai jinke paas item.product_id ho (naye
-   orders me already hai -- app/checkout/page.tsx already product_id
-   bhejta hai). Bahut purane orders jinme product_id save nahi hua tha,
-   unme ye widget nahi dikhega (koi error nahi aayega, bas silently
-   skip ho jaata hai).
-
-How to apply
+HOW TO APPLY
 ------------
-1. Unzip, copy these 4 files into your project at the same relative
-   paths (delivered-item-review.tsx is a brand-new file).
-2. git add -A && git commit -m "Split rating and written review into two steps" && git push
+Option A (copy files):
+  Copy the 5 files above into your repo, overwriting the existing ones at
+  the exact same paths, then commit + push as usual.
 
-Verified: `npx tsc --noEmit` and `next lint` both pass clean on all 4 files.
+Option B (git apply):
+  From your repo root:
+    git apply CHANGES.diff
+  (If it fails to apply cleanly, it's almost always because your local
+  copy of one of these 5 files has diverged — just use Option A instead.)
+
+DATABASE
+--------
+No new migration needed — this reuses the existing social_post_ids jsonb
+column on products (already added by
+supabase/migrations/20260819000000_social_auto_publish.sql) and now
+merges into it per-platform (facebook_post_id / instagram_media_id /
+threads_post_id) instead of overwriting the whole object on every post.
+
+NOTES
+-----
+- Facebook/Instagram/Threads still need to be enabled + configured with
+  valid credentials in Admin > Marketing > Social Auto-Post for their
+  respective buttons to actually post (same as before — this only
+  changes how many buttons there are and how they're gated, not the
+  underlying Meta/Threads API calls).
+- Typechecked clean with `npx tsc --noEmit` against this repo before
+  packaging.

@@ -2,15 +2,20 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { publishProductToSocial } from '@/lib/social-publish-api';
+import { publishProductToSocial, type SocialPlatform } from '@/lib/social-publish-api';
+
+const VALID_PLATFORMS: SocialPlatform[] = ['facebook', 'instagram', 'threads'];
 
 /**
- * POST /api/social/publish  { productId: string }
+ * POST /api/social/publish  { productId: string, force?: boolean, platform?: 'facebook' | 'instagram' | 'threads' }
  *
  * Fire-and-forget endpoint called right after Admin > Products > "Add
- * Product" successfully inserts a new product (see
- * components/admin/products-panel.tsx). Posts the product to
- * Facebook/Instagram per Admin > Marketing > Social Auto-Post settings.
+ * Product" successfully inserts a new product, and by each of the three
+ * separate Facebook / Instagram / Threads Share buttons in the Manage
+ * Products catalog (see components/admin/products-panel.tsx). When
+ * `platform` is omitted, posts to every platform enabled in Admin >
+ * Marketing > Social Auto-Post settings (legacy/auto-post behaviour); when
+ * given, only that one platform is attempted/gated.
  *
  * Kept as its own tiny route (rather than folding into the client-side
  * createProduct() insert) because the Meta access token must stay
@@ -27,16 +32,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { productId, force } = await req.json().catch(() => ({ productId: null, force: false }));
+  const { productId, force, platform } = await req
+    .json()
+    .catch(() => ({ productId: null, force: false, platform: undefined }));
   if (!productId) {
     return NextResponse.json({ error: 'productId required' }, { status: 400 });
+  }
+  if (platform !== undefined && !VALID_PLATFORMS.includes(platform)) {
+    return NextResponse.json({ error: 'platform must be facebook, instagram, or threads' }, { status: 400 });
   }
 
   const admin = getSupabaseAdmin();
 
   const { data: product, error } = await admin
     .from('products')
-    .select('id, name, slug, description, price, images, social_posted_at')
+    .select('id, name, slug, description, price, images, social_posted_at, social_post_ids')
     .eq('id', productId)
     .maybeSingle();
 
@@ -45,7 +55,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    await publishProductToSocial(admin, product, { force: Boolean(force) });
+    await publishProductToSocial(admin, product, { force: Boolean(force), platform });
     return NextResponse.json({ ok: true });
   } catch (err) {
     // Non-fatal from the caller's point of view — the product is already

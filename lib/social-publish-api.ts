@@ -107,7 +107,15 @@ interface ProductForSocial {
   price: number;
   images?: string[] | null;
   social_posted_at?: string | null;
+  social_post_ids?: Record<string, string> | null;
 }
+
+/** A single social platform this feature can post to. When omitted from
+ *  publishProductToSocial()'s options, ALL enabled platforms are posted to
+ *  (legacy/auto-post behaviour). When provided, only that one platform is
+ *  gated on/attempted — used by the three separate per-platform Share
+ *  buttons in Admin > Products. */
+export type SocialPlatform = 'facebook' | 'instagram' | 'threads';
 
 function buildCaption(template: string, product: ProductForSocial, siteUrl: string): string {
   const description = (product.description || '').slice(0, 300);
@@ -420,16 +428,28 @@ async function publishThreadsContainer(
 export async function publishProductToSocial(
   admin: SupabaseClient,
   product: ProductForSocial,
-  options?: { force?: boolean }
+  options?: { force?: boolean; platform?: SocialPlatform }
 ): Promise<void> {
-  if (product.social_posted_at && !options?.force) return; // already posted once — don't duplicate
+  const { platform } = options ?? {};
+  // Per-platform gating: when a specific platform is requested (one of the
+  // three separate admin Share buttons), only that platform's "already
+  // posted" state blocks a re-post — the other two platforms' history is
+  // irrelevant to this call. Legacy/auto-post calls (no platform) keep the
+  // old any-platform-posted-at check.
+  const alreadyPostedThisPlatform = platform
+    ? Boolean(product.social_post_ids?.[`${platform}_post_id`] ?? product.social_post_ids?.[`${platform}_media_id`])
+    : Boolean(product.social_posted_at);
+  if (alreadyPostedThisPlatform && !options?.force) return; // already posted once — don't duplicate
 
   const settings = await fetchSocialPublishSettingsServer(admin);
-  const anyEnabled = settings.facebook_enabled || settings.instagram_enabled || settings.threads_enabled;
+  const wantFacebook = (!platform || platform === 'facebook') && settings.facebook_enabled;
+  const wantInstagram = (!platform || platform === 'instagram') && settings.instagram_enabled;
+  const wantThreads = (!platform || platform === 'threads') && settings.threads_enabled;
+  const anyEnabled = wantFacebook || wantInstagram || wantThreads;
   if (!anyEnabled) return;
   const hasUsableCredentials =
-    ((settings.facebook_enabled || settings.instagram_enabled) && settings.access_token) ||
-    (settings.threads_enabled && settings.threads_access_token);
+    ((wantFacebook || wantInstagram) && settings.access_token) ||
+    (wantThreads && settings.threads_access_token);
   if (!hasUsableCredentials) return;
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://your-store.example.com';
@@ -466,10 +486,13 @@ export async function publishProductToSocial(
   // Meta caps carousels at 10 items across Instagram/Threads.
   const finalImageUrls = imageUrls.slice(0, 10);
 
-  const postIds: Record<string, string> = {};
+  // Start from whatever's already been posted on other platforms so this
+  // call only ever adds/overwrites the platform(s) it actually attempted —
+  // it must never wipe out a sibling platform's post id.
+  const postIds: Record<string, string> = { ...(product.social_post_ids ?? {}) };
   const errors: string[] = [];
 
-  if (settings.facebook_enabled && settings.facebook_page_id) {
+  if (wantFacebook && settings.facebook_page_id) {
     try {
       const id = await postToFacebook(settings, caption, finalImageUrls);
       if (id) postIds.facebook_post_id = id;
@@ -479,7 +502,7 @@ export async function publishProductToSocial(
     }
   }
 
-  if (settings.instagram_enabled && settings.instagram_business_account_id) {
+  if (wantInstagram && settings.instagram_business_account_id) {
     if (finalImageUrls.length === 0) {
       console.error('[social-publish] Instagram skipped for product', product.id, '— no image');
     } else {
@@ -493,7 +516,7 @@ export async function publishProductToSocial(
     }
   }
 
-  if (settings.threads_enabled && settings.threads_user_id) {
+  if (wantThreads && settings.threads_user_id) {
     try {
       const id = await postToThreads(settings, caption, finalImageUrls);
       if (id) postIds.threads_post_id = id;
@@ -505,7 +528,9 @@ export async function publishProductToSocial(
 
   // Stamp as posted even on partial failure, so a permanently-broken
   // token doesn't retry-loop forever on every future product. Full
-  // success/failure detail is in postIds / server logs.
+  // success/failure detail is in postIds / server logs. social_posted_at
+  // stays a single "has this product ever been shared, on any platform"
+  // timestamp — per-platform state lives in social_post_ids.
   await admin
     .from('products')
     .update({ social_posted_at: new Date().toISOString(), social_post_ids: postIds })

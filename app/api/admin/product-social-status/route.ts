@@ -6,11 +6,16 @@ import { getServerSupabase } from '@/lib/supabase-server';
 /**
  * GET /api/admin/product-social-status
  *
- * Returns { statusById: { [product_id]: string | null } } — the
- * `social_posted_at` timestamp (or null if never auto/manually posted) for
- * every live product. Used by the Manage Products catalog to decide
- * whether to show a "Share to Social" button or a "✓ Posted" state (with a
- * guarded "Share again" option) per row.
+ * Returns:
+ *   - statusById: { [product_id]: string | null } — the `social_posted_at`
+ *     timestamp (or null if never auto/manually posted, on ANY platform)
+ *     for every live product.
+ *   - postIdsById: { [product_id]: Record<string, string> } — that
+ *     product's `social_post_ids` (facebook_post_id / instagram_media_id /
+ *     threads_post_id), used to decide per-platform, independently,
+ *     whether each of the three Share buttons in the Manage Products
+ *     catalog should show "Share" or "✓ Posted" (with a guarded "Share
+ *     again" option).
  */
 export async function GET() {
   const cookie = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? null;
@@ -23,16 +28,18 @@ export async function GET() {
     const supabase = getServerSupabase();
     const { data, error } = await supabase
       .from('products')
-      .select('id, social_posted_at')
+      .select('id, social_posted_at, social_post_ids')
       .eq('approval_status', 'live');
     if (error) throw error;
 
     const statusById: Record<string, string | null> = {};
+    const postIdsById: Record<string, Record<string, string>> = {};
     for (const row of data ?? []) {
       statusById[row.id] = row.social_posted_at ?? null;
+      postIdsById[row.id] = (row.social_post_ids as Record<string, string> | null) ?? {};
     }
 
-    return NextResponse.json({ statusById });
+    return NextResponse.json({ statusById, postIdsById });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to load social status';
     return NextResponse.json({ error: message }, { status: 500 });

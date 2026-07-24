@@ -3,7 +3,7 @@
 import { useState, FormEvent, useEffect, useMemo, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles, Link2, Palette, Wand2, Search, X, Truck, Package, Share2, CheckCircle2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles, Link2, Palette, Wand2, Search, X, Truck, Package, Facebook, Instagram, CheckCircle2 } from 'lucide-react';
 import { useProducts } from '@/lib/cart-context';
 import {
   createProduct,
@@ -51,6 +51,56 @@ import { toast } from 'sonner';
 
 const DEFAULT_IMAGE =
   'https://images.pexels.com/photos/1191349/pexels-photo-1191349.jpeg?auto=compress&cs=tinysrgb&w=800&h=1000&fit=crop';
+
+// ---------------------------------------------------------------------
+// Per-platform social share buttons (Facebook / Instagram / Threads).
+// Each product row gets three independent icon buttons instead of one
+// combined "Share" button — an admin might only want the product on, say,
+// Instagram, without also posting it to Facebook and Threads.
+// ---------------------------------------------------------------------
+
+type SocialPlatform = 'facebook' | 'instagram' | 'threads';
+
+const SOCIAL_PLATFORM_LABEL: Record<SocialPlatform, string> = {
+  facebook: 'Facebook',
+  instagram: 'Instagram',
+  threads: 'Threads',
+};
+
+// Matches the keys written into products.social_post_ids by
+// publishProductToSocial() in lib/social-publish-api.ts.
+const SOCIAL_PLATFORM_POST_ID_KEY: Record<SocialPlatform, string> = {
+  facebook: 'facebook_post_id',
+  instagram: 'instagram_media_id',
+  threads: 'threads_post_id',
+};
+
+/** lucide-react ships Facebook/Instagram glyphs but not Threads (the app
+ *  is too new); this is a minimal stand-in stroked to match lucide's
+ *  24x24 / 2px-stroke look so it sits flush with the other two icons. */
+function ThreadsIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M12 2c-5.5 0-9 3.6-9 10s3.5 10 9 10c4.2 0 7-1.9 7-5.2 0-2.6-1.7-4.1-4.5-4.4" />
+      <path d="M13.5 8.5c-3.2 0-5 1.6-5 4 0 2.6 2 3.7 4 3.7 2.5 0 4-1.4 4-4 0-4.7-2.6-7.2-6.7-7.2" />
+    </svg>
+  );
+}
+
+const SOCIAL_PLATFORM_ICON: Record<SocialPlatform, (props: { className?: string }) => JSX.Element> = {
+  facebook: ({ className }) => <Facebook className={className} />,
+  instagram: ({ className }) => <Instagram className={className} />,
+  threads: ({ className }) => <ThreadsIcon className={className} />,
+};
 
 // Badge shown on the Catalog tab for vendor-submitted products that
 // aren't live yet, so an admin glancing at the main products list can
@@ -269,19 +319,30 @@ export default function ProductsPanel() {
   const [variantColorsById, setVariantColorsById] = useState<
     Record<string, { color: string; color_hex: string | null }[]>
   >({});
-  // product_id -> social_posted_at (ISO string) | null. Drives the
-  // Share/✓ Posted button state per row in the catalog list.
+  // product_id -> social_posted_at (ISO string) | null. Kept for reference
+  // ("has this product ever been shared on any platform"), though the
+  // per-row buttons below now decide their own Share/✓ Posted state from
+  // socialPostIdsById instead, since each platform is independent.
   const [socialStatusById, setSocialStatusById] = useState<Record<string, string | null>>({});
-  const [sharingId, setSharingId] = useState<string | null>(null);
-  const [reshareConfirmId, setReshareConfirmId] = useState<string | null>(null);
+  // product_id -> that product's social_post_ids row (facebook_post_id /
+  // instagram_media_id / threads_post_id). Drives each of the three
+  // Share/✓ Posted buttons per row, independently per platform.
+  const [socialPostIdsById, setSocialPostIdsById] = useState<Record<string, Record<string, string>>>({});
+  // `${productId}:${platform}` while that specific button's request is
+  // in flight, so only that one button shows a spinner.
+  const [sharingKey, setSharingKey] = useState<string | null>(null);
+  const [reshareConfirm, setReshareConfirm] = useState<{ id: string; platform: SocialPlatform } | null>(null);
 
   const loadSocialStatus = useCallback(() => {
     fetch('/api/admin/product-social-status')
-      .then((res) => (res.ok ? res.json() : { statusById: {} }))
-      .then((data) => setSocialStatusById(data.statusById ?? {}))
+      .then((res) => (res.ok ? res.json() : { statusById: {}, postIdsById: {} }))
+      .then((data) => {
+        setSocialStatusById(data.statusById ?? {});
+        setSocialPostIdsById(data.postIdsById ?? {});
+      })
       .catch(() => {
-        // Non-fatal — the Share button just won't know past-posted state
-        // this session; it'll still work, defaulting to the "Share" state.
+        // Non-fatal — the Share buttons just won't know past-posted state
+        // this session; they'll still work, defaulting to the "Share" state.
       });
   }, []);
 
@@ -289,21 +350,29 @@ export default function ProductsPanel() {
     loadSocialStatus();
   }, [loadSocialStatus]);
 
-  const shareProduct = async (productId: string, force: boolean) => {
-    setSharingId(productId);
+  const shareProduct = async (productId: string, platform: SocialPlatform, force: boolean) => {
+    const key = `${productId}:${platform}`;
+    setSharingKey(key);
     try {
-      const res = await triggerSocialAutoPost(productId, force);
+      const res = await triggerSocialAutoPost(productId, force, platform);
       const data = await res.json().catch(() => ({ ok: false }));
       if (data.ok) {
-        toast.success(force ? 'Re-shared to social media' : 'Shared to social media');
+        toast.success(
+          force
+            ? `Re-shared to ${SOCIAL_PLATFORM_LABEL[platform]}`
+            : `Shared to ${SOCIAL_PLATFORM_LABEL[platform]}`
+        );
       } else {
-        toast.error(data.error || 'Share failed — check that Social Auto-Post is configured in Marketing settings');
+        toast.error(
+          data.error ||
+            `${SOCIAL_PLATFORM_LABEL[platform]} share failed — check that it's configured in Marketing settings`
+        );
       }
     } catch {
-      toast.error('Share failed — network error');
+      toast.error(`${SOCIAL_PLATFORM_LABEL[platform]} share failed — network error`);
     } finally {
-      setSharingId(null);
-      setReshareConfirmId(null);
+      setSharingKey(null);
+      setReshareConfirm(null);
       loadSocialStatus();
     }
   };
@@ -964,33 +1033,41 @@ export default function ProductsPanel() {
                   )}
                 </div>
                 <div className="col-span-2 flex justify-end gap-1 sm:col-span-1">
-                  {socialStatusById[p.id] ? (
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => setReshareConfirmId(p.id)}
-                      aria-label="Posted — click to re-share"
-                      title={`Already posted to social on ${new Date(socialStatusById[p.id] as string).toLocaleDateString()}. Click to re-share (confirmation required).`}
-                      className="text-emerald-600 hover:text-emerald-700"
-                    >
-                      <CheckCircle2 className="h-4 w-4" />
-                    </Button>
-                  ) : (
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => shareProduct(p.id, false)}
-                      disabled={sharingId === p.id}
-                      aria-label="Share to social media"
-                      title="Post this product to Facebook / Instagram / Threads now"
-                    >
-                      {sharingId === p.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Share2 className="h-4 w-4" />
-                      )}
-                    </Button>
-                  )}
+                  {(['facebook', 'instagram', 'threads'] as const).map((platform) => {
+                    const key = `${p.id}:${platform}`;
+                    const postedId = socialPostIdsById[p.id]?.[SOCIAL_PLATFORM_POST_ID_KEY[platform]];
+                    const Icon = SOCIAL_PLATFORM_ICON[platform];
+                    const label = SOCIAL_PLATFORM_LABEL[platform];
+                    return postedId ? (
+                      <Button
+                        key={platform}
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => setReshareConfirm({ id: p.id, platform })}
+                        aria-label={`Posted to ${label} — click to re-share`}
+                        title={`Already posted to ${label}. Click to re-share (confirmation required).`}
+                        className="text-emerald-600 hover:text-emerald-700"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                      </Button>
+                    ) : (
+                      <Button
+                        key={platform}
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => shareProduct(p.id, platform, false)}
+                        disabled={sharingKey === key}
+                        aria-label={`Share to ${label}`}
+                        title={`Post this product to ${label} now`}
+                      >
+                        {sharingKey === key ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Icon className="h-4 w-4" />
+                        )}
+                      </Button>
+                    );
+                  })}
                   <Button
                     size="icon"
                     variant="ghost"
@@ -1843,17 +1920,17 @@ export default function ProductsPanel() {
           near-duplicate content Meta's spam systems watch for, so this is
           deliberately a click-through confirmation rather than a one-click
           action. */}
-      <Dialog open={!!reshareConfirmId} onOpenChange={(o) => !o && setReshareConfirmId(null)}>
+      <Dialog open={!!reshareConfirm} onOpenChange={(o) => !o && setReshareConfirm(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="font-serif text-xl text-primary">
-              Share this product again?
+              Share this product to {reshareConfirm ? SOCIAL_PLATFORM_LABEL[reshareConfirm.platform] : 'social'} again?
             </DialogTitle>
             <DialogDescription>
-              This product was already posted to social media once. Posting the same product
-              repeatedly can look like duplicate/spam content to Facebook, Instagram, and Threads,
-              which risks your account getting restricted. Only re-share if something meaningfully
-              changed (price drop, restock, new photos).
+              This product was already posted to {reshareConfirm ? SOCIAL_PLATFORM_LABEL[reshareConfirm.platform] : 'this platform'} once.
+              Posting the same product repeatedly can look like duplicate/spam content, which risks
+              your account getting restricted. Only re-share if something meaningfully changed
+              (price drop, restock, new photos).
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -1861,10 +1938,10 @@ export default function ProductsPanel() {
               <Button variant="outline">Cancel</Button>
             </DialogClose>
             <Button
-              onClick={() => reshareConfirmId && shareProduct(reshareConfirmId, true)}
-              disabled={sharingId === reshareConfirmId}
+              onClick={() => reshareConfirm && shareProduct(reshareConfirm.id, reshareConfirm.platform, true)}
+              disabled={!!reshareConfirm && sharingKey === `${reshareConfirm.id}:${reshareConfirm.platform}`}
             >
-              {sharingId === reshareConfirmId ? (
+              {reshareConfirm && sharingKey === `${reshareConfirm.id}:${reshareConfirm.platform}` ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : null}
               Yes, share again

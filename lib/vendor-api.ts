@@ -318,15 +318,23 @@ export function triggerVendorAIProcess(id: string, isEdit = false): Promise<Resp
 }
 
 /** Fire-and-forget: tells the server to auto-post this (already-created,
- *  already-live) product to Facebook/Instagram per Admin > Marketing >
- *  Social Auto-Post settings. Used after Admin > Products > "Add Product",
- *  since that insert happens directly from the browser and the Meta access
- *  token must never be exposed client-side. Callers should `.catch(() => {})`. */
-export function triggerSocialAutoPost(productId: string, force = false): Promise<Response> {
+ *  already-live) product to Facebook/Instagram/Threads per Admin >
+ *  Marketing > Social Auto-Post settings. Used after Admin > Products >
+ *  "Add Product", and by the three separate per-platform Share buttons in
+ *  the Manage Products catalog — since that insert/click happens directly
+ *  from the browser and the Meta access token must never be exposed
+ *  client-side. Pass `platform` to target just one of Facebook / Instagram
+ *  / Threads (omit to post to every platform enabled in settings, the
+ *  original auto-post-on-create behaviour). Callers should `.catch(() => {})`. */
+export function triggerSocialAutoPost(
+  productId: string,
+  force = false,
+  platform?: 'facebook' | 'instagram' | 'threads'
+): Promise<Response> {
   return fetch('/api/social/publish', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ productId, force }),
+    body: JSON.stringify({ productId, force, platform }),
     keepalive: true,
   });
 }

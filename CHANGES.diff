@@ -1,1401 +1,498 @@
-diff --git a/app/admin/page.tsx b/app/admin/page.tsx
-index 9160b8a..d809184 100644
---- a/app/admin/page.tsx
-+++ b/app/admin/page.tsx
-@@ -6,6 +6,7 @@ import AdminShell, { type AdminSection } from '@/components/admin/admin-shell';
- import ProductsPanel from '@/components/admin/products-panel';
- import OrdersPanel from '@/components/admin/orders-panel';
- import CategoriesPanel from '@/components/admin/categories-panel';
-+import CollectionsPanel from '@/components/admin/collections-panel';
- import ReviewsPanel from '@/components/admin/reviews-panel';
- import CouponsPanel from '@/components/admin/coupons-panel';
- import SettingsPanel from '@/components/admin/settings-panel';
-@@ -32,6 +33,7 @@ const PANELS: Record<AdminSection, React.ComponentType> = {
-   analytics: AnalyticsPanel,
-   products: ProductsPanel,
-   categories: CategoriesPanel,
-+  collections: CollectionsPanel,
-   reviews: ReviewsPanel,
-   orders: OrdersPanel,
-   customers: CustomersPanel,
-diff --git a/app/api/admin/collections/[id]/route.ts b/app/api/admin/collections/[id]/route.ts
-new file mode 100644
-index 0000000..1f5c5f9
---- /dev/null
-+++ b/app/api/admin/collections/[id]/route.ts
-@@ -0,0 +1,142 @@
-+import { NextResponse } from 'next/server';
-+import { cookies } from 'next/headers';
-+import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
-+import { getSupabaseAdmin } from '@/lib/supabase-admin';
-+
-+async function requireAdmin() {
-+  const cookie = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? null;
-+  const verified = await verifyAdminToken(cookie);
-+  return verified.valid;
-+}
-+
-+const slugify = (s: string) =>
-+  s
-+    .toLowerCase()
-+    .trim()
-+    .replace(/[^a-z0-9\s-]/g, '')
-+    .replace(/\s+/g, '-')
-+    .replace(/-+/g, '-');
-+
-+// GET — one collection plus the ids of the products currently in it, for
-+// the edit dialog's product picker.
-+export async function GET(_req: Request, { params }: { params: { id: string } }) {
-+  if (!(await requireAdmin())) {
-+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-+  }
-+
-+  const admin = getSupabaseAdmin();
-+
-+  try {
-+    const { data: collection, error } = await admin
-+      .from('collections')
-+      .select('*')
-+      .eq('id', params.id)
-+      .maybeSingle();
-+    if (error) throw error;
-+    if (!collection) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-+
-+    const { data: links, error: linksErr } = await admin
-+      .from('collection_products')
-+      .select('product_id')
-+      .eq('collection_id', params.id)
-+      .order('position', { ascending: true });
-+    if (linksErr) throw linksErr;
-+
-+    return NextResponse.json({
-+      collection,
-+      product_ids: (links ?? []).map((l) => l.product_id),
-+    });
-+  } catch (err) {
-+    const message = err instanceof Error ? err.message : 'Failed to load collection';
-+    return NextResponse.json({ error: message }, { status: 500 });
-+  }
-+}
-+
-+// PUT — update name/slug/description/is_active and/or fully replace the
-+// product list (simplest correct approach: delete all links, re-insert the
-+// submitted list in order, so reordering/adding/removing all work the same
-+// way from one save).
-+export async function PUT(req: Request, { params }: { params: { id: string } }) {
-+  if (!(await requireAdmin())) {
-+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-+  }
-+
-+  const body = await req.json().catch(() => ({}));
-+  const admin = getSupabaseAdmin();
-+
-+  try {
-+    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-+    if (typeof body?.name === 'string' && body.name.trim()) updates.name = body.name.trim();
-+    if (typeof body?.description === 'string') updates.description = body.description.trim() || null;
-+    if (body?.description === null) updates.description = null;
-+    if (typeof body?.is_active === 'boolean') updates.is_active = body.is_active;
-+
-+    if (typeof body?.slug === 'string' && body.slug.trim()) {
-+      const baseSlug = slugify(body.slug.trim());
-+      let slug = baseSlug;
-+      let suffix = 1;
-+      // eslint-disable-next-line no-constant-condition
-+      while (true) {
-+        const [{ data: collisionCollection }, { data: collisionVendor }] = await Promise.all([
-+          admin.from('collections').select('id').eq('slug', slug).neq('id', params.id).maybeSingle(),
-+          admin.from('vendors').select('id').eq('storefront_slug', slug).maybeSingle(),
-+        ]);
-+        if (!collisionCollection && !collisionVendor) break;
-+        suffix += 1;
-+        slug = `${baseSlug}-${suffix}`;
-+      }
-+      updates.slug = slug;
-+    }
-+
-+    const { data: collection, error } = await admin
-+      .from('collections')
-+      .update(updates)
-+      .eq('id', params.id)
-+      .select('*')
-+      .single();
-+    if (error) throw error;
-+
-+    if (Array.isArray(body?.product_ids)) {
-+      const productIds: string[] = body.product_ids.filter((id: unknown) => typeof id === 'string');
-+      const { error: deleteErr } = await admin.from('collection_products').delete().eq('collection_id', params.id);
-+      if (deleteErr) throw deleteErr;
-+      if (productIds.length > 0) {
-+        const rows = productIds.map((product_id, idx) => ({
-+          collection_id: params.id,
-+          product_id,
-+          position: idx,
-+        }));
-+        const { error: insertErr } = await admin.from('collection_products').insert(rows);
-+        if (insertErr) throw insertErr;
-+      }
-+    }
-+
-+    const { count } = await admin
-+      .from('collection_products')
-+      .select('product_id', { count: 'exact', head: true })
-+      .eq('collection_id', params.id);
-+
-+    return NextResponse.json({ success: true, collection: { ...collection, product_count: count ?? 0 } });
-+  } catch (err) {
-+    const message = err instanceof Error ? err.message : 'Failed to update collection';
-+    return NextResponse.json({ error: message }, { status: 500 });
-+  }
-+}
-+
-+// DELETE — removes the collection; collection_products rows cascade.
-+export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
-+  if (!(await requireAdmin())) {
-+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-+  }
-+
-+  const admin = getSupabaseAdmin();
-+
-+  try {
-+    const { error } = await admin.from('collections').delete().eq('id', params.id);
-+    if (error) throw error;
-+    return NextResponse.json({ success: true });
-+  } catch (err) {
-+    const message = err instanceof Error ? err.message : 'Failed to delete collection';
-+    return NextResponse.json({ error: message }, { status: 500 });
-+  }
-+}
-diff --git a/app/api/admin/collections/route.ts b/app/api/admin/collections/route.ts
-new file mode 100644
-index 0000000..945519c
---- /dev/null
-+++ b/app/api/admin/collections/route.ts
-@@ -0,0 +1,120 @@
-+import { NextResponse } from 'next/server';
-+import { cookies } from 'next/headers';
-+import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
-+import { getSupabaseAdmin } from '@/lib/supabase-admin';
-+
-+async function requireAdmin() {
-+  const cookie = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? null;
-+  const verified = await verifyAdminToken(cookie);
-+  return verified.valid;
-+}
-+
-+const slugify = (s: string) =>
-+  s
-+    .toLowerCase()
-+    .trim()
-+    .replace(/[^a-z0-9\s-]/g, '')
-+    .replace(/\s+/g, '-')
-+    .replace(/-+/g, '-');
-+
-+// GET — every admin-managed collection, newest first, with a product count
-+// per collection (used by the Collections panel list + search + filter).
-+export async function GET() {
-+  if (!(await requireAdmin())) {
-+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-+  }
-+
-+  const admin = getSupabaseAdmin();
-+
-+  try {
-+    const { data: collections, error } = await admin
-+      .from('collections')
-+      .select('*')
-+      .order('created_at', { ascending: false });
-+    if (error) throw error;
-+
-+    const { data: counts, error: countsErr } = await admin
-+      .from('collection_products')
-+      .select('collection_id');
-+    if (countsErr) throw countsErr;
-+
-+    const countByCollection = new Map<string, number>();
-+    for (const row of counts ?? []) {
-+      countByCollection.set(row.collection_id, (countByCollection.get(row.collection_id) ?? 0) + 1);
-+    }
-+
-+    const result = (collections ?? []).map((c) => ({
-+      ...c,
-+      product_count: countByCollection.get(c.id) ?? 0,
-+    }));
-+
-+    return NextResponse.json({ collections: result });
-+  } catch (err) {
-+    const message = err instanceof Error ? err.message : 'Failed to load collections';
-+    return NextResponse.json({ error: message }, { status: 500 });
-+  }
-+}
-+
-+// POST — create a new collection. Only admin can create these (unlike
-+// vendor collections, which are auto-derived per approved vendor).
-+export async function POST(req: Request) {
-+  if (!(await requireAdmin())) {
-+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-+  }
-+
-+  const body = await req.json().catch(() => ({}));
-+  const name = typeof body?.name === 'string' ? body.name.trim() : '';
-+  const description = typeof body?.description === 'string' ? body.description.trim() || null : null;
-+  const is_active = typeof body?.is_active === 'boolean' ? body.is_active : true;
-+  const requestedSlug = typeof body?.slug === 'string' ? body.slug.trim() : '';
-+  const productIds: string[] = Array.isArray(body?.product_ids)
-+    ? body.product_ids.filter((id: unknown) => typeof id === 'string')
-+    : [];
-+
-+  if (!name) {
-+    return NextResponse.json({ error: 'Collection name is required' }, { status: 400 });
-+  }
-+
-+  const admin = getSupabaseAdmin();
-+  const baseSlug = slugify(requestedSlug || name) || 'collection';
-+
-+  try {
-+    // Guarantee a unique slug even if the requested one collides with an
-+    // existing collection, or with a vendor's storefront slug (both share
-+    // the /collection/[slug] URL space).
-+    let slug = baseSlug;
-+    let suffix = 1;
-+    // eslint-disable-next-line no-constant-condition
-+    while (true) {
-+      const [{ data: collisionCollection }, { data: collisionVendor }] = await Promise.all([
-+        admin.from('collections').select('id').eq('slug', slug).maybeSingle(),
-+        admin.from('vendors').select('id').eq('storefront_slug', slug).maybeSingle(),
-+      ]);
-+      if (!collisionCollection && !collisionVendor) break;
-+      suffix += 1;
-+      slug = `${baseSlug}-${suffix}`;
-+    }
-+
-+    const { data: collection, error } = await admin
-+      .from('collections')
-+      .insert({ name, slug, description, is_active })
-+      .select('*')
-+      .single();
-+    if (error) throw error;
-+
-+    if (productIds.length > 0) {
-+      const rows = productIds.map((product_id, idx) => ({
-+        collection_id: collection.id,
-+        product_id,
-+        position: idx,
-+      }));
-+      const { error: linkErr } = await admin.from('collection_products').insert(rows);
-+      if (linkErr) throw linkErr;
-+    }
-+
-+    return NextResponse.json({ success: true, collection: { ...collection, product_count: productIds.length } });
-+  } catch (err) {
-+    const message = err instanceof Error ? err.message : 'Failed to create collection';
-+    return NextResponse.json({ error: message }, { status: 500 });
-+  }
-+}
-diff --git a/app/api/collection/[slug]/route.ts b/app/api/collection/[slug]/route.ts
-new file mode 100644
-index 0000000..cd5bcb5
---- /dev/null
-+++ b/app/api/collection/[slug]/route.ts
-@@ -0,0 +1,186 @@
-+import { NextResponse } from 'next/server';
-+import { getSupabaseAdmin } from '@/lib/supabase-admin';
-+import { mapRowToProduct, CUSTOMER_SAFE_PRODUCT_COLUMNS } from '@/lib/products-api-server';
-+import { ProductRow } from '@/lib/types';
-+
-+/** Weighted rating/review total across a set of products, computed from the
-+ *  live `reviews` table (approved only) -- the same source the single-
-+ *  product page uses. A product with no live approved reviews yet falls
-+ *  back to its admin-set seed rating/reviews (same rule the product page
-+ *  uses), so freshly-seeded products still contribute. */
-+async function computeRatingSummary(
-+  admin: ReturnType<typeof getSupabaseAdmin>,
-+  productRows: ProductRow[]
-+): Promise<{ rating: number | null; reviewCount: number | null }> {
-+  if (productRows.length === 0) return { rating: null, reviewCount: null };
-+
-+  const productIds = productRows.map((p) => p.id);
-+  const { data: liveReviews, error: reviewsErr } = await admin
-+    .from('reviews')
-+    .select('product_id, rating')
-+    .in('product_id', productIds)
-+    .eq('is_approved', true);
-+
-+  if (reviewsErr) throw reviewsErr;
-+
-+  const liveByProduct = new Map<string, { count: number; sum: number }>();
-+  for (const r of liveReviews ?? []) {
-+    const entry = liveByProduct.get(r.product_id) ?? { count: 0, sum: 0 };
-+    entry.count += 1;
-+    entry.sum += Number(r.rating) || 0;
-+    liveByProduct.set(r.product_id, entry);
-+  }
-+
-+  let totalCount = 0;
-+  let weightedSum = 0;
-+  for (const p of productRows) {
-+    const live = liveByProduct.get(p.id);
-+    if (live && live.count > 0) {
-+      totalCount += live.count;
-+      weightedSum += live.sum;
-+    } else if ((p.reviews ?? 0) > 0) {
-+      totalCount += p.reviews ?? 0;
-+      weightedSum += (p.rating ?? 0) * (p.reviews ?? 0);
-+    }
-+  }
-+
-+  return {
-+    reviewCount: totalCount,
-+    rating: totalCount > 0 ? weightedSum / totalCount : null,
-+  };
-+}
-+
-+/**
-+ * GET /api/collection/[slug]
-+ *
-+ * Public collection page, backing /collection/[slug]. Two kinds of
-+ * collection share this one URL space (checked in this order):
-+ *
-+ *  1. A vendor's auto-generated collection -- their live products, keyed
-+ *     by `vendors.storefront_slug` (see the storefront migration). The
-+ *     rating summary here respects the vendor's `show_public_rating`
-+ *     toggle (Admin > Vendors) -- off means no rating block at all.
-+ *
-+ *  2. An admin-curated collection -- a hand-picked set of products keyed
-+ *     by `collections.slug` (see the admin-collections migration),
-+ *     managed from Admin > Collections. Inactive ones 404 just like a
-+ *     missing vendor slug. These always show their rating summary (no
-+ *     per-collection toggle -- there's no vendor to hide it on behalf
-+ *     of), computed the same way.
-+ *
-+ * Both branches compute their rating/review total from the live
-+ * `reviews` table (approved only), NOT the `products.rating` /
-+ * `products.reviews` columns, which are just admin-set seed numbers that
-+ * go stale once a product has real reviews.
-+ */
-+export async function GET(
-+  _req: Request,
-+  { params }: { params: { slug: string } }
-+) {
-+  const admin = getSupabaseAdmin();
-+
-+  try {
-+    const { data: vendor, error: vendorErr } = await admin
-+      .from('vendor_public_profiles')
-+      .select('id, business_name, storefront_slug, show_public_rating, created_at')
-+      .eq('storefront_slug', params.slug)
-+      .maybeSingle();
-+
-+    if (vendorErr) throw vendorErr;
-+
-+    if (vendor) {
-+      const { data: rows, error: rowsErr } = await admin
-+        .from('products')
-+        .select(CUSTOMER_SAFE_PRODUCT_COLUMNS)
-+        .eq('vendor_id', vendor.id)
-+        .eq('approval_status', 'live')
-+        .order('created_at', { ascending: false });
-+
-+      if (rowsErr) throw rowsErr;
-+
-+      const productRows = (rows ?? []) as unknown as ProductRow[];
-+      const products = productRows.map(mapRowToProduct);
-+
-+      let rating: number | null = null;
-+      let reviewCount: number | null = null;
-+      if (vendor.show_public_rating) {
-+        ({ rating, reviewCount } = await computeRatingSummary(admin, productRows));
-+      }
-+
-+      return NextResponse.json({
-+        vendor: {
-+          id: vendor.id,
-+          name: vendor.business_name,
-+          slug: vendor.storefront_slug,
-+          since: vendor.created_at,
-+        },
-+        showRating: vendor.show_public_rating,
-+        rating,
-+        reviewCount,
-+        products,
-+      });
-+    }
-+
-+    // Not a vendor slug -- try an admin-curated collection instead.
-+    const { data: collection, error: collectionErr } = await admin
-+      .from('collections')
-+      .select('id, name, slug, is_active, created_at')
-+      .eq('slug', params.slug)
-+      .eq('is_active', true)
-+      .maybeSingle();
-+
-+    if (collectionErr) throw collectionErr;
-+    if (!collection) {
-+      return NextResponse.json({ vendor: null }, { status: 404 });
-+    }
-+
-+    const { data: links, error: linksErr } = await admin
-+      .from('collection_products')
-+      .select('product_id')
-+      .eq('collection_id', collection.id)
-+      .order('position', { ascending: true });
-+
-+    if (linksErr) throw linksErr;
-+
-+    const orderedIds = (links ?? []).map((l) => l.product_id);
-+    if (orderedIds.length === 0) {
-+      return NextResponse.json({
-+        vendor: { id: collection.id, name: collection.name, slug: collection.slug, since: collection.created_at },
-+        showRating: false,
-+        rating: null,
-+        reviewCount: null,
-+        products: [],
-+      });
-+    }
-+
-+    const { data: rows, error: rowsErr } = await admin
-+      .from('products')
-+      .select(CUSTOMER_SAFE_PRODUCT_COLUMNS)
-+      .in('id', orderedIds)
-+      .eq('approval_status', 'live');
-+
-+    if (rowsErr) throw rowsErr;
-+
-+    const rowsById = new Map(((rows ?? []) as unknown as ProductRow[]).map((r) => [r.id, r]));
-+    const productRows = orderedIds.map((id) => rowsById.get(id)).filter((r): r is ProductRow => !!r);
-+    const products = productRows.map(mapRowToProduct);
-+
-+    const { rating, reviewCount } = await computeRatingSummary(admin, productRows);
-+
-+    return NextResponse.json({
-+      vendor: {
-+        id: collection.id,
-+        name: collection.name,
-+        slug: collection.slug,
-+        since: collection.created_at,
-+      },
-+      showRating: true,
-+      rating,
-+      reviewCount,
-+      products,
-+    });
-+  } catch (err) {
-+    console.error('[collection]', params.slug, 'failed', err);
-+    return NextResponse.json({ vendor: null }, { status: 500 });
-+  }
-+}
-diff --git a/app/api/store/[slug]/route.ts b/app/api/store/[slug]/route.ts
-deleted file mode 100644
-index 3bf4f22..0000000
---- a/app/api/store/[slug]/route.ts
-+++ /dev/null
-@@ -1,79 +0,0 @@
--import { NextResponse } from 'next/server';
--import { getSupabaseAdmin } from '@/lib/supabase-admin';
--import { mapRowToProduct, CUSTOMER_SAFE_PRODUCT_COLUMNS } from '@/lib/products-api-server';
--import { ProductRow } from '@/lib/types';
--
--/**
-- * GET /api/store/[slug]
-- *
-- * Public storefront for one vendor: /store/[slug] renders this. Reads
-- * only from `vendor_public_profiles` (approved vendors, safe columns
-- * only -- see the storefront migration) plus each of the vendor's live
-- * products.
-- *
-- * The aggregate rating/review count is computed as a reviews-weighted
-- * average across the vendor's own products (each product already
-- * carries its own `rating`/`reviews` aggregate, so this reuses those
-- * rather than re-scanning the raw `reviews` table). It's only included
-- * in the response when the vendor's `show_public_rating` toggle
-- * (Admin > Vendors) is on -- when it's off, `rating`/`reviewCount` come
-- * back null and the page shows the plain product listing with no
-- * rating summary block.
-- */
--export async function GET(
--  _req: Request,
--  { params }: { params: { slug: string } }
--) {
--  const admin = getSupabaseAdmin();
--
--  try {
--    const { data: vendor, error: vendorErr } = await admin
--      .from('vendor_public_profiles')
--      .select('id, business_name, storefront_slug, show_public_rating, created_at')
--      .eq('storefront_slug', params.slug)
--      .maybeSingle();
--
--    if (vendorErr || !vendor) {
--      return NextResponse.json({ vendor: null }, { status: 404 });
--    }
--
--    const { data: rows, error: rowsErr } = await admin
--      .from('products')
--      .select(CUSTOMER_SAFE_PRODUCT_COLUMNS)
--      .eq('vendor_id', vendor.id)
--      .eq('approval_status', 'live')
--      .order('created_at', { ascending: false });
--
--    if (rowsErr) throw rowsErr;
--
--    const productRows = (rows ?? []) as unknown as ProductRow[];
--    const products = productRows.map(mapRowToProduct);
--
--    let rating: number | null = null;
--    let reviewCount: number | null = null;
--    if (vendor.show_public_rating) {
--      const totalReviews = productRows.reduce((sum, p) => sum + (p.reviews ?? 0), 0);
--      reviewCount = totalReviews;
--      rating =
--        totalReviews > 0
--          ? productRows.reduce((sum, p) => sum + (p.rating ?? 0) * (p.reviews ?? 0), 0) / totalReviews
--          : null;
--    }
--
--    return NextResponse.json({
--      vendor: {
--        id: vendor.id,
--        name: vendor.business_name,
--        slug: vendor.storefront_slug,
--        since: vendor.created_at,
--      },
--      showRating: vendor.show_public_rating,
--      rating,
--      reviewCount,
--      products,
--    });
--  } catch (err) {
--    console.error('[store]', params.slug, 'failed', err);
--    return NextResponse.json({ vendor: null }, { status: 500 });
--  }
--}
-diff --git a/app/store/[slug]/store-page-client.tsx b/app/collection/[slug]/collection-page-client.tsx
-similarity index 97%
-rename from app/store/[slug]/store-page-client.tsx
-rename to app/collection/[slug]/collection-page-client.tsx
-index 86046d3..d04985e 100644
---- a/app/store/[slug]/store-page-client.tsx
-+++ b/app/collection/[slug]/collection-page-client.tsx
-@@ -7,7 +7,7 @@ import ProductCard from '@/components/product-card';
- import { Skeleton } from '@/components/ui/skeleton';
- import { fetchVendorStorefront, VendorStorefront } from '@/lib/vendor-storefront-api';
+diff --git a/app/api/admin/product-social-status/route.ts b/app/api/admin/product-social-status/route.ts
+index 7b6e2c9..d6e93cf 100644
+--- a/app/api/admin/product-social-status/route.ts
++++ b/app/api/admin/product-social-status/route.ts
+@@ -6,11 +6,16 @@ import { getServerSupabase } from '@/lib/supabase-server';
+ /**
+  * GET /api/admin/product-social-status
+  *
+- * Returns { statusById: { [product_id]: string | null } } — the
+- * `social_posted_at` timestamp (or null if never auto/manually posted) for
+- * every live product. Used by the Manage Products catalog to decide
+- * whether to show a "Share to Social" button or a "✓ Posted" state (with a
+- * guarded "Share again" option) per row.
++ * Returns:
++ *   - statusById: { [product_id]: string | null } — the `social_posted_at`
++ *     timestamp (or null if never auto/manually posted, on ANY platform)
++ *     for every live product.
++ *   - postIdsById: { [product_id]: Record<string, string> } — that
++ *     product's `social_post_ids` (facebook_post_id / instagram_media_id /
++ *     threads_post_id), used to decide per-platform, independently,
++ *     whether each of the three Share buttons in the Manage Products
++ *     catalog should show "Share" or "✓ Posted" (with a guarded "Share
++ *     again" option).
+  */
+ export async function GET() {
+   const cookie = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? null;
+@@ -23,16 +28,18 @@ export async function GET() {
+     const supabase = getServerSupabase();
+     const { data, error } = await supabase
+       .from('products')
+-      .select('id, social_posted_at')
++      .select('id, social_posted_at, social_post_ids')
+       .eq('approval_status', 'live');
+     if (error) throw error;
  
--export default function StorePageClient() {
-+export default function CollectionPageClient() {
-   const params = useParams<{ slug: string }>();
-   const [data, setData] = useState<VendorStorefront | null>(null);
-   const [loading, setLoading] = useState(true);
-@@ -43,7 +43,7 @@ export default function StorePageClient() {
-     return (
-       <div className="container-boutique py-20 text-center">
-         <Store className="mx-auto h-10 w-10 text-muted-foreground" />
--        <h1 className="mt-4 font-serif text-2xl font-bold text-primary">Store not found</h1>
-+        <h1 className="mt-4 font-serif text-2xl font-bold text-primary">Collection not found</h1>
-         <p className="mt-2 text-sm text-muted-foreground">
-           This vendor page doesn&apos;t exist or isn&apos;t available right now.
-         </p>
-@@ -57,7 +57,7 @@ export default function StorePageClient() {
-     <div className="container-boutique py-8 pb-24 md:pb-8">
-       <div className="mb-8">
-         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
--          Vendor Collection
-+          Collection
-         </p>
-         <h1 className="mt-1 font-serif text-3xl font-bold text-primary sm:text-4xl">
-           {vendor.name}
-diff --git a/app/store/[slug]/page.tsx b/app/collection/[slug]/page.tsx
-similarity index 79%
-rename from app/store/[slug]/page.tsx
-rename to app/collection/[slug]/page.tsx
-index 928177b..1e8df17 100644
---- a/app/store/[slug]/page.tsx
-+++ b/app/collection/[slug]/page.tsx
-@@ -1,6 +1,6 @@
- import { Metadata } from 'next';
- import { getSupabaseAdmin } from '@/lib/supabase-admin';
--import StorePageClient from './store-page-client';
-+import CollectionPageClient from './collection-page-client';
- 
- type Params = { params: { slug: string } };
- 
-@@ -15,7 +15,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
- 
-     if (!vendor) {
-       return {
--        title: 'Store not found | Aruhi Handlooms',
-+        title: 'Collection not found | Aruhi Handlooms',
-         robots: { index: false, follow: true },
-       };
+     const statusById: Record<string, string | null> = {};
++    const postIdsById: Record<string, Record<string, string>> = {};
+     for (const row of data ?? []) {
+       statusById[row.id] = row.social_posted_at ?? null;
++      postIdsById[row.id] = (row.social_post_ids as Record<string, string> | null) ?? {};
      }
-@@ -29,6 +29,6 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
-   }
- }
  
--export default function StorePage() {
--  return <StorePageClient />;
-+export default function CollectionPage() {
-+  return <CollectionPageClient />;
- }
-diff --git a/components/admin/admin-shell.tsx b/components/admin/admin-shell.tsx
-index 2facfcb..091507d 100644
---- a/components/admin/admin-shell.tsx
-+++ b/components/admin/admin-shell.tsx
-@@ -7,6 +7,7 @@ import {
-   BarChart3,
-   Package,
-   FolderTree,
-+  Layers,
-   Star,
-   ShoppingCart,
-   Users,
-@@ -39,6 +40,7 @@ export type AdminSection =
-   | 'analytics'
-   | 'products'
-   | 'categories'
-+  | 'collections'
-   | 'reviews'
-   | 'orders'
-   | 'customers'
-@@ -82,6 +84,7 @@ const NAV_GROUPS: NavGroup[] = [
-     items: [
-       { value: 'products', label: 'Products', icon: Package },
-       { value: 'categories', label: 'Categories', icon: FolderTree },
-+      { value: 'collections', label: 'Collections', icon: Layers },
-       { value: 'reviews', label: 'Reviews', icon: Star },
-     ],
-   },
-diff --git a/components/admin/collections-panel.tsx b/components/admin/collections-panel.tsx
-new file mode 100644
-index 0000000..a3df429
---- /dev/null
-+++ b/components/admin/collections-panel.tsx
-@@ -0,0 +1,455 @@
-+'use client';
+-    return NextResponse.json({ statusById });
++    return NextResponse.json({ statusById, postIdsById });
+   } catch (err) {
+     const message = err instanceof Error ? err.message : 'Failed to load social status';
+     return NextResponse.json({ error: message }, { status: 500 });
+diff --git a/app/api/social/publish/route.ts b/app/api/social/publish/route.ts
+index 619ca31..edc531c 100644
+--- a/app/api/social/publish/route.ts
++++ b/app/api/social/publish/route.ts
+@@ -2,15 +2,20 @@ import { NextResponse } from 'next/server';
+ import { cookies } from 'next/headers';
+ import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
+ import { getSupabaseAdmin } from '@/lib/supabase-admin';
+-import { publishProductToSocial } from '@/lib/social-publish-api';
++import { publishProductToSocial, type SocialPlatform } from '@/lib/social-publish-api';
 +
-+import { useEffect, useMemo, useState, FormEvent } from 'react';
-+import { Plus, Pencil, Trash2, Search, X, ExternalLink, Layers } from 'lucide-react';
-+import { toast } from 'sonner';
-+import { useProducts } from '@/lib/cart-context';
-+import {
-+  fetchAdminCollections,
-+  fetchAdminCollection,
-+  createAdminCollection,
-+  updateAdminCollection,
-+  deleteAdminCollection,
-+} from '@/lib/admin-collections-api';
-+import { AdminCollectionRow } from '@/lib/types';
-+import { Button } from '@/components/ui/button';
-+import { Input } from '@/components/ui/input';
-+import { Label } from '@/components/ui/label';
-+import { Textarea } from '@/components/ui/textarea';
-+import { Badge } from '@/components/ui/badge';
-+import { Switch } from '@/components/ui/switch';
-+import {
-+  Dialog,
-+  DialogContent,
-+  DialogHeader,
-+  DialogTitle,
-+  DialogDescription,
-+  DialogFooter,
-+  DialogClose,
-+} from '@/components/ui/dialog';
++const VALID_PLATFORMS: SocialPlatform[] = ['facebook', 'instagram', 'threads'];
+ 
+ /**
+- * POST /api/social/publish  { productId: string }
++ * POST /api/social/publish  { productId: string, force?: boolean, platform?: 'facebook' | 'instagram' | 'threads' }
+  *
+  * Fire-and-forget endpoint called right after Admin > Products > "Add
+- * Product" successfully inserts a new product (see
+- * components/admin/products-panel.tsx). Posts the product to
+- * Facebook/Instagram per Admin > Marketing > Social Auto-Post settings.
++ * Product" successfully inserts a new product, and by each of the three
++ * separate Facebook / Instagram / Threads Share buttons in the Manage
++ * Products catalog (see components/admin/products-panel.tsx). When
++ * `platform` is omitted, posts to every platform enabled in Admin >
++ * Marketing > Social Auto-Post settings (legacy/auto-post behaviour); when
++ * given, only that one platform is attempted/gated.
+  *
+  * Kept as its own tiny route (rather than folding into the client-side
+  * createProduct() insert) because the Meta access token must stay
+@@ -27,16 +32,21 @@ export async function POST(req: Request) {
+     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+   }
+ 
+-  const { productId, force } = await req.json().catch(() => ({ productId: null, force: false }));
++  const { productId, force, platform } = await req
++    .json()
++    .catch(() => ({ productId: null, force: false, platform: undefined }));
+   if (!productId) {
+     return NextResponse.json({ error: 'productId required' }, { status: 400 });
+   }
++  if (platform !== undefined && !VALID_PLATFORMS.includes(platform)) {
++    return NextResponse.json({ error: 'platform must be facebook, instagram, or threads' }, { status: 400 });
++  }
+ 
+   const admin = getSupabaseAdmin();
+ 
+   const { data: product, error } = await admin
+     .from('products')
+-    .select('id, name, slug, description, price, images, social_posted_at')
++    .select('id, name, slug, description, price, images, social_posted_at, social_post_ids')
+     .eq('id', productId)
+     .maybeSingle();
+ 
+@@ -45,7 +55,7 @@ export async function POST(req: Request) {
+   }
+ 
+   try {
+-    await publishProductToSocial(admin, product, { force: Boolean(force) });
++    await publishProductToSocial(admin, product, { force: Boolean(force), platform });
+     return NextResponse.json({ ok: true });
+   } catch (err) {
+     // Non-fatal from the caller's point of view — the product is already
+diff --git a/components/admin/products-panel.tsx b/components/admin/products-panel.tsx
+index 663bafb..7561865 100644
+--- a/components/admin/products-panel.tsx
++++ b/components/admin/products-panel.tsx
+@@ -3,7 +3,7 @@
+ import { useState, FormEvent, useEffect, useMemo, useCallback, useRef } from 'react';
+ import Image from 'next/image';
+ import Link from 'next/link';
+-import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles, Link2, Palette, Wand2, Search, X, Truck, Package, Share2, CheckCircle2 } from 'lucide-react';
++import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles, Link2, Palette, Wand2, Search, X, Truck, Package, Facebook, Instagram, CheckCircle2 } from 'lucide-react';
+ import { useProducts } from '@/lib/cart-context';
+ import {
+   createProduct,
+@@ -52,6 +52,56 @@ import { toast } from 'sonner';
+ const DEFAULT_IMAGE =
+   'https://images.pexels.com/photos/1191349/pexels-photo-1191349.jpeg?auto=compress&cs=tinysrgb&w=800&h=1000&fit=crop';
+ 
++// ---------------------------------------------------------------------
++// Per-platform social share buttons (Facebook / Instagram / Threads).
++// Each product row gets three independent icon buttons instead of one
++// combined "Share" button — an admin might only want the product on, say,
++// Instagram, without also posting it to Facebook and Threads.
++// ---------------------------------------------------------------------
 +
-+const slugify = (s: string) =>
-+  s
-+    .toLowerCase()
-+    .trim()
-+    .replace(/[^a-z0-9\s-]/g, '')
-+    .replace(/\s+/g, '-')
-+    .replace(/-+/g, '-');
++type SocialPlatform = 'facebook' | 'instagram' | 'threads';
 +
-+type StatusFilter = 'all' | 'active' | 'inactive';
++const SOCIAL_PLATFORM_LABEL: Record<SocialPlatform, string> = {
++  facebook: 'Facebook',
++  instagram: 'Instagram',
++  threads: 'Threads',
++};
 +
-+export default function CollectionsPanel() {
-+  const { products } = useProducts();
++// Matches the keys written into products.social_post_ids by
++// publishProductToSocial() in lib/social-publish-api.ts.
++const SOCIAL_PLATFORM_POST_ID_KEY: Record<SocialPlatform, string> = {
++  facebook: 'facebook_post_id',
++  instagram: 'instagram_media_id',
++  threads: 'threads_post_id',
++};
 +
-+  const [collections, setCollections] = useState<AdminCollectionRow[]>([]);
-+  const [loading, setLoading] = useState(true);
-+  const [searchQuery, setSearchQuery] = useState('');
-+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-+
-+  const [open, setOpen] = useState(false);
-+  const [editing, setEditing] = useState<AdminCollectionRow | null>(null);
-+  const [name, setName] = useState('');
-+  const [slug, setSlug] = useState('');
-+  const [description, setDescription] = useState('');
-+  const [isActive, setIsActive] = useState(true);
-+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
-+  const [productSearch, setProductSearch] = useState('');
-+  const [saving, setSaving] = useState(false);
-+  const [loadingProducts, setLoadingProducts] = useState(false);
-+
-+  const [confirmTarget, setConfirmTarget] = useState<AdminCollectionRow | null>(null);
-+  const [deleting, setDeleting] = useState(false);
-+
-+  const load = async () => {
-+    setLoading(true);
-+    try {
-+      const rows = await fetchAdminCollections();
-+      setCollections(rows);
-+    } catch (err) {
-+      toast.error(err instanceof Error ? err.message : 'Failed to load collections');
-+    } finally {
-+      setLoading(false);
-+    }
-+  };
-+
-+  useEffect(() => {
-+    load();
-+  }, []);
-+
-+  const counts = useMemo(
-+    () => ({
-+      all: collections.length,
-+      active: collections.filter((c) => c.is_active).length,
-+      inactive: collections.filter((c) => !c.is_active).length,
-+    }),
-+    [collections]
-+  );
-+
-+  const filtered = useMemo(() => {
-+    let list = collections;
-+    if (statusFilter === 'active') list = list.filter((c) => c.is_active);
-+    if (statusFilter === 'inactive') list = list.filter((c) => !c.is_active);
-+    const q = searchQuery.trim().toLowerCase();
-+    if (q) {
-+      list = list.filter(
-+        (c) =>
-+          c.name.toLowerCase().includes(q) ||
-+          c.slug.toLowerCase().includes(q) ||
-+          (c.description ?? '').toLowerCase().includes(q)
-+      );
-+    }
-+    return list;
-+  }, [collections, statusFilter, searchQuery]);
-+
-+  const filteredProducts = useMemo(() => {
-+    const q = productSearch.trim().toLowerCase();
-+    if (!q) return products;
-+    return products.filter((p) => p.name.toLowerCase().includes(q));
-+  }, [products, productSearch]);
-+
-+  const openNew = () => {
-+    setEditing(null);
-+    setName('');
-+    setSlug('');
-+    setDescription('');
-+    setIsActive(true);
-+    setSelectedProductIds([]);
-+    setProductSearch('');
-+    setOpen(true);
-+  };
-+
-+  const openEdit = async (c: AdminCollectionRow) => {
-+    setEditing(c);
-+    setName(c.name);
-+    setSlug(c.slug);
-+    setDescription(c.description ?? '');
-+    setIsActive(c.is_active);
-+    setSelectedProductIds([]);
-+    setProductSearch('');
-+    setOpen(true);
-+    setLoadingProducts(true);
-+    try {
-+      const { product_ids } = await fetchAdminCollection(c.id);
-+      setSelectedProductIds(product_ids);
-+    } catch (err) {
-+      toast.error(err instanceof Error ? err.message : 'Failed to load collection products');
-+    } finally {
-+      setLoadingProducts(false);
-+    }
-+  };
-+
-+  const toggleProduct = (id: string) => {
-+    setSelectedProductIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-+  };
-+
-+  const onSubmit = async (e: FormEvent) => {
-+    e.preventDefault();
-+    if (!name.trim()) {
-+      toast.error('Collection name is required');
-+      return;
-+    }
-+    setSaving(true);
-+    try {
-+      const payload = {
-+        name: name.trim(),
-+        slug: slug.trim() || slugify(name),
-+        description: description.trim() || null,
-+        is_active: isActive,
-+        product_ids: selectedProductIds,
-+      };
-+      if (editing) {
-+        await updateAdminCollection(editing.id, payload);
-+        toast.success('Collection updated');
-+      } else {
-+        await createAdminCollection(payload);
-+        toast.success('Collection created');
-+      }
-+      setOpen(false);
-+      await load();
-+    } catch (err) {
-+      toast.error(err instanceof Error ? err.message : 'Save failed');
-+    } finally {
-+      setSaving(false);
-+    }
-+  };
-+
-+  const confirmDelete = async () => {
-+    if (!confirmTarget) return;
-+    setDeleting(true);
-+    try {
-+      await deleteAdminCollection(confirmTarget.id);
-+      toast.success('Collection deleted');
-+      await load();
-+    } catch (err) {
-+      toast.error(err instanceof Error ? err.message : 'Delete failed');
-+    } finally {
-+      setDeleting(false);
-+      setConfirmTarget(null);
-+    }
-+  };
-+
++/** lucide-react ships Facebook/Instagram glyphs but not Threads (the app
++ *  is too new); this is a minimal stand-in stroked to match lucide's
++ *  24x24 / 2px-stroke look so it sits flush with the other two icons. */
++function ThreadsIcon({ className }: { className?: string }) {
 +  return (
-+    <div>
-+      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
-+        <div>
-+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">Admin</p>
-+          <h1 className="mt-1 font-serif text-3xl font-bold text-primary sm:text-4xl">Collections</h1>
-+          <p className="mt-1 text-sm text-muted-foreground">
-+            Curated product groups you manage directly — separate from the automatic
-+            &ldquo;&lt;Vendor&gt;&rsquo;s Collection&rdquo; pages. Each one gets its own page at /collection/[slug].
-+          </p>
-+        </div>
-+        <Button onClick={openNew} className="bg-primary">
-+          <Plus className="mr-1 h-4 w-4" /> Add New Collection
-+        </Button>
-+      </div>
-+
-+      <div className="mb-5 flex flex-wrap gap-2 border-b border-border/60 pb-3">
-+        {([
-+          { value: 'all', label: 'All' },
-+          { value: 'active', label: 'Active' },
-+          { value: 'inactive', label: 'Inactive' },
-+        ] as { value: StatusFilter; label: string }[]).map((tab) => (
-+          <button
-+            key={tab.value}
-+            onClick={() => setStatusFilter(tab.value)}
-+            className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${
-+              statusFilter === tab.value
-+                ? 'bg-primary text-primary-foreground'
-+                : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-+            }`}
-+          >
-+            {tab.label} ({counts[tab.value]})
-+          </button>
-+        ))}
-+      </div>
-+
-+      <div className="mb-4 relative w-full sm:max-w-xs">
-+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-+        <Input
-+          value={searchQuery}
-+          onChange={(e) => setSearchQuery(e.target.value)}
-+          placeholder="Search name, slug, description…"
-+          className="pl-9 pr-8"
-+        />
-+        {searchQuery && (
-+          <button
-+            type="button"
-+            onClick={() => setSearchQuery('')}
-+            aria-label="Clear search"
-+            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-+          >
-+            <X className="h-4 w-4" />
-+          </button>
-+        )}
-+      </div>
-+
-+      <div className="overflow-hidden rounded-lg border border-border/60 bg-card">
-+        <table className="w-full table-auto">
-+          <thead className="bg-muted/40 text-left text-xs uppercase tracking-wider text-muted-foreground">
-+            <tr>
-+              <th className="px-4 py-3">Name</th>
-+              <th className="px-4 py-3">Slug</th>
-+              <th className="px-4 py-3">Products</th>
-+              <th className="px-4 py-3">Status</th>
-+              <th className="px-4 py-3">Actions</th>
-+            </tr>
-+          </thead>
-+          <tbody>
-+            {filtered.map((c) => (
-+              <tr key={c.id} className="border-t">
-+                <td className="px-4 py-3 text-sm font-medium">{c.name}</td>
-+                <td className="px-4 py-3 text-sm text-muted-foreground">
-+                  <a
-+                    href={`/collection/${c.slug}`}
-+                    target="_blank"
-+                    rel="noreferrer"
-+                    className="inline-flex items-center gap-1 hover:text-primary hover:underline"
-+                  >
-+                    {c.slug}
-+                    <ExternalLink className="h-3 w-3" />
-+                  </a>
-+                </td>
-+                <td className="px-4 py-3 text-sm text-muted-foreground">
-+                  {c.product_count} {c.product_count === 1 ? 'product' : 'products'}
-+                </td>
-+                <td className="px-4 py-3 text-sm">
-+                  <Badge
-+                    className={
-+                      c.is_active
-+                        ? 'bg-green-100 text-green-700 hover:bg-green-100'
-+                        : 'bg-muted text-muted-foreground hover:bg-muted'
-+                    }
-+                  >
-+                    {c.is_active ? 'Active' : 'Inactive'}
-+                  </Badge>
-+                </td>
-+                <td className="px-4 py-3 text-sm">
-+                  <div className="flex gap-2">
-+                    <Button size="sm" variant="outline" onClick={() => openEdit(c)}>
-+                      <Pencil className="h-3.5 w-3.5" />
-+                    </Button>
-+                    <Button
-+                      size="sm"
-+                      variant="outline"
-+                      className="text-destructive hover:bg-destructive/10"
-+                      onClick={() => setConfirmTarget(c)}
-+                    >
-+                      <Trash2 className="h-3.5 w-3.5" />
-+                    </Button>
-+                  </div>
-+                </td>
-+              </tr>
-+            ))}
-+            {!loading && collections.length > 0 && filtered.length === 0 && (
-+              <tr>
-+                <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
-+                  No collections match your search/filter.
-+                </td>
-+              </tr>
-+            )}
-+            {!loading && collections.length === 0 && (
-+              <tr>
-+                <td colSpan={5} className="px-4 py-10 text-center text-sm text-muted-foreground">
-+                  <Layers className="mx-auto mb-2 h-8 w-8 text-muted-foreground" />
-+                  No collections yet. Add one to get started.
-+                </td>
-+              </tr>
-+            )}
-+            {loading && (
-+              <tr>
-+                <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
-+                  Loading…
-+                </td>
-+              </tr>
-+            )}
-+          </tbody>
-+        </table>
-+      </div>
-+
-+      <Dialog open={open} onOpenChange={setOpen}>
-+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
-+          <DialogHeader>
-+            <DialogTitle className="font-serif text-xl text-primary">
-+              {editing ? 'Edit Collection' : 'Add New Collection'}
-+            </DialogTitle>
-+          </DialogHeader>
-+          <form onSubmit={onSubmit} className="grid gap-4">
-+            <div className="grid gap-1.5">
-+              <Label htmlFor="coll-name">Name *</Label>
-+              <Input
-+                id="coll-name"
-+                value={name}
-+                onChange={(e) => setName(e.target.value)}
-+                placeholder="e.g. Diwali Specials"
-+                required
-+              />
-+            </div>
-+            <div className="grid gap-1.5">
-+              <Label htmlFor="coll-slug">Slug (optional — auto-generated if left blank)</Label>
-+              <Input
-+                id="coll-slug"
-+                value={slug}
-+                onChange={(e) => setSlug(e.target.value)}
-+                placeholder={slugify(name) || 'diwali-specials'}
-+              />
-+              <p className="text-xs text-muted-foreground">
-+                Public page: /collection/{slug.trim() || slugify(name) || 'diwali-specials'}
-+              </p>
-+            </div>
-+            <div className="grid gap-1.5">
-+              <Label htmlFor="coll-desc">Description</Label>
-+              <Textarea
-+                id="coll-desc"
-+                rows={2}
-+                value={description}
-+                onChange={(e) => setDescription(e.target.value)}
-+                placeholder="Short description shown on the collection page"
-+              />
-+            </div>
-+            <div className="flex items-center gap-2">
-+              <Switch id="coll-active" checked={isActive} onCheckedChange={setIsActive} />
-+              <Label htmlFor="coll-active" className="text-sm text-muted-foreground">
-+                Active (visible at /collection/{slug.trim() || slugify(name) || '…'})
-+              </Label>
-+            </div>
-+
-+            <div className="grid gap-1.5">
-+              <Label>Products ({selectedProductIds.length} selected)</Label>
-+              <div className="relative">
-+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-+                <Input
-+                  value={productSearch}
-+                  onChange={(e) => setProductSearch(e.target.value)}
-+                  placeholder="Search products to add…"
-+                  className="pl-9"
-+                />
-+              </div>
-+              <div className="max-h-56 overflow-y-auto rounded-md border border-border/60">
-+                {loadingProducts ? (
-+                  <p className="px-3 py-4 text-center text-sm text-muted-foreground">Loading products…</p>
-+                ) : filteredProducts.length === 0 ? (
-+                  <p className="px-3 py-4 text-center text-sm text-muted-foreground">No products match.</p>
-+                ) : (
-+                  filteredProducts.map((p) => (
-+                    <label
-+                      key={p.id}
-+                      className="flex cursor-pointer items-center gap-2 border-b border-border/40 px-3 py-2 text-sm last:border-b-0 hover:bg-muted/40"
-+                    >
-+                      <input
-+                        type="checkbox"
-+                        checked={selectedProductIds.includes(p.id)}
-+                        onChange={() => toggleProduct(p.id)}
-+                        className="h-4 w-4 accent-primary"
-+                      />
-+                      <span className="truncate">{p.name}</span>
-+                    </label>
-+                  ))
-+                )}
-+              </div>
-+            </div>
-+
-+            <DialogFooter className="mt-2">
-+              <DialogClose asChild>
-+                <Button type="button" variant="outline">
-+                  Cancel
-+                </Button>
-+              </DialogClose>
-+              <Button type="submit" disabled={saving} className="bg-primary">
-+                {saving ? 'Saving…' : editing ? 'Save Changes' : 'Create Collection'}
-+              </Button>
-+            </DialogFooter>
-+          </form>
-+        </DialogContent>
-+      </Dialog>
-+
-+      <Dialog open={!!confirmTarget} onOpenChange={(o) => !o && setConfirmTarget(null)}>
-+        <DialogContent className="sm:max-w-md">
-+          <DialogHeader>
-+            <DialogTitle className="font-serif text-xl text-primary">Delete this collection?</DialogTitle>
-+            <DialogDescription>
-+              {confirmTarget && confirmTarget.product_count > 0
-+                ? `${confirmTarget.product_count} product${
-+                    confirmTarget.product_count === 1 ? '' : 's'
-+                  } are in this collection. Deleting it will not delete those products, just removes this
-+                    curated grouping and its public page. This action cannot be undone.`
-+                : 'This action cannot be undone.'}
-+            </DialogDescription>
-+          </DialogHeader>
-+          <DialogFooter>
-+            <DialogClose asChild>
-+              <Button variant="outline">Cancel</Button>
-+            </DialogClose>
-+            <Button
-+              onClick={confirmDelete}
-+              disabled={deleting}
-+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-+            >
-+              {deleting ? 'Deleting…' : 'Delete'}
-+            </Button>
-+          </DialogFooter>
-+        </DialogContent>
-+      </Dialog>
-+    </div>
++    <svg
++      viewBox="0 0 24 24"
++      fill="none"
++      stroke="currentColor"
++      strokeWidth={2}
++      strokeLinecap="round"
++      strokeLinejoin="round"
++      className={className}
++      aria-hidden="true"
++    >
++      <path d="M12 2c-5.5 0-9 3.6-9 10s3.5 10 9 10c4.2 0 7-1.9 7-5.2 0-2.6-1.7-4.1-4.5-4.4" />
++      <path d="M13.5 8.5c-3.2 0-5 1.6-5 4 0 2.6 2 3.7 4 3.7 2.5 0 4-1.4 4-4 0-4.7-2.6-7.2-6.7-7.2" />
++    </svg>
 +  );
 +}
-diff --git a/components/admin/vendors-panel.tsx b/components/admin/vendors-panel.tsx
-index 091660a..da0a339 100644
---- a/components/admin/vendors-panel.tsx
-+++ b/components/admin/vendors-panel.tsx
-@@ -247,7 +247,7 @@ export default function VendorsPanel() {
++
++const SOCIAL_PLATFORM_ICON: Record<SocialPlatform, (props: { className?: string }) => JSX.Element> = {
++  facebook: ({ className }) => <Facebook className={className} />,
++  instagram: ({ className }) => <Instagram className={className} />,
++  threads: ({ className }) => <ThreadsIcon className={className} />,
++};
++
+ // Badge shown on the Catalog tab for vendor-submitted products that
+ // aren't live yet, so an admin glancing at the main products list can
+ // see at once that something is still being processed — same wording
+@@ -269,19 +319,30 @@ export default function ProductsPanel() {
+   const [variantColorsById, setVariantColorsById] = useState<
+     Record<string, { color: string; color_hex: string | null }[]>
+   >({});
+-  // product_id -> social_posted_at (ISO string) | null. Drives the
+-  // Share/✓ Posted button state per row in the catalog list.
++  // product_id -> social_posted_at (ISO string) | null. Kept for reference
++  // ("has this product ever been shared on any platform"), though the
++  // per-row buttons below now decide their own Share/✓ Posted state from
++  // socialPostIdsById instead, since each platform is independent.
+   const [socialStatusById, setSocialStatusById] = useState<Record<string, string | null>>({});
+-  const [sharingId, setSharingId] = useState<string | null>(null);
+-  const [reshareConfirmId, setReshareConfirmId] = useState<string | null>(null);
++  // product_id -> that product's social_post_ids row (facebook_post_id /
++  // instagram_media_id / threads_post_id). Drives each of the three
++  // Share/✓ Posted buttons per row, independently per platform.
++  const [socialPostIdsById, setSocialPostIdsById] = useState<Record<string, Record<string, string>>>({});
++  // `${productId}:${platform}` while that specific button's request is
++  // in flight, so only that one button shows a spinner.
++  const [sharingKey, setSharingKey] = useState<string | null>(null);
++  const [reshareConfirm, setReshareConfirm] = useState<{ id: string; platform: SocialPlatform } | null>(null);
+ 
+   const loadSocialStatus = useCallback(() => {
+     fetch('/api/admin/product-social-status')
+-      .then((res) => (res.ok ? res.json() : { statusById: {} }))
+-      .then((data) => setSocialStatusById(data.statusById ?? {}))
++      .then((res) => (res.ok ? res.json() : { statusById: {}, postIdsById: {} }))
++      .then((data) => {
++        setSocialStatusById(data.statusById ?? {});
++        setSocialPostIdsById(data.postIdsById ?? {});
++      })
+       .catch(() => {
+-        // Non-fatal — the Share button just won't know past-posted state
+-        // this session; it'll still work, defaulting to the "Share" state.
++        // Non-fatal — the Share buttons just won't know past-posted state
++        // this session; they'll still work, defaulting to the "Share" state.
+       });
+   }, []);
+ 
+@@ -289,21 +350,29 @@ export default function ProductsPanel() {
+     loadSocialStatus();
+   }, [loadSocialStatus]);
+ 
+-  const shareProduct = async (productId: string, force: boolean) => {
+-    setSharingId(productId);
++  const shareProduct = async (productId: string, platform: SocialPlatform, force: boolean) => {
++    const key = `${productId}:${platform}`;
++    setSharingKey(key);
+     try {
+-      const res = await triggerSocialAutoPost(productId, force);
++      const res = await triggerSocialAutoPost(productId, force, platform);
+       const data = await res.json().catch(() => ({ ok: false }));
+       if (data.ok) {
+-        toast.success(force ? 'Re-shared to social media' : 'Shared to social media');
++        toast.success(
++          force
++            ? `Re-shared to ${SOCIAL_PLATFORM_LABEL[platform]}`
++            : `Shared to ${SOCIAL_PLATFORM_LABEL[platform]}`
++        );
+       } else {
+-        toast.error(data.error || 'Share failed — check that Social Auto-Post is configured in Marketing settings');
++        toast.error(
++          data.error ||
++            `${SOCIAL_PLATFORM_LABEL[platform]} share failed — check that it's configured in Marketing settings`
++        );
+       }
+     } catch {
+-      toast.error('Share failed — network error');
++      toast.error(`${SOCIAL_PLATFORM_LABEL[platform]} share failed — network error`);
+     } finally {
+-      setSharingId(null);
+-      setReshareConfirmId(null);
++      setSharingKey(null);
++      setReshareConfirm(null);
+       loadSocialStatus();
      }
    };
- 
--  // Public storefront (/store/[slug]) rating/review summary toggle.
-+  // Public collection page (/collection/[slug]) rating/review summary toggle.
-   // Optimistic update — the switch flips immediately, then reverts with
-   // a toast if the request fails.
-   const handleToggleShowRating = async (v: AdminVendorRow, next: boolean) => {
-@@ -302,8 +302,8 @@ export default function VendorsPanel() {
-           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">Admin</p>
-           <h1 className="mt-1 font-serif text-3xl font-bold text-primary sm:text-4xl">Vendors</h1>
-           <p className="mt-1 text-sm text-muted-foreground">
--            Approved vendors get a public storefront at /store/[slug], linked from their products
--            as "&lt;Vendor&gt;'s Collection". Toggle the rating summary per vendor below.
-+            Approved vendors get a public collection page at /collection/[slug], linked from their
-+            products as "&lt;Vendor&gt;'s Collection". Toggle the rating summary per vendor below.
-           </p>
-         </div>
-       </div>
-@@ -369,13 +369,13 @@ export default function VendorsPanel() {
-                     {v.status === 'approved' && v.storefront_slug && (
-                       <div className="mt-3 flex flex-wrap items-center gap-3 rounded-md border border-border/60 bg-muted/20 p-2.5">
-                         <a
--                          href={`/store/${v.storefront_slug}`}
-+                          href={`/collection/${v.storefront_slug}`}
-                           target="_blank"
-                           rel="noreferrer"
-                           className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
-                         >
-                           <Store className="h-3.5 w-3.5" />
--                          View public storefront
-+                          View public collection
-                           <ExternalLink className="h-3 w-3" />
-                         </a>
-                         <div className="flex items-center gap-2">
-diff --git a/components/product/product-carousel.tsx b/components/product/product-carousel.tsx
-index f1ac113..9be46ee 100644
---- a/components/product/product-carousel.tsx
-+++ b/components/product/product-carousel.tsx
-@@ -6,10 +6,15 @@ import { Product } from '@/lib/types';
- import ProductCard from '@/components/product-card';
- 
- export default function ProductCarousel({
-+  eyebrow,
-   title,
-   products,
-   viewAllHref,
- }: {
-+  /** Small uppercase label shown above the title, e.g. "Collection" --
-+   *  same visual pattern as the "BRIDAL" category tag above a product
-+   *  title. Also becomes a link when viewAllHref is set. */
-+  eyebrow?: string;
-   title: string;
-   products: Product[];
-   /** Shown as a "View All" link in the section header when provided. */
-@@ -20,7 +25,29 @@ export default function ProductCarousel({
-   return (
-     <section className="mt-8">
-       <div className="mb-4 flex items-center justify-between">
--        <h2 className="font-serif text-xl font-bold text-primary sm:text-2xl">{title}</h2>
-+        <div>
-+          {eyebrow &&
-+            (viewAllHref ? (
-+              <Link
-+                href={viewAllHref}
-+                className="block text-xs font-semibold uppercase tracking-[0.15em] text-secondary transition-colors hover:text-primary"
-+              >
-+                {eyebrow}
-+              </Link>
-+            ) : (
-+              <p className="text-xs font-semibold uppercase tracking-[0.15em] text-secondary">{eyebrow}</p>
-+            ))}
-+          {viewAllHref ? (
-+            <Link
-+              href={viewAllHref}
-+              className="font-serif text-xl font-bold text-primary transition-colors hover:text-secondary sm:text-2xl"
-+            >
-+              {title}
-+            </Link>
-+          ) : (
-+            <h2 className="font-serif text-xl font-bold text-primary sm:text-2xl">{title}</h2>
-+          )}
-+        </div>
-         {viewAllHref && (
-           <Link
-             href={viewAllHref}
-diff --git a/components/product/vendor-collection.tsx b/components/product/vendor-collection.tsx
-index 58c9616..fe71df8 100644
---- a/components/product/vendor-collection.tsx
-+++ b/components/product/vendor-collection.tsx
-@@ -34,9 +34,10 @@ export default function VendorCollection({ productId }: { productId: string }) {
- 
-   return (
-     <ProductCarousel
--      title={`${vendor.name}'s Collection`}
-+      eyebrow="Collection"
-+      title={vendor.name}
-       products={products}
--      viewAllHref={`/store/${vendor.slug}`}
-+      viewAllHref={`/collection/${vendor.slug}`}
-     />
-   );
- }
-diff --git a/lib/admin-collections-api.ts b/lib/admin-collections-api.ts
-new file mode 100644
-index 0000000..70e2fcc
---- /dev/null
-+++ b/lib/admin-collections-api.ts
-@@ -0,0 +1,65 @@
-+import { AdminCollectionRow } from './types';
-+
-+async function parseError(res: Response, fallback: string): Promise<never> {
-+  const body = await res.json().catch(() => ({}));
-+  throw new Error(body?.error || fallback);
-+}
-+
-+/** Every admin-managed collection, with a live product count each. */
-+export async function fetchAdminCollections(): Promise<AdminCollectionRow[]> {
-+  const res = await fetch('/api/admin/collections', { cache: 'no-store' });
-+  if (!res.ok) return parseError(res, 'Failed to load collections');
-+  const body = await res.json();
-+  return body.collections as AdminCollectionRow[];
-+}
-+
-+/** One collection plus the ids of the products currently in it. */
-+export async function fetchAdminCollection(
-+  id: string
-+): Promise<{ collection: AdminCollectionRow; product_ids: string[] }> {
-+  const res = await fetch(`/api/admin/collections/${id}`, { cache: 'no-store' });
-+  if (!res.ok) return parseError(res, 'Failed to load collection');
-+  return res.json();
-+}
-+
-+export async function createAdminCollection(input: {
-+  name: string;
-+  slug?: string;
-+  description?: string | null;
-+  is_active?: boolean;
-+  product_ids?: string[];
-+}): Promise<AdminCollectionRow> {
-+  const res = await fetch('/api/admin/collections', {
-+    method: 'POST',
-+    headers: { 'Content-Type': 'application/json' },
-+    body: JSON.stringify(input),
-+  });
-+  if (!res.ok) return parseError(res, 'Failed to create collection');
-+  const body = await res.json();
-+  return body.collection as AdminCollectionRow;
-+}
-+
-+export async function updateAdminCollection(
-+  id: string,
-+  input: Partial<{
-+    name: string;
-+    slug: string;
-+    description: string | null;
-+    is_active: boolean;
-+    product_ids: string[];
-+  }>
-+): Promise<AdminCollectionRow> {
-+  const res = await fetch(`/api/admin/collections/${id}`, {
-+    method: 'PUT',
-+    headers: { 'Content-Type': 'application/json' },
-+    body: JSON.stringify(input),
-+  });
-+  if (!res.ok) return parseError(res, 'Failed to update collection');
-+  const body = await res.json();
-+  return body.collection as AdminCollectionRow;
-+}
-+
-+export async function deleteAdminCollection(id: string): Promise<void> {
-+  const res = await fetch(`/api/admin/collections/${id}`, { method: 'DELETE' });
-+  if (!res.ok) return parseError(res, 'Failed to delete collection');
-+}
-diff --git a/lib/types.ts b/lib/types.ts
-index 0d231ab..5cec185 100644
---- a/lib/types.ts
-+++ b/lib/types.ts
-@@ -118,6 +118,20 @@ export interface CategoryRow {
-   description?: string | null;
+@@ -964,33 +1033,41 @@ export default function ProductsPanel() {
+                   )}
+                 </div>
+                 <div className="col-span-2 flex justify-end gap-1 sm:col-span-1">
+-                  {socialStatusById[p.id] ? (
+-                    <Button
+-                      size="icon"
+-                      variant="ghost"
+-                      onClick={() => setReshareConfirmId(p.id)}
+-                      aria-label="Posted — click to re-share"
+-                      title={`Already posted to social on ${new Date(socialStatusById[p.id] as string).toLocaleDateString()}. Click to re-share (confirmation required).`}
+-                      className="text-emerald-600 hover:text-emerald-700"
+-                    >
+-                      <CheckCircle2 className="h-4 w-4" />
+-                    </Button>
+-                  ) : (
+-                    <Button
+-                      size="icon"
+-                      variant="ghost"
+-                      onClick={() => shareProduct(p.id, false)}
+-                      disabled={sharingId === p.id}
+-                      aria-label="Share to social media"
+-                      title="Post this product to Facebook / Instagram / Threads now"
+-                    >
+-                      {sharingId === p.id ? (
+-                        <Loader2 className="h-4 w-4 animate-spin" />
+-                      ) : (
+-                        <Share2 className="h-4 w-4" />
+-                      )}
+-                    </Button>
+-                  )}
++                  {(['facebook', 'instagram', 'threads'] as const).map((platform) => {
++                    const key = `${p.id}:${platform}`;
++                    const postedId = socialPostIdsById[p.id]?.[SOCIAL_PLATFORM_POST_ID_KEY[platform]];
++                    const Icon = SOCIAL_PLATFORM_ICON[platform];
++                    const label = SOCIAL_PLATFORM_LABEL[platform];
++                    return postedId ? (
++                      <Button
++                        key={platform}
++                        size="icon"
++                        variant="ghost"
++                        onClick={() => setReshareConfirm({ id: p.id, platform })}
++                        aria-label={`Posted to ${label} — click to re-share`}
++                        title={`Already posted to ${label}. Click to re-share (confirmation required).`}
++                        className="text-emerald-600 hover:text-emerald-700"
++                      >
++                        <CheckCircle2 className="h-4 w-4" />
++                      </Button>
++                    ) : (
++                      <Button
++                        key={platform}
++                        size="icon"
++                        variant="ghost"
++                        onClick={() => shareProduct(p.id, platform, false)}
++                        disabled={sharingKey === key}
++                        aria-label={`Share to ${label}`}
++                        title={`Post this product to ${label} now`}
++                      >
++                        {sharingKey === key ? (
++                          <Loader2 className="h-4 w-4 animate-spin" />
++                        ) : (
++                          <Icon className="h-4 w-4" />
++                        )}
++                      </Button>
++                    );
++                  })}
+                   <Button
+                     size="icon"
+                     variant="ghost"
+@@ -1843,17 +1920,17 @@ export default function ProductsPanel() {
+           near-duplicate content Meta's spam systems watch for, so this is
+           deliberately a click-through confirmation rather than a one-click
+           action. */}
+-      <Dialog open={!!reshareConfirmId} onOpenChange={(o) => !o && setReshareConfirmId(null)}>
++      <Dialog open={!!reshareConfirm} onOpenChange={(o) => !o && setReshareConfirm(null)}>
+         <DialogContent className="sm:max-w-md">
+           <DialogHeader>
+             <DialogTitle className="font-serif text-xl text-primary">
+-              Share this product again?
++              Share this product to {reshareConfirm ? SOCIAL_PLATFORM_LABEL[reshareConfirm.platform] : 'social'} again?
+             </DialogTitle>
+             <DialogDescription>
+-              This product was already posted to social media once. Posting the same product
+-              repeatedly can look like duplicate/spam content to Facebook, Instagram, and Threads,
+-              which risks your account getting restricted. Only re-share if something meaningfully
+-              changed (price drop, restock, new photos).
++              This product was already posted to {reshareConfirm ? SOCIAL_PLATFORM_LABEL[reshareConfirm.platform] : 'this platform'} once.
++              Posting the same product repeatedly can look like duplicate/spam content, which risks
++              your account getting restricted. Only re-share if something meaningfully changed
++              (price drop, restock, new photos).
+             </DialogDescription>
+           </DialogHeader>
+           <DialogFooter>
+@@ -1861,10 +1938,10 @@ export default function ProductsPanel() {
+               <Button variant="outline">Cancel</Button>
+             </DialogClose>
+             <Button
+-              onClick={() => reshareConfirmId && shareProduct(reshareConfirmId, true)}
+-              disabled={sharingId === reshareConfirmId}
++              onClick={() => reshareConfirm && shareProduct(reshareConfirm.id, reshareConfirm.platform, true)}
++              disabled={!!reshareConfirm && sharingKey === `${reshareConfirm.id}:${reshareConfirm.platform}`}
+             >
+-              {sharingId === reshareConfirmId ? (
++              {reshareConfirm && sharingKey === `${reshareConfirm.id}:${reshareConfirm.platform}` ? (
+                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+               ) : null}
+               Yes, share again
+diff --git a/lib/social-publish-api.ts b/lib/social-publish-api.ts
+index 10df16c..c378a04 100644
+--- a/lib/social-publish-api.ts
++++ b/lib/social-publish-api.ts
+@@ -107,8 +107,16 @@ interface ProductForSocial {
+   price: number;
+   images?: string[] | null;
+   social_posted_at?: string | null;
++  social_post_ids?: Record<string, string> | null;
  }
  
-+/** An admin-created, curated collection (distinct from the auto-generated
-+ *  per-vendor collection) -- e.g. "Diwali Specials". Managed entirely from
-+ *  Admin > Collections; shows publicly at /collection/[slug]. */
-+export interface AdminCollectionRow {
-+  id: string;
-+  name: string;
-+  slug: string;
-+  description: string | null;
-+  is_active: boolean;
-+  product_count: number;
-+  created_at: string;
-+  updated_at: string;
-+}
++/** A single social platform this feature can post to. When omitted from
++ *  publishProductToSocial()'s options, ALL enabled platforms are posted to
++ *  (legacy/auto-post behaviour). When provided, only that one platform is
++ *  gated on/attempted — used by the three separate per-platform Share
++ *  buttons in Admin > Products. */
++export type SocialPlatform = 'facebook' | 'instagram' | 'threads';
 +
- export interface Address {
-   id: string;
-   user_id: string;
-diff --git a/lib/vendor-storefront-api.ts b/lib/vendor-storefront-api.ts
-index d5e507e..2a91661 100644
---- a/lib/vendor-storefront-api.ts
-+++ b/lib/vendor-storefront-api.ts
-@@ -27,12 +27,12 @@ export interface VendorStorefront {
-   products: Product[];
+ function buildCaption(template: string, product: ProductForSocial, siteUrl: string): string {
+   const description = (product.description || '').slice(0, 300);
+   const url = `${siteUrl.replace(/\/$/, '')}/product/${product.slug}`;
+@@ -420,16 +428,28 @@ async function publishThreadsContainer(
+ export async function publishProductToSocial(
+   admin: SupabaseClient,
+   product: ProductForSocial,
+-  options?: { force?: boolean }
++  options?: { force?: boolean; platform?: SocialPlatform }
+ ): Promise<void> {
+-  if (product.social_posted_at && !options?.force) return; // already posted once — don't duplicate
++  const { platform } = options ?? {};
++  // Per-platform gating: when a specific platform is requested (one of the
++  // three separate admin Share buttons), only that platform's "already
++  // posted" state blocks a re-post — the other two platforms' history is
++  // irrelevant to this call. Legacy/auto-post calls (no platform) keep the
++  // old any-platform-posted-at check.
++  const alreadyPostedThisPlatform = platform
++    ? Boolean(product.social_post_ids?.[`${platform}_post_id`] ?? product.social_post_ids?.[`${platform}_media_id`])
++    : Boolean(product.social_posted_at);
++  if (alreadyPostedThisPlatform && !options?.force) return; // already posted once — don't duplicate
+ 
+   const settings = await fetchSocialPublishSettingsServer(admin);
+-  const anyEnabled = settings.facebook_enabled || settings.instagram_enabled || settings.threads_enabled;
++  const wantFacebook = (!platform || platform === 'facebook') && settings.facebook_enabled;
++  const wantInstagram = (!platform || platform === 'instagram') && settings.instagram_enabled;
++  const wantThreads = (!platform || platform === 'threads') && settings.threads_enabled;
++  const anyEnabled = wantFacebook || wantInstagram || wantThreads;
+   if (!anyEnabled) return;
+   const hasUsableCredentials =
+-    ((settings.facebook_enabled || settings.instagram_enabled) && settings.access_token) ||
+-    (settings.threads_enabled && settings.threads_access_token);
++    ((wantFacebook || wantInstagram) && settings.access_token) ||
++    (wantThreads && settings.threads_access_token);
+   if (!hasUsableCredentials) return;
+ 
+   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://your-store.example.com';
+@@ -466,10 +486,13 @@ export async function publishProductToSocial(
+   // Meta caps carousels at 10 items across Instagram/Threads.
+   const finalImageUrls = imageUrls.slice(0, 10);
+ 
+-  const postIds: Record<string, string> = {};
++  // Start from whatever's already been posted on other platforms so this
++  // call only ever adds/overwrites the platform(s) it actually attempted —
++  // it must never wipe out a sibling platform's post id.
++  const postIds: Record<string, string> = { ...(product.social_post_ids ?? {}) };
+   const errors: string[] = [];
+ 
+-  if (settings.facebook_enabled && settings.facebook_page_id) {
++  if (wantFacebook && settings.facebook_page_id) {
+     try {
+       const id = await postToFacebook(settings, caption, finalImageUrls);
+       if (id) postIds.facebook_post_id = id;
+@@ -479,7 +502,7 @@ export async function publishProductToSocial(
+     }
+   }
+ 
+-  if (settings.instagram_enabled && settings.instagram_business_account_id) {
++  if (wantInstagram && settings.instagram_business_account_id) {
+     if (finalImageUrls.length === 0) {
+       console.error('[social-publish] Instagram skipped for product', product.id, '— no image');
+     } else {
+@@ -493,7 +516,7 @@ export async function publishProductToSocial(
+     }
+   }
+ 
+-  if (settings.threads_enabled && settings.threads_user_id) {
++  if (wantThreads && settings.threads_user_id) {
+     try {
+       const id = await postToThreads(settings, caption, finalImageUrls);
+       if (id) postIds.threads_post_id = id;
+@@ -505,7 +528,9 @@ export async function publishProductToSocial(
+ 
+   // Stamp as posted even on partial failure, so a permanently-broken
+   // token doesn't retry-loop forever on every future product. Full
+-  // success/failure detail is in postIds / server logs.
++  // success/failure detail is in postIds / server logs. social_posted_at
++  // stays a single "has this product ever been shared, on any platform"
++  // timestamp — per-platform state lives in social_post_ids.
+   await admin
+     .from('products')
+     .update({ social_posted_at: new Date().toISOString(), social_post_ids: postIds })
+diff --git a/lib/vendor-api.ts b/lib/vendor-api.ts
+index eded9c8..9c6a129 100644
+--- a/lib/vendor-api.ts
++++ b/lib/vendor-api.ts
+@@ -318,15 +318,23 @@ export function triggerVendorAIProcess(id: string, isEdit = false): Promise<Resp
  }
  
--/** Fetches the full public storefront for a vendor by their storefront
-- *  slug -- backs /store/[slug]. Returns `{ vendor: null, ... }` if the
-- *  slug doesn't match an approved vendor. */
-+/** Fetches the full public collection page for a vendor by their
-+ *  storefront slug -- backs /collection/[slug]. Returns
-+ *  `{ vendor: null, ... }` if the slug doesn't match an approved vendor. */
- export async function fetchVendorStorefront(slug: string): Promise<VendorStorefront> {
-   try {
--    const res = await fetch(`/api/store/${slug}`, { cache: 'no-store' });
-+    const res = await fetch(`/api/collection/${slug}`, { cache: 'no-store' });
-     if (!res.ok) return { vendor: null, showRating: false, rating: null, reviewCount: null, products: [] };
-     return (await res.json()) as VendorStorefront;
-   } catch {
-diff --git a/supabase/migrations/20260814000000_admin_collections.sql b/supabase/migrations/20260814000000_admin_collections.sql
-new file mode 100644
-index 0000000..d86bb67
---- /dev/null
-+++ b/supabase/migrations/20260814000000_admin_collections.sql
-@@ -0,0 +1,43 @@
-+-- ---------------------------------------------------------------------
-+-- Admin-managed collections
-+--
-+-- Separate from the auto-generated per-vendor "<Vendor>'s Collection"
-+-- (see 20260813000000_vendor_public_storefront.sql). These are curated
-+-- groups of products (e.g. "Diwali Specials", "New Arrivals") that only
-+-- the admin creates and manages from Admin > Collections, and that get
-+-- their own public page at /collection/[slug] -- the same URL space the
-+-- vendor collection pages live in, just a different source table.
-+--
-+-- Fully locked down: no RLS policies are added for `anon` or
-+-- `authenticated` on either table, so only the service-role client can
-+-- touch them. That's intentional -- every read/write goes through
-+-- /api/admin/collections/* (gated by requireAdmin()) for management, and
-+-- through /api/collection/[slug] (also service-role) for the public
-+-- page, exactly mirroring how vendor collections are locked down.
-+-- ---------------------------------------------------------------------
-+
-+CREATE TABLE IF NOT EXISTS collections (
-+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-+  name text NOT NULL,
-+  slug text NOT NULL UNIQUE,
-+  description text,
-+  is_active boolean NOT NULL DEFAULT true,
-+  created_at timestamptz NOT NULL DEFAULT now(),
-+  updated_at timestamptz NOT NULL DEFAULT now()
-+);
-+
-+CREATE TABLE IF NOT EXISTS collection_products (
-+  collection_id uuid NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
-+  product_id uuid NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-+  position integer NOT NULL DEFAULT 0,
-+  added_at timestamptz NOT NULL DEFAULT now(),
-+  PRIMARY KEY (collection_id, product_id)
-+);
-+
-+CREATE INDEX IF NOT EXISTS idx_collection_products_product ON collection_products(product_id);
-+CREATE INDEX IF NOT EXISTS idx_collection_products_collection ON collection_products(collection_id, position);
-+CREATE INDEX IF NOT EXISTS idx_collections_slug ON collections(slug);
-+
-+ALTER TABLE collections ENABLE ROW LEVEL SECURITY;
-+ALTER TABLE collection_products ENABLE ROW LEVEL SECURITY;
-+-- No policies -- service-role only (see note above).
+ /** Fire-and-forget: tells the server to auto-post this (already-created,
+- *  already-live) product to Facebook/Instagram per Admin > Marketing >
+- *  Social Auto-Post settings. Used after Admin > Products > "Add Product",
+- *  since that insert happens directly from the browser and the Meta access
+- *  token must never be exposed client-side. Callers should `.catch(() => {})`. */
+-export function triggerSocialAutoPost(productId: string, force = false): Promise<Response> {
++ *  already-live) product to Facebook/Instagram/Threads per Admin >
++ *  Marketing > Social Auto-Post settings. Used after Admin > Products >
++ *  "Add Product", and by the three separate per-platform Share buttons in
++ *  the Manage Products catalog — since that insert/click happens directly
++ *  from the browser and the Meta access token must never be exposed
++ *  client-side. Pass `platform` to target just one of Facebook / Instagram
++ *  / Threads (omit to post to every platform enabled in settings, the
++ *  original auto-post-on-create behaviour). Callers should `.catch(() => {})`. */
++export function triggerSocialAutoPost(
++  productId: string,
++  force = false,
++  platform?: 'facebook' | 'instagram' | 'threads'
++): Promise<Response> {
+   return fetch('/api/social/publish', {
+     method: 'POST',
+     headers: { 'Content-Type': 'application/json' },
+-    body: JSON.stringify({ productId, force }),
++    body: JSON.stringify({ productId, force, platform }),
+     keepalive: true,
+   });
+ }
