@@ -14,7 +14,9 @@ export default async function OrderDetailPage({ params }: { params: { id: string
   const supabase = await getSupabaseServer();
 
   const { data: order } = await supabase.from('orders').select('*').eq('id', params.id).single();
-  if (!order || (order.user_id !== user!.id && order.customer_email !== user!.email)) {
+  const ownsByEmail =
+    !!order?.customer_email && !!user?.email && order.customer_email.toLowerCase() === user.email.toLowerCase();
+  if (!order || (order.user_id !== user!.id && !ownsByEmail)) {
     notFound();
   }
 

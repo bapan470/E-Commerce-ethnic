@@ -672,7 +672,10 @@ export default function CheckoutPage() {
     if (items.length === 0) return;
 
     const customerName = `${firstName} ${lastName}`.trim();
-    const customerEmail = email;
+    // Normalize to lowercase/trimmed so this always matches the email a
+    // customer later logs in with (Supabase Auth stores emails lowercase;
+    // mobile keyboards/autofill can capitalize what a guest types here).
+    const customerEmail = email.trim().toLowerCase();
     const customerPhone = shipPhone;
     const shippingAddress = {
       address: addressLine1,

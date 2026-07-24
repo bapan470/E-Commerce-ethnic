@@ -22,7 +22,7 @@ export default async function OrdersPage() {
   const { data: orders } = await supabase
     .from('orders')
     .select('*')
-    .or(`user_id.eq.${user!.id},customer_email.eq.${user!.email}`)
+    .or(`user_id.eq.${user!.id},customer_email.ilike.${user!.email}`)
     // Orders a reseller placed on behalf of their own customers show up
     // in the Reseller dashboard instead, not mixed into personal orders.
     .eq('is_reseller_order', false)

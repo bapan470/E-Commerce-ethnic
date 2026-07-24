@@ -42,19 +42,18 @@ export default function MobileStickyCartBar({
       )}
       <div className="flex items-center gap-3 px-4 py-3">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs text-muted-foreground">{name}</p>
           <div className="flex items-baseline gap-2">
             <span
-              className={`font-serif text-lg font-bold ${hasCoupon ? 'text-green-600' : 'text-primary'}`}
+              className={`font-serif text-2xl font-bold ${hasCoupon ? 'text-green-600' : 'text-primary'}`}
             >
               {formatINR(finalPrice)}
             </span>
             {hasCoupon ? (
-              <span className="text-xs text-muted-foreground line-through">{formatINR(price)}</span>
+              <span className="text-sm text-muted-foreground line-through">{formatINR(price)}</span>
             ) : (
               mrp &&
               mrp > price && (
-                <span className="text-xs text-muted-foreground line-through">{formatINR(mrp)}</span>
+                <span className="text-sm text-muted-foreground line-through">{formatINR(mrp)}</span>
               )
             )}
           </div>
@@ -64,13 +63,13 @@ export default function MobileStickyCartBar({
             <Button
               onClick={onAdd}
               variant="outline"
-              size="sm"
-              className="gap-1.5 border-primary px-3 text-primary"
+              size="lg"
+              className="gap-1.5 border-primary px-4 text-primary"
             >
               <ShoppingBag className="h-4 w-4" />
               Add to Bag
             </Button>
-            <Button onClick={onBuyNow} size="sm" className="bg-primary px-4 text-primary-foreground">
+            <Button onClick={onBuyNow} size="lg" className="bg-primary px-5 text-primary-foreground">
               Buy Now
             </Button>
           </div>
