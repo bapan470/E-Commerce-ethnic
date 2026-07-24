@@ -177,18 +177,34 @@ function drawOverlay(
 // completely free and copyright-safe (no licensed track, no royalty
 // fees, nothing that could trigger Meta's audio-rights matching when
 // the video is posted to Facebook/Instagram/Threads).
+//
+// Fully automatic variation: every call picks a random key, tempo,
+// timbre, and note pattern, so back-to-back "Generate Video" runs don't
+// produce the exact same tune — no dropdown or manual choice needed.
 // ---------------------------------------------------------------------
 
-// A calm, warm pentatonic scale (in Hz) that sounds pleasant in almost
-// any order — avoids needing real melody/chord-progression design.
-const AMBIENT_SCALE_HZ = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33, 659.25];
+// A calm, warm pentatonic pattern (semitone offsets from the root) that
+// sounds pleasant in almost any order — avoids needing real melody/chord
+// design while still giving each key its own character.
+const PENTATONIC_INTERVALS = [0, 2, 4, 7, 9, 12, 14, 16];
+
+// Root notes (Hz) spanning a comfortable octave-and-a-bit range — picking
+// one at random is what gives each generated video a different "key".
+const ROOT_NOTES_HZ = [220.0, 246.94, 261.63, 293.66, 329.63, 349.23, 392.0];
+
+const OSC_TIMBRES: OscillatorType[] = ['triangle', 'sine'];
+
+function semitoneToHz(rootHz: number, semitones: number): number {
+  return rootHz * Math.pow(2, semitones / 12);
+}
 
 /**
  * Builds a soft ambient pad + gentle arpeggio loop for `durationSeconds`,
  * routed into `destination` (a MediaStreamAudioDestinationNode so its
  * output can be merged into the recorded video's audio track).
- * Returns a stop() function to cut the music early if recording ends
- * sooner than expected.
+ * Every call randomizes key/tempo/timbre/pattern so consecutive videos
+ * don't sound identical. Returns a stop() function to cut the music
+ * early if recording ends sooner than expected.
  */
 function startBackgroundMusic(
   audioCtx: AudioContext,
@@ -199,24 +215,34 @@ function startBackgroundMusic(
   const masterGain = audioCtx.createGain();
   masterGain.gain.value = volume;
 
+  // Random key + timbre + filter tone per generation — this is what
+  // gives automatic variety without any manual picker.
+  const rootHz = ROOT_NOTES_HZ[Math.floor(Math.random() * ROOT_NOTES_HZ.length)];
+  const timbre = OSC_TIMBRES[Math.floor(Math.random() * OSC_TIMBRES.length)];
+  const filterFreq = 1400 + Math.random() * 1000; // 1400-2400 Hz — warmer or brighter each time
+  const noteInterval = 0.75 + Math.random() * 0.4; // 0.75-1.15s between notes — slightly different tempo each time
+  const noteLength = noteInterval * 1.8; // notes overlap for a pad-like sustain, scaled with tempo
+
   // Gentle lowpass so the synth tones sound soft/warm rather than harsh.
   const filter = audioCtx.createBiquadFilter();
   filter.type = 'lowpass';
-  filter.frequency.value = 1800;
+  filter.frequency.value = filterFreq;
   masterGain.connect(filter);
   filter.connect(destination);
 
   const activeNodes: (OscillatorNode | AudioNode)[] = [];
-  const noteInterval = 0.9; // seconds between arpeggio notes
-  const noteLength = 1.6; // each note rings out longer than the interval, for overlap/pad feel
   const totalNotes = Math.ceil(durationSeconds / noteInterval) + 2;
+
+  // Random-walk through the scale instead of a fixed sequential order,
+  // so the melody shape itself differs between generations too.
+  let intervalIndex = Math.floor(Math.random() * PENTATONIC_INTERVALS.length);
 
   for (let i = 0; i < totalNotes; i++) {
     const startTime = audioCtx.currentTime + i * noteInterval;
-    const freq = AMBIENT_SCALE_HZ[i % AMBIENT_SCALE_HZ.length];
+    const freq = semitoneToHz(rootHz, PENTATONIC_INTERVALS[intervalIndex]);
 
     const osc = audioCtx.createOscillator();
-    osc.type = 'triangle';
+    osc.type = timbre;
     osc.frequency.value = freq;
 
     const noteGain = audioCtx.createGain();
@@ -230,6 +256,14 @@ function startBackgroundMusic(
     osc.start(startTime);
     osc.stop(startTime + noteLength + 0.05);
     activeNodes.push(osc, noteGain);
+
+    // Step up, down, or stay — a small random walk keeps it musical
+    // (no big jarring jumps) while never repeating the same pattern.
+    const step = Math.floor(Math.random() * 3) - 1; // -1, 0, or 1
+    intervalIndex = Math.min(
+      PENTATONIC_INTERVALS.length - 1,
+      Math.max(0, intervalIndex + step)
+    );
   }
 
   return () => {
