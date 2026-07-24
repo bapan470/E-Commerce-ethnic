@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, useRef, FormEvent } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -128,6 +128,81 @@ export default function CheckoutPage() {
   const [pincode, setPincode] = useState('');
   const [country, setCountry] = useState('India');
 
+  // Bug fix: clicking "Log In" / "Create Account" from the resell prompt used
+  // to send the shopper to /login or /signup and back, which remounts this
+  // page and wipes out whatever address they'd already typed. We snapshot the
+  // in-progress form into sessionStorage right before navigating away, and
+  // restore it here once they land back on /checkout — so guest or existing
+  // customer, they never have to retype the address.
+  const CHECKOUT_ADDRESS_DRAFT_KEY = 'aruhi_checkout_address_draft';
+  // Tracks whether a draft was restored on this mount, so the saved-address
+  // effect below (which normally auto-fills the customer's default address
+  // once we know who they are) doesn't clobber it.
+  const draftRestoredRef = useRef(false);
+
+  const saveAddressDraft = () => {
+    if (typeof window === 'undefined') return;
+    try {
+      sessionStorage.setItem(
+        CHECKOUT_ADDRESS_DRAFT_KEY,
+        JSON.stringify({
+          email,
+          firstName,
+          lastName,
+          shipPhone,
+          addressLine1,
+          addressLine2,
+          city,
+          stateName,
+          pincode,
+          country,
+        })
+      );
+    } catch {
+      // sessionStorage unavailable (e.g. private mode) — nothing we can do,
+      // the shopper will just need to retype the address as before.
+    }
+  };
+
+  // Runs once on mount, before we know whether the shopper is logged in, so
+  // it always wins over the saved-address auto-fill below.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = sessionStorage.getItem(CHECKOUT_ADDRESS_DRAFT_KEY);
+      if (!raw) return;
+      sessionStorage.removeItem(CHECKOUT_ADDRESS_DRAFT_KEY);
+      const draft = JSON.parse(raw) as Partial<{
+        email: string;
+        firstName: string;
+        lastName: string;
+        shipPhone: string;
+        addressLine1: string;
+        addressLine2: string;
+        city: string;
+        stateName: string;
+        pincode: string;
+        country: string;
+      }>;
+      setEmail(draft.email || '');
+      setFirstName(draft.firstName || '');
+      setLastName(draft.lastName || '');
+      setShipPhone(draft.shipPhone || '');
+      setAddressLine1(draft.addressLine1 || '');
+      setAddressLine2(draft.addressLine2 || '');
+      setCity(draft.city || '');
+      setStateName(draft.stateName || '');
+      setPincode(draft.pincode || '');
+      setCountry(draft.country || 'India');
+      setSelectedAddressId('new');
+      setShowAddressForm(true);
+      draftRestoredRef.current = true;
+    } catch {
+      // Corrupt/unreadable draft — ignore and fall back to normal behaviour.
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const applySavedAddress = (addr: Address) => {
     const nameParts = (addr.full_name || '').trim().split(/\s+/);
     setFirstName(nameParts[0] || '');
@@ -195,10 +270,14 @@ export default function CheckoutPage() {
       setSavedAddresses([]);
       return;
     }
-    setEmail(user.email ?? '');
+    if (!draftRestoredRef.current) setEmail(user.email ?? '');
     fetchAddresses()
       .then((list) => {
         setSavedAddresses(list);
+        // If we just restored an in-progress address draft (shopper logged
+        // in / signed up mid-checkout), keep what they typed instead of
+        // silently swapping in their saved default address.
+        if (draftRestoredRef.current) return;
         const preferred = list.find((a) => a.is_default) || list[0];
         if (preferred) {
           setSelectedAddressId(preferred.id);
@@ -458,11 +537,13 @@ export default function CheckoutPage() {
   };
 
   const goToResaleLogin = () => {
+    saveAddressDraft();
     setShowResaleLoginPrompt(false);
     router.push('/login?next=/checkout');
   };
 
   const goToResaleSignup = () => {
+    saveAddressDraft();
     setShowResaleLoginPrompt(false);
     router.push('/signup?next=/checkout');
   };
