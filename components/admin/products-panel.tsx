@@ -3,7 +3,7 @@
 import { useState, FormEvent, useEffect, useMemo, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles, Link2, Palette, Wand2, Search, X, Truck, Package, Facebook, Instagram, CheckCircle2, Video } from 'lucide-react';
+import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles, Link2, Palette, Wand2, Search, X, Truck, Package, Facebook, Instagram, Video } from 'lucide-react';
 import { useProducts } from '@/lib/cart-context';
 import {
   createProduct,
@@ -75,6 +75,16 @@ const SOCIAL_PLATFORM_POST_ID_KEY: Record<SocialPlatform, string> = {
   facebook: 'facebook_post_id',
   instagram: 'instagram_media_id',
   threads: 'threads_post_id',
+};
+
+// Same idea, but for the "Post Video" buttons — publishVideoToSocial()
+// (lib/social-publish-api.ts) writes these separate keys into the same
+// social_post_ids column so a product's photo-post and video-post status
+// can be tracked independently per platform.
+const SOCIAL_PLATFORM_VIDEO_POST_ID_KEY: Record<SocialPlatform, string> = {
+  facebook: 'facebook_video_post_id',
+  instagram: 'instagram_video_media_id',
+  threads: 'threads_video_post_id',
 };
 
 /** lucide-react ships Facebook/Instagram glyphs but not Threads (the app
@@ -333,7 +343,7 @@ export default function ProductsPanel() {
   // `${productId}:${platform}` while that specific button's request is
   // in flight, so only that one button shows a spinner.
   const [sharingKey, setSharingKey] = useState<string | null>(null);
-  const [reshareConfirm, setReshareConfirm] = useState<{ id: string; platform: SocialPlatform } | null>(null);
+  const [reshareConfirm, setReshareConfirm] = useState<{ id: string; platform: SocialPlatform; isVideo?: boolean } | null>(null);
 
   const loadSocialStatus = useCallback(() => {
     fetch('/api/admin/product-social-status')
@@ -444,6 +454,8 @@ export default function ProductsPanel() {
       toast.error(`${SOCIAL_PLATFORM_LABEL[platform]} video post failed — network error`);
     } finally {
       setPostingVideoKey(null);
+      setReshareConfirm(null);
+      loadSocialStatus();
     }
   };
 
@@ -1118,7 +1130,7 @@ export default function ProductsPanel() {
                         title={`Already posted to ${label}. Click to re-share (confirmation required).`}
                         className="text-emerald-600 hover:text-emerald-700"
                       >
-                        <CheckCircle2 className="h-4 w-4" />
+                        <Icon className="h-4 w-4" />
                       </Button>
                     ) : (
                       <Button
@@ -1177,9 +1189,22 @@ export default function ProductsPanel() {
                         </Button>
                         {(['facebook', 'instagram', 'threads'] as const).map((platform) => {
                           const vKey = `video:${p.id}:${platform}`;
+                          const videoPostedId = socialPostIdsById[p.id]?.[SOCIAL_PLATFORM_VIDEO_POST_ID_KEY[platform]];
                           const Icon = SOCIAL_PLATFORM_ICON[platform];
                           const label = SOCIAL_PLATFORM_LABEL[platform];
-                          return (
+                          return videoPostedId ? (
+                            <Button
+                              key={vKey}
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => setReshareConfirm({ id: p.id, platform, isVideo: true })}
+                              aria-label={`Video posted to ${label} — click to re-share`}
+                              title={`Video already posted to ${label}. Click to post again (confirmation required).`}
+                              className="text-emerald-600 hover:text-emerald-700"
+                            >
+                              <Icon className="h-4 w-4" />
+                            </Button>
+                          ) : (
                             <Button
                               key={vKey}
                               size="icon"
@@ -2056,13 +2081,15 @@ export default function ProductsPanel() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="font-serif text-xl text-primary">
-              Share this product to {reshareConfirm ? SOCIAL_PLATFORM_LABEL[reshareConfirm.platform] : 'social'} again?
+              {reshareConfirm?.isVideo ? 'Post this video to' : 'Share this product to'}{' '}
+              {reshareConfirm ? SOCIAL_PLATFORM_LABEL[reshareConfirm.platform] : 'social'} again?
             </DialogTitle>
             <DialogDescription>
-              This product was already posted to {reshareConfirm ? SOCIAL_PLATFORM_LABEL[reshareConfirm.platform] : 'this platform'} once.
-              Posting the same product repeatedly can look like duplicate/spam content, which risks
-              your account getting restricted. Only re-share if something meaningfully changed
-              (price drop, restock, new photos).
+              This {reshareConfirm?.isVideo ? 'video was' : 'product was'} already posted to{' '}
+              {reshareConfirm ? SOCIAL_PLATFORM_LABEL[reshareConfirm.platform] : 'this platform'} once.
+              Posting the same {reshareConfirm?.isVideo ? 'video' : 'product'} repeatedly can look like duplicate/spam
+              content, which risks your account getting restricted. Only re-share if something meaningfully changed
+              (price drop, restock, new photos{reshareConfirm?.isVideo ? '/video' : ''}).
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -2070,13 +2097,26 @@ export default function ProductsPanel() {
               <Button variant="outline">Cancel</Button>
             </DialogClose>
             <Button
-              onClick={() => reshareConfirm && shareProduct(reshareConfirm.id, reshareConfirm.platform, true)}
-              disabled={!!reshareConfirm && sharingKey === `${reshareConfirm.id}:${reshareConfirm.platform}`}
+              onClick={() =>
+                reshareConfirm &&
+                (reshareConfirm.isVideo
+                  ? postVideo(reshareConfirm.id, reshareConfirm.platform)
+                  : shareProduct(reshareConfirm.id, reshareConfirm.platform, true))
+              }
+              disabled={
+                !!reshareConfirm &&
+                (reshareConfirm.isVideo
+                  ? postingVideoKey === `video:${reshareConfirm.id}:${reshareConfirm.platform}`
+                  : sharingKey === `${reshareConfirm.id}:${reshareConfirm.platform}`)
+              }
             >
-              {reshareConfirm && sharingKey === `${reshareConfirm.id}:${reshareConfirm.platform}` ? (
+              {reshareConfirm &&
+              (reshareConfirm.isVideo
+                ? postingVideoKey === `video:${reshareConfirm.id}:${reshareConfirm.platform}`
+                : sharingKey === `${reshareConfirm.id}:${reshareConfirm.platform}`) ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : null}
-              Yes, share again
+              Yes, post again
             </Button>
           </DialogFooter>
         </DialogContent>
