@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, FormEvent } from 'react';
-import { Plus, Pencil, Trash2, Search, X, Eye, EyeOff } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, X, Eye, EyeOff, Sparkles, TrendingUp, Loader2 } from 'lucide-react';
 import { useProducts } from '@/lib/cart-context';
 import {
   fetchBlogPostsAdmin,
@@ -71,6 +71,69 @@ export default function BlogPanel() {
   const [readMinutes, setReadMinutes] = useState(5);
   const [relatedCategory, setRelatedCategory] = useState<string>('none');
   const [published, setPublished] = useState(true);
+
+  // AI blog generator — separate from the add/edit dialog above. Generates
+  // a full draft from a topic, which then opens the same dialog pre-filled
+  // so the admin still reviews/edits before it goes live.
+  const [aiTopic, setAiTopic] = useState('');
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [trendIdeas, setTrendIdeas] = useState<{ topic: string; source: 'trends' | 'seasonal' }[]>([]);
+  const [trendsLoading, setTrendsLoading] = useState(false);
+
+  const loadTrendIdeas = async () => {
+    setTrendsLoading(true);
+    try {
+      const res = await fetch('/api/admin/blog-trend-ideas');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Failed to load ideas');
+      setTrendIdeas(data.ideas || []);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load trending ideas');
+    } finally {
+      setTrendsLoading(false);
+    }
+  };
+
+  const generateWithAI = async (topicOverride?: string) => {
+    const topic = (topicOverride ?? aiTopic).trim();
+    if (!topic) {
+      toast.error('Enter a topic, or pick a trending idea below');
+      return;
+    }
+    setAiGenerating(true);
+    try {
+      const res = await fetch('/api/admin/generate-blog-post', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Generation failed');
+
+      // Pre-fill the normal add/edit dialog with the AI draft — published
+      // defaults to false so a human reviews it once before it goes live.
+      // Flip the "Draft/Published" switch in the dialog to publish instantly.
+      setEditing(null);
+      setTitle(data.title || '');
+      setSlug(data.slug || '');
+      setExcerpt(data.excerpt || '');
+      setKeywords(Array.isArray(data.keywords) ? data.keywords.join(', ') : '');
+      setCoverImage('');
+      setBodyText(bodyToText(data.body_paragraphs || []));
+      setReadMinutes(data.read_minutes || 5);
+      const matchedCategory = categories.find(
+        (c) => c.name.toLowerCase() === (data.related_category_name || '').toLowerCase()
+      );
+      setRelatedCategory(matchedCategory ? matchedCategory.name : 'none');
+      setPublished(false);
+      setOpen(true);
+      toast.success('Draft generated — review and add a cover image before publishing');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'AI generation failed');
+    } finally {
+      setAiGenerating(false);
+    }
+  };
 
   const load = async () => {
     setLoading(true);
@@ -206,6 +269,78 @@ export default function BlogPanel() {
         <Button onClick={openNew} className="bg-primary">
           <Plus className="mr-1 h-4 w-4" /> Add Post
         </Button>
+      </div>
+
+      <div className="mb-6 rounded-lg border border-border/60 bg-card p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary" />
+          <h2 className="font-semibold text-sm">AI Blog Generator</h2>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Input
+            value={aiTopic}
+            onChange={(e) => setAiTopic(e.target.value)}
+            placeholder="Topic, e.g. how to style a Chanderi saree for office wear"
+            className="flex-1"
+          />
+          <Button
+            type="button"
+            onClick={() => generateWithAI()}
+            disabled={aiGenerating}
+            className="bg-primary shrink-0"
+          >
+            {aiGenerating ? (
+              <>
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Generating…
+              </>
+            ) : (
+              <>
+                <Sparkles className="mr-1.5 h-4 w-4" /> Generate with AI
+              </>
+            )}
+          </Button>
+        </div>
+
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={loadTrendIdeas}
+            disabled={trendsLoading}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-secondary hover:underline disabled:opacity-60"
+          >
+            {trendsLoading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <TrendingUp className="h-3.5 w-3.5" />
+            )}
+            Get trending topic ideas
+          </button>
+
+          {trendIdeas.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {trendIdeas.map((idea, i) => (
+                <button
+                  key={`${idea.topic}-${i}`}
+                  type="button"
+                  onClick={() => {
+                    setAiTopic(idea.topic);
+                    generateWithAI(idea.topic);
+                  }}
+                  disabled={aiGenerating}
+                  title={idea.source === 'trends' ? 'From Google Trends' : 'Seasonal/festival idea'}
+                  className="rounded-full border border-border/60 bg-muted/40 px-2.5 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-60"
+                >
+                  {idea.source === 'trends' ? '🔥 ' : '🗓️ '}
+                  {idea.topic}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Generates a full draft (title, excerpt, keywords, body). It opens below as a Draft — review, add a cover
+          image, and flip the switch to publish.
+        </p>
       </div>
 
       <div className="mb-4 relative w-full sm:max-w-xs">
