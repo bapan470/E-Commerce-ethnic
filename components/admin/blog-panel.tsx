@@ -79,6 +79,25 @@ export default function BlogPanel() {
   const [aiGenerating, setAiGenerating] = useState(false);
   const [trendIdeas, setTrendIdeas] = useState<{ topic: string; source: 'trends' | 'seasonal' }[]>([]);
   const [trendsLoading, setTrendsLoading] = useState(false);
+  const [keywordGaps, setKeywordGaps] = useState<string[]>([]);
+  const [gapsLoading, setGapsLoading] = useState(false);
+  const [gapsNote, setGapsNote] = useState<string | null>(null);
+
+  const loadKeywordGaps = async () => {
+    setGapsLoading(true);
+    setGapsNote(null);
+    try {
+      const res = await fetch('/api/admin/blog-keyword-gaps');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Failed to load keyword gaps');
+      setKeywordGaps(data.gaps || []);
+      if (data.note) setGapsNote(data.note);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load keyword gaps');
+    } finally {
+      setGapsLoading(false);
+    }
+  };
 
   const loadTrendIdeas = async () => {
     setTrendsLoading(true);
@@ -337,7 +356,47 @@ export default function BlogPanel() {
             </div>
           )}
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">
+
+        <div className="mt-3">
+          <button
+            type="button"
+            onClick={loadKeywordGaps}
+            disabled={gapsLoading}
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-secondary hover:underline disabled:opacity-60"
+          >
+            {gapsLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Search className="h-3.5 w-3.5" />}
+            Find content gaps (Google Suggest)
+          </button>
+
+          {gapsNote && <p className="mt-1.5 text-xs text-muted-foreground">{gapsNote}</p>}
+
+          {keywordGaps.length > 0 && (
+            <>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Real searches people are typing that none of your blog posts cover yet:
+              </p>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {keywordGaps.map((gap, i) => (
+                  <button
+                    key={`${gap}-${i}`}
+                    type="button"
+                    onClick={() => {
+                      setAiTopic(gap);
+                      generateWithAI(gap);
+                    }}
+                    disabled={aiGenerating}
+                    title="Not covered by any existing post — click to generate"
+                    className="rounded-full border border-dashed border-secondary/50 bg-secondary/5 px-2.5 py-1 text-xs text-foreground hover:bg-secondary/10 disabled:opacity-60"
+                  >
+                    🔍 {gap}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        <p className="mt-3 text-xs text-muted-foreground">
           Generates a full draft (title, excerpt, keywords, body). It opens below as a Draft — review, add a cover
           image, and flip the switch to publish.
         </p>
