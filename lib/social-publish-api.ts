@@ -22,12 +22,25 @@
 //   5. Paste the Page ID, Instagram Business Account ID, and the
 //      access token into Admin > Marketing > Social Auto-Post, and
 //      toggle Facebook / Instagram on.
+//   6. Threads is a SEPARATE Meta app/OAuth flow (graph.threads.net,
+//      not graph.facebook.com) — the token above will NOT work here.
+//      Create/enable the Threads API product on your Meta App, get a
+//      Threads access token with threads_basic + threads_content_publish,
+//      then call GET https://graph.threads.net/v1.0/me?access_token=...
+//      to get your Threads user id. Paste both into Admin > Marketing >
+//      Social Auto-Post and toggle Threads on.
 // ---------------------------------------------------------------------
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 const GRAPH_API_VERSION = 'v21.0';
 const GRAPH_API_BASE = `https://graph.facebook.com/${GRAPH_API_VERSION}`;
+
+// Threads is also a Meta product, but it runs on a completely separate
+// Graph API host/version with its own OAuth app, its own access token,
+// and its own user id — the Facebook Page token used for FB/Instagram
+// above does NOT work here.
+const THREADS_API_BASE = 'https://graph.threads.net/v1.0';
 
 export interface SocialPublishSettings {
   facebook_enabled: boolean;
@@ -39,6 +52,10 @@ export interface SocialPublishSettings {
   access_token: string;
   facebook_page_id: string;
   instagram_business_account_id: string;
+  // Threads (separate Meta app/OAuth — see THREADS_API_BASE above).
+  threads_enabled: boolean;
+  threads_access_token: string;
+  threads_user_id: string;
   // Template for the post caption. {name}, {price}, {url}, {description}
   // are replaced with the product's actual values.
   caption_template: string;
@@ -50,6 +67,9 @@ export const DEFAULT_SOCIAL_PUBLISH_SETTINGS: SocialPublishSettings = {
   access_token: '',
   facebook_page_id: '',
   instagram_business_account_id: '',
+  threads_enabled: false,
+  threads_access_token: '',
+  threads_user_id: '',
   caption_template: '✨ New Arrival: {name}\n\n{description}\n\nPrice: ₹{price}\nShop now: {url}',
 };
 
@@ -161,6 +181,43 @@ async function postToInstagram(
   return publishJson.id || null;
 }
 
+async function postToThreads(
+  settings: SocialPublishSettings,
+  caption: string,
+  imageUrl: string | undefined
+): Promise<string | null> {
+  // Step 1: create a media container (TEXT if no image, IMAGE if there is one).
+  const createParams = new URLSearchParams({
+    access_token: settings.threads_access_token,
+    text: caption,
+    media_type: imageUrl ? 'IMAGE' : 'TEXT',
+  });
+  if (imageUrl) createParams.set('image_url', imageUrl);
+
+  const createRes = await fetch(`${THREADS_API_BASE}/${settings.threads_user_id}/threads`, {
+    method: 'POST',
+    body: createParams,
+  });
+  const createJson = await createRes.json();
+  if (!createRes.ok || createJson.error || !createJson.id) {
+    throw new Error(`Threads container create failed: ${createJson?.error?.message || createRes.statusText}`);
+  }
+
+  // Step 2: publish the container.
+  const publishRes = await fetch(`${THREADS_API_BASE}/${settings.threads_user_id}/threads_publish`, {
+    method: 'POST',
+    body: new URLSearchParams({
+      creation_id: createJson.id,
+      access_token: settings.threads_access_token,
+    }),
+  });
+  const publishJson = await publishRes.json();
+  if (!publishRes.ok || publishJson.error) {
+    throw new Error(`Threads publish failed: ${publishJson?.error?.message || publishRes.statusText}`);
+  }
+  return publishJson.id || null;
+}
+
 /**
  * Posts a single product to Facebook and/or Instagram per whatever's
  * enabled in settings, then stamps social_posted_at so it never gets
@@ -206,6 +263,16 @@ export async function publishProductToSocial(
         console.error('[social-publish] Instagram post failed for product', product.id, err);
         errors.push(String(err));
       }
+    }
+  }
+
+  if (settings.threads_enabled && settings.threads_user_id) {
+    try {
+      const id = await postToThreads(settings, caption, imageUrl);
+      if (id) postIds.threads_post_id = id;
+    } catch (err) {
+      console.error('[social-publish] Threads post failed for product', product.id, err);
+      errors.push(String(err));
     }
   }
 

@@ -117,6 +117,11 @@ export interface SocialPublishSettings {
   access_token: string;
   facebook_page_id: string;
   instagram_business_account_id: string;
+  // Threads uses a completely separate Meta app/OAuth (graph.threads.net) —
+  // its own access token and its own user id, not the Page token above.
+  threads_enabled: boolean;
+  threads_access_token: string;
+  threads_user_id: string;
   caption_template: string;
 }
 
@@ -126,6 +131,9 @@ const DEFAULT_SOCIAL_PUBLISH_SETTINGS: SocialPublishSettings = {
   access_token: '',
   facebook_page_id: '',
   instagram_business_account_id: '',
+  threads_enabled: false,
+  threads_access_token: '',
+  threads_user_id: '',
   caption_template: '✨ New Arrival: {name}\n\n{description}\n\nPrice: ₹{price}\nShop now: {url}',
 };
 

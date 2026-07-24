@@ -673,9 +673,11 @@ function SocialPublishTab() {
     <form onSubmit={onSubmit} className="mt-4 max-w-lg space-y-6">
       <p className="text-xs text-muted-foreground">
         When on, every product that goes live — vendor-submitted (after AI processing) or added
-        directly by you — is posted automatically. No manual step needed for either. Requires a
-        Meta App with a long-lived Page Access Token (permissions: pages_manage_posts,
-        pages_read_engagement, instagram_content_publish, instagram_basic).
+        directly by you — is posted automatically. No manual step needed for either. Facebook +
+        Instagram need a Meta App with a long-lived Page Access Token (permissions:
+        pages_manage_posts, pages_read_engagement, instagram_content_publish, instagram_basic).
+        Threads is a separate login/token (permissions: threads_basic, threads_content_publish) —
+        see the Threads section below.
       </p>
 
       <div className="space-y-3 rounded-lg border border-border p-3">
@@ -742,6 +744,49 @@ function SocialPublishTab() {
           A single long-lived Page token is used for both Facebook and Instagram — that&apos;s how
           the Graph API works for a linked Instagram Business account.
         </p>
+      </div>
+
+      <div className="space-y-3 rounded-lg border border-border p-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <Label htmlFor="threads-enabled">Threads</Label>
+            <p className="text-xs text-muted-foreground">
+              Threads is a separate Meta app/login from Facebook &amp; Instagram — it needs its
+              own access token and user ID below, the Page token above won&apos;t work here.
+            </p>
+          </div>
+          <Switch
+            id="threads-enabled"
+            checked={settings.threads_enabled}
+            onCheckedChange={(checked) => setSettings({ ...settings, threads_enabled: checked })}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="threads-user-id">Threads User ID</Label>
+          <Input
+            id="threads-user-id"
+            value={settings.threads_user_id}
+            onChange={(e) => setSettings({ ...settings, threads_user_id: e.target.value })}
+            placeholder="1780..."
+          />
+          <p className="text-xs text-muted-foreground">
+            GET https://graph.threads.net/v1.0/me?access_token=... (with your Threads token) → &quot;id&quot; field
+          </p>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="threads-token">Threads Access Token</Label>
+          <Input
+            id="threads-token"
+            type="password"
+            value={settings.threads_access_token}
+            onChange={(e) => setSettings({ ...settings, threads_access_token: e.target.value })}
+            placeholder="THQ..."
+          />
+          <p className="text-xs text-muted-foreground">
+            From the Threads API product on your Meta App, with threads_basic + threads_content_publish
+            permissions (long-lived token recommended).
+          </p>
+        </div>
       </div>
 
       <div className="space-y-2">
