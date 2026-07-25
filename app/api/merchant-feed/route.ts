@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServerSupabase } from '@/lib/supabase-server';
 import { fetchProductsServer } from '@/lib/products-api-server';
+import { fetchFulfillmentSettings } from '@/lib/marketing-api';
+import { fetchShippingSettings } from '@/lib/pincode-api';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
@@ -31,6 +33,23 @@ export async function GET() {
 
   const brand = marketing.merchant_feed_brand || 'Aruhi Handlooms';
   const products = await fetchProductsServer();
+
+  // Same numbers as Admin > Marketing > Shipping & Returns Timing / GST &
+  // Shipping — declaring them here too means the feed can never say
+  // something different from what the site itself tells a shopper, which
+  // is exactly what Google Merchant Center checks for when it flags
+  // shipping/returns misrepresentation.
+  const [fulfillment, shipping] = await Promise.all([fetchFulfillmentSettings(), fetchShippingSettings()]);
+  const shippingBlock = `
+      <g:shipping>
+        <g:country>IN</g:country>
+        <g:service>Standard</g:service>
+        <g:price>${shipping.flat_rate.toFixed(2)} INR</g:price>
+      </g:shipping>
+      <g:min_handling_time>${fulfillment.dispatch_days_min}</g:min_handling_time>
+      <g:max_handling_time>${fulfillment.dispatch_days_max}</g:max_handling_time>
+      <g:min_transit_time>${fulfillment.delivery_metro_min}</g:min_transit_time>
+      <g:max_transit_time>${fulfillment.delivery_remote_max}</g:max_transit_time>`;
 
   const items = products
     .map((p) => {
@@ -76,6 +95,7 @@ export async function GET() {
       <g:age_group>${escapeXml(ageGroup)}</g:age_group>
       ${material}
       ${pattern}
+      ${shippingBlock}
     </item>`;
     })
     .join('');

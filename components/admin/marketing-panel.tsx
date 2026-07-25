@@ -20,6 +20,12 @@ import {
   AnalyticsSettings,
   fetchAnalyticsSettings,
   saveAnalyticsSettings,
+  FulfillmentSettings,
+  DEFAULT_FULFILLMENT_SETTINGS,
+  fetchFulfillmentSettings,
+  saveFulfillmentSettings,
+  SHIPPING_POLICY_TEMPLATE,
+  REFUND_POLICY_TEMPLATE,
 } from '@/lib/marketing-api';
 import {
   SocialPublishSettings,
@@ -67,6 +73,7 @@ export default function MarketingPanel() {
       <CardContent>
         <Tabs defaultValue="legal">
           <TabsList>
+            <TabsTrigger value="fulfillment">Shipping & Returns Timing</TabsTrigger>
             <TabsTrigger value="legal">Legal Pages</TabsTrigger>
             <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
             <TabsTrigger value="growth">Growth Tools</TabsTrigger>
@@ -78,6 +85,7 @@ export default function MarketingPanel() {
             <TabsTrigger value="social-publish">Social Auto-Post</TabsTrigger>
           </TabsList>
 
+          <TabsContent value="fulfillment"><FulfillmentTimingTab /></TabsContent>
           <TabsContent value="legal"><LegalPagesTab /></TabsContent>
           <TabsContent value="whatsapp"><WhatsAppTab /></TabsContent>
           <TabsContent value="growth"><GrowthTab /></TabsContent>
@@ -90,6 +98,107 @@ export default function MarketingPanel() {
         </Tabs>
       </CardContent>
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------------
+// Shipping & Returns Timing — THE single place to set dispatch/delivery/
+// return/cancellation windows. Every other surface (product page,
+// footer badges, checkout trust badges, legal pages via {{tokens}},
+// live chat, order-return eligibility, and the Google Merchant Center
+// feed) reads from this one settings row, so changing a number here
+// updates the whole site at once — no more hunting through multiple
+// pages to keep the numbers consistent, and no risk of the site
+// contradicting what's declared to Google Merchant Center.
+// ---------------------------------------------------------------------
+
+function FulfillmentTimingTab() {
+  const [settings, setSettings] = useState<FulfillmentSettings | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetchFulfillmentSettings()
+      .then(setSettings)
+      .catch(() => toast.error('Failed to load shipping & returns timing'));
+  }, []);
+
+  const set = (key: keyof FulfillmentSettings, value: number) =>
+    setSettings((s) => (s ? { ...s, [key]: value } : s));
+
+  const onSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!settings) return;
+    setSaving(true);
+    try {
+      await saveFulfillmentSettings(settings);
+      toast.success('Shipping & returns timing saved — this updates everywhere it\'s shown');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!settings) return <p className="py-6 text-sm text-muted-foreground">Loading...</p>;
+
+  const numField = (
+    key: keyof FulfillmentSettings,
+    label: string,
+  ) => (
+    <div className="space-y-1.5">
+      <Label htmlFor={key}>{label}</Label>
+      <Input
+        id={key}
+        type="number"
+        min={0}
+        value={settings[key]}
+        onChange={(e) => set(key, Number(e.target.value))}
+      />
+    </div>
+  );
+
+  return (
+    <form onSubmit={onSubmit} className="mt-4 space-y-6">
+      <p className="text-sm text-muted-foreground">
+        These numbers drive every "dispatched in X days" / "X-day returns" / "cancel within X hours"
+        message across the site — the product page, checkout badges, the footer, the live chat
+        widget, the legal pages (wherever they use a <code>{'{{token}}'}</code>, see below), and the
+        Google Merchant Center feed. Update them once here instead of editing each page separately.
+      </p>
+
+      <div className="space-y-3">
+        <h4 className="text-sm font-semibold">Dispatch (order confirmed → handed to courier)</h4>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {numField('dispatch_days_min', 'Min days')}
+          {numField('dispatch_days_max', 'Max days')}
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <h4 className="text-sm font-semibold">Delivery (courier pickup → doorstep), by zone</h4>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {numField('delivery_metro_min', 'Metro cities: min')}
+          {numField('delivery_metro_max', 'Metro cities: max')}
+          {numField('delivery_other_min', 'Other cities: min')}
+          {numField('delivery_other_max', 'Other cities: max')}
+          {numField('delivery_remote_min', 'Remote areas: min')}
+          {numField('delivery_remote_max', 'Remote areas: max')}
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        <h4 className="text-sm font-semibold">Cancellation & returns</h4>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {numField('cancellation_window_hours', 'Cancel within (hours)')}
+          {numField('return_window_days', 'Return within (days)')}
+        </div>
+      </div>
+
+      <Button type="submit" disabled={saving} className="gap-2 bg-primary">
+        <Save className="h-4 w-4" />
+        {saving ? 'Saving...' : 'Save Shipping & Returns Timing'}
+      </Button>
+    </form>
   );
 }
 
@@ -142,6 +251,34 @@ function LegalPagesTab() {
           </button>
         ))}
       </div>
+
+      {(activeSlug === 'shipping-policy' || activeSlug === 'refund-policy') && (
+        <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs">
+          <p className="font-medium text-foreground">
+            Keep this in sync with Admin &gt; Marketing &gt; Shipping &amp; Returns Timing
+          </p>
+          <p className="mt-1 text-muted-foreground">
+            Use these tokens anywhere in the text below and they'll always show the live numbers
+            from the Shipping &amp; Returns Timing tab, instead of numbers you'd otherwise have to
+            update by hand every time they change:{' '}
+            <code>{'{{dispatch_days}}'}</code>, <code>{'{{metro_days}}'}</code>,{' '}
+            <code>{'{{other_days}}'}</code>, <code>{'{{remote_days}}'}</code>,{' '}
+            <code>{'{{return_days}}'}</code>, <code>{'{{cancellation_hours}}'}</code>.
+          </p>
+          <button
+            type="button"
+            onClick={() =>
+              setPages({
+                ...pages,
+                [activeSlug]: activeSlug === 'shipping-policy' ? SHIPPING_POLICY_TEMPLATE : REFUND_POLICY_TEMPLATE,
+              })
+            }
+            className="mt-2 rounded border border-primary/40 px-2 py-1 font-medium text-primary hover:bg-primary/10"
+          >
+            Replace with ready-made template (tokens included)
+          </button>
+        </div>
+      )}
 
       <div className="space-y-2">
         <Label htmlFor="legal-content">{LEGAL_PAGE_TITLES[activeSlug]} content</Label>

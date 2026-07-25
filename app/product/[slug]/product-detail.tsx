@@ -15,6 +15,14 @@ import { fetchProductBySlug } from '@/lib/products-api';
 import { fetchVariantBySlug, fetchVariantsForProduct, ProductVariant, VariantWithSizes } from '@/lib/variants-api';
 import { Product } from '@/lib/types';
 import { formatINR, discountPct } from '@/lib/format';
+import {
+  FulfillmentSettings,
+  DEFAULT_FULFILLMENT_SETTINGS,
+  fetchFulfillmentSettings,
+  shippingReturnsSummary,
+  returnWindowBadgeText,
+} from '@/lib/marketing-api';
+import { fetchShippingSettings } from '@/lib/pincode-api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -66,6 +74,8 @@ export default function ProductDetail() {
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   const [activeTab, setActiveTab] = useState('reviews');
+  const [fulfillment, setFulfillment] = useState<FulfillmentSettings>(DEFAULT_FULFILLMENT_SETTINGS);
+  const [freeShippingThreshold, setFreeShippingThreshold] = useState<number | undefined>(undefined);
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [couponDiscount, setCouponDiscount] = useState(0);
   const [couponHydrated, setCouponHydrated] = useState(false);
@@ -118,6 +128,20 @@ export default function ProductDetail() {
   // until the product has at least one real approved rating, so brand-new
   // listings still show their seeded social-proof numbers.
   const [liveSummary, setLiveSummary] = useState<RatingSummary | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([fetchFulfillmentSettings(), fetchShippingSettings()])
+      .then(([f, s]) => {
+        if (!cancelled) {
+          setFulfillment(f);
+          setFreeShippingThreshold(s.free_shipping_threshold || undefined);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   useEffect(() => {
     if (!baseProduct?.id) {
       setLiveSummary(null);
@@ -557,7 +581,7 @@ export default function ProductDetail() {
             </ul>
           </TabsContent>
           <TabsContent value="shipping" className="max-w-3xl text-sm leading-relaxed text-foreground/80">
-            <p>Free shipping on all orders above Rs 2,000. Dispatched within 2-3 business days. 7-day easy returns on unworn items with original packaging.</p>
+            <p>{shippingReturnsSummary(fulfillment, freeShippingThreshold)}</p>
           </TabsContent>
           <TabsContent value="reviews">
             <ReviewsSection productId={baseProduct.id} productSlug={baseProduct.slug} />
@@ -774,7 +798,7 @@ function ProductInfo({
         {[
           { icon: Truck, label: 'Free Shipping' },
           { icon: ShieldCheck, label: 'Authentic' },
-          { icon: RefreshCw, label: '7-day Returns' },
+          { icon: RefreshCw, label: `${returnWindowBadgeText(fulfillment)} Returns` },
         ].map((a) => (
           <div key={a.label} className="flex flex-col items-center gap-1">
             <a.icon className="h-5 w-5 text-secondary" />

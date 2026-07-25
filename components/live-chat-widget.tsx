@@ -14,7 +14,17 @@ import {
   Mail,
   LifeBuoy,
 } from 'lucide-react';
-import { fetchMarketingSettings, fetchLegalPages, MarketingSettings, LegalPages } from '@/lib/marketing-api';
+import {
+  fetchMarketingSettings,
+  fetchLegalPagesResolved,
+  fetchFulfillmentSettings,
+  dispatchWindowText,
+  returnWindowText,
+  MarketingSettings,
+  LegalPages,
+  FulfillmentSettings,
+  DEFAULT_FULFILLMENT_SETTINGS,
+} from '@/lib/marketing-api';
 
 // ---------------------------------------------------------------------
 // On-site live chat widget.
@@ -56,7 +66,7 @@ interface ChatMessage {
 interface Topic {
   key: string;
   label: string;
-  answer: (ctx: { legal: LegalPages | null; whatsappHref: string | null }) => string;
+  answer: (ctx: { legal: LegalPages | null; whatsappHref: string | null; fulfillment: FulfillmentSettings }) => string;
 }
 
 const SCRIPTED_TOPICS: Topic[] = [
@@ -75,18 +85,22 @@ const SCRIPTED_TOPICS: Topic[] = [
   {
     key: 'delivery',
     label: 'Delivery time & COD',
-    answer: ({ legal }) =>
-      legal?.['shipping-policy']?.trim()
-        ? summarize(legal['shipping-policy'], 'Orders typically leave our warehouse within 2-3 business days, then take 3-7 days to arrive depending on your pincode.')
-        : 'Orders typically leave our warehouse within 2-3 business days, then take 3-7 days to arrive depending on your pincode. Cash on Delivery availability is shown at checkout once you enter your pincode.',
+    answer: ({ legal, fulfillment }) => {
+      const fallback = `Orders typically leave our warehouse within ${dispatchWindowText(fulfillment)}, then take a few more days to arrive depending on your pincode.`;
+      return legal?.['shipping-policy']?.trim()
+        ? summarize(legal['shipping-policy'], fallback)
+        : `${fallback} Cash on Delivery availability is shown at checkout once you enter your pincode.`;
+    },
   },
   {
     key: 'returns',
     label: 'Returns & exchange',
-    answer: ({ legal }) =>
-      legal?.['refund-policy']?.trim()
-        ? summarize(legal['refund-policy'], 'We accept returns and exchanges within 7 days of delivery on unworn items with original tags and packaging intact.')
-        : 'We accept returns and exchanges within 7 days of delivery on unworn items with original tags and packaging intact. Customized or stitched pieces are usually final sale — check the product page for specifics.',
+    answer: ({ legal, fulfillment }) => {
+      const fallback = `We accept returns and exchanges within ${returnWindowText(fulfillment)} of delivery on unworn items with original tags and packaging intact.`;
+      return legal?.['refund-policy']?.trim()
+        ? summarize(legal['refund-policy'], fallback)
+        : `${fallback} Customized or stitched pieces are usually final sale — check the product page for specifics.`;
+    },
   },
   {
     key: 'human',
@@ -165,6 +179,7 @@ export default function LiveChatWidget() {
   const [hasOpenedOnce, setHasOpenedOnce] = useState(false);
   const [marketing, setMarketing] = useState<MarketingSettings | null>(null);
   const [legal, setLegal] = useState<LegalPages | null>(null);
+  const [fulfillment, setFulfillment] = useState<FulfillmentSettings>(DEFAULT_FULFILLMENT_SETTINGS);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: uid(),
@@ -195,11 +210,12 @@ export default function LiveChatWidget() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([fetchMarketingSettings(), fetchLegalPages()])
-      .then(([m, l]) => {
+    Promise.all([fetchMarketingSettings(), fetchLegalPagesResolved(), fetchFulfillmentSettings()])
+      .then(([m, l, f]) => {
         if (!cancelled) {
           setMarketing(m);
           setLegal(l);
+          setFulfillment(f);
         }
       })
       .catch(() => {
@@ -482,7 +498,7 @@ export default function LiveChatWidget() {
   }
 
   function handleTopic(topic: Topic) {
-    const answer = topic.answer({ legal, whatsappHref });
+    const answer = topic.answer({ legal, whatsappHref, fulfillment });
     addUser(topic.label);
     addBot(
       answer === '__whatsapp__'

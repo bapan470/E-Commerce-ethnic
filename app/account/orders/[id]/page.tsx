@@ -6,12 +6,15 @@ import { Separator } from '@/components/ui/separator';
 import ReturnRequestButton from '@/components/account/return-request-button';
 import OrderTracking from '@/components/order/order-tracking';
 import DeliveredItemReview from '@/components/account/delivered-item-review';
-
-const RETURN_WINDOW_DAYS = 7;
+import { fetchFulfillmentSettings } from '@/lib/marketing-api';
 
 export default async function OrderDetailPage({ params }: { params: { id: string } }) {
   const user = await getCurrentUser();
   const supabase = await getSupabaseServer();
+  // Same number as Admin > Marketing > Shipping & Returns Timing, so a
+  // customer is never told "X-day returns" on one page and denied a
+  // return under a different window on this one.
+  const { return_window_days: RETURN_WINDOW_DAYS } = await fetchFulfillmentSettings();
 
   const { data: order } = await supabase.from('orders').select('*').eq('id', params.id).single();
   const ownsByEmail =

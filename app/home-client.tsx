@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Sparkles, Truck, ShieldCheck } from 'lucide-react';
 import { useProducts } from '@/lib/cart-context';
 import { fetchSiteBanner, SiteBanner } from '@/lib/settings-api';
+import { fetchShippingSettings } from '@/lib/pincode-api';
 import { fetchPublicCollections, PublicCollectionRow } from '@/lib/admin-collections-api';
 import ProductCard from '@/components/product-card';
 import CouponStrip from '@/components/home/coupon-strip';
@@ -27,6 +28,16 @@ export default function HomeClient() {
     fetchSiteBanner()
       .then((b) => setBanner(b.image_url ? b : null))
       .catch(() => setBanner(null));
+  }, []);
+
+  // Admin > Settings > GST & Shipping — the free-shipping threshold shown
+  // in the hero badge is the exact same number checkout actually charges
+  // against, so this line never contradicts what a shopper pays.
+  const [freeShippingThreshold, setFreeShippingThreshold] = useState<number | null>(null);
+  useEffect(() => {
+    fetchShippingSettings()
+      .then((s) => setFreeShippingThreshold(s.free_shipping_threshold || null))
+      .catch(() => setFreeShippingThreshold(null));
   }, []);
 
   // Admin > Collections — curated groupings (e.g. "Diwali Specials"),
@@ -162,7 +173,9 @@ export default function HomeClient() {
               style={{ animationDelay: '400ms' }}
             >
               <span className="flex items-center gap-1.5"><ShieldCheck className="h-4 w-4 text-secondary" /> Authentic weaves</span>
-              <span className="flex items-center gap-1.5"><Truck className="h-4 w-4 text-secondary" /> Free shipping over ₹2,000</span>
+              {freeShippingThreshold ? (
+                <span className="flex items-center gap-1.5"><Truck className="h-4 w-4 text-secondary" /> Free shipping over ₹{freeShippingThreshold.toLocaleString('en-IN')}</span>
+              ) : null}
             </div>
           </div>
           <div className="relative hidden md:block">

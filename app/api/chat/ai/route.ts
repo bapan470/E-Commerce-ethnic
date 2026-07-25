@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser, getSupabaseServer } from '@/lib/supabase-server-auth';
-import { fetchLegalPages } from '@/lib/marketing-api';
+import { fetchLegalPagesResolved } from '@/lib/marketing-api';
 import { fetchAiChatSettingsServer } from '@/lib/settings-api';
 
 // ---------------------------------------------------------------------
@@ -105,7 +105,7 @@ async function buildCustomerContext(): Promise<string> {
 
 async function buildPolicyContext(): Promise<string> {
   try {
-    const legal = await fetchLegalPages();
+    const legal = await fetchLegalPagesResolved();
     const shipping = legal['shipping-policy']?.replace(/\s+/g, ' ').trim().slice(0, 400) || '';
     const refund = legal['refund-policy']?.replace(/\s+/g, ' ').trim().slice(0, 400) || '';
     return `Shipping policy (paraphrase, don't quote verbatim): ${shipping || 'not set'}\nReturns/refund policy (paraphrase, don't quote verbatim): ${refund || 'not set'}`;
