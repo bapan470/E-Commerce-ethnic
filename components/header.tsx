@@ -217,7 +217,7 @@ export default function Header() {
                   className="flex items-center gap-0"
                 >
                   <span className="font-serif text-2xl font-bold text-primary">Aruhi</span>
-                  <span className="text-xs font-medium uppercase tracking-[0.2em] text-secondary">
+                  <span className="font-serif text-2xl font-bold text-secondary">
                     Handlooms
                   </span>
                 </Link>
@@ -253,7 +253,7 @@ export default function Header() {
             <span className="whitespace-nowrap font-serif text-lg font-bold tracking-tight text-primary sm:text-2xl">
               Aruhi
             </span>
-            <span className="whitespace-nowrap text-[9px] font-medium uppercase tracking-[0.12em] text-secondary sm:text-xs sm:tracking-[0.2em]">
+            <span className="whitespace-nowrap font-serif text-lg font-bold tracking-tight text-secondary sm:text-2xl">
               Handlooms
             </span>
           </Link>
