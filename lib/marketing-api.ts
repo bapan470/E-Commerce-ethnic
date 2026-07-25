@@ -1,4 +1,17 @@
-import { supabase } from './supabase';
+import { getServerSupabase } from './supabase-server';
+
+// NOTE: this file is imported from BOTH client components (admin panels,
+// WhatsApp/trust-badge widgets, live chat) and server-only code (the
+// Google Merchant feed route, the legal pages route, the AI chat route).
+// It used to import the `supabase` singleton from './supabase', which is
+// marked 'use client' -- that's fine from a Client Component, but Next.js
+// throws "Cannot access supabase.from on the server. You cannot dot into
+// a client module from a server component." the moment a Server
+// Component / Route Handler touches it (this is what broke the
+// /api/merchant-feed build). `getServerSupabase()` uses the exact same
+// anon-key client config with no 'use client' boundary, so it works
+// identically from both the browser and the server.
+const supabase = getServerSupabase();
 
 // ---------------------------------------------------------------------
 // Fulfillment timing: dispatch window, delivery windows by zone, return

@@ -1,4 +1,4 @@
-import { getSupabaseBrowser } from './supabase-browser';
+import { getServerSupabase } from './supabase-server';
 
 export interface PincodeResult {
   serviceable: boolean;
@@ -138,7 +138,7 @@ export const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
 };
 
 export async function fetchShippingSettings(): Promise<ShippingSettings> {
-  const supabase = getSupabaseBrowser();
+  const supabase = getServerSupabase();
   const { data, error } = await supabase
     .from('settings')
     .select('value')
@@ -149,7 +149,7 @@ export async function fetchShippingSettings(): Promise<ShippingSettings> {
 }
 
 export async function saveShippingSettings(settings: ShippingSettings): Promise<void> {
-  const supabase = getSupabaseBrowser();
+  const supabase = getServerSupabase();
   const { error } = await supabase
     .from('settings')
     .upsert({ key: 'shipping', value: settings }, { onConflict: 'key' });
