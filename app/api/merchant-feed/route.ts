@@ -6,6 +6,15 @@ import { fetchShippingSettings } from '@/lib/pincode-api';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
+// Without this, Next.js treats this route as static (no request params,
+// no cookies/headers used) and bakes the response ONCE at build time --
+// this was also *why* it originally failed to build (Next tries to
+// prerender it). Forcing it dynamic means every request re-reads the
+// live settings/products from Supabase, so changes made in Admin (GST &
+// Shipping fee, Fulfillment Timing, product edits, etc.) show up on the
+// very next fetch instead of only after the next deployment.
+export const dynamic = 'force-dynamic';
+
 function escapeXml(input: string): string {
   return input
     .replace(/&/g, '&amp;')
@@ -112,7 +121,7 @@ export async function GET() {
   return new NextResponse(xml, {
     headers: {
       'Content-Type': 'application/xml; charset=utf-8',
-      'Cache-Control': 'public, max-age=3600',
+      'Cache-Control': 'public, max-age=300, stale-while-revalidate=60',
     },
   });
 }
