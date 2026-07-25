@@ -54,11 +54,11 @@ export async function GET() {
         <g:country>IN</g:country>
         <g:service>Standard</g:service>
         <g:price>${shipping.flat_rate.toFixed(2)} INR</g:price>
-      </g:shipping>
-      <g:min_handling_time>${fulfillment.dispatch_days_min}</g:min_handling_time>
-      <g:max_handling_time>${fulfillment.dispatch_days_max}</g:max_handling_time>
-      <g:min_transit_time>${fulfillment.delivery_metro_min}</g:min_transit_time>
-      <g:max_transit_time>${fulfillment.delivery_remote_max}</g:max_transit_time>`;
+        <g:min_handling_time>${fulfillment.dispatch_days_min}</g:min_handling_time>
+        <g:max_handling_time>${fulfillment.dispatch_days_max}</g:max_handling_time>
+        <g:min_transit_time>${fulfillment.delivery_metro_min}</g:min_transit_time>
+        <g:max_transit_time>${fulfillment.delivery_remote_max}</g:max_transit_time>
+      </g:shipping>`;
 
   const items = products
     .map((p) => {
