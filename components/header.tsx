@@ -214,9 +214,12 @@ export default function Header() {
                 <Link
                   href="/"
                   onClick={() => setMobileOpen(false)}
-                  className="font-serif text-2xl font-bold text-primary"
+                  className="flex items-center gap-0"
                 >
-                  Aruhi
+                  <span className="font-serif text-2xl font-bold text-primary">Aruhi</span>
+                  <span className="text-xs font-medium uppercase tracking-[0.2em] text-secondary">
+                    Handlooms
+                  </span>
                 </Link>
                 <form onSubmit={onSearch} className="flex gap-2">
                   <Input
@@ -246,11 +249,11 @@ export default function Header() {
           </Sheet>
           )}
 
-          <Link href="/" className="flex shrink-0 items-center gap-2">
+          <Link href="/" className="flex shrink-0 items-center gap-0">
             <span className="whitespace-nowrap font-serif text-lg font-bold tracking-tight text-primary sm:text-2xl">
               Aruhi
             </span>
-            <span className="hidden text-xs font-medium uppercase tracking-[0.2em] text-secondary sm:inline">
+            <span className="whitespace-nowrap text-[9px] font-medium uppercase tracking-[0.12em] text-secondary sm:text-xs sm:tracking-[0.2em]">
               Handlooms
             </span>
           </Link>
