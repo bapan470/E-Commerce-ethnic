@@ -27,6 +27,14 @@ function GoogleIcon() {
   );
 }
 
+function FacebookIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true" fill="#1877F2">
+      <path d="M22 12.06C22 6.51 17.52 2 12 2S2 6.51 2 12.06c0 5 3.66 9.15 8.44 9.94v-7.03H7.9v-2.91h2.54V9.85c0-2.51 1.49-3.9 3.77-3.9 1.09 0 2.24.2 2.24.2v2.46h-1.26c-1.24 0-1.63.77-1.63 1.56v1.89h2.78l-.44 2.91h-2.34V22c4.78-.79 8.44-4.94 8.44-9.94z" />
+    </svg>
+  );
+}
+
 type LoginMethod = 'password' | 'otp';
 type OtpStep = 'enter-email' | 'enter-code';
 
@@ -36,6 +44,7 @@ function LoginForm() {
   const next = searchParams.get('next') || '/account';
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [facebookLoading, setFacebookLoading] = useState(false);
 
   const [method, setMethod] = useState<LoginMethod>('password');
   const [otpStep, setOtpStep] = useState<OtpStep>('enter-email');
@@ -74,6 +83,21 @@ function LoginForm() {
     if (error) {
       toast.error(error.message);
       setGoogleLoading(false);
+    }
+  };
+
+  const onFacebook = async () => {
+    setFacebookLoading(true);
+    const supabase = getSupabaseBrowser();
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'facebook',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
+      },
+    });
+    if (error) {
+      toast.error(error.message);
+      setFacebookLoading(false);
     }
   };
 
@@ -187,6 +211,17 @@ function LoginForm() {
           >
             {googleLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleIcon />}
             Continue with Google
+          </Button>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full gap-2"
+            onClick={onFacebook}
+            disabled={facebookLoading}
+          >
+            {facebookLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FacebookIcon />}
+            Continue with Facebook
           </Button>
 
           <div className="flex items-center gap-3">
