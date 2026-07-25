@@ -26,6 +26,7 @@ import {
   triggerVideoPublish,
 } from '@/lib/vendor-api';
 import { formatINR, discountPct } from '@/lib/format';
+import { fetchShippingSettings, ShippingSettings, DEFAULT_SHIPPING_SETTINGS } from '@/lib/pincode-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -291,6 +292,58 @@ const fromProduct = (p: Product): FormState => ({
   in_stock: p.inStock,
 });
 
+// Live "what will I actually get" preview shown under the Price field on
+// the Add/Edit Product form — mirrors the Meesho-style settlement card.
+// Purely an estimate for the seller's own planning; it never touches what
+// the customer is charged (that's still just `price` from the form).
+function SettlementPreview({ price, settings }: { price: number; settings: ShippingSettings }) {
+  const gatewayFee = Math.round((price * settings.payment_gateway_fee_percent) / 100 * 100) / 100;
+  const logisticsFee = settings.flat_rate;
+  const otherCharges = settings.other_charges;
+  const totalDeductions = gatewayFee + logisticsFee + otherCharges;
+  const netSettlement = Math.round((price - totalDeductions) * 100) / 100;
+
+  return (
+    <div className="rounded-lg border border-border/60 bg-muted/30 p-4 text-sm">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="font-medium">Estimated Settlement</span>
+        <span className="font-serif text-lg font-semibold text-primary">
+          {formatINR(Math.max(netSettlement, 0))}
+        </span>
+      </div>
+      <div className="space-y-1 text-xs text-muted-foreground">
+        <div className="flex items-center justify-between">
+          <span>Payment gateway fee ({settings.payment_gateway_fee_percent}%)</span>
+          <span>-{formatINR(gatewayFee)}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span>Shipping / logistics fee</span>
+          <span>-{formatINR(logisticsFee)}</span>
+        </div>
+        {otherCharges > 0 && (
+          <div className="flex items-center justify-between">
+            <span>Other charges</span>
+            <span>-{formatINR(otherCharges)}</span>
+          </div>
+        )}
+        <div className="flex items-center justify-between border-t border-border/60 pt-1 font-medium text-foreground">
+          <span>Listing price</span>
+          <span>{formatINR(price)}</span>
+        </div>
+      </div>
+      {netSettlement < 0 && (
+        <p className="mt-2 text-xs font-medium text-destructive">
+          This price is below your fees + charges — you'd lose money on this listing.
+        </p>
+      )}
+      <p className="mt-2 text-[11px] text-muted-foreground">
+        Estimate only, based on Admin → Settings → GST &amp; Shipping. Actual fees vary by real
+        order zone and payment method.
+      </p>
+    </div>
+  );
+}
+
 export default function ProductsPanel() {
   const { products, categories, loading, refresh } = useProducts();
 
@@ -306,6 +359,13 @@ export default function ProductsPanel() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
+  // Settlement preview (Price field) — pulled from Admin > Settings >
+  // GST & Shipping, so the fee % and other charges stay editable in one
+  // place instead of being hardcoded here.
+  const [shippingSettings, setShippingSettings] = useState<ShippingSettings>(DEFAULT_SHIPPING_SETTINGS);
+  useEffect(() => {
+    fetchShippingSettings().then(setShippingSettings).catch(() => {});
+  }, []);
   const [colorSuggestions, setColorSuggestions] = useState<ColorPreset[]>([]);
   const [showColorSuggestions, setShowColorSuggestions] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1416,6 +1476,10 @@ export default function ProductsPanel() {
                 />
               </div>
             </div>
+
+            {Number(form.price) > 0 && (
+              <SettlementPreview price={Number(form.price)} settings={shippingSettings} />
+            )}
 
             <div className="grid gap-1.5">
               <Label htmlFor="fabric">Fabric</Label>

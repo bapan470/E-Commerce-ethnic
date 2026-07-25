@@ -556,6 +556,49 @@ export default function SettingsPanel() {
               </p>
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-1.5">
+              <Label htmlFor="gateway-fee">Payment gateway fee (%)</Label>
+              <Input
+                id="gateway-fee"
+                type="number"
+                min={0}
+                max={100}
+                step="0.01"
+                value={checkoutForm.payment_gateway_fee_percent}
+                onChange={(e) =>
+                  setCheckoutForm(
+                    (f) => f && { ...f, payment_gateway_fee_percent: Number(e.target.value) }
+                  )
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                E.g. Razorpay's ~2.36% (2% + 18% GST). Used only to estimate settlement below.
+              </p>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="other-charges">Other charges per order (₹)</Label>
+              <Input
+                id="other-charges"
+                type="number"
+                min={0}
+                step="1"
+                value={checkoutForm.other_charges}
+                onChange={(e) =>
+                  setCheckoutForm(
+                    (f) => f && { ...f, other_charges: Number(e.target.value) }
+                  )
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Any manual deduction — packaging, handling, average extra logistics cost, etc.
+              </p>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            The gateway fee and other charges above only power the estimated settlement preview
+            on the Add/Edit Product form — they don't change what the customer pays.
+          </p>
           <Button type="submit" disabled={savingCheckout} className="mt-2 w-fit bg-primary">
             <Save className="mr-1.5 h-4 w-4" />{' '}
             {savingCheckout ? 'Saving…' : 'Save GST & Shipping'}

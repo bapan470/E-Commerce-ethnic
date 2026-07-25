@@ -100,12 +100,26 @@ export interface ShippingSettings {
   free_shipping_threshold: number;
   /** GST / tax rate applied at checkout, as a percentage (e.g. 5 = 5%) */
   gst_rate_percent: number;
+  /**
+   * Razorpay (or other gateway) transaction fee, as a percentage of the
+   * order value — used only to estimate the net settlement shown on the
+   * Add/Edit Product form. Does not affect what the customer is charged.
+   */
+  payment_gateway_fee_percent: number;
+  /**
+   * Any other manual per-order deduction in rupees you want factored into
+   * the estimated settlement preview (e.g. packaging, handling, average
+   * logistics cost not already covered by the shipping fee above).
+   */
+  other_charges: number;
 }
 
 export const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
   flat_rate: 99,
   free_shipping_threshold: 2000,
   gst_rate_percent: 5,
+  payment_gateway_fee_percent: 2.36,
+  other_charges: 0,
 };
 
 export async function fetchShippingSettings(): Promise<ShippingSettings> {
