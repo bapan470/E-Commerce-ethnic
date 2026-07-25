@@ -195,7 +195,13 @@ export async function GET() {
           const images = v.images && v.images.length > 0 ? v.images : p.images || [];
 
           return renderItem({
-            id: `${p.id}-${v.id}`,
+            // Google Merchant Center caps the `id` attribute at 50 characters.
+            // Both p.id and v.id are 36-char Supabase UUIDs, so `${p.id}-${v.id}`
+            // was 73 characters and got rejected as "Value too long in attribute:
+            // id" (Needs attention > Data sources). v.id alone is already the
+            // product_variants primary key, so it's globally unique on its own --
+            // the parent product is still recoverable via item_group_id below.
+            id: v.id,
             itemGroupId: p.id,
             title: `${p.name} - ${v.color}`,
             link: `${SITE_URL}/product/${v.slug}`,
