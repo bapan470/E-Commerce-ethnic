@@ -1,414 +1,211 @@
-diff --git a/app/api/admin/vendor-products/route.ts b/app/api/admin/vendor-products/route.ts
-index 7a35758..4050324 100644
---- a/app/api/admin/vendor-products/route.ts
-+++ b/app/api/admin/vendor-products/route.ts
-@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
- import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
- import { getSupabaseAdmin } from '@/lib/supabase-admin';
- import { notifyVendorProductStatus } from '@/lib/vendor-notifications';
-+import { runStuckVendorListingsJob } from '@/lib/cron-jobs';
+diff --git a/app/api/merchant-feed/route.ts b/app/api/merchant-feed/route.ts
+index 95b90d2..3e8ae63 100644
+--- a/app/api/merchant-feed/route.ts
++++ b/app/api/merchant-feed/route.ts
+@@ -6,6 +6,15 @@ import { fetchShippingSettings } from '@/lib/pincode-api';
+ 
+ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
+ 
++// Without this, Next.js treats this route as static (no request params,
++// no cookies/headers used) and bakes the response ONCE at build time --
++// this was also *why* it originally failed to build (Next tries to
++// prerender it). Forcing it dynamic means every request re-reads the
++// live settings/products from Supabase, so changes made in Admin (GST &
++// Shipping fee, Fulfillment Timing, product edits, etc.) show up on the
++// very next fetch instead of only after the next deployment.
++export const dynamic = 'force-dynamic';
++
+ function escapeXml(input: string): string {
+   return input
+     .replace(/&/g, '&amp;')
+@@ -112,7 +121,7 @@ export async function GET() {
+   return new NextResponse(xml, {
+     headers: {
+       'Content-Type': 'application/xml; charset=utf-8',
+-      'Cache-Control': 'public, max-age=3600',
++      'Cache-Control': 'public, max-age=300, stale-while-revalidate=60',
+     },
+   });
+ }
+diff --git a/app/legal/[slug]/page.tsx b/app/legal/[slug]/page.tsx
+index a74f417..613c4be 100644
+--- a/app/legal/[slug]/page.tsx
++++ b/app/legal/[slug]/page.tsx
+@@ -3,6 +3,7 @@ import Link from 'next/link';
+ import type { Metadata } from 'next';
+ import { getServerSupabase } from '@/lib/supabase-server';
+ import { LEGAL_PAGE_TITLES, LegalPages, LegalSlug, applyFulfillmentTokens, fetchFulfillmentSettings } from '@/lib/marketing-api';
++import { fetchShippingSettings } from '@/lib/pincode-api';
+ 
+ const VALID_SLUGS = Object.keys(LEGAL_PAGE_TITLES) as LegalSlug[];
+ 
+@@ -46,12 +47,17 @@ export default async function LegalPage({ params }: { params: { slug: string } }
+   const slug = params.slug as LegalSlug;
+   if (!VALID_SLUGS.includes(slug)) notFound();
+ 
+-  const [pages, fulfillment] = await Promise.all([getLegalPages(), fetchFulfillmentSettings()]);
++  const [pages, fulfillment, shipping] = await Promise.all([
++    getLegalPages(),
++    fetchFulfillmentSettings(),
++    fetchShippingSettings(),
++  ]);
+   const title = LEGAL_PAGE_TITLES[slug];
+   const rawContent = pages[slug] || 'This page is being updated. Please check back soon.';
+-  // {{dispatch_days}}, {{return_days}}, etc. always reflect the live
+-  // numbers from Admin > Marketing > Shipping & Returns Timing.
+-  const content = applyFulfillmentTokens(rawContent, fulfillment);
++  // {{dispatch_days}}, {{return_days}}, {{shipping_fee}}, etc. always
++  // reflect the live numbers from Admin > Marketing > Shipping & Returns
++  // Timing and Admin > Settings > GST & Shipping.
++  const content = applyFulfillmentTokens(rawContent, fulfillment, shipping);
+ 
+   return (
+     <div className="container-boutique max-w-3xl py-10 sm:py-14">
+diff --git a/components/admin/marketing-panel.tsx b/components/admin/marketing-panel.tsx
+index 5036c29..546fad9 100644
+--- a/components/admin/marketing-panel.tsx
++++ b/components/admin/marketing-panel.tsx
+@@ -255,15 +255,17 @@ function LegalPagesTab() {
+       {(activeSlug === 'shipping-policy' || activeSlug === 'refund-policy') && (
+         <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs">
+           <p className="font-medium text-foreground">
+-            Keep this in sync with Admin &gt; Marketing &gt; Shipping &amp; Returns Timing
++            Keep this in sync with Admin &gt; Marketing &gt; Shipping &amp; Returns Timing and
++            Admin &gt; Settings &gt; GST &amp; Shipping
+           </p>
+           <p className="mt-1 text-muted-foreground">
+             Use these tokens anywhere in the text below and they'll always show the live numbers
+-            from the Shipping &amp; Returns Timing tab, instead of numbers you'd otherwise have to
+-            update by hand every time they change:{' '}
++            from those settings, instead of numbers you'd otherwise have to update by hand every
++            time they change:{' '}
+             <code>{'{{dispatch_days}}'}</code>, <code>{'{{metro_days}}'}</code>,{' '}
+             <code>{'{{other_days}}'}</code>, <code>{'{{remote_days}}'}</code>,{' '}
+-            <code>{'{{return_days}}'}</code>, <code>{'{{cancellation_hours}}'}</code>.
++            <code>{'{{return_days}}'}</code>, <code>{'{{cancellation_hours}}'}</code>,{' '}
++            <code>{'{{shipping_fee}}'}</code>, <code>{'{{free_shipping_threshold}}'}</code>.
+           </p>
+           <button
+             type="button"
+diff --git a/lib/marketing-api.ts b/lib/marketing-api.ts
+index e8da5de..b2b23ba 100644
+--- a/lib/marketing-api.ts
++++ b/lib/marketing-api.ts
+@@ -1,4 +1,18 @@
+-import { supabase } from './supabase';
++import { getServerSupabase } from './supabase-server';
++import { fetchShippingSettings, type ShippingSettings } from './pincode-api';
++
++// NOTE: this file is imported from BOTH client components (admin panels,
++// WhatsApp/trust-badge widgets, live chat) and server-only code (the
++// Google Merchant feed route, the legal pages route, the AI chat route).
++// It used to import the `supabase` singleton from './supabase', which is
++// marked 'use client' -- that's fine from a Client Component, but Next.js
++// throws "Cannot access supabase.from on the server. You cannot dot into
++// a client module from a server component." the moment a Server
++// Component / Route Handler touches it (this is what broke the
++// /api/merchant-feed build). `getServerSupabase()` uses the exact same
++// anon-key client config with no 'use client' boundary, so it works
++// identically from both the browser and the server.
++const supabase = getServerSupabase();
  
  // ---------------------------------------------------------------------
- // Phase 2, Part 5 — Admin "Vendor Submissions".
-@@ -47,6 +48,18 @@ export async function GET(req: Request) {
+ // Fulfillment timing: dispatch window, delivery windows by zone, return
+@@ -107,17 +121,34 @@ export function shippingReturnsSummary(f: FulfillmentSettings, freeShippingThres
  
-   const supabase = getSupabaseAdmin();
- 
-+  // Same self-healing safety net as /api/vendor/products — see the
-+  // comment there. This app's cron schedule lives in vercel.json, which
-+  // Netlify (the actual host) never reads, so the dedicated cron route
-+  // never fired in production. Running it here means the admin "Manage
-+  // Products" screen self-heals any product stuck in pending_review the
-+  // moment it's opened, regardless of hosting/cron setup.
-+  try {
-+    await runStuckVendorListingsJob();
-+  } catch (stuckErr) {
-+    console.error('[admin/vendor-products GET] stuck-listing safety net failed', stuckErr);
+ // Tokens an admin can drop anywhere inside a Legal Page's text so that
+ // page always reflects the current numbers from Admin > Marketing >
+-// Shipping & Returns Timing, instead of typing numbers in as plain text
+-// that silently go stale the next time those settings change.
+-export function applyFulfillmentTokens(text: string, f: FulfillmentSettings): string {
++// Shipping & Returns Timing (plus the shipping fee / free-shipping
++// threshold from Admin > Settings > GST & Shipping), instead of typing
++// numbers in as plain text that silently go stale the next time those
++// settings change. The `shipping` param is optional so existing callers
++// that only have FulfillmentSettings keep working unchanged; without it,
++// {{shipping_fee}}/{{free_shipping_threshold}} are simply left as-is.
++export function applyFulfillmentTokens(
++  text: string,
++  f: FulfillmentSettings,
++  shipping?: Pick<ShippingSettings, 'flat_rate' | 'free_shipping_threshold'>,
++): string {
+   if (!text) return text;
+-  return text
++  let result = text
+     .replace(/\{\{\s*dispatch_days\s*\}\}/g, dayRange(f.dispatch_days_min, f.dispatch_days_max))
+     .replace(/\{\{\s*metro_days\s*\}\}/g, dayRange(f.delivery_metro_min, f.delivery_metro_max))
+     .replace(/\{\{\s*other_days\s*\}\}/g, dayRange(f.delivery_other_min, f.delivery_other_max))
+     .replace(/\{\{\s*remote_days\s*\}\}/g, dayRange(f.delivery_remote_min, f.delivery_remote_max))
+     .replace(/\{\{\s*return_days\s*\}\}/g, String(f.return_window_days))
+     .replace(/\{\{\s*cancellation_hours\s*\}\}/g, String(f.cancellation_window_hours));
++  if (shipping) {
++    result = result
++      .replace(/\{\{\s*shipping_fee\s*\}\}/g, `Rs ${shipping.flat_rate.toLocaleString('en-IN')}`)
++      .replace(
++        /\{\{\s*free_shipping_threshold\s*\}\}/g,
++        `Rs ${shipping.free_shipping_threshold.toLocaleString('en-IN')}`,
++      );
 +  }
-+
-   try {
-     let query = supabase
-       .from('products')
-@@ -68,18 +81,24 @@ export async function GET(req: Request) {
-   }
++  return result;
  }
  
--// PUT — three actions on a single vendor-submitted product:
-+// PUT — two actions on a single vendor-submitted product:
- //   { id, action: 'update_price', final_price }
--//     Admin edits/confirms the price before approving. Doesn't touch
--//     approval_status.
--//   { id, action: 'approve', final_price? }
--//     Sets approval_status -> 'awaiting_stock'. If final_price is
--//     included it's saved first (so "edit + approve in one click"
--//     works); either way final_price must already be a non-negative
--//     number by this point. Also copies final_price into the
--//     customer-facing `price` column, ready for whenever it goes live.
-+//     Admin edits/confirms the price. Doesn't touch approval_status —
-+//     works on a product in any status (pending_review, live, etc.).
- //   { id, action: 'reject', rejection_reason }
- //     rejection_reason is mandatory — sets approval_status -> 'rejected'.
-+//     Kept as a manual safety valve (e.g. a policy-violating photo) even
-+//     though publishing itself is now fully automatic — see note below.
-+//
-+// NOTE: there used to be a third action, 'approve', which moved a
-+// product from 'pending_review' to 'awaiting_stock' as a manual admin
-+// gate before anything could go live. That's been removed entirely:
-+// every vendor product now goes pending_review -> (AI enrichment) ->
-+// live automatically with no human step (see
-+// /api/vendor/ai-process/[id] and lib/vendor-ai-listing.ts). The old
-+// 'awaiting_stock' status is retired — nothing sets it anymore, and
-+// runStuckVendorListingsJob() (lib/cron-jobs.ts) force-publishes any
-+// leftover rows still sitting in it from the old flow.
- export async function PUT(req: Request) {
-   if (!(await requireAdmin())) {
-     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-@@ -122,47 +141,6 @@ export async function PUT(req: Request) {
-       return NextResponse.json({ success: true, product: updated });
-     }
+ // Ready-to-paste templates — the admin panel's "Insert template" button on
+@@ -135,7 +166,7 @@ Remote/rural areas: may take up to {{remote_days}} business days
+ These are estimated timelines and may vary depending on courier partner delays, weather conditions, or other unforeseen circumstances.
  
--    if (action === 'approve') {
--      let final_price = existing.final_price as number | null;
--      if (body?.final_price !== undefined && body?.final_price !== null && body?.final_price !== '') {
--        const parsed = Number(body.final_price);
--        if (!Number.isFinite(parsed) || parsed < 0) {
--          return NextResponse.json({ error: 'final_price must be a non-negative number' }, { status: 400 });
--        }
--        final_price = parsed;
--      }
--      if (final_price === null || final_price === undefined || !Number.isFinite(final_price)) {
--        return NextResponse.json({ error: 'Set a final price before approving' }, { status: 400 });
--      }
--
--      const { data: updated, error } = await supabase
--        .from('products')
--        .update({
--          approval_status: 'awaiting_stock',
--          final_price,
--          price: final_price,
--          rejection_reason: null,
--        })
--        .eq('id', id)
--        .select(ADMIN_VENDOR_PRODUCT_COLUMNS)
--        .single();
--      if (error) throw error;
--
--      const vendorInfo = (existing as any).vendors;
--      if (vendorInfo) {
--        notifyVendorProductStatus({
--          business_name: vendorInfo.business_name,
--          email: vendorInfo.email,
--          whatsapp: vendorInfo.whatsapp,
--          product_name: existing.name,
--          status: 'awaiting_stock',
--          final_price,
--        }).catch(() => {});
--      }
--
--      return NextResponse.json({ success: true, product: updated });
--    }
--
-     if (action === 'reject') {
-       const rejection_reason = String(body?.rejection_reason || '').trim();
-       if (!rejection_reason) {
-diff --git a/app/api/vendor/ai-process/[id]/route.ts b/app/api/vendor/ai-process/[id]/route.ts
-index 3ad1d3f..645bfbd 100644
---- a/app/api/vendor/ai-process/[id]/route.ts
-+++ b/app/api/vendor/ai-process/[id]/route.ts
-@@ -5,12 +5,16 @@ import { generateVendorListing } from '@/lib/vendor-ai-listing';
- import { sendEmail } from '@/lib/email';
- import { vendorProductLiveEmail, vendorProductEditLiveEmail } from '@/lib/email-templates';
+ Shipping Charges
+-Free shipping is available on eligible orders as shown at checkout. A flat shipping charge applies below that threshold.
++Free shipping on all orders above {{free_shipping_threshold}}. A flat shipping charge of {{shipping_fee}} applies on orders below that amount.
  
--// Allow up to 60 seconds on platforms that support it (e.g. Vercel).
--// NOTE: this has no effect on Netlify — its default function timeout is
--// only 10s regardless of this value. See the try/catch + fallback below,
--// and lib/vendor-ai-listing.ts's 8s internal timeout, which together make
--// sure the product still gets published even if the function gets killed
--// before AI finishes.
-+// Allow up to 60 seconds (Vercel Hobby's max) — this app is hosted on
-+// Vercel, and the NVIDIA vision-language model call this route makes
-+// (see lib/vendor-ai-listing.ts) routinely needs 20-55s to respond on
-+// the free tier. The try/catch + fallback below, and the DB-level
-+// stuck-listing safety net (lib/cron-jobs.ts::runStuckVendorListingsJob,
-+// now also run inline whenever the vendor/admin products page loads —
-+// see app/api/vendor/products/route.ts and
-+// app/api/admin/vendor-products/route.ts), make sure the product still
-+// gets published even if this function is ever killed mid-flight for
-+// any reason (cold start, network blip, etc).
- export const maxDuration = 60;
+ Order Tracking
+ Once your order is dispatched, you will receive a tracking link via email/WhatsApp/SMS to track your shipment in real time.
+@@ -225,12 +256,16 @@ export async function saveLegalPages(pages: LegalPages) {
+ // editor — it needs the raw, unresolved text so saving it back doesn't
+ // bake today's numbers in and destroy the tokens.
+ export async function fetchLegalPagesResolved(): Promise<LegalPages> {
+-  const [pages, fulfillment] = await Promise.all([fetchLegalPages(), fetchFulfillmentSettings()]);
++  const [pages, fulfillment, shipping] = await Promise.all([
++    fetchLegalPages(),
++    fetchFulfillmentSettings(),
++    fetchShippingSettings(),
++  ]);
+   return {
+-    'privacy-policy': applyFulfillmentTokens(pages['privacy-policy'], fulfillment),
+-    'terms-conditions': applyFulfillmentTokens(pages['terms-conditions'], fulfillment),
+-    'shipping-policy': applyFulfillmentTokens(pages['shipping-policy'], fulfillment),
+-    'refund-policy': applyFulfillmentTokens(pages['refund-policy'], fulfillment),
++    'privacy-policy': applyFulfillmentTokens(pages['privacy-policy'], fulfillment, shipping),
++    'terms-conditions': applyFulfillmentTokens(pages['terms-conditions'], fulfillment, shipping),
++    'shipping-policy': applyFulfillmentTokens(pages['shipping-policy'], fulfillment, shipping),
++    'refund-policy': applyFulfillmentTokens(pages['refund-policy'], fulfillment, shipping),
+   };
+ }
  
- /**
-diff --git a/app/api/vendor/products/route.ts b/app/api/vendor/products/route.ts
-index fc99c5a..a80e06f 100644
---- a/app/api/vendor/products/route.ts
-+++ b/app/api/vendor/products/route.ts
-@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
- import { getCurrentUser, getSupabaseServer } from '@/lib/supabase-server-auth';
- import { getSupabaseAdmin } from '@/lib/supabase-admin';
- import { suggestVendorProductPrice } from '@/lib/ai-pricing';
-+import { runStuckVendorListingsJob } from '@/lib/cron-jobs';
+diff --git a/lib/pincode-api.ts b/lib/pincode-api.ts
+index b8458fe..53183ad 100644
+--- a/lib/pincode-api.ts
++++ b/lib/pincode-api.ts
+@@ -1,4 +1,4 @@
+-import { getSupabaseBrowser } from './supabase-browser';
++import { getServerSupabase } from './supabase-server';
  
- // Fields the VENDOR is ever allowed to see about their own submissions.
- // Deliberately excludes vendor_id (redundant — it's their own id anyway)
-@@ -57,6 +58,24 @@ export async function GET() {
-       return NextResponse.json({ error: 'Your vendor account has been suspended' }, { status: 403 });
-     }
- 
-+    // Self-healing safety net (belt-and-suspenders alongside the
-+    // /api/cron/stuck-vendor-listings route): this project's crons are
-+    // declared in vercel.json, which is a Vercel-only config file and is
-+    // silently ignored on Netlify (the platform this app is actually
-+    // deployed on — see the Netlify-specific timeout notes in
-+    // lib/vendor-ai-listing.ts). That meant runStuckVendorListingsJob()
-+    // never actually ran in production, so any product whose
-+    // fire-and-forget AI call died mid-flight stayed stuck in
-+    // 'pending_review' ("Processing...") forever. Running it here means
-+    // it fires every time a vendor opens their Products tab, independent
-+    // of whether any external/platform cron is wired up at all. It's a
-+    // cheap, indexed query so this adds negligible latency to the page.
-+    try {
-+      await runStuckVendorListingsJob();
-+    } catch (stuckErr) {
-+      console.error('[vendor/products GET] stuck-listing safety net failed', stuckErr);
-+    }
-+
-     const { data, error } = await supabase
-       .from('products')
-       .select(VENDOR_PRODUCT_COLUMNS)
-diff --git a/components/admin/vendor-submissions-panel.tsx b/components/admin/vendor-submissions-panel.tsx
-index 8a7c433..6ca026f 100644
---- a/components/admin/vendor-submissions-panel.tsx
-+++ b/components/admin/vendor-submissions-panel.tsx
-@@ -19,7 +19,6 @@ import { Input } from '@/components/ui/input';
- import { formatINR } from '@/lib/format';
- import {
-   fetchAdminVendorProducts,
--  approveAdminVendorProduct,
-   rejectAdminVendorProduct,
-   updateAdminVendorProductPrice,
-   type AdminVendorProductRow,
-@@ -31,15 +30,15 @@ const STATUS_META: Record<
-   { label: string; icon: typeof Clock; className: string }
- > = {
-   draft: { label: 'Draft', icon: Clock, className: 'bg-muted text-muted-foreground' },
--  pending_review: { label: 'Pending Review', icon: Clock, className: 'bg-amber-100 text-amber-700' },
--  awaiting_stock: { label: 'Awaiting Stock', icon: Warehouse, className: 'bg-blue-100 text-blue-700' },
-+  pending_review: { label: 'Processing (AI)', icon: Clock, className: 'bg-amber-100 text-amber-700' },
-+  awaiting_stock: { label: 'Awaiting Stock (legacy)', icon: Warehouse, className: 'bg-blue-100 text-blue-700' },
-   live: { label: 'Live', icon: CheckCircle2, className: 'bg-green-100 text-green-700' },
-   rejected: { label: 'Rejected', icon: XCircle, className: 'bg-red-100 text-red-700' },
+ export interface PincodeResult {
+   serviceable: boolean;
+@@ -138,7 +138,7 @@ export const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
  };
  
- const TABS: { value: VendorProductApprovalStatus; label: string }[] = [
--  { value: 'pending_review', label: 'Pending Review' },
--  { value: 'awaiting_stock', label: 'Awaiting Stock' },
-+  { value: 'pending_review', label: 'Processing (AI)' },
-+  { value: 'awaiting_stock', label: 'Awaiting Stock (legacy)' },
-   { value: 'live', label: 'Live' },
-   { value: 'rejected', label: 'Rejected' },
- ];
-@@ -47,7 +46,7 @@ const TABS: { value: VendorProductApprovalStatus; label: string }[] = [
- export default function VendorSubmissionsPanel() {
-   const [products, setProducts] = useState<AdminVendorProductRow[]>([]);
-   const [loading, setLoading] = useState(true);
--  const [activeTab, setActiveTab] = useState<VendorProductApprovalStatus>('pending_review');
-+  const [activeTab, setActiveTab] = useState<VendorProductApprovalStatus>('live');
-   const [busyId, setBusyId] = useState<string | null>(null);
-   const [priceDraft, setPriceDraft] = useState<Record<string, string>>({});
-   const [reasonDraft, setReasonDraft] = useState<Record<string, string>>({});
-@@ -94,29 +93,6 @@ export default function VendorSubmissionsPanel() {
-     return c;
-   }, [products]);
- 
--  const handleApprove = async (p: AdminVendorProductRow) => {
--    const raw = priceDraft[p.id];
--    const final_price = raw !== undefined && raw !== '' ? Number(raw) : undefined;
--    if (raw !== undefined && raw !== '' && (!Number.isFinite(final_price) || (final_price as number) < 0)) {
--      toast.error('Enter a valid final price first');
--      return;
--    }
--    if (final_price === undefined && p.final_price == null) {
--      toast.error('Set a final price before approving');
--      return;
--    }
--    setBusyId(p.id);
--    try {
--      await approveAdminVendorProduct(p.id, final_price);
--      toast.success(`${p.name} approved — awaiting stock confirmation`);
--      await load();
--    } catch (err) {
--      toast.error(err instanceof Error ? err.message : 'Failed to approve product');
--    } finally {
--      setBusyId(null);
--    }
--  };
--
-   const handleReject = async (p: AdminVendorProductRow) => {
-     const reason = (reasonDraft[p.id] || '').trim();
-     if (!reason) {
-@@ -164,7 +140,7 @@ export default function VendorSubmissionsPanel() {
-           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">Admin</p>
-           <h1 className="mt-1 font-serif text-3xl font-bold text-primary sm:text-4xl">Vendor Submissions</h1>
-           <p className="mt-1 text-sm text-muted-foreground">
--            Products submitted by vendors — review, price, approve or reject before they go live.
-+            Products submitted by vendors — AI writes the full listing and publishes it live automatically, no manual approval needed. You can reject a submission any time if something's wrong.
-           </p>
-         </div>
-       </div>
-@@ -291,6 +267,12 @@ export default function VendorSubmissionsPanel() {
-                 </div>
- 
-                 {p.approval_status === 'pending_review' && (
-+                  <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-+                    AI is generating this listing now — it'll go live automatically within a minute or two, no action needed here. You can still reject it below if something's wrong.
-+                  </div>
-+                )}
-+
-+                {p.approval_status !== 'rejected' && (
-                   <div className="mt-3 space-y-2">
-                     <textarea
-                       placeholder="Rejection reason (required only if rejecting)"
-@@ -299,24 +281,14 @@ export default function VendorSubmissionsPanel() {
-                       value={reasonDraft[p.id] || ''}
-                       onChange={(e) => setReasonDraft((d) => ({ ...d, [p.id]: e.target.value }))}
-                     />
--                    <div className="flex gap-2">
--                      <Button
--                        size="sm"
--                        className="bg-primary"
--                        disabled={busyId === p.id}
--                        onClick={() => handleApprove(p)}
--                      >
--                        {busyId === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Approve'}
--                      </Button>
--                      <Button
--                        size="sm"
--                        variant="destructive"
--                        disabled={busyId === p.id}
--                        onClick={() => handleReject(p)}
--                      >
--                        Reject
--                      </Button>
--                    </div>
-+                    <Button
-+                      size="sm"
-+                      variant="destructive"
-+                      disabled={busyId === p.id}
-+                      onClick={() => handleReject(p)}
-+                    >
-+                      {busyId === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Reject'}
-+                    </Button>
-                   </div>
-                 )}
- 
-diff --git a/lib/cron-jobs.ts b/lib/cron-jobs.ts
-index 32efa18..95badbc 100644
---- a/lib/cron-jobs.ts
-+++ b/lib/cron-jobs.ts
-@@ -300,9 +300,42 @@ export async function runStuckVendorListingsJob() {
-     }
-   }
- 
--  return { checked: stuckProducts?.length ?? 0, published, errors };
-+  // 'awaiting_stock' was the old manual-review flow's holding status
-+  // (Admin > Vendor Submissions > "Approve"). That manual gate has been
-+  // removed — nothing sets this status anymore — but nothing ever moved
-+  // 'awaiting_stock' rows to 'live' either, so any product an admin had
-+  // previously approved under the old flow was stuck there permanently.
-+  // Publish those immediately (no time threshold needed; this status is
-+  // fully retired going forward, so anything sitting here is legacy).
-+  const { data: awaitingStockProducts, error: awaitingErr } = await supabase
-+    .from('products')
-+    .select('id, name, vendor_id')
-+    .eq('approval_status', 'awaiting_stock');
-+
-+  if (awaitingErr) throw awaitingErr;
-+
-+  let publishedFromAwaitingStock = 0;
-+  for (const product of awaitingStockProducts ?? []) {
-+    try {
-+      const { error: updateError } = await supabase
-+        .from('products')
-+        .update({ approval_status: 'live' })
-+        .eq('id', product.id);
-+      if (updateError) throw updateError;
-+      publishedFromAwaitingStock++;
-+    } catch (itemErr: any) {
-+      errors.push(`product ${product.id} (awaiting_stock): ${itemErr?.message || itemErr}`);
-+    }
-+  }
-+
-+  return {
-+    checked: (stuckProducts?.length ?? 0) + (awaitingStockProducts?.length ?? 0),
-+    published: published + publishedFromAwaitingStock,
-+    errors,
-+  };
+ export async function fetchShippingSettings(): Promise<ShippingSettings> {
+-  const supabase = getSupabaseBrowser();
++  const supabase = getServerSupabase();
+   const { data, error } = await supabase
+     .from('settings')
+     .select('value')
+@@ -149,7 +149,7 @@ export async function fetchShippingSettings(): Promise<ShippingSettings> {
  }
  
-+
- // ----------------------------- Vendor settlement (weekly) -----------------------------
- export async function runVendorSettlementJob() {
-   const supabase = getSupabaseAdmin();
-diff --git a/lib/vendor-ai-listing.ts b/lib/vendor-ai-listing.ts
-index eec84d5..3f96cd1 100644
---- a/lib/vendor-ai-listing.ts
-+++ b/lib/vendor-ai-listing.ts
-@@ -123,14 +123,21 @@ export async function generateVendorListing(input: VendorAIInput): Promise<Vendo
-       ]
-     : promptText;
- 
--  // NOTE: keep this well under the hosting platform's function timeout.
--  // Netlify's default function timeout is only 10s, so 55s was causing
--  // the whole function (and this fetch) to get killed mid-flight, which
--  // left the product stuck in pending_review forever. 8s gives the NIM
--  // call a real chance while still leaving headroom for the rest of the
--  // route (DB update, email) to run within a 10s budget.
-+  // The calling route (/api/vendor/ai-process/[id]) declares
-+  // `export const maxDuration = 60`, and this app is hosted on Vercel
-+  // (not Netlify — an earlier version of this comment assumed Netlify's
-+  // 10s hard limit, which doesn't apply here and was never correct for
-+  // this deployment). The NVIDIA vision-language model routinely takes
-+  // 20-55s to respond on the free tier — see app/api/admin/generate-listing/
-+  // route.ts, which already uses a 55s timeout for this exact model/call
-+  // and works reliably. An 8s timeout was aborting almost every request,
-+  // which is why vendor products were going live with empty AI fields
-+  // (name/fabric/category from the vendor's own submission, but no
-+  // description/origin/occasion/highlights — those only ever come from
-+  // this call). 50s leaves ~10s of headroom within the 60s function
-+  // budget for the DB update + vendor email that follow.
-   const controller = new AbortController();
--  const timeout = setTimeout(() => controller.abort(), 8_000);
-+  const timeout = setTimeout(() => controller.abort(), 50_000);
- 
-   let res: Response;
-   try {
-diff --git a/lib/vendor-api.ts b/lib/vendor-api.ts
-index 606180b..1b4ea85 100644
---- a/lib/vendor-api.ts
-+++ b/lib/vendor-api.ts
-@@ -323,25 +323,6 @@ export async function updateAdminVendorProductPrice(
-   return body.product as AdminVendorProductRow;
- }
- 
--/** Approves a submission -> approval_status = 'awaiting_stock'. Pass
-- *  final_price to save any last edit and approve in the same call. */
--export async function approveAdminVendorProduct(
--  id: string,
--  final_price?: number
--): Promise<AdminVendorProductRow> {
--  const res = await fetch('/api/admin/vendor-products', {
--    method: 'PUT',
--    headers: { 'Content-Type': 'application/json' },
--    body: JSON.stringify({ id, action: 'approve', final_price }),
--  });
--  if (!res.ok) {
--    const body = await res.json().catch(() => ({}));
--    throw new Error(body.error || 'Failed to approve product');
--  }
--  const body = await res.json();
--  return body.product as AdminVendorProductRow;
--}
--
- /** Rejects a submission. reason is mandatory. */
- export async function rejectAdminVendorProduct(
-   id: string,
+ export async function saveShippingSettings(settings: ShippingSettings): Promise<void> {
+-  const supabase = getSupabaseBrowser();
++  const supabase = getServerSupabase();
+   const { error } = await supabase
+     .from('settings')
+     .upsert({ key: 'shipping', value: settings }, { onConflict: 'key' });

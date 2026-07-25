@@ -255,15 +255,17 @@ function LegalPagesTab() {
       {(activeSlug === 'shipping-policy' || activeSlug === 'refund-policy') && (
         <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs">
           <p className="font-medium text-foreground">
-            Keep this in sync with Admin &gt; Marketing &gt; Shipping &amp; Returns Timing
+            Keep this in sync with Admin &gt; Marketing &gt; Shipping &amp; Returns Timing and
+            Admin &gt; Settings &gt; GST &amp; Shipping
           </p>
           <p className="mt-1 text-muted-foreground">
             Use these tokens anywhere in the text below and they'll always show the live numbers
-            from the Shipping &amp; Returns Timing tab, instead of numbers you'd otherwise have to
-            update by hand every time they change:{' '}
+            from those settings, instead of numbers you'd otherwise have to update by hand every
+            time they change:{' '}
             <code>{'{{dispatch_days}}'}</code>, <code>{'{{metro_days}}'}</code>,{' '}
             <code>{'{{other_days}}'}</code>, <code>{'{{remote_days}}'}</code>,{' '}
-            <code>{'{{return_days}}'}</code>, <code>{'{{cancellation_hours}}'}</code>.
+            <code>{'{{return_days}}'}</code>, <code>{'{{cancellation_hours}}'}</code>,{' '}
+            <code>{'{{shipping_fee}}'}</code>, <code>{'{{free_shipping_threshold}}'}</code>.
           </p>
           <button
             type="button"

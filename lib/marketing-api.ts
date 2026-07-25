@@ -1,4 +1,5 @@
 import { getServerSupabase } from './supabase-server';
+import { fetchShippingSettings, type ShippingSettings } from './pincode-api';
 
 // NOTE: this file is imported from BOTH client components (admin panels,
 // WhatsApp/trust-badge widgets, live chat) and server-only code (the
@@ -120,17 +121,34 @@ export function shippingReturnsSummary(f: FulfillmentSettings, freeShippingThres
 
 // Tokens an admin can drop anywhere inside a Legal Page's text so that
 // page always reflects the current numbers from Admin > Marketing >
-// Shipping & Returns Timing, instead of typing numbers in as plain text
-// that silently go stale the next time those settings change.
-export function applyFulfillmentTokens(text: string, f: FulfillmentSettings): string {
+// Shipping & Returns Timing (plus the shipping fee / free-shipping
+// threshold from Admin > Settings > GST & Shipping), instead of typing
+// numbers in as plain text that silently go stale the next time those
+// settings change. The `shipping` param is optional so existing callers
+// that only have FulfillmentSettings keep working unchanged; without it,
+// {{shipping_fee}}/{{free_shipping_threshold}} are simply left as-is.
+export function applyFulfillmentTokens(
+  text: string,
+  f: FulfillmentSettings,
+  shipping?: Pick<ShippingSettings, 'flat_rate' | 'free_shipping_threshold'>,
+): string {
   if (!text) return text;
-  return text
+  let result = text
     .replace(/\{\{\s*dispatch_days\s*\}\}/g, dayRange(f.dispatch_days_min, f.dispatch_days_max))
     .replace(/\{\{\s*metro_days\s*\}\}/g, dayRange(f.delivery_metro_min, f.delivery_metro_max))
     .replace(/\{\{\s*other_days\s*\}\}/g, dayRange(f.delivery_other_min, f.delivery_other_max))
     .replace(/\{\{\s*remote_days\s*\}\}/g, dayRange(f.delivery_remote_min, f.delivery_remote_max))
     .replace(/\{\{\s*return_days\s*\}\}/g, String(f.return_window_days))
     .replace(/\{\{\s*cancellation_hours\s*\}\}/g, String(f.cancellation_window_hours));
+  if (shipping) {
+    result = result
+      .replace(/\{\{\s*shipping_fee\s*\}\}/g, `Rs ${shipping.flat_rate.toLocaleString('en-IN')}`)
+      .replace(
+        /\{\{\s*free_shipping_threshold\s*\}\}/g,
+        `Rs ${shipping.free_shipping_threshold.toLocaleString('en-IN')}`,
+      );
+  }
+  return result;
 }
 
 // Ready-to-paste templates — the admin panel's "Insert template" button on
@@ -148,7 +166,7 @@ Remote/rural areas: may take up to {{remote_days}} business days
 These are estimated timelines and may vary depending on courier partner delays, weather conditions, or other unforeseen circumstances.
 
 Shipping Charges
-Free shipping is available on eligible orders as shown at checkout. A flat shipping charge applies below that threshold.
+Free shipping on all orders above {{free_shipping_threshold}}. A flat shipping charge of {{shipping_fee}} applies on orders below that amount.
 
 Order Tracking
 Once your order is dispatched, you will receive a tracking link via email/WhatsApp/SMS to track your shipment in real time.
@@ -238,12 +256,16 @@ export async function saveLegalPages(pages: LegalPages) {
 // editor — it needs the raw, unresolved text so saving it back doesn't
 // bake today's numbers in and destroy the tokens.
 export async function fetchLegalPagesResolved(): Promise<LegalPages> {
-  const [pages, fulfillment] = await Promise.all([fetchLegalPages(), fetchFulfillmentSettings()]);
+  const [pages, fulfillment, shipping] = await Promise.all([
+    fetchLegalPages(),
+    fetchFulfillmentSettings(),
+    fetchShippingSettings(),
+  ]);
   return {
-    'privacy-policy': applyFulfillmentTokens(pages['privacy-policy'], fulfillment),
-    'terms-conditions': applyFulfillmentTokens(pages['terms-conditions'], fulfillment),
-    'shipping-policy': applyFulfillmentTokens(pages['shipping-policy'], fulfillment),
-    'refund-policy': applyFulfillmentTokens(pages['refund-policy'], fulfillment),
+    'privacy-policy': applyFulfillmentTokens(pages['privacy-policy'], fulfillment, shipping),
+    'terms-conditions': applyFulfillmentTokens(pages['terms-conditions'], fulfillment, shipping),
+    'shipping-policy': applyFulfillmentTokens(pages['shipping-policy'], fulfillment, shipping),
+    'refund-policy': applyFulfillmentTokens(pages['refund-policy'], fulfillment, shipping),
   };
 }
 
