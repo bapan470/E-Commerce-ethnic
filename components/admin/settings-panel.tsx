@@ -595,6 +595,46 @@ export default function SettingsPanel() {
               </p>
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-1.5">
+              <Label htmlFor="cod-percent">Approx. COD orders (%)</Label>
+              <Input
+                id="cod-percent"
+                type="number"
+                min={0}
+                max={100}
+                step="1"
+                value={checkoutForm.cod_order_percent}
+                onChange={(e) =>
+                  setCheckoutForm(
+                    (f) => f && { ...f, cod_order_percent: Number(e.target.value) }
+                  )
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Rest is assumed prepaid. Used for the Safe Profit estimate on products.
+              </p>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="return-rate">Approx. return / RTO rate (%)</Label>
+              <Input
+                id="return-rate"
+                type="number"
+                min={0}
+                max={100}
+                step="1"
+                value={checkoutForm.return_rate_percent}
+                onChange={(e) =>
+                  setCheckoutForm(
+                    (f) => f && { ...f, return_rate_percent: Number(e.target.value) }
+                  )
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Returned orders lose both-way shipping with no revenue — factored into Safe Profit.
+              </p>
+            </div>
+          </div>
           <p className="text-xs text-muted-foreground">
             The gateway fee and other charges above only power the estimated settlement preview
             on the Add/Edit Product form — they don't change what the customer pays.

@@ -296,25 +296,53 @@ const fromProduct = (p: Product): FormState => ({
 // the Add/Edit Product form — mirrors the Meesho-style settlement card.
 // Purely an estimate for the seller's own planning; it never touches what
 // the customer is charged (that's still just `price` from the form).
-function SettlementPreview({ price, settings }: { price: number; settings: ShippingSettings }) {
-  const gatewayFee = Math.round((price * settings.payment_gateway_fee_percent) / 100 * 100) / 100;
+function SettlementPreview({
+  price,
+  costPrice,
+  settings,
+}: {
+  price: number;
+  costPrice: number | null;
+  settings: ShippingSettings;
+}) {
+  const prepaidShare = (100 - settings.cod_order_percent) / 100;
+  const returnRate = settings.return_rate_percent / 100;
   const logisticsFee = settings.flat_rate;
   const otherCharges = settings.other_charges;
-  const totalDeductions = gatewayFee + logisticsFee + otherCharges;
-  const netSettlement = Math.round((price - totalDeductions) * 100) / 100;
+
+  // Gateway fee only applies to the prepaid share of orders (COD has none),
+  // so blend it by the COD/prepaid mix from Settings.
+  const fullGatewayFee = Math.round((price * settings.payment_gateway_fee_percent) / 100 * 100) / 100;
+  const blendedGatewayFee = Math.round(fullGatewayFee * prepaidShare * 100) / 100;
+
+  // What a *successful* order settles to, on average across COD + prepaid.
+  const successfulSettlement =
+    Math.round((price - blendedGatewayFee - logisticsFee - otherCharges) * 100) / 100;
+
+  // A returned/RTO order earns nothing but still costs both-way shipping.
+  // Spread that loss across the successful orders that actually pay, so
+  // "Safe Profit" reflects what you keep per successful sale once returns
+  // are accounted for — not just the best-case number above.
+  const returnLossPerAttempt = returnRate * 2 * logisticsFee;
+  const expectedPerAttempt = (1 - returnRate) * successfulSettlement - returnLossPerAttempt;
+  const safeSettlement =
+    returnRate < 1 ? Math.round((expectedPerAttempt / (1 - returnRate)) * 100) / 100 : 0;
+  const safeProfit = costPrice !== null ? Math.round((safeSettlement - costPrice) * 100) / 100 : null;
 
   return (
-    <div className="rounded-lg border border-border/60 bg-muted/30 p-4 text-sm">
+    <div className="rounded-lg border border-border/60 bg-card p-4 text-sm">
       <div className="mb-2 flex items-center justify-between">
-        <span className="font-medium">Estimated Settlement</span>
+        <span className="font-medium">Estimated Settlement (best case)</span>
         <span className="font-serif text-lg font-semibold text-primary">
-          {formatINR(Math.max(netSettlement, 0))}
+          {formatINR(Math.max(successfulSettlement, 0))}
         </span>
       </div>
       <div className="space-y-1 text-xs text-muted-foreground">
         <div className="flex items-center justify-between">
-          <span>Payment gateway fee ({settings.payment_gateway_fee_percent}%)</span>
-          <span>-{formatINR(gatewayFee)}</span>
+          <span>
+            Payment gateway fee (blended, {settings.cod_order_percent}% COD / {Math.round(prepaidShare * 100)}% prepaid)
+          </span>
+          <span>-{formatINR(blendedGatewayFee)}</span>
         </div>
         <div className="flex items-center justify-between">
           <span>Shipping / logistics fee</span>
@@ -331,14 +359,40 @@ function SettlementPreview({ price, settings }: { price: number; settings: Shipp
           <span>{formatINR(price)}</span>
         </div>
       </div>
-      {netSettlement < 0 && (
+
+      <div className="mt-3 border-t border-dashed border-border/60 pt-3">
+        <div className="mb-1 flex items-center justify-between">
+          <span className="text-xs font-medium">
+            Safe Profit (after ~{settings.return_rate_percent}% return/RTO risk)
+          </span>
+          <span className="font-serif text-base font-semibold">
+            {formatINR(Math.max(safeSettlement, 0))}
+          </span>
+        </div>
+        {safeProfit !== null && (
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Profit after your cost price ({formatINR(costPrice!)})</span>
+            <span className={safeProfit < 0 ? 'font-medium text-destructive' : 'font-medium text-green-700'}>
+              {safeProfit >= 0 ? '+' : ''}
+              {formatINR(safeProfit)}
+            </span>
+          </div>
+        )}
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Spreads the both-way shipping loss on returned orders across your successful sales — a
+          more realistic number to price against than the best-case settlement above.
+        </p>
+      </div>
+
+      {(safeProfit !== null && safeProfit < 0) && (
         <p className="mt-2 text-xs font-medium text-destructive">
-          This price is below your fees + charges — you'd lose money on this listing.
+          At this price, returns/RTO are likely to wipe out your margin — consider raising the
+          price or improving return rate.
         </p>
       )}
       <p className="mt-2 text-[11px] text-muted-foreground">
         Estimate only, based on Admin → Settings → GST &amp; Shipping. Actual fees vary by real
-        order zone and payment method.
+        order zone, payment method, and return outcome.
       </p>
     </div>
   );
@@ -359,6 +413,11 @@ export default function ProductsPanel() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
+  // Cost price is only used to compute the Safe Profit preview below the
+  // Price field — deliberately NOT saved to the products table (margins
+  // are sensitive, and that table is read via the customer-safe product
+  // query elsewhere in the app), so it resets each time the dialog opens.
+  const [costPrice, setCostPrice] = useState('');
   // Settlement preview (Price field) — pulled from Admin > Settings >
   // GST & Shipping, so the fee % and other charges stay editable in one
   // place instead of being hardcoded here.
@@ -647,6 +706,7 @@ export default function ProductsPanel() {
   const openNew = () => {
     setEditing(null);
     setForm(emptyForm());
+    setCostPrice('');
     setAiHint('');
     setOpen(true);
   };
@@ -654,6 +714,7 @@ export default function ProductsPanel() {
   const openEdit = (p: Product) => {
     setEditing(p);
     setForm(fromProduct(p));
+    setCostPrice('');
     setAiHint('');
     setOpen(true);
   };
@@ -1478,7 +1539,27 @@ export default function ProductsPanel() {
             </div>
 
             {Number(form.price) > 0 && (
-              <SettlementPreview price={Number(form.price)} settings={shippingSettings} />
+              <div className="grid gap-3 rounded-lg border border-border/60 bg-muted/30 p-4">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="cost-price" className="text-xs">
+                    Your cost price (₹, optional — not saved, just for this estimate)
+                  </Label>
+                  <Input
+                    id="cost-price"
+                    type="number"
+                    min={0}
+                    className="bg-background"
+                    value={costPrice}
+                    onChange={(e) => setCostPrice(e.target.value)}
+                    placeholder="e.g. 250"
+                  />
+                </div>
+                <SettlementPreview
+                  price={Number(form.price)}
+                  costPrice={Number(costPrice) || null}
+                  settings={shippingSettings}
+                />
+              </div>
             )}
 
             <div className="grid gap-1.5">

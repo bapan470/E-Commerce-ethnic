@@ -112,6 +112,10 @@ export interface ShippingSettings {
    * logistics cost not already covered by the shipping fee above).
    */
   other_charges: number;
+  /** Roughly what % of your orders are COD vs prepaid (0-100). Used only for the safe-profit estimate. */
+  cod_order_percent: number;
+  /** Roughly what % of orders come back as a return/RTO (0-100). Used only for the safe-profit estimate. */
+  return_rate_percent: number;
 }
 
 export const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
@@ -120,6 +124,8 @@ export const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
   gst_rate_percent: 5,
   payment_gateway_fee_percent: 2.36,
   other_charges: 0,
+  cod_order_percent: 60,
+  return_rate_percent: 15,
 };
 
 export async function fetchShippingSettings(): Promise<ShippingSettings> {
