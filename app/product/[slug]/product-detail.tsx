@@ -538,6 +538,7 @@ export default function ProductDetail() {
           onReviewsClick={goToReviews}
           appliedCoupon={appliedCoupon}
           couponDiscount={couponDiscount}
+          fulfillment={fulfillment}
           onCouponApply={(c, d) => {
             setAppliedCoupon(c);
             setCouponDiscount(d);
@@ -628,6 +629,7 @@ function ProductInfo({
   couponDiscount,
   onCouponApply,
   onCouponRemove,
+  fulfillment,
 }: {
   product: Product;
   displayRating: number;
@@ -644,6 +646,7 @@ function ProductInfo({
   couponDiscount: number;
   onCouponApply: (coupon: Coupon, discount: number) => void;
   onCouponRemove: () => void;
+  fulfillment: FulfillmentSettings;
 }) {
   const discount = discountPct(product.price, product.mrp);
 

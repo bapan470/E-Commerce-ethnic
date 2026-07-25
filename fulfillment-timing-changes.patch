@@ -155,7 +155,7 @@ index a0372ca..a74f417 100644
    return (
      <div className="container-boutique max-w-3xl py-10 sm:py-14">
 diff --git a/app/product/[slug]/product-detail.tsx b/app/product/[slug]/product-detail.tsx
-index 596fe73..b559404 100644
+index 596fe73..c33a612 100644
 --- a/app/product/[slug]/product-detail.tsx
 +++ b/app/product/[slug]/product-detail.tsx
 @@ -15,6 +15,14 @@ import { fetchProductBySlug } from '@/lib/products-api';
@@ -203,7 +203,15 @@ index 596fe73..b559404 100644
    useEffect(() => {
      if (!baseProduct?.id) {
        setLiveSummary(null);
-@@ -557,7 +581,7 @@ export default function ProductDetail() {
+@@ -514,6 +538,7 @@ export default function ProductDetail() {
+           onReviewsClick={goToReviews}
+           appliedCoupon={appliedCoupon}
+           couponDiscount={couponDiscount}
++          fulfillment={fulfillment}
+           onCouponApply={(c, d) => {
+             setAppliedCoupon(c);
+             setCouponDiscount(d);
+@@ -557,7 +582,7 @@ export default function ProductDetail() {
              </ul>
            </TabsContent>
            <TabsContent value="shipping" className="max-w-3xl text-sm leading-relaxed text-foreground/80">
@@ -212,15 +220,26 @@ index 596fe73..b559404 100644
            </TabsContent>
            <TabsContent value="reviews">
              <ReviewsSection productId={baseProduct.id} productSlug={baseProduct.slug} />
-@@ -622,7 +646,6 @@ function ProductInfo({
+@@ -604,6 +629,7 @@ function ProductInfo({
+   couponDiscount,
+   onCouponApply,
+   onCouponRemove,
++  fulfillment,
+ }: {
+   product: Product;
+   displayRating: number;
+@@ -620,9 +646,9 @@ function ProductInfo({
+   couponDiscount: number;
+   onCouponApply: (coupon: Coupon, discount: number) => void;
    onCouponRemove: () => void;
++  fulfillment: FulfillmentSettings;
  }) {
    const discount = discountPct(product.price, product.mrp);
 -  const [descExpanded, setDescExpanded] = useState(false);
  
    return (
      <div className="flex flex-col gap-3">
-@@ -714,23 +737,6 @@ function ProductInfo({
+@@ -714,23 +740,6 @@ function ProductInfo({
  
        <LowStockBadge stockQuantity={selectedSizeStock} />
  
@@ -244,7 +263,7 @@ index 596fe73..b559404 100644
        <ProductHighlights product={product} />
  
        {product.sizes.length > 1 && (
-@@ -792,7 +798,7 @@ function ProductInfo({
+@@ -792,7 +801,7 @@ function ProductInfo({
          {[
            { icon: Truck, label: 'Free Shipping' },
            { icon: ShieldCheck, label: 'Authentic' },
