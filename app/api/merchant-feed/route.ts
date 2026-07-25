@@ -3,6 +3,7 @@ import { getServerSupabase } from '@/lib/supabase-server';
 import { fetchProductsServer } from '@/lib/products-api-server';
 import { fetchFulfillmentSettings } from '@/lib/marketing-api';
 import { fetchShippingSettings } from '@/lib/pincode-api';
+import type { Product } from '@/lib/types';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
@@ -15,6 +16,22 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms
 // very next fetch instead of only after the next deployment.
 export const dynamic = 'force-dynamic';
 
+interface FeedVariantSize {
+  size: string;
+  stock_quantity: number;
+  price_override: number | null;
+}
+
+interface FeedVariant {
+  id: string;
+  product_id: string;
+  color: string;
+  slug: string;
+  images: string[] | null;
+  price_override: number | null;
+  product_variant_sizes: FeedVariantSize[] | null;
+}
+
 function escapeXml(input: string): string {
   return input
     .replace(/&/g, '&amp;')
@@ -24,9 +41,36 @@ function escapeXml(input: string): string {
     .replace(/'/g, '&apos;');
 }
 
+/** Every color-variant row for the given products, each carrying its own
+ *  per-size stock so we know whether *that specific color* is in stock --
+ *  not just whether the parent product has stock in some other color. */
+async function fetchVariantsForFeed(productIds: string[]): Promise<Map<string, FeedVariant[]>> {
+  const byProduct = new Map<string, FeedVariant[]>();
+  if (productIds.length === 0) return byProduct;
+
+  const supabase = getServerSupabase();
+  const { data, error } = await supabase
+    .from('product_variants')
+    .select('id, product_id, color, slug, images, price_override, product_variant_sizes(size, stock_quantity, price_override)')
+    .in('product_id', productIds);
+  if (error) throw error;
+
+  for (const row of (data ?? []) as unknown as FeedVariant[]) {
+    const list = byProduct.get(row.product_id) ?? [];
+    list.push(row);
+    byProduct.set(row.product_id, list);
+  }
+  return byProduct;
+}
+
 // Google Merchant Center / Meta Catalog compatible RSS 2.0 product feed.
 // Add this URL as a "Scheduled fetch" in Google Merchant Center:
 //   https://<your-domain>/api/merchant-feed
+//
+// One <item> per COLOR VARIANT (not one item per product): a product with
+// 3 colors becomes 3 separate Shopping listings, each with its own link,
+// images, and stock -- linked together via item_group_id so Google shows
+// them as swatches/variants of the same product instead of duplicates.
 export async function GET() {
   const supabase = getServerSupabase();
   const { data: settingsRow } = await supabase
@@ -42,6 +86,7 @@ export async function GET() {
 
   const brand = marketing.merchant_feed_brand || 'AruhiHandlooms';
   const products = await fetchProductsServer();
+  const variantsByProduct = await fetchVariantsForFeed(products.map((p) => p.id));
 
   // Same numbers as Admin > Marketing > Shipping & Returns Timing / GST &
   // Shipping — declaring them here too means the feed can never say
@@ -60,33 +105,41 @@ export async function GET() {
         <g:max_transit_time>${fulfillment.delivery_remote_max}</g:max_transit_time>
       </g:shipping>`;
 
-  const items = products
-    .map((p) => {
-      const link = `${SITE_URL}/product/${p.slug}`;
-      const image = p.images?.[0] || '';
-      const extraImages = (p.images || [])
-        .slice(1, 11)
-        .map((img) => `<g:additional_image_link>${escapeXml(img)}</g:additional_image_link>`)
-        .join('');
-      const availability = p.inStock && p.stock_quantity > 0 ? 'in stock' : 'out of stock';
-      const price = `${p.price.toFixed(2)} INR`;
-      const salePrice = p.mrp && p.mrp > p.price ? `<g:sale_price>${price}</g:sale_price>` : '';
-      const listedPrice = p.mrp && p.mrp > p.price ? `${p.mrp.toFixed(2)} INR` : price;
+  function renderItem(opts: {
+    id: string;
+    itemGroupId: string;
+    title: string;
+    link: string;
+    images: string[];
+    inStock: boolean;
+    price: number;
+    mrp: number | undefined | null;
+    color: string;
+    size: string;
+    product: Product;
+  }) {
+    const { id, itemGroupId, title, link, images, inStock, price, mrp, color, size, product } = opts;
+    const image = images[0] || '';
+    const extraImages = images
+      .slice(1, 11)
+      .map((img) => `<g:additional_image_link>${escapeXml(img)}</g:additional_image_link>`)
+      .join('');
+    const availability = inStock ? 'in stock' : 'out of stock';
+    const priceText = `${price.toFixed(2)} INR`;
+    const salePrice = mrp && mrp > price ? `<g:sale_price>${priceText}</g:sale_price>` : '';
+    const listedPrice = mrp && mrp > price ? `${mrp.toFixed(2)} INR` : priceText;
 
-      // Required for every Apparel & Accessories product on both free
-      // listings and Shopping ads — Google disapproves items missing these.
-      const color = (p.colors || []).slice(0, 3).join('/') || 'Multicolor';
-      const size = (p.sizes || [])[0] || 'Free Size';
-      const gender = p.gender || 'female';
-      const ageGroup = p.age_group || 'adult';
-      const material = p.material ? `<g:material>${escapeXml(p.material)}</g:material>` : '';
-      const pattern = p.pattern ? `<g:pattern>${escapeXml(p.pattern)}</g:pattern>` : '';
+    const gender = product.gender || 'female';
+    const ageGroup = product.age_group || 'adult';
+    const material = product.material ? `<g:material>${escapeXml(product.material)}</g:material>` : '';
+    const pattern = product.pattern ? `<g:pattern>${escapeXml(product.pattern)}</g:pattern>` : '';
 
-      return `
+    return `
     <item>
-      <g:id>${escapeXml(p.id)}</g:id>
-      <title>${escapeXml(p.name)}</title>
-      <description>${escapeXml((p.description || p.name).slice(0, 5000))}</description>
+      <g:id>${escapeXml(id)}</g:id>
+      <g:item_group_id>${escapeXml(itemGroupId)}</g:item_group_id>
+      <title>${escapeXml(title)}</title>
+      <description>${escapeXml((product.description || product.name).slice(0, 5000))}</description>
       <link>${escapeXml(link)}</link>
       <g:image_link>${escapeXml(image)}</g:image_link>
       ${extraImages}
@@ -95,7 +148,7 @@ export async function GET() {
       ${salePrice}
       <g:brand>${escapeXml(brand)}</g:brand>
       <g:condition>new</g:condition>
-      <g:product_type>${escapeXml(p.category)}</g:product_type>
+      <g:product_type>${escapeXml(product.category)}</g:product_type>
       <g:google_product_category>Apparel &amp; Accessories &gt; Clothing</g:google_product_category>
       <g:identifier_exists>false</g:identifier_exists>
       <g:color>${escapeXml(color)}</g:color>
@@ -106,6 +159,56 @@ export async function GET() {
       ${pattern}
       ${shippingBlock}
     </item>`;
+  }
+
+  const items = products
+    .map((p) => {
+      const variants = variantsByProduct.get(p.id) ?? [];
+
+      // No colour variants recorded for this product yet -- fall back to
+      // the single-item behaviour so nothing disappears from the feed.
+      if (variants.length === 0) {
+        return renderItem({
+          id: p.id,
+          itemGroupId: p.id,
+          title: p.name,
+          link: `${SITE_URL}/product/${p.slug}`,
+          images: p.images || [],
+          inStock: p.inStock && p.stock_quantity > 0,
+          price: p.price,
+          mrp: p.mrp,
+          color: (p.colors || []).slice(0, 3).join('/') || 'Multicolor',
+          size: (p.sizes || [])[0] || 'Free Size',
+          product: p,
+        });
+      }
+
+      // One item per colour variant, all sharing item_group_id = product id
+      // so Google groups them as swatches of the same product.
+      return variants
+        .map((v) => {
+          const sizes = v.product_variant_sizes ?? [];
+          const totalStock = sizes.reduce((sum, s) => sum + (s.stock_quantity || 0), 0);
+          const inStock = sizes.length === 0 ? p.inStock && p.stock_quantity > 0 : totalStock > 0;
+          const sizeText = sizes.length > 0 ? sizes.map((s) => s.size).join('/') : (p.sizes || [])[0] || 'Free Size';
+          const price = v.price_override ?? p.price;
+          const images = v.images && v.images.length > 0 ? v.images : p.images || [];
+
+          return renderItem({
+            id: `${p.id}-${v.id}`,
+            itemGroupId: p.id,
+            title: `${p.name} - ${v.color}`,
+            link: `${SITE_URL}/product/${v.slug}`,
+            images,
+            inStock,
+            price,
+            mrp: p.mrp,
+            color: v.color,
+            size: sizeText,
+            product: p,
+          });
+        })
+        .join('');
     })
     .join('');
 
