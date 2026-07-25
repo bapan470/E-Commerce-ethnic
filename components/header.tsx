@@ -122,7 +122,12 @@ export default function Header() {
     // so this recovery logic must not treat that as a "left checkout" event
     // and bounce them to wherever they were before checkout instead.
     const nowOnAuthDetour = pathname === '/login' || pathname === '/signup';
-    if (wasOnCheckout && !nowOnCheckout && !nowOnAuthDetour) {
+    // A successful order sends the shopper from /checkout to
+    // /order-confirmation/[id] — that's a real, intentional destination,
+    // not an accidental "left checkout" navigation, so it must never be
+    // treated as one or the Thank You page gets bounced back instantly.
+    const nowOnOrderConfirmation = pathname.startsWith('/order-confirmation');
+    if (wasOnCheckout && !nowOnCheckout && !nowOnAuthDetour && !nowOnOrderConfirmation) {
       const returnPath = recoverFromCheckout(getCheckoutReturnPath());
       if (returnPath && returnPath !== pathname + window.location.search) {
         router.replace(returnPath);
