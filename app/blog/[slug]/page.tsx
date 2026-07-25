@@ -73,11 +73,11 @@ export async function generateStaticParams() {
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const post = await fetchPublishedBlogPostBySlugServer(params.slug);
   if (!post) {
-    return { title: 'Post not found | Aruhi Handlooms', robots: { index: false, follow: true } };
+    return { title: 'Post not found | AruhiHandlooms', robots: { index: false, follow: true } };
   }
 
   const url = `${SITE_URL}/blog/${post.slug}`;
-  const title = `${post.title} | Aruhi Handlooms`;
+  const title = `${post.title} | AruhiHandlooms`;
 
   return {
     title,
@@ -88,7 +88,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
       title,
       description: post.excerpt,
       url,
-      siteName: 'Aruhi Handlooms',
+      siteName: 'AruhiHandlooms',
       type: 'article',
       images: [{ url: post.cover_image, width: 1200, height: 630, alt: post.title }],
       publishedTime: post.published_at,
@@ -153,8 +153,8 @@ export default async function BlogPostPage({ params }: Params) {
     image: post.cover_image,
     datePublished: post.published_at,
     dateModified: post.updated_at || post.published_at,
-    author: { '@type': 'Organization', name: 'Aruhi Handlooms' },
-    publisher: { '@type': 'Organization', name: 'Aruhi Handlooms' },
+    author: { '@type': 'Organization', name: 'AruhiHandlooms' },
+    publisher: { '@type': 'Organization', name: 'AruhiHandlooms' },
     mainEntityOfPage: url,
   };
 

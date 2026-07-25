@@ -37,7 +37,7 @@ export async function generateMetadata({
   const title = LEGAL_PAGE_TITLES[slug];
   return {
     title,
-    description: `${title} for Aruhi Handlooms — read our policy before you shop.`,
+    description: `${title} for AruhiHandlooms — read our policy before you shop.`,
     alternates: { canonical: `/legal/${slug}` },
     robots: { index: true, follow: true },
   };

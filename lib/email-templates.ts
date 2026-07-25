@@ -1,7 +1,7 @@
 import { formatINR } from './format';
 
 const BRAND_COLOR = '#7c3a1d';
-const SITE_NAME = 'Aruhi Handlooms';
+const SITE_NAME = 'AruhiHandlooms';
 
 function wrapper(bodyHtml: string) {
   return `

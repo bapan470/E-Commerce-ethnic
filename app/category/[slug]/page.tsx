@@ -17,7 +17,7 @@ type Params = { params: { slug: string } };
  */
 function fallbackIntro(name: string): string {
   return (
-    `Explore our handpicked ${name} collection at Aruhi Handlooms. Every piece is sourced ` +
+    `Explore our handpicked ${name} collection at AruhiHandlooms. Every piece is sourced ` +
     `directly from master weavers across India, blending traditional craftsmanship with ` +
     `designs made for everyday elegance and special occasions alike. Whether you're shopping ` +
     `for a wedding, festival, or gifting, our ${name} collection is curated for quality, ` +
@@ -32,14 +32,14 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 
   if (!category) {
     return {
-      title: 'Category not found | Aruhi Handlooms',
+      title: 'Category not found | AruhiHandlooms',
       robots: { index: false, follow: true },
     };
   }
 
   const description = (category.description || fallbackIntro(category.name)).slice(0, 160);
   const url = `${SITE_URL}/category/${category.slug}`;
-  const title = `${category.name} | Aruhi Handlooms`;
+  const title = `${category.name} | AruhiHandlooms`;
 
   return {
     title,
@@ -49,7 +49,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
       title,
       description,
       url,
-      siteName: 'Aruhi Handlooms',
+      siteName: 'AruhiHandlooms',
       type: 'website',
     },
     twitter: {

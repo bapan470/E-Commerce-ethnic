@@ -10,7 +10,7 @@ export interface StoreInfo {
 }
 
 const DEFAULT_STORE_INFO: StoreInfo = {
-  name: 'Aruhi Handlooms',
+  name: 'AruhiHandlooms',
   address: '',
   gstin: '',
   support_email: '',
@@ -170,7 +170,7 @@ const DEFAULT_EMAIL_SETTINGS: EmailSettings = {
   provider: '',
   api_key: '',
   sender_email: '',
-  sender_name: 'Aruhi Handlooms',
+  sender_name: 'AruhiHandlooms',
   zeptomail_region: 'in',
 };
 

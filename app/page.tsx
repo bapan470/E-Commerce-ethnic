@@ -16,7 +16,7 @@ interface HomeSeoData {
 // needed if the shop rebrands.
 async function getHomeSeoData(): Promise<HomeSeoData> {
   const fallback: HomeSeoData = {
-    name: 'Aruhi Handlooms',
+    name: 'AruhiHandlooms',
     description:
       'Handpicked sarees and ethnic wear from master weavers across India.',
     email: '',

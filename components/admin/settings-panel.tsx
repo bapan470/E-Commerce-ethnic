@@ -1006,7 +1006,7 @@ export default function SettingsPanel() {
                 id="email-sender-name"
                 value={emailForm.sender_name}
                 onChange={(e) => setEmailForm((f) => f && { ...f, sender_name: e.target.value })}
-                placeholder="Aruhi Handlooms"
+                placeholder="AruhiHandlooms"
               />
             </div>
             <div className="grid gap-1.5">

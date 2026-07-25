@@ -113,7 +113,7 @@ function SignupForm() {
             Create your account
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Join Aruhi Handlooms for faster checkout &amp; order tracking
+            Join AruhiHandlooms for faster checkout &amp; order tracking
           </p>
         </div>
 

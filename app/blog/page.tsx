@@ -16,16 +16,16 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms
 export const revalidate = 60;
 
 export const metadata: Metadata = {
-  title: 'Blog | Aruhi Handlooms',
+  title: 'Blog | AruhiHandlooms',
   description:
-    'Saree draping guides, wedding outfit advice, and fabric care tips from Aruhi Handlooms — everything you need to know about Indian ethnic wear.',
+    'Saree draping guides, wedding outfit advice, and fabric care tips from AruhiHandlooms — everything you need to know about Indian ethnic wear.',
   alternates: { canonical: `${SITE_URL}/blog` },
   openGraph: {
-    title: 'Blog | Aruhi Handlooms',
+    title: 'Blog | AruhiHandlooms',
     description:
-      'Saree draping guides, wedding outfit advice, and fabric care tips from Aruhi Handlooms.',
+      'Saree draping guides, wedding outfit advice, and fabric care tips from AruhiHandlooms.',
     url: `${SITE_URL}/blog`,
-    siteName: 'Aruhi Handlooms',
+    siteName: 'AruhiHandlooms',
     type: 'website',
   },
 };

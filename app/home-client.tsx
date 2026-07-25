@@ -182,7 +182,7 @@ export default function HomeClient() {
             <div className="animate-scale-in relative aspect-[4/5] w-full overflow-hidden rounded-2xl border border-secondary/30 shadow-2xl" style={{ animationDelay: '150ms' }}>
               <Image
                 src="https://images.pexels.com/photos/1043471/pexels-photo-1043471.jpeg?auto=compress&cs=tinysrgb&w=900&h=1125&fit=crop"
-                alt="Model wearing a handwoven embroidered Banarasi silk saree from Aruhi Handlooms"
+                alt="Model wearing a handwoven embroidered Banarasi silk saree from AruhiHandlooms"
                 fill
                 priority
                 sizes="(max-width: 768px) 0px, 50vw"
@@ -240,7 +240,7 @@ export default function HomeClient() {
                       {thumb ? (
                         <Image
                           src={thumb}
-                          alt={`${c.name} - handwoven Indian ethnic wear collection at Aruhi Handlooms`}
+                          alt={`${c.name} - handwoven Indian ethnic wear collection at AruhiHandlooms`}
                           fill
                           sizes="80px"
                           className="object-cover"
@@ -300,7 +300,7 @@ export default function HomeClient() {
                       {c.thumbnail ? (
                         <Image
                           src={c.thumbnail}
-                          alt={`${c.name} - curated collection at Aruhi Handlooms`}
+                          alt={`${c.name} - curated collection at AruhiHandlooms`}
                           fill
                           sizes="80px"
                           className="object-cover"

@@ -10,11 +10,11 @@ export const metadata: Metadata = {
     canonical: `${SITE_URL}/shop`,
   },
   openGraph: {
-    title: 'Shop All Sarees & Ethnic Wear | Aruhi Handlooms',
+    title: 'Shop All Sarees & Ethnic Wear | AruhiHandlooms',
     description:
       'Browse our full collection of handwoven silk sarees, cotton sarees, lehengas, anarkalis, kurtis and bridal wear.',
     url: `${SITE_URL}/shop`,
-    siteName: 'Aruhi Handlooms',
+    siteName: 'AruhiHandlooms',
     type: 'website',
   },
 };

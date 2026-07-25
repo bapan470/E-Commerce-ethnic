@@ -28,7 +28,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 
   if (!resolved) {
     return {
-      title: 'Product not found | Aruhi Handlooms',
+      title: 'Product not found | AruhiHandlooms',
       description: 'The product you are looking for does not exist.',
       robots: { index: false, follow: true },
     };
@@ -37,11 +37,11 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { product, variant } = resolved;
   const displayName = variant ? `${product.name} - ${variant.color}` : product.name;
 
-  const title = variant?.meta_title || `${displayName} | Aruhi Handlooms`;
+  const title = variant?.meta_title || `${displayName} | AruhiHandlooms`;
   const description =
     variant?.meta_description ||
     product.description ||
-    `Buy ${displayName} - ${product.fabric} from ${product.origin}. Handwoven ethnic wear from Aruhi Handlooms.`;
+    `Buy ${displayName} - ${product.fabric} from ${product.origin}. Handwoven ethnic wear from AruhiHandlooms.`;
   const url = `${SITE_URL}/product/${params.slug}`;
   const images = variant?.images.length ? variant.images : product.images;
   const image = images[0] || 'https://images.pexels.com/photos/1191349/pexels-photo-1191349.jpeg?auto=compress&cs=tinysrgb&w=1200&h=630&fit=crop';
@@ -56,7 +56,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
       title,
       description,
       url,
-      siteName: 'Aruhi Handlooms',
+      siteName: 'AruhiHandlooms',
       images: [
         {
           url: image,
@@ -108,7 +108,7 @@ export default async function ProductPage({ params }: Params) {
         sku: variant?.sku || product.sku || variant?.id || product.id,
         brand: {
           '@type': 'Brand',
-          name: 'Aruhi Handlooms',
+          name: 'AruhiHandlooms',
         },
         offers: {
           '@type': 'Offer',
@@ -121,7 +121,7 @@ export default async function ProductPage({ params }: Params) {
           itemCondition: 'https://schema.org/NewCondition',
           seller: {
             '@type': 'Organization',
-            name: 'Aruhi Handlooms',
+            name: 'AruhiHandlooms',
           },
         },
         aggregateRating:

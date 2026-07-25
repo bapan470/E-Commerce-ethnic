@@ -523,7 +523,7 @@ export default function LiveChatWidget() {
         >
           <div className="flex items-center justify-between bg-primary px-4 py-3 text-primary-foreground">
             <div>
-              <p className="font-serif text-sm font-semibold leading-tight">Aruhi Handlooms</p>
+              <p className="font-serif text-sm font-semibold leading-tight">AruhiHandlooms</p>
               <p className="text-xs opacity-80">Usually replies in a few minutes</p>
             </div>
             <button

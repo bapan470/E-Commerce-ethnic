@@ -40,7 +40,7 @@ export async function GET() {
     return new NextResponse('Merchant feed is disabled in Admin > Marketing.', { status: 404 });
   }
 
-  const brand = marketing.merchant_feed_brand || 'Aruhi Handlooms';
+  const brand = marketing.merchant_feed_brand || 'AruhiHandlooms';
   const products = await fetchProductsServer();
 
   // Same numbers as Admin > Marketing > Shipping & Returns Timing / GST &

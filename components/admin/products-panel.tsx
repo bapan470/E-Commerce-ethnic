@@ -1880,7 +1880,7 @@ export default function ProductsPanel() {
                     id="h-brand"
                     value={form.highlights.brand}
                     onChange={(e) => setForm((f) => ({ ...f, highlights: { ...f.highlights, brand: e.target.value } }))}
-                    placeholder="e.g. Aruhi Handlooms"
+                    placeholder="e.g. AruhiHandlooms"
                   />
                 </div>
                 <div className="grid gap-1.5">

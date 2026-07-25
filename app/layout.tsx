@@ -21,7 +21,7 @@ const playfair = Playfair_Display({
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
 const DEFAULT_SEO: SeoSettings = {
-  site_title: 'Aruhi Handlooms — Handwoven Indian Ethnic Wear & Sarees',
+  site_title: 'AruhiHandlooms — Handwoven Indian Ethnic Wear & Sarees',
   meta_description:
     'Discover handpicked sarees, lehengas and ethnic wear from master weavers across India. Timeless craftsmanship, modern convenience.',
   keywords:
@@ -81,7 +81,7 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase: new URL(SITE_URL),
     title: {
       default: seo.site_title,
-      template: '%s | Aruhi Handlooms',
+      template: '%s | AruhiHandlooms',
     },
     description: seo.meta_description,
     keywords,
@@ -91,7 +91,7 @@ export async function generateMetadata(): Promise<Metadata> {
     openGraph: {
       title: seo.site_title,
       description: seo.meta_description,
-      siteName: 'Aruhi Handlooms',
+      siteName: 'AruhiHandlooms',
       type: 'website',
       url: SITE_URL,
       images: seo.og_image ? [{ url: seo.og_image }] : undefined,

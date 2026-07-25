@@ -601,7 +601,7 @@ function SeoTab() {
           id="seo-title"
           value={seo.site_title}
           onChange={(e) => setSeo({ ...seo, site_title: e.target.value })}
-          placeholder="Aruhi Handlooms — Handwoven Indian Ethnic Wear & Sarees"
+          placeholder="AruhiHandlooms — Handwoven Indian Ethnic Wear & Sarees"
         />
         <p className="text-xs text-muted-foreground">
           Shown in Google search results and the browser tab on the homepage.

@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Contact Us',
-  description: 'Get in touch with Aruhi Handlooms — questions about orders, products, or anything else.',
+  description: 'Get in touch with AruhiHandlooms — questions about orders, products, or anything else.',
   alternates: { canonical: '/contact' },
 };
 

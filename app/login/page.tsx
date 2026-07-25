@@ -172,7 +172,7 @@ function LoginForm() {
             Login or Signup
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Login to your Aruhi Handlooms account
+            Login to your AruhiHandlooms account
           </p>
         </div>
 
@@ -315,7 +315,7 @@ function LoginForm() {
         </div>
 
         <p className="mt-5 text-center text-sm text-muted-foreground">
-          New to Aruhi Handlooms?{' '}
+          New to AruhiHandlooms?{' '}
           <Link href="/signup" className="font-medium text-primary hover:underline">
             Create an account
           </Link>
