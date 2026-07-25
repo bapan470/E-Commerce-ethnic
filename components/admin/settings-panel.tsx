@@ -639,6 +639,60 @@ export default function SettingsPanel() {
             The gateway fee and other charges above only power the estimated settlement preview
             on the Add/Edit Product form — they don't change what the customer pays.
           </p>
+          <div className="mt-2 border-t border-border/60 pt-4">
+            <p className="text-sm font-medium">Suggested pricing tiers</p>
+            <p className="text-xs text-muted-foreground">
+              Markup % over cost price, used to quick-fill the Price field on the Add/Edit Product
+              form once you enter a cost price.
+            </p>
+            <div className="mt-2 grid grid-cols-3 gap-4">
+              <div className="grid gap-1.5">
+                <Label htmlFor="entry-markup">Entry-level (%)</Label>
+                <Input
+                  id="entry-markup"
+                  type="number"
+                  min={0}
+                  step="1"
+                  value={checkoutForm.entry_markup_percent}
+                  onChange={(e) =>
+                    setCheckoutForm(
+                      (f) => f && { ...f, entry_markup_percent: Number(e.target.value) }
+                    )
+                  }
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="mid-markup">Mid-range (%)</Label>
+                <Input
+                  id="mid-markup"
+                  type="number"
+                  min={0}
+                  step="1"
+                  value={checkoutForm.mid_markup_percent}
+                  onChange={(e) =>
+                    setCheckoutForm(
+                      (f) => f && { ...f, mid_markup_percent: Number(e.target.value) }
+                    )
+                  }
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="premium-markup">Premium (%)</Label>
+                <Input
+                  id="premium-markup"
+                  type="number"
+                  min={0}
+                  step="1"
+                  value={checkoutForm.premium_markup_percent}
+                  onChange={(e) =>
+                    setCheckoutForm(
+                      (f) => f && { ...f, premium_markup_percent: Number(e.target.value) }
+                    )
+                  }
+                />
+              </div>
+            </div>
+          </div>
           <Button type="submit" disabled={savingCheckout} className="mt-2 w-fit bg-primary">
             <Save className="mr-1.5 h-4 w-4" />{' '}
             {savingCheckout ? 'Saving…' : 'Save GST & Shipping'}

@@ -1554,6 +1554,30 @@ export default function ProductsPanel() {
                     placeholder="e.g. 250"
                   />
                 </div>
+                {Number(costPrice) > 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Suggested price:</span>
+                    {(
+                      [
+                        ['Entry', shippingSettings.entry_markup_percent],
+                        ['Mid-range', shippingSettings.mid_markup_percent],
+                        ['Premium', shippingSettings.premium_markup_percent],
+                      ] as const
+                    ).map(([label, pct]) => {
+                      const suggested = Math.round(Number(costPrice) * (1 + pct / 100));
+                      return (
+                        <button
+                          key={label}
+                          type="button"
+                          onClick={() => setForm((f) => ({ ...f, price: String(suggested) }))}
+                          className="rounded-full border border-border/60 bg-background px-3 py-1 text-xs hover:border-primary hover:text-primary"
+                        >
+                          {label} (+{pct}%) — {formatINR(suggested)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
                 <SettlementPreview
                   price={Number(form.price)}
                   costPrice={Number(costPrice) || null}

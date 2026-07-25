@@ -116,6 +116,12 @@ export interface ShippingSettings {
   cod_order_percent: number;
   /** Roughly what % of orders come back as a return/RTO (0-100). Used only for the safe-profit estimate. */
   return_rate_percent: number;
+  /** Suggested markup % over cost price for everyday/entry-level products (used as a Product form quick-fill). */
+  entry_markup_percent: number;
+  /** Suggested markup % over cost price for mid-range/festive products. */
+  mid_markup_percent: number;
+  /** Suggested markup % over cost price for premium/designer products. */
+  premium_markup_percent: number;
 }
 
 export const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
@@ -126,6 +132,9 @@ export const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
   other_charges: 0,
   cod_order_percent: 60,
   return_rate_percent: 15,
+  entry_markup_percent: 35,
+  mid_markup_percent: 45,
+  premium_markup_percent: 85,
 };
 
 export async function fetchShippingSettings(): Promise<ShippingSettings> {
