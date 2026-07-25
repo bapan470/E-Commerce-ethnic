@@ -193,7 +193,7 @@ Not a sale/clearance item (unless defective)
 Certain items such as blouses that have been stitched or altered as per customer requirements are not eligible for return.
 
 How to Initiate a Return
-Contact us with your order number and reason for return. Once approved, we will arrange a reverse pickup (where serviceable) or share the return address with you.
+Contact us with your order number and reason for return. Once approved, we will arrange a free reverse pickup (where serviceable) at no extra cost to you. In areas where reverse pickup is not serviceable, we will share the return address with you and reimburse reasonable return shipping charges once the return is verified.
 
 Refunds
 Once we receive and inspect the returned item, refunds will be processed within 5-7 business days to your original payment method. For Cash on Delivery orders, refunds will be issued via bank transfer or store credit, as per your preference.
