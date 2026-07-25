@@ -622,7 +622,6 @@ function ProductInfo({
   onCouponRemove: () => void;
 }) {
   const discount = discountPct(product.price, product.mrp);
-  const [descExpanded, setDescExpanded] = useState(false);
 
   return (
     <div className="flex flex-col gap-3">
@@ -713,23 +712,6 @@ function ProductInfo({
       />
 
       <LowStockBadge stockQuantity={selectedSizeStock} />
-
-      <div>
-        <p
-          className={`text-sm leading-relaxed text-foreground/80 ${
-            descExpanded ? '' : 'line-clamp-2'
-          }`}
-        >
-          {product.description}
-        </p>
-        <button
-          type="button"
-          onClick={() => setDescExpanded((v) => !v)}
-          className="mt-1 text-sm font-medium text-primary hover:underline"
-        >
-          {descExpanded ? 'Show less' : 'Show more'}
-        </button>
-      </div>
 
       <ProductHighlights product={product} />
 
