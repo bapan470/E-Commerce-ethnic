@@ -1170,7 +1170,7 @@ export default function CheckoutPage() {
                 <div>
                   <p className="font-medium">Pay Online</p>
                   <p className="text-xs text-muted-foreground">
-                    Razorpay (Test Mode) — card, UPI, netbanking
+                    Razorpay — card, UPI, netbanking
                   </p>
                 </div>
               </button>
