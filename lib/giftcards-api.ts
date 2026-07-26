@@ -131,30 +131,18 @@ export async function validateGiftCard(code: string, amountDue: number): Promise
   const trimmed = code.trim().toUpperCase();
   if (!trimmed) return { ok: false, error: 'Enter a gift card code' };
 
-  const { data, error } = await supabase
-    .from('gift_cards')
-    .select('*')
-    .eq('code', trimmed)
-    .maybeSingle();
-
-  if (error) return { ok: false, error: 'Could not validate gift card right now' };
-  if (!data) return { ok: false, error: 'Invalid gift card code' };
-
-  const giftCard = data as GiftCard;
-
-  if (giftCard.status === 'pending') return { ok: false, error: 'This gift card purchase was never completed' };
-  if (giftCard.status === 'deactivated') return { ok: false, error: 'This gift card has been deactivated' };
-  if (giftCard.status === 'redeemed' || giftCard.balance <= 0) {
-    return { ok: false, error: 'This gift card has no remaining balance' };
+  try {
+    const res = await fetch('/api/giftcards/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: trimmed, amountDue }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: body.error || 'Could not validate gift card right now' };
+    return body as GiftCardResult;
+  } catch {
+    return { ok: false, error: 'Could not validate gift card right now' };
   }
-  if (giftCard.expires_at && new Date(giftCard.expires_at).getTime() < Date.now()) {
-    return { ok: false, error: 'This gift card has expired' };
-  }
-
-  const redeemable = Math.max(0, Math.min(giftCard.balance, Math.round(amountDue)));
-  if (redeemable <= 0) return { ok: false, error: 'Nothing left to redeem this against' };
-
-  return { ok: true, giftCard, redeemable };
 }
 
 // ---------------------------------------------------------------------

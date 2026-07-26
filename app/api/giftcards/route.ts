@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/supabase-server-auth';
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { DEFAULT_GIFT_CARD_SETTINGS, type GiftCardSettings } from '@/lib/giftcards-api';
 
 // Generates a short, human-shareable gift card code, e.g. "GC-7F2KQX9A".
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Purchaser email is required' }, { status: 400 });
   }
 
-  const supabase = getServerSupabase();
+  const supabase = getSupabaseAdmin();
 
   try {
     const { data: settingsRow } = await supabase

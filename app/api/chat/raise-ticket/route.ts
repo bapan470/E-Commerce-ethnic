@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/supabase-server-auth';
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { sendEmail } from '@/lib/email';
 import { supportTicketConfirmationEmail } from '@/lib/email-templates';
 
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
       }, { status: 200 });
     }
 
-    const supabase = getServerSupabase();
+    const supabase = getSupabaseAdmin();
     const { data: ticket, error } = await supabase
       .from('support_tickets')
       .insert({

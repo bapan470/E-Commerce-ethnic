@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { sendEmail } from '@/lib/email';
 import { giftCardEmail } from '@/lib/email-templates';
 import { DEFAULT_GIFT_CARD_SETTINGS, type GiftCardSettings } from '@/lib/giftcards-api';
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Payment signature verification failed' }, { status: 400 });
   }
 
-  const supabase = getServerSupabase();
+  const supabase = getSupabaseAdmin();
 
   try {
     const { data: card, error: cardErr } = await supabase
