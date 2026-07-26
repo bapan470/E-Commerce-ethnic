@@ -103,42 +103,16 @@ export async function createVariant(input: {
   reviews?: number | null;
   sizes: { size: string; stockQuantity: number; priceOverride?: number | null; sku?: string | null }[];
 }): Promise<ProductVariant> {
-  const supabase = getSupabaseBrowser();
-  const { data: variant, error } = await supabase
-    .from('product_variants')
-    .insert({
-      product_id: input.productId,
-      color: input.color,
-      color_hex: input.colorHex ?? null,
-      slug: input.slug,
-      images: input.images,
-      video: input.video ?? null,
-      price_override: input.priceOverride ?? null,
-      meta_title: input.metaTitle ?? null,
-      meta_description: input.metaDescription ?? null,
-      is_default: input.isDefault ?? false,
-      sku: input.sku ?? null,
-      rating: input.rating ?? null,
-      reviews: input.reviews ?? null,
-    })
-    .select('*')
-    .single();
-  if (error) throw error;
-
-  if (input.sizes.length > 0) {
-    const { error: sizeError } = await supabase.from('product_variant_sizes').insert(
-      input.sizes.map((s) => ({
-        variant_id: variant.id,
-        size: s.size,
-        stock_quantity: s.stockQuantity,
-        price_override: s.priceOverride ?? null,
-        sku: s.sku ?? null,
-      }))
-    );
-    if (sizeError) throw sizeError;
-  }
-
-  return variant as ProductVariant;
+  // SECURITY: moved server-side (was a direct anon-key insert) — see
+  // app/api/admin/variants/route.ts for why.
+  const res = await fetch('/api/admin/variants', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Failed to create variant');
+  return json.variant as ProductVariant;
 }
 
 /** Admin: fetch every colour variant for a product together with its per-size stock. */
@@ -173,15 +147,15 @@ export async function updateVariant(
     reviews: number | null;
   }>
 ): Promise<ProductVariant> {
-  const supabase = getSupabaseBrowser();
-  const { data, error } = await supabase
-    .from('product_variants')
-    .update(input)
-    .eq('id', id)
-    .select('*')
-    .single();
-  if (error) throw error;
-  return data as ProductVariant;
+  // SECURITY: moved server-side — see app/api/admin/variants/[id]/route.ts.
+  const res = await fetch(`/api/admin/variants/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Failed to update variant');
+  return json.variant as ProductVariant;
 }
 
 /**
@@ -189,24 +163,23 @@ export async function updateVariant(
  * since only one colour variant per product should show as default.
  */
 export async function setDefaultVariant(productId: string, variantId: string): Promise<void> {
-  const supabase = getSupabaseBrowser();
-  const { error: clearErr } = await supabase
-    .from('product_variants')
-    .update({ is_default: false })
-    .eq('product_id', productId);
-  if (clearErr) throw clearErr;
-
-  const { error } = await supabase
-    .from('product_variants')
-    .update({ is_default: true })
-    .eq('id', variantId);
-  if (error) throw error;
+  // SECURITY: moved server-side — see app/api/admin/variants/[id]/route.ts.
+  // setDefaultForProductId tells the route to clear the flag on siblings
+  // first, same two-step behaviour as before.
+  const res = await fetch(`/api/admin/variants/${variantId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ setDefaultForProductId: productId }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to set default variant');
 }
 
 export async function deleteVariant(id: string): Promise<void> {
-  const supabase = getSupabaseBrowser();
-  const { error } = await supabase.from('product_variants').delete().eq('id', id);
-  if (error) throw error;
+  // SECURITY: moved server-side — see app/api/admin/variants/[id]/route.ts.
+  const res = await fetch(`/api/admin/variants/${id}`, { method: 'DELETE' });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to delete variant');
 }
 
 export async function addVariantSize(input: {
@@ -216,41 +189,37 @@ export async function addVariantSize(input: {
   priceOverride?: number | null;
   sku?: string | null;
 }): Promise<VariantSize> {
-  const supabase = getSupabaseBrowser();
-  const { data, error } = await supabase
-    .from('product_variant_sizes')
-    .insert({
-      variant_id: input.variantId,
-      size: input.size,
-      stock_quantity: input.stockQuantity,
-      price_override: input.priceOverride ?? null,
-      sku: input.sku ?? null,
-    })
-    .select('*')
-    .single();
-  if (error) throw error;
-  return data as VariantSize;
+  // SECURITY: moved server-side — see app/api/admin/variant-sizes/route.ts.
+  const res = await fetch('/api/admin/variant-sizes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Failed to add size');
+  return json.size as VariantSize;
 }
 
 export async function updateVariantSize(
   id: string,
   input: Partial<{ size: string; stock_quantity: number; price_override: number | null; sku: string | null }>
 ): Promise<VariantSize> {
-  const supabase = getSupabaseBrowser();
-  const { data, error } = await supabase
-    .from('product_variant_sizes')
-    .update(input)
-    .eq('id', id)
-    .select('*')
-    .single();
-  if (error) throw error;
-  return data as VariantSize;
+  // SECURITY: moved server-side — see app/api/admin/variant-sizes/[id]/route.ts.
+  const res = await fetch(`/api/admin/variant-sizes/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Failed to update size');
+  return json.size as VariantSize;
 }
 
 export async function deleteVariantSize(id: string): Promise<void> {
-  const supabase = getSupabaseBrowser();
-  const { error } = await supabase.from('product_variant_sizes').delete().eq('id', id);
-  if (error) throw error;
+  // SECURITY: moved server-side — see app/api/admin/variant-sizes/[id]/route.ts.
+  const res = await fetch(`/api/admin/variant-sizes/${id}`, { method: 'DELETE' });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to delete size');
 }
 
 export async function uploadVariantImage(file: File): Promise<string> {
