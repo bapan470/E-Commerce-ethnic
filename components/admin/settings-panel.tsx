@@ -8,8 +8,6 @@ import {
   fetchStoreInfo,
   saveStoreInfo,
   EmailSettings,
-  fetchEmailSettings,
-  saveEmailSettings,
   SiteBanner,
   fetchSiteBanner,
   saveSiteBanner,
@@ -80,8 +78,12 @@ export default function SettingsPanel() {
       .then(setDelhiveryForm)
       .catch(() => toast.error('Failed to load Delhivery settings'));
 
-    fetchEmailSettings()
-      .then(setEmailForm)
+    fetch('/api/admin/settings/email')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.settings) setEmailForm(d.settings);
+        else throw new Error(d?.error || 'Failed to load email settings');
+      })
       .catch(() => toast.error('Failed to load email settings'));
 
     fetchSiteBanner()
@@ -194,7 +196,13 @@ export default function SettingsPanel() {
     if (!emailForm) return;
     setSavingEmail(true);
     try {
-      await saveEmailSettings(emailForm);
+      const res = await fetch('/api/admin/settings/email', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(emailForm),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Save failed');
       toast.success('Email settings saved');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Save failed');

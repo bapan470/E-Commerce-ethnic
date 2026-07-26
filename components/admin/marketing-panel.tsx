@@ -29,8 +29,6 @@ import {
 } from '@/lib/marketing-api';
 import {
   SocialPublishSettings,
-  fetchSocialPublishSettings,
-  saveSocialPublishSettings,
 } from '@/lib/settings-api';
 import {
   GrowthSettings,
@@ -787,8 +785,12 @@ function SocialPublishTab() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    fetchSocialPublishSettings()
-      .then(setSettings)
+    fetch('/api/admin/settings/social-publish')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.settings) setSettings(d.settings);
+        else throw new Error(d?.error || 'Failed to load social auto-post settings');
+      })
       .catch(() => toast.error('Failed to load social auto-post settings'));
   }, []);
 
@@ -797,7 +799,13 @@ function SocialPublishTab() {
     if (!settings) return;
     setSaving(true);
     try {
-      await saveSocialPublishSettings(settings);
+      const res = await fetch('/api/admin/settings/social-publish', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || 'Save failed');
       toast.success('Social auto-post settings saved');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Save failed');

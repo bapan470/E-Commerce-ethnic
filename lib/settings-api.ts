@@ -137,22 +137,11 @@ const DEFAULT_SOCIAL_PUBLISH_SETTINGS: SocialPublishSettings = {
   caption_template: '✨ New Arrival: {name}\n\n{description}\n\nPrice: ₹{price}\nShop now: {url}',
 };
 
-export async function fetchSocialPublishSettings(): Promise<SocialPublishSettings> {
-  const { data, error } = await supabase
-    .from('settings')
-    .select('value')
-    .eq('key', 'social_publish')
-    .maybeSingle();
-  if (error || !data) return DEFAULT_SOCIAL_PUBLISH_SETTINGS;
-  return { ...DEFAULT_SOCIAL_PUBLISH_SETTINGS, ...(data.value as Partial<SocialPublishSettings>) };
-}
-
-export async function saveSocialPublishSettings(settings: SocialPublishSettings) {
-  const { error } = await supabase
-    .from('settings')
-    .upsert({ key: 'social_publish', value: settings }, { onConflict: 'key' });
-  if (error) throw error;
-}
+// fetchSocialPublishSettings()/saveSocialPublishSettings() were removed
+// from here — this key holds live Facebook/Instagram/Threads access
+// tokens and must never be read/written with the public anon key.
+// Use app/api/admin/settings/social-publish (admin-token protected,
+// service-role client) instead.
 
 export type EmailProvider = 'resend' | 'zeptomail' | '';
 
@@ -174,22 +163,11 @@ const DEFAULT_EMAIL_SETTINGS: EmailSettings = {
   zeptomail_region: 'in',
 };
 
-export async function fetchEmailSettings(): Promise<EmailSettings> {
-  const { data, error } = await supabase
-    .from('settings')
-    .select('value')
-    .eq('key', 'email_provider')
-    .maybeSingle();
-  if (error || !data) return DEFAULT_EMAIL_SETTINGS;
-  return { ...DEFAULT_EMAIL_SETTINGS, ...(data.value as Partial<EmailSettings>) };
-}
-
-export async function saveEmailSettings(settings: EmailSettings) {
-  const { error } = await supabase
-    .from('settings')
-    .upsert({ key: 'email_provider', value: settings }, { onConflict: 'key' });
-  if (error) throw error;
-}
+// fetchEmailSettings()/saveEmailSettings() were removed from here —
+// this key holds a live email-provider API key and must never be
+// read/written with the public anon key. Use
+// app/api/admin/settings/email (admin-token protected, service-role
+// client) instead.
 
 // Models this project has confirmed working against the free NVIDIA
 // NIM API key that also powers Admin > Products > "Generate with AI".
