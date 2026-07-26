@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { createDelhiveryShipment } from '@/lib/delhivery-api';
 import { sendEmail } from '@/lib/email';
 import { orderShippedEmail } from '@/lib/email-templates';
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
         }
       : undefined;
 
-  const supabase = getServerSupabase();
+  const supabase = getSupabaseAdmin();
 
   try {
     const { data: order, error: orderError } = await supabase

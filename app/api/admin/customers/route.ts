@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 const REVENUE_STATUSES = ['paid', 'shipped', 'delivered'];
 
@@ -13,7 +13,7 @@ export async function GET() {
   }
 
   try {
-    const supabase = getServerSupabase();
+    const supabase = getSupabaseAdmin();
 
     const { data: orders, error: ordersErr } = await supabase
       .from('orders')

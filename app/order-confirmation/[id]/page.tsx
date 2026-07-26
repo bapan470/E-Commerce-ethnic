@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { CheckCircle2, Download, Truck, ShieldCheck } from 'lucide-react';
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -9,7 +9,7 @@ import OrderTracking from '@/components/order/order-tracking';
 import PurchaseTracker from '@/components/analytics/purchase-tracker';
 
 export default async function OrderConfirmationPage({ params }: { params: { id: string } }) {
-  const supabase = getServerSupabase();
+  const supabase = getSupabaseAdmin();
   const { data: order } = await supabase.from('orders').select('*').eq('id', params.id).single();
 
   if (!order) notFound();

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 // Google Suggest is the same autocomplete data you see typing into
 // google.com — it reflects what people are ACTUALLY searching right now
@@ -60,7 +60,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const supabase = getServerSupabase();
+  const supabase = getSupabaseAdmin();
 
   const [{ data: categoriesData }, { data: postsData }] = await Promise.all([
     supabase.from('categories').select('name').limit(20),

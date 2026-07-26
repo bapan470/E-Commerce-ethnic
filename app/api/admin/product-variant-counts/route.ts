@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 /**
  * GET /api/admin/product-variant-counts
@@ -20,7 +20,7 @@ export async function GET() {
   }
 
   try {
-    const supabase = getServerSupabase();
+    const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from('product_variants')
       .select('product_id, color, color_hex')

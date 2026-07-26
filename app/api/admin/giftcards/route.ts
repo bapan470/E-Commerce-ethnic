@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { DEFAULT_GIFT_CARD_SETTINGS, type GiftCardSettings } from '@/lib/giftcards-api';
 
 function generateCode() {
@@ -22,7 +22,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const supabase = getServerSupabase();
+  const supabase = getSupabaseAdmin();
 
   try {
     const { data: settingsRow } = await supabase
@@ -71,7 +71,7 @@ export async function PUT(req: Request) {
     return NextResponse.json({ error: 'Missing settings' }, { status: 400 });
   }
 
-  const supabase = getServerSupabase();
+  const supabase = getSupabaseAdmin();
   try {
     const { error } = await supabase
       .from('settings')
@@ -97,7 +97,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'A valid amount is required' }, { status: 400 });
   }
 
-  const supabase = getServerSupabase();
+  const supabase = getSupabaseAdmin();
   try {
     let cardId: string | null = null;
     let code = '';
@@ -155,7 +155,7 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'Missing gift card id' }, { status: 400 });
   }
 
-  const supabase = getServerSupabase();
+  const supabase = getSupabaseAdmin();
   try {
     const { data: card, error: cardErr } = await supabase
       .from('gift_cards')

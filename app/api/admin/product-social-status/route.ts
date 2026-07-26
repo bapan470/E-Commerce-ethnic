@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 /**
  * GET /api/admin/product-social-status
@@ -25,7 +25,7 @@ export async function GET() {
   }
 
   try {
-    const supabase = getServerSupabase();
+    const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from('products')
       .select('id, social_posted_at, social_post_ids')

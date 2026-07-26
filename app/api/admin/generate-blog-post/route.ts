@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 // Same free-tier NVIDIA NIM setup already used by
 // app/api/admin/generate-listing/route.ts and lib/vendor-ai-listing.ts —
@@ -101,7 +101,7 @@ export async function POST(req: Request) {
   // to reference categories that genuinely exist and have products, instead
   // of guessing from a hardcoded list that can drift out of sync with the
   // real catalog.
-  const supabase = getServerSupabase();
+  const supabase = getSupabaseAdmin();
   const { data: categoriesData } = await supabase.from('categories').select('name');
   const categoryNames: string[] = (categoriesData ?? []).map((c: any) => String(c.name)).filter(Boolean);
   const validNameSet = new Set(categoryNames.map((n) => n.toLowerCase()));

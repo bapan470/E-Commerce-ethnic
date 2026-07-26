@@ -26,12 +26,10 @@ export interface CouponResult {
 // ---------------------------------------------------------------------
 
 export async function fetchCoupons(): Promise<Coupon[]> {
-  const { data, error } = await supabase
-    .from('coupons')
-    .select('*')
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as Coupon[];
+  const res = await fetch('/api/admin/coupons');
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || 'Failed to load coupons');
+  return (body.coupons ?? []) as Coupon[];
 }
 
 export interface CouponInput {
@@ -45,38 +43,46 @@ export interface CouponInput {
   show_on_product_page: boolean;
 }
 
-export async function createCoupon(input: CouponInput) {
-  const { error } = await supabase.from('coupons').insert({
-    ...input,
-    code: input.code.trim().toUpperCase(),
+async function adminCouponRequest(url: string, options: RequestInit) {
+  const res = await fetch(url, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
   });
-  if (error) throw error;
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || 'Request failed');
+  return body;
+}
+
+export async function createCoupon(input: CouponInput) {
+  await adminCouponRequest('/api/admin/coupons', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
 }
 
 export async function updateCoupon(id: string, input: CouponInput) {
-  const { error } = await supabase
-    .from('coupons')
-    .update({ ...input, code: input.code.trim().toUpperCase() })
-    .eq('id', id);
-  if (error) throw error;
+  await adminCouponRequest(`/api/admin/coupons/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
 }
 
 export async function deleteCoupon(id: string) {
-  const { error } = await supabase.from('coupons').delete().eq('id', id);
-  if (error) throw error;
+  await adminCouponRequest(`/api/admin/coupons/${id}`, { method: 'DELETE' });
 }
 
 export async function setCouponActive(id: string, is_active: boolean) {
-  const { error } = await supabase.from('coupons').update({ is_active }).eq('id', id);
-  if (error) throw error;
+  await adminCouponRequest(`/api/admin/coupons/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ is_active }),
+  });
 }
 
 export async function setCouponShowOnProductPage(id: string, show_on_product_page: boolean) {
-  const { error } = await supabase
-    .from('coupons')
-    .update({ show_on_product_page })
-    .eq('id', id);
-  if (error) throw error;
+  await adminCouponRequest(`/api/admin/coupons/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ show_on_product_page }),
+  });
 }
 
 // ---------------------------------------------------------------------

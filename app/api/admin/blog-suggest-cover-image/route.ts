@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 // Manual counterpart to the auto-suggestion in generate-blog-post/route.ts —
 // used by the "Suggest image from category" button in the add/edit dialog,
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const supabase = getServerSupabase();
+  const supabase = getSupabaseAdmin();
   const { data: productRows, error } = await supabase
     .from('products')
     .select('images')

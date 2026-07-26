@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { trackDelhiveryShipment } from '@/lib/delhivery-api';
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const supabase = getServerSupabase();
+  const supabase = getSupabaseAdmin();
 
   const { data: order, error } = await supabase
     .from('orders')
