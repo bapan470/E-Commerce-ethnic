@@ -3,7 +3,7 @@
 import { useState, FormEvent, useEffect, useMemo, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles, Link2, Palette, Wand2, Search, X, Truck, Package, Facebook, Instagram, Video } from 'lucide-react';
+import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles, Link2, Palette, Wand2, Search, X, Truck, Package, Facebook, Instagram, Video, ExternalLink } from 'lucide-react';
 import { useProducts } from '@/lib/cart-context';
 import {
   createProduct,
@@ -322,6 +322,30 @@ function setStoredCostPrice(productId: string, value: string) {
   }
 }
 
+// Shared math behind the "Safe Profit" numbers — pulled out of
+// SettlementPreview so the compact version shown next to Price in the
+// table row (below) computes the exact same figures instead of a
+// slightly-different copy that could drift out of sync.
+function calcSafeProfit(price: number, costPrice: number | null, settings: ShippingSettings) {
+  const prepaidShare = (100 - settings.cod_order_percent) / 100;
+  const returnRate = settings.return_rate_percent / 100;
+  const logisticsFee = settings.flat_rate;
+  const otherCharges = settings.other_charges;
+
+  const fullGatewayFee = Math.round((price * settings.payment_gateway_fee_percent) / 100 * 100) / 100;
+  const blendedGatewayFee = Math.round(fullGatewayFee * prepaidShare * 100) / 100;
+  const successfulSettlement =
+    Math.round((price - blendedGatewayFee - logisticsFee - otherCharges) * 100) / 100;
+
+  const returnLossPerAttempt = returnRate * 2 * logisticsFee;
+  const expectedPerAttempt = (1 - returnRate) * successfulSettlement - returnLossPerAttempt;
+  const safeSettlement =
+    returnRate < 1 ? Math.round((expectedPerAttempt / (1 - returnRate)) * 100) / 100 : 0;
+  const safeProfit = costPrice !== null ? Math.round((safeSettlement - costPrice) * 100) / 100 : null;
+
+  return { safeSettlement, safeProfit };
+}
+
 // Live "what will I actually get" preview shown under the Price field on
 // the Add/Edit Product form — mirrors the Meesho-style settlement card.
 // Purely an estimate for the seller's own planning; it never touches what
@@ -349,15 +373,7 @@ function SettlementPreview({
   const successfulSettlement =
     Math.round((price - blendedGatewayFee - logisticsFee - otherCharges) * 100) / 100;
 
-  // A returned/RTO order earns nothing but still costs both-way shipping.
-  // Spread that loss across the successful orders that actually pay, so
-  // "Safe Profit" reflects what you keep per successful sale once returns
-  // are accounted for — not just the best-case number above.
-  const returnLossPerAttempt = returnRate * 2 * logisticsFee;
-  const expectedPerAttempt = (1 - returnRate) * successfulSettlement - returnLossPerAttempt;
-  const safeSettlement =
-    returnRate < 1 ? Math.round((expectedPerAttempt / (1 - returnRate)) * 100) / 100 : 0;
-  const safeProfit = costPrice !== null ? Math.round((safeSettlement - costPrice) * 100) / 100 : null;
+  const { safeSettlement, safeProfit } = calcSafeProfit(price, costPrice, settings);
 
   return (
     <div className="rounded-lg border border-border/60 bg-card p-4 text-sm">
@@ -1179,7 +1195,10 @@ export default function ProductsPanel() {
             <div className="col-span-3 text-right">Actions</div>
           </div>
           <ul className="flex flex-col divide-y divide-border/60">
-            {filteredProducts.map((p) => (
+            {filteredProducts.map((p) => {
+              const rowCostPrice = Number(getStoredCostPrice(p.id)) || null;
+              const rowProfit = rowCostPrice ? calcSafeProfit(p.price, rowCostPrice, shippingSettings) : null;
+              return (
               <li
                 key={p.id}
                 className="grid grid-cols-2 gap-3 px-4 py-3 sm:grid-cols-12 sm:items-center"
@@ -1241,6 +1260,23 @@ export default function ProductsPanel() {
                     <span className="ml-1 text-xs text-muted-foreground line-through">
                       {formatINR(p.mrp)}
                     </span>
+                  )}
+                  {rowProfit && (
+                    <div className="mt-0.5 space-y-0.5">
+                      <p className="text-[11px] leading-tight text-muted-foreground">
+                        Safe Profit: <span className="font-medium text-foreground">{formatINR(Math.max(rowProfit.safeSettlement, 0))}</span>
+                      </p>
+                      {rowProfit.safeProfit !== null && (
+                        <p
+                          className={`text-[11px] font-semibold leading-tight ${
+                            rowProfit.safeProfit < 0 ? 'text-destructive' : 'text-green-700'
+                          }`}
+                        >
+                          {rowProfit.safeProfit >= 0 ? '+' : ''}
+                          {formatINR(rowProfit.safeProfit)} profit
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
                 <div className="col-span-2 flex items-center gap-1 sm:col-span-1">
@@ -1379,6 +1415,17 @@ export default function ProductsPanel() {
                   <Button
                     size="icon"
                     variant="ghost"
+                    asChild
+                    aria-label="View on store"
+                    title="Open this product on the live store"
+                  >
+                    <Link href={`/product/${p.slug}`} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="h-4 w-4" />
+                    </Link>
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
                     onClick={() => openEdit(p)}
                     aria-label="Manage colour/size variants"
                     title="Manage colour/size variants (inside product details)"
@@ -1404,7 +1451,8 @@ export default function ProductsPanel() {
                   </Button>
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
         </div>
       )}
