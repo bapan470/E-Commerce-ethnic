@@ -163,41 +163,47 @@ export async function fetchCategories(): Promise<CategoryRow[]> {
   return (data ?? []) as CategoryRow[];
 }
 
+// NOTE: categories INSERT/UPDATE/DELETE are locked to `service_role` by
+// the 20260829040000 migration, so these now go through the admin API
+// routes (server-side, service-role client) instead of writing directly
+// from the browser with the anon key. SELECT (fetchCategories,
+// countProductsInCategory below) stays on the anon client -- that's still
+// public storefront data.
 export async function createCategory(input: {
   name: string;
   slug: string;
   description?: string | null;
 }): Promise<CategoryRow> {
-  const { data, error } = await supabase
-    .from('categories')
-    .insert({
-      name: input.name,
-      slug: input.slug,
-      description: input.description ?? null,
-    })
-    .select('*')
-    .single();
-  if (error) throw error;
-  return data as CategoryRow;
+  const res = await fetch('/api/admin/categories', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to create category');
+  return json.category as CategoryRow;
 }
 
 export async function updateCategory(
   id: string,
   input: Partial<{ name: string; slug: string; description: string | null }>
 ): Promise<CategoryRow> {
-  const { data, error } = await supabase
-    .from('categories')
-    .update(input)
-    .eq('id', id)
-    .select('*')
-    .single();
-  if (error) throw error;
-  return data as CategoryRow;
+  const res = await fetch(`/api/admin/categories/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to update category');
+  return json.category as CategoryRow;
 }
 
 export async function deleteCategory(id: string): Promise<void> {
-  const { error } = await supabase.from('categories').delete().eq('id', id);
-  if (error) throw error;
+  const res = await fetch(`/api/admin/categories/${id}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    throw new Error(json.error || 'Failed to delete category');
+  }
 }
 
 /** How many products currently reference this category — shown before delete. */
@@ -230,81 +236,45 @@ export function extractErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
+// NOTE: `products` INSERT/UPDATE/DELETE (for admin-owned catalog rows) are
+// locked to `service_role` by the 20260829040000 migration, so admin
+// create/update/delete now go through the admin API routes (server-side,
+// service-role client) instead of writing directly from the browser with
+// the anon key. Vendor-side create/update (own_insert_vendor_products /
+// own_update_vendor_products) are unaffected and still go through
+// lib/vendor-api.ts as before. SELECT stays on the anon client -- that's
+// still public storefront data.
 export async function createProduct(input: Partial<ProductRow>): Promise<Product> {
-  const payload = {
-    name: input.name,
-    slug: input.slug,
-    description: input.description,
-    price: input.price,
-    // Phase 2 migration made `final_price` NOT NULL (it's the price the
-    // storefront/order flow actually reads for vendor-sourced products).
-    // `final_price` is deliberately absent from the ProductRow type (it's
-    // internal-only, see the comment on CUSTOMER_SAFE_PRODUCT_COLUMNS
-    // above), and the admin form has no separate field for it -- admin
-    // catalog products have no vendor negotiation, so it's always just
-    // `price`. Omitting this entirely was causing every admin "Add
-    // Product" insert to fail the NOT NULL constraint.
-    final_price: input.price,
-    mrp: input.mrp,
-    category_id: input.category_id,
-    category_name: input.category_name,
-    fabric: input.fabric,
-    origin: input.origin,
-    colors: input.colors ?? [],
-    sizes: input.sizes ?? ['Free Size'],
-    occasion: input.occasion ?? [],
-    gender: input.gender ?? 'female',
-    age_group: input.age_group ?? 'adult',
-    material: input.material ?? null,
-    pattern: input.pattern ?? null,
-    images: input.images ?? [],
-    video_url: input.video_url ?? null,
-    sku: input.sku ?? null,
-    highlights: input.highlights ?? {},
-    stock_quantity: input.stock_quantity ?? 0,
-    low_stock_threshold: input.low_stock_threshold ?? 5,
-    rating: input.rating ?? 4.5,
-    reviews: input.reviews ?? 0,
-    featured: input.featured ?? false,
-    in_stock: input.in_stock ?? true,
-  };
-  const { data, error } = await supabase
-    .from('products')
-    .insert(payload)
-    .select('*')
-    .single();
-  if (error) throw error;
-  return mapRowToProduct(data as ProductRow);
+  const res = await fetch('/api/admin/products', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to create product');
+  return mapRowToProduct(json.product as ProductRow);
 }
 
 export async function updateProduct(
   id: string,
   input: Partial<ProductRow>
 ): Promise<Product> {
-  const payload: Record<string, unknown> = {};
-  for (const key of [
-    'name', 'slug', 'description', 'price', 'mrp', 'category_id',
-    'category_name', 'fabric', 'origin', 'colors', 'sizes', 'occasion', 'images',
-    'video_url', 'gender', 'age_group', 'material', 'pattern', 'sku', 'highlights',
-    'stock_quantity', 'low_stock_threshold', 'rating', 'reviews', 'featured', 'in_stock',
-  ]) {
-    if (input[key as keyof ProductRow] !== undefined) {
-      payload[key] = input[key as keyof ProductRow];
-    }
-  }
-  const { data, error } = await supabase
-    .from('products')
-    .update(payload)
-    .eq('id', id)
-    .select('*')
-    .single();
-  if (error) throw error;
-  return mapRowToProduct(data as ProductRow);
+  const res = await fetch(`/api/admin/products/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to update product');
+  return mapRowToProduct(json.product as ProductRow);
 }
 
 export async function deleteProduct(id: string): Promise<void> {
-  const { error } = await supabase.from('products').delete().eq('id', id);
-  if (error) throw error;
+  const res = await fetch(`/api/admin/products/${id}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({}));
+    throw new Error(json.error || 'Failed to delete product');
+  }
 }
 
 export async function uploadProductImage(file: File, seoName?: string): Promise<string> {
