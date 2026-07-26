@@ -334,17 +334,18 @@ export async function subscribeToNewsletter(email: string, source = 'footer') {
 }
 
 export async function fetchNewsletterSubscribers(): Promise<NewsletterSubscriber[]> {
-  const { data, error } = await supabase
-    .from('newsletter_subscribers')
-    .select('*')
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as NewsletterSubscriber[];
+  // SECURITY: moved server-side — see app/api/admin/newsletter/route.ts.
+  const res = await fetch('/api/admin/newsletter');
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Failed to load subscribers');
+  return json.subscribers as NewsletterSubscriber[];
 }
 
 export async function deleteNewsletterSubscriber(id: string) {
-  const { error } = await supabase.from('newsletter_subscribers').delete().eq('id', id);
-  if (error) throw error;
+  // SECURITY: moved server-side — see app/api/admin/newsletter/[id]/route.ts.
+  const res = await fetch(`/api/admin/newsletter/${id}`, { method: 'DELETE' });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to delete subscriber');
 }
 
 // ---------------------------------------------------------------------

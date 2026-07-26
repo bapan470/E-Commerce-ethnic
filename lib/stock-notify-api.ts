@@ -25,15 +25,16 @@ export async function requestStockNotification(productId: string, email: string)
 
 /** Admin: list all signups, most recent first, with product name/slug joined in. */
 export async function fetchStockNotifications(): Promise<StockNotificationRow[]> {
-  const { data, error } = await supabase
-    .from('stock_notifications')
-    .select('*, products(name, slug, in_stock)')
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as StockNotificationRow[];
+  // SECURITY: moved server-side — see app/api/admin/stock-notifications/route.ts.
+  const res = await fetch('/api/admin/stock-notifications');
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Failed to load notifications');
+  return json.notifications as StockNotificationRow[];
 }
 
 export async function deleteStockNotification(id: string): Promise<void> {
-  const { error } = await supabase.from('stock_notifications').delete().eq('id', id);
-  if (error) throw error;
+  // SECURITY: moved server-side — see app/api/admin/stock-notifications/[id]/route.ts.
+  const res = await fetch(`/api/admin/stock-notifications/${id}`, { method: 'DELETE' });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to delete notification');
 }

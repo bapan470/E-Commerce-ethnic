@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 // Called (debounced) from the checkout page whenever the shopper has an
 // email address filled in and items in their cart. Upserts a row in
@@ -15,7 +15,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ skipped: true });
   }
 
-  const supabase = getServerSupabase();
+  const supabase = getSupabaseAdmin();
 
   try {
     const { data: existing } = await supabase

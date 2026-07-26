@@ -21,7 +21,6 @@
 // pure refactor (move code into functions), not a logic change.
 // ---------------------------------------------------------------------
 
-import { getServerSupabase } from '@/lib/supabase-server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { sendEmail } from '@/lib/email';
 import {
@@ -35,7 +34,11 @@ import { publishVendorProductWithAI } from '@/lib/vendor-ai-listing';
 
 // ----------------------------- Abandoned carts -----------------------------
 export async function runAbandonedCartsJob() {
-  const supabase = getServerSupabase();
+  // SECURITY/FIX: abandoned_carts is now locked to service_role only
+  // (see 20260826020000_lock_newsletter_abandoned_stock_pii.sql) since
+  // no client component ever needed anon access to it. This job — and
+  // app/api/cart-track/route.ts — now use the admin client instead.
+  const supabase = getSupabaseAdmin();
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
   const { data: carts, error } = await supabase
@@ -78,7 +81,14 @@ const DEFAULT_SETTINGS = {
 };
 
 export async function runEmailAutomationJob() {
-  const supabase = getServerSupabase();
+  // FIX: this background job has no logged-in user/session, so once
+  // `orders` SELECT was locked to `TO authenticated` only (see
+  // 20260827000000_lock_orders_order_items_pii.sql), the win-back
+  // query below silently returned zero rows using the anon client —
+  // win-back emails stopped sending with no visible error. A
+  // background job should always use the admin client; it never has
+  // real user auth context for RLS to check against anyway.
+  const supabase = getSupabaseAdmin();
   let welcomeSent = 0;
   let winbackSent = 0;
 
