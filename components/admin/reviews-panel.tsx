@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { Check, EyeOff, Trash2, Star, Search, X } from 'lucide-react';
 import {
   fetchAllReviewsAdmin,
-  approveReview,
-  unapproveReview,
+  approveReviewAdmin,
+  rejectReviewAdmin,
   deleteReviewAdmin,
   hasWrittenContent,
   AdminReview,
@@ -96,7 +96,7 @@ export default function ReviewsPanel() {
   const handleApprove = async (r: AdminReview) => {
     setBusyId(r.id);
     try {
-      await approveReview(r.id);
+      await approveReviewAdmin(r.id);
       toast.success('Published — now live on the product page');
       await load();
     } catch (err) {
@@ -109,7 +109,7 @@ export default function ReviewsPanel() {
   const handleHide = async (r: AdminReview) => {
     setBusyId(r.id);
     try {
-      await unapproveReview(r.id);
+      await rejectReviewAdmin(r.id);
       toast.success('Hidden from the storefront');
       await load();
     } catch (err) {

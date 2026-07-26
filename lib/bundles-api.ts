@@ -31,16 +31,23 @@ export async function fetchBundlesForProduct(productId: string): Promise<Product
   return (data ?? []) as ProductBundleRow[];
 }
 
+// SECURITY: add/remove moved server-side (were direct anon-key writes) —
+// see app/api/admin/bundles/route.ts and app/api/admin/bundles/[id]/route.ts.
+
 export async function addBundleLink(productId: string, bundleProductId: string, position = 0) {
-  const { error } = await supabase
-    .from('product_bundles')
-    .insert({ product_id: productId, bundle_product_id: bundleProductId, position });
-  if (error) throw error;
+  const res = await fetch('/api/admin/bundles', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ product_id: productId, bundle_product_id: bundleProductId, position }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to add bundle link');
 }
 
 export async function removeBundleLink(id: string) {
-  const { error } = await supabase.from('product_bundles').delete().eq('id', id);
-  if (error) throw error;
+  const res = await fetch(`/api/admin/bundles/${id}`, { method: 'DELETE' });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to remove bundle link');
 }
 
 // ---- Storefront: manual bundle first, auto co-purchase fallback ----

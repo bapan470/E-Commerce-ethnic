@@ -77,26 +77,26 @@ export interface AdminReview extends Review {
 }
 
 /**
- * Admin: every review regardless of approval status, newest first,
- * with the parent product's name/slug joined in for display.
+ * Admin: every review regardless of approval status, newest first, with the
+ * parent product's name/slug joined in for display.
+ *
+ * SECURITY: moved server-side (was a direct anon-key select using an
+ * over-broad "read every review" RLS policy) — see
+ * app/api/admin/reviews/route.ts.
  */
 export async function fetchAllReviewsAdmin(): Promise<AdminReview[]> {
-  const supabase = getSupabaseBrowser();
-  const { data, error } = await supabase
-    .from('reviews')
-    .select('*, products(name, slug)')
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  return (data ?? []).map((row: any) => {
-    const { products: product, ...review } = row;
-    return {
-      ...review,
-      product_name: product?.name ?? 'Deleted product',
-      product_slug: product?.slug ?? '',
-    } as AdminReview;
-  });
+  const res = await fetch('/api/admin/reviews');
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to load reviews');
+  return (json.reviews ?? []) as AdminReview[];
 }
 
+/**
+ * Self-service: approve the CURRENT user's own review. Used only by
+ * scheduleAutoPublish below, always for a review the caller themselves just
+ * wrote. Relies on the "customers_update_own_review" RLS policy
+ * (auth.uid() = user_id) — NOT usable to approve someone else's review.
+ */
 export async function approveReview(id: string): Promise<void> {
   const supabase = getSupabaseBrowser();
   const { error } = await supabase.from('reviews').update({ is_approved: true }).eq('id', id);
@@ -127,17 +127,46 @@ export function scheduleAutoPublish(id: string, onPublished?: () => void): void 
   }, AUTO_PUBLISH_DELAY_MS);
 }
 
-/** Reject/unpublish — keeps the review row (and its author) but hides it storefront-side. */
-export async function unapproveReview(id: string): Promise<void> {
-  const supabase = getSupabaseBrowser();
-  const { error } = await supabase.from('reviews').update({ is_approved: false }).eq('id', id);
-  if (error) throw error;
+/**
+ * Admin: approve someone else's review from the moderation panel.
+ *
+ * SECURITY: this is distinct from approveReview() above — approveReview()
+ * only works on the caller's own review (RLS-enforced). Admin approval of
+ * an arbitrary review needs the service role, so it goes through the admin
+ * API route instead. See app/api/admin/reviews/route.ts.
+ */
+export async function approveReviewAdmin(id: string): Promise<void> {
+  const res = await fetch('/api/admin/reviews', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, approved: true }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to approve review');
 }
 
+/** Admin: reject/unpublish someone else's review — hides it storefront-side. */
+export async function rejectReviewAdmin(id: string): Promise<void> {
+  const res = await fetch('/api/admin/reviews', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, approved: false }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to reject review');
+}
+
+/**
+ * Admin: permanently delete a review.
+ *
+ * SECURITY: moved server-side (was a direct anon-key delete using an
+ * over-broad "delete any review" RLS policy) — see
+ * app/api/admin/reviews/route.ts.
+ */
 export async function deleteReviewAdmin(id: string): Promise<void> {
-  const supabase = getSupabaseBrowser();
-  const { error } = await supabase.from('reviews').delete().eq('id', id);
-  if (error) throw error;
+  const res = await fetch(`/api/admin/reviews?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to delete review');
 }
 
 /** Only customers who purchased the product (delivered order) may review it. */

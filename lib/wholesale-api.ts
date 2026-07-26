@@ -18,19 +18,34 @@ export interface WholesaleTierInput {
   label: string | null;
 }
 
+// SECURITY: create/update/delete moved server-side (were direct anon-key
+// writes) — see app/api/admin/wholesale/route.ts and
+// app/api/admin/wholesale/[id]/route.ts.
+
 export async function createWholesaleTier(input: WholesaleTierInput) {
-  const { error } = await supabase.from('wholesale_pricing').insert(input);
-  if (error) throw error;
+  const res = await fetch('/api/admin/wholesale', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to create wholesale tier');
 }
 
 export async function updateWholesaleTier(id: string, input: WholesaleTierInput) {
-  const { error } = await supabase.from('wholesale_pricing').update(input).eq('id', id);
-  if (error) throw error;
+  const res = await fetch(`/api/admin/wholesale/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to update wholesale tier');
 }
 
 export async function deleteWholesaleTier(id: string) {
-  const { error } = await supabase.from('wholesale_pricing').delete().eq('id', id);
-  if (error) throw error;
+  const res = await fetch(`/api/admin/wholesale/${id}`, { method: 'DELETE' });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to delete wholesale tier');
 }
 
 /**

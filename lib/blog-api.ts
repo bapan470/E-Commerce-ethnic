@@ -1,17 +1,22 @@
 'use client';
 
-import { supabase } from './supabase';
 import { BlogPostRow } from './types';
+
+// SECURITY: every function in this file used to write directly to
+// `blog_posts` with the anon key (an over-broad RLS policy let ANY
+// anon/authenticated caller insert/update/delete ANY post). All writes now
+// go through app/api/admin/blog-posts/*, which checks the admin session
+// cookie server-side before touching the database with the service role.
+// Function names/signatures are unchanged so components/admin/blog-panel.tsx
+// needs no changes.
 
 /** Admin panel needs every post (published + draft); public pages filter
  *  to `published = true` separately (see lib/blog-api-server.ts). */
 export async function fetchBlogPostsAdmin(): Promise<BlogPostRow[]> {
-  const { data, error } = await supabase
-    .from('blog_posts')
-    .select('*')
-    .order('published_at', { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as BlogPostRow[];
+  const res = await fetch('/api/admin/blog-posts');
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to load blog posts');
+  return (json.posts ?? []) as BlogPostRow[];
 }
 
 export async function createBlogPost(input: {
@@ -26,13 +31,14 @@ export async function createBlogPost(input: {
   published: boolean;
   published_at: string;
 }): Promise<BlogPostRow> {
-  const { data, error } = await supabase
-    .from('blog_posts')
-    .insert(input)
-    .select('*')
-    .single();
-  if (error) throw error;
-  return data as BlogPostRow;
+  const res = await fetch('/api/admin/blog-posts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to create blog post');
+  return json.post as BlogPostRow;
 }
 
 export async function updateBlogPost(
@@ -50,17 +56,18 @@ export async function updateBlogPost(
     published_at: string;
   }>
 ): Promise<BlogPostRow> {
-  const { data, error } = await supabase
-    .from('blog_posts')
-    .update({ ...input, updated_at: new Date().toISOString() })
-    .eq('id', id)
-    .select('*')
-    .single();
-  if (error) throw error;
-  return data as BlogPostRow;
+  const res = await fetch(`/api/admin/blog-posts/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to update blog post');
+  return json.post as BlogPostRow;
 }
 
 export async function deleteBlogPost(id: string): Promise<void> {
-  const { error } = await supabase.from('blog_posts').delete().eq('id', id);
-  if (error) throw error;
+  const res = await fetch(`/api/admin/blog-posts/${id}`, { method: 'DELETE' });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to delete blog post');
 }
