@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/supabase-server-auth';
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 // GET — the logged-in customer's reseller profile (null if they haven't
 // joined yet) plus a small earnings summary computed from their orders.
@@ -10,7 +10,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Please log in first' }, { status: 401 });
   }
 
-  const supabase = getServerSupabase();
+  const supabase = getSupabaseAdmin();
 
   try {
     const { data: profile, error: profileErr } = await supabase
@@ -60,7 +60,7 @@ export async function POST(req: Request) {
   const markupRaw = Number(body?.default_markup_amount);
   const default_markup_amount = Number.isFinite(markupRaw) ? Math.max(markupRaw, 0) : 100;
 
-  const supabase = getServerSupabase();
+  const supabase = getSupabaseAdmin();
 
   try {
     const { data: existing } = await supabase
@@ -100,7 +100,7 @@ export async function PUT(req: Request) {
   }
   const default_markup_amount = markupRaw;
 
-  const supabase = getServerSupabase();
+  const supabase = getSupabaseAdmin();
 
   try {
     const { error } = await supabase

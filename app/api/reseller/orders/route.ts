@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/supabase-server-auth';
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
-async function getResellerProfile(supabase: ReturnType<typeof getServerSupabase>, userId: string) {
+async function getResellerProfile(supabase: ReturnType<typeof getSupabaseAdmin>, userId: string) {
   const { data, error } = await supabase
     .from('reseller_profiles')
     .select('*')
@@ -19,7 +19,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Please log in first' }, { status: 401 });
   }
 
-  const supabase = getServerSupabase();
+  const supabase = getSupabaseAdmin();
 
   try {
     const profile = await getResellerProfile(supabase, user.id);
@@ -70,7 +70,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Complete shipping address is required' }, { status: 400 });
   }
 
-  const supabase = getServerSupabase();
+  const supabase = getSupabaseAdmin();
 
   try {
     const profile = await getResellerProfile(supabase, user.id);

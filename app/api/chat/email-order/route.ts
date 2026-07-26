@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser, getSupabaseServer } from '@/lib/supabase-server-auth';
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { sendEmail } from '@/lib/email';
 import { orderTrackingSummaryEmail } from '@/lib/email-templates';
 
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
         .maybeSingle();
       order = data;
     } else if (guestEmail) {
-      const supabase = getServerSupabase();
+      const supabase = getSupabaseAdmin();
       const { data } = await supabase
         .from('orders')
         .select('id, status, items, total_amount, customer_name, customer_email, tracking_number, courier_name')

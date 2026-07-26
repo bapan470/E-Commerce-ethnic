@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +15,7 @@ export async function GET(req: Request) {
   }
 
   try {
-    const supabase = getServerSupabase();
+    const supabase = getSupabaseAdmin();
 
     const { data: coOrders, error: ordersErr } = await supabase
       .from('order_items')

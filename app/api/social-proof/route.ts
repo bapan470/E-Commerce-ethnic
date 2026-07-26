@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 // Only exposes product name + city + relative time, nothing personal.
 export async function GET() {
   try {
-    const supabase = getServerSupabase();
+    const supabase = getSupabaseAdmin();
     const since = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString(); // last 3 days
 
     const { data, error } = await supabase

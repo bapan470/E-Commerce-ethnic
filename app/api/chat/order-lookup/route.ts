@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser, getSupabaseServer } from '@/lib/supabase-server-auth';
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { trackDelhiveryShipment } from '@/lib/delhivery-api';
 
 // ---------------------------------------------------------------------
@@ -106,7 +106,7 @@ export async function POST(req: Request) {
     }
 
     const cleanedId = rawOrderId.replace(/^#/, '').toUpperCase();
-    const supabase = getServerSupabase();
+    const supabase = getSupabaseAdmin();
     const { data: orders, error } = await supabase
       .from('orders')
       .select('id, status, items, total_amount, created_at, tracking_number, courier_name, customer_email')

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { sendEmail } from '@/lib/email';
 import { orderConfirmationEmail } from '@/lib/email-templates';
 import { DEFAULT_LOYALTY_SETTINGS, type LoyaltySettings } from '@/lib/loyalty-api';
@@ -16,7 +16,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Missing orderId' }, { status: 400 });
   }
 
-  const supabase = getServerSupabase();
+  const supabase = getSupabaseAdmin();
 
   try {
     const { data: order, error } = await supabase
