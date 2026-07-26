@@ -8,6 +8,7 @@ import {
 } from '@/lib/blog-api-server';
 import { fetchCategoriesServer, fetchProductBySlugServer } from '@/lib/products-api-server';
 import { blurDataURL } from '@/lib/utils';
+import { safeJsonLd } from '@/lib/json-ld';
 import BlogProductCard from '@/components/blog/blog-product-card';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
@@ -162,7 +163,7 @@ export default async function BlogPostPage({ params }: Params) {
     <article className="container-boutique max-w-3xl py-8 pb-24 md:pb-12">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }}
       />
 
       <nav className="mb-4 text-xs text-muted-foreground">

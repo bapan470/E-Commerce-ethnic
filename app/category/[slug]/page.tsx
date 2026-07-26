@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { fetchCategoriesServer, fetchProductsServer } from '@/lib/products-api-server';
 import ProductCard from '@/components/product-card';
+import { safeJsonLd } from '@/lib/json-ld';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
@@ -107,7 +108,7 @@ export default async function CategoryPage({ params }: Params) {
     <div className="container-boutique py-8 pb-24 md:pb-12">
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }}
       />
 
       <nav className="mb-4 text-xs text-muted-foreground">

@@ -1,6 +1,7 @@
 import { Metadata } from 'next';
 import { fetchProductBySlugServer } from '@/lib/products-api-server';
 import { fetchVariantBySlug, VariantWithSizes } from '@/lib/variants-api';
+import { safeJsonLd } from '@/lib/json-ld';
 import ProductDetail from './product-detail';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
@@ -145,7 +146,7 @@ export default async function ProductPage({ params }: Params) {
       {jsonLd && (
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }}
         />
       )}
       <ProductDetail />

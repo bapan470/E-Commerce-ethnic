@@ -1,4 +1,5 @@
 import { getServerSupabase } from '@/lib/supabase-server';
+import { safeJsonLd } from '@/lib/json-ld';
 import HomeClient from './home-client';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
@@ -82,7 +83,7 @@ export default async function Home() {
       <script
         type="application/ld+json"
         // eslint-disable-next-line react/no-danger
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }}
       />
       <HomeClient />
     </>

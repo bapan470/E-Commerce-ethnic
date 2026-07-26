@@ -292,6 +292,36 @@ const fromProduct = (p: Product): FormState => ({
   in_stock: p.inStock,
 });
 
+// Cost price is deliberately never sent to the server (see note at the
+// costPrice useState below), but re-typing it every single time you
+// reopen a product to check its margin defeats the point of the Safe
+// Profit preview. Stash it in this browser's localStorage instead —
+// keyed per product id, admin-device-only, never touches Supabase —
+// so the preview is already filled in the moment the dialog opens.
+const COST_PRICE_STORAGE_PREFIX = 'admin_cost_price:';
+
+function getStoredCostPrice(productId: string): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    return window.localStorage.getItem(COST_PRICE_STORAGE_PREFIX + productId) || '';
+  } catch {
+    return '';
+  }
+}
+
+function setStoredCostPrice(productId: string, value: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (value) {
+      window.localStorage.setItem(COST_PRICE_STORAGE_PREFIX + productId, value);
+    } else {
+      window.localStorage.removeItem(COST_PRICE_STORAGE_PREFIX + productId);
+    }
+  } catch {
+    // Storage full/blocked — non-critical, the field just won't be remembered.
+  }
+}
+
 // Live "what will I actually get" preview shown under the Price field on
 // the Add/Edit Product form — mirrors the Meesho-style settlement card.
 // Purely an estimate for the seller's own planning; it never touches what
@@ -360,19 +390,19 @@ function SettlementPreview({
         </div>
       </div>
 
-      <div className="mt-3 border-t border-dashed border-border/60 pt-3">
+      <div className="mt-3 rounded-md border border-primary/30 bg-primary/5 p-3">
         <div className="mb-1 flex items-center justify-between">
           <span className="text-xs font-medium">
             Safe Profit (after ~{settings.return_rate_percent}% return/RTO risk)
           </span>
-          <span className="font-serif text-base font-semibold">
+          <span className="font-serif text-lg font-bold text-primary">
             {formatINR(Math.max(safeSettlement, 0))}
           </span>
         </div>
         {safeProfit !== null && (
-          <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Profit after your cost price ({formatINR(costPrice!)})</span>
-            <span className={safeProfit < 0 ? 'font-medium text-destructive' : 'font-medium text-green-700'}>
+            <span className={safeProfit < 0 ? 'font-bold text-destructive' : 'font-bold text-green-700'}>
               {safeProfit >= 0 ? '+' : ''}
               {formatINR(safeProfit)}
             </span>
@@ -714,7 +744,7 @@ export default function ProductsPanel() {
   const openEdit = (p: Product) => {
     setEditing(p);
     setForm(fromProduct(p));
-    setCostPrice('');
+    setCostPrice(getStoredCostPrice(p.id));
     setAiHint('');
     setOpen(true);
   };
@@ -1141,12 +1171,12 @@ export default function ProductsPanel() {
       ) : (
         <div className="overflow-hidden rounded-lg border border-border/60 bg-card">
           <div className="hidden grid-cols-12 gap-3 border-b border-border/60 bg-muted/40 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground sm:grid">
-            <div className="col-span-4">Product</div>
-            <div className="col-span-2">Vendor</div>
+            <div className="col-span-3">Product</div>
+            <div className="col-span-1">Vendor</div>
             <div className="col-span-2">Category</div>
             <div className="col-span-2">Price</div>
             <div className="col-span-1">Stock</div>
-            <div className="col-span-1 text-right">Actions</div>
+            <div className="col-span-3 text-right">Actions</div>
           </div>
           <ul className="flex flex-col divide-y divide-border/60">
             {filteredProducts.map((p) => (
@@ -1154,7 +1184,7 @@ export default function ProductsPanel() {
                 key={p.id}
                 className="grid grid-cols-2 gap-3 px-4 py-3 sm:grid-cols-12 sm:items-center"
               >
-                <div className="col-span-2 flex items-center gap-3 sm:col-span-4">
+                <div className="col-span-2 flex items-center gap-3 sm:col-span-3">
                   <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-md bg-muted">
                     <Image
                       src={p.images[0] || 'https://placehold.co/48x60?text=No+Image'}
@@ -1193,9 +1223,9 @@ export default function ProductsPanel() {
                     )}
                   </button>
                 </div>
-                <div className="col-span-2 text-sm sm:col-span-2">
+                <div className="col-span-2 truncate text-sm sm:col-span-1">
                   {vendorNameById[p.id] ? (
-                    <Badge variant="outline" className="font-normal">
+                    <Badge variant="outline" className="max-w-full truncate font-normal">
                       {vendorNameById[p.id]}
                     </Badge>
                   ) : (
@@ -1235,7 +1265,7 @@ export default function ProductsPanel() {
                     <Badge variant="destructive" className="ml-1">Out</Badge>
                   )}
                 </div>
-                <div className="col-span-2 flex justify-end gap-1 sm:col-span-1">
+                <div className="col-span-2 flex flex-wrap justify-end gap-1 sm:col-span-3">
                   {(['facebook', 'instagram', 'threads'] as const).map((platform) => {
                     const key = `${p.id}:${platform}`;
                     const postedId = socialPostIdsById[p.id]?.[SOCIAL_PLATFORM_POST_ID_KEY[platform]];
@@ -1550,7 +1580,10 @@ export default function ProductsPanel() {
                     min={0}
                     className="bg-background"
                     value={costPrice}
-                    onChange={(e) => setCostPrice(e.target.value)}
+                    onChange={(e) => {
+                      setCostPrice(e.target.value);
+                      if (editing) setStoredCostPrice(editing.id, e.target.value);
+                    }}
                     placeholder="e.g. 250"
                   />
                 </div>
