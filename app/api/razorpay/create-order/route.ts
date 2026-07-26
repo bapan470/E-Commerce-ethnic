@@ -1,16 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
+// SECURITY: amount is NEVER taken from the request body anymore. It is
+// looked up server-side from the `orders` row (total_amount, set by the
+// authoritative place_order_with_items() RPC) using internalOrderId.
+// Previously this route trusted a client-supplied `amount` directly,
+// letting anyone open dev tools and create a Razorpay order for any
+// amount they chose regardless of what the cart actually cost.
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { amount, internalOrderId } = body;
+    const { internalOrderId } = body;
 
-    if (!amount || amount < 1) {
+    if (!internalOrderId || typeof internalOrderId !== 'string') {
+      return NextResponse.json({ error: 'internalOrderId is required' }, { status: 400 });
+    }
+
+    const admin = getSupabaseAdmin();
+    const { data: order, error: orderError } = await admin
+      .from('orders')
+      .select('id, total_amount, status')
+      .eq('id', internalOrderId)
+      .maybeSingle();
+
+    if (orderError || !order) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    }
+
+    if (order.status !== 'pending') {
       return NextResponse.json(
-        { error: 'Amount must be a positive integer (in paise)' },
-        { status: 400 }
+        { error: `Order is already ${order.status}; cannot create a new payment for it` },
+        { status: 409 }
       );
+    }
+
+    const amountPaise = Math.round(Number(order.total_amount) * 100);
+    if (!amountPaise || amountPaise < 1) {
+      return NextResponse.json({ error: 'Order has an invalid amount' }, { status: 400 });
     }
 
     const keyId = process.env.RAZORPAY_KEY_ID;
@@ -29,24 +56,37 @@ export async function POST(req: NextRequest) {
     });
 
     const options = {
-      amount: Math.round(amount), // amount in paise
+      amount: amountPaise, // authoritative amount, in paise, from the DB
       currency: 'INR',
-      receipt: internalOrderId || `receipt_${Date.now()}`,
+      receipt: internalOrderId,
       notes: {
-        internal_order_id: internalOrderId || '',
+        internal_order_id: internalOrderId,
       },
     };
 
-    const order = await rzp.orders.create(options);
+    const rzpOrder = await rzp.orders.create(options);
+
+    // Persist the mapping so verify-payment can confirm the signature it
+    // receives actually belongs to *this* internal order, not a replayed
+    // signature from a different (cheaper) order.
+    const { error: updateError } = await admin
+      .from('orders')
+      .update({ razorpay_order_id: rzpOrder.id })
+      .eq('id', internalOrderId)
+      .eq('status', 'pending');
+
+    if (updateError) {
+      return NextResponse.json({ error: 'Failed to link payment order' }, { status: 500 });
+    }
 
     return NextResponse.json({
       success: true,
       order: {
-        id: order.id,
-        amount: order.amount,
-        currency: order.currency,
-        receipt: order.receipt,
-        status: order.status,
+        id: rzpOrder.id,
+        amount: rzpOrder.amount,
+        currency: rzpOrder.currency,
+        receipt: rzpOrder.receipt,
+        status: rzpOrder.status,
       },
       keyId: keyId, // expose key ID to frontend for checkout.js
     });

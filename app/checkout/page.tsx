@@ -621,6 +621,11 @@ export default function CheckoutPage() {
         },
         handler: async (response: any) => {
           try {
+            // SECURITY: verify-payment now performs the status: 'paid'
+            // write itself (service-role client, after checking the
+            // signature AND that this razorpay_order_id belongs to this
+            // internalOrderId). The browser no longer writes to `orders`
+            // directly — anon no longer has UPDATE rights on that table.
             const verifyRes = await fetch('/api/razorpay/verify-payment', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -628,24 +633,13 @@ export default function CheckoutPage() {
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_signature: response.razorpay_signature,
+                internalOrderId,
               }),
             });
             const verifyData = await verifyRes.json();
             if (!verifyRes.ok || !verifyData.verified) {
               throw new Error(verifyData.error || 'Signature verification failed');
             }
-
-            const { error: updateError } = await supabase
-              .from('orders')
-              .update({
-                status: 'paid',
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-              })
-              .eq('id', internalOrderId);
-
-            if (updateError) throw updateError;
 
             resolve();
           } catch (err) {
@@ -812,18 +806,24 @@ export default function CheckoutPage() {
       }
 
       // 3. Create Razorpay order via API route
+      // SECURITY: amount is no longer sent from the client — create-order
+      // looks up the authoritative total_amount from the `orders` row
+      // itself using internalOrderId, so a tampered client can't change
+      // what gets charged.
       const createOrderRes = await fetch('/api/razorpay/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: payableTotal * 100, // convert to paise
-          internalOrderId,
-        }),
+        body: JSON.stringify({ internalOrderId }),
       });
       const createOrderData = await createOrderRes.json();
       if (!createOrderRes.ok) {
-        // Mark order as failed
-        await supabase.from('orders').update({ status: 'failed' }).eq('id', internalOrderId);
+        // Mark order as failed (server-side — anon no longer has UPDATE
+        // rights on `orders`).
+        fetch('/api/razorpay/mark-failed', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ internalOrderId }),
+        }).catch(() => {});
         throw new Error(createOrderData.error || 'Failed to create payment order');
       }
 
