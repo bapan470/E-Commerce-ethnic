@@ -651,9 +651,10 @@ function ProductInfo({
 }) {
   const discount = discountPct(product.price, product.mrp);
   const { paymentDiscount } = useProducts();
+  const priceAfterCoupon = appliedCoupon ? Math.max(0, product.price - couponDiscount) : product.price;
   const onlinePaymentSavings =
     paymentDiscount.enabled && paymentDiscount.percent > 0
-      ? Math.round((product.price * paymentDiscount.percent) / 100)
+      ? Math.round((priceAfterCoupon * paymentDiscount.percent) / 100)
       : 0;
 
   return (
