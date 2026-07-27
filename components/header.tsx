@@ -29,7 +29,7 @@ const navLinks = [
 
 export default function Header() {
   const { count, setCartOpen, addItem, buyNowItem, clearBuyNow } = useCart();
-  const { products } = useProducts();
+  const { products, categories } = useProducts();
   const { user } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -45,6 +45,28 @@ export default function Header() {
   // On these sub-pages, mobile shows a back arrow (left of the logo)
   // instead of the hamburger menu — matches how shopping apps let you
   // step back to the previous screen instead of opening the full nav.
+  // Mobile menu shows every category that actually has at least one
+  // product (unlike the desktop nav, which keeps a fixed shortlist),
+  // plus links to account management, reseller sign-up, and contact us.
+  const mobileNavLinks = useMemo(() => {
+    const namesWithProducts = new Set(products.map((p) => p.category));
+    const categoryLinks = categories
+      .filter((c) => namesWithProducts.has(c.name))
+      .map((c) => ({
+        href: `/shop?category=${encodeURIComponent(c.name)}`,
+        label: c.name,
+      }));
+
+    return [
+      { href: '/shop', label: 'Shop All' },
+      ...categoryLinks,
+      { href: '/blog', label: 'Blog' },
+      { href: '/account', label: 'My Account' },
+      { href: '/account/reseller', label: 'Reseller' },
+      { href: '/contact', label: 'Contact Us' },
+    ];
+  }, [products, categories]);
+
   const showBackButton =
     pathname === '/shop' ||
     pathname.startsWith('/cart') ||
@@ -339,7 +361,7 @@ export default function Header() {
                   </Button>
                 </form>
                 <nav className="flex flex-col gap-1">
-                  {navLinks.map((l) => (
+                  {mobileNavLinks.map((l) => (
                     <Link
                       key={l.href}
                       href={l.href}
