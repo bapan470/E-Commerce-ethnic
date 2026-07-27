@@ -340,21 +340,42 @@ function blendedLogisticsCost(settings: ShippingSettings): number {
   return Math.round((codCost * codShare + prepaidCost * prepaidShare) * 100) / 100;
 }
 
+// Average coupon cost per order, blended across orders that use no coupon
+// and orders that do. E.g. a flat ₹50-off coupon used on 30% of orders
+// blends to ₹15/order; a 10%-off coupon used on 30% of orders blends to 3%
+// of price. Mirrors the real discount math in lib/coupons-api.ts
+// (computeCouponDiscount) but for a single "typical" coupon, since profit
+// estimation here is per-product, not tied to a specific order/code.
+function blendedCouponDiscount(price: number, settings: ShippingSettings): number {
+  const usageShare = (settings.coupon_usage_percent || 0) / 100;
+  const perUseDiscount =
+    settings.coupon_discount_type === 'percentage'
+      ? (price * (settings.coupon_discount_value || 0)) / 100
+      : settings.coupon_discount_value || 0;
+  return Math.round(perUseDiscount * usageShare * 100) / 100;
+}
+
 function calcSafeProfit(price: number, costPrice: number | null, settings: ShippingSettings) {
   const prepaidShare = (100 - settings.cod_order_percent) / 100;
   const returnRate = settings.return_rate_percent / 100;
   const logisticsFee = blendedLogisticsCost(settings);
   const otherCharges = settings.other_charges;
-  // Average coupon discount blended across all orders (see ShippingSettings
-  // doc comment) — reduces the effective price before fees are taken out.
-  const couponDiscount =
-    Math.round((price * (settings.avg_coupon_discount_percent || 0)) / 100 * 100) / 100;
+  const couponDiscount = blendedCouponDiscount(price, settings);
   const effectivePrice = price - couponDiscount;
+
+  // Listing price is GST-inclusive (see app/checkout/page.tsx) — that slice
+  // goes straight to the government, never to you, so it comes off before
+  // anything else.
+  const gstAmount =
+    Math.round(
+      (effectivePrice - (effectivePrice * 100) / (100 + settings.gst_rate_percent)) * 100
+    ) / 100;
+  const priceAfterGst = effectivePrice - gstAmount;
 
   const fullGatewayFee = Math.round((effectivePrice * settings.payment_gateway_fee_percent) / 100 * 100) / 100;
   const blendedGatewayFee = Math.round(fullGatewayFee * prepaidShare * 100) / 100;
   const successfulSettlement =
-    Math.round((effectivePrice - blendedGatewayFee - logisticsFee - otherCharges) * 100) / 100;
+    Math.round((priceAfterGst - blendedGatewayFee - logisticsFee - otherCharges) * 100) / 100;
 
   const returnLossPerAttempt = returnRate * 2 * logisticsFee;
   const expectedPerAttempt = (1 - returnRate) * successfulSettlement - returnLossPerAttempt;
@@ -384,9 +405,16 @@ function SettlementPreview({
   // shown to customers — see blendedLogisticsCost for why these differ.
   const logisticsFee = blendedLogisticsCost(settings);
   const otherCharges = settings.other_charges;
-  const couponDiscount =
-    Math.round((price * (settings.avg_coupon_discount_percent || 0)) / 100 * 100) / 100;
+  const couponDiscount = blendedCouponDiscount(price, settings);
   const effectivePrice = price - couponDiscount;
+
+  // Listing price is GST-inclusive — that slice goes to the government, not
+  // to you, so it's carved out before any of the seller-side deductions.
+  const gstAmount =
+    Math.round(
+      (effectivePrice - (effectivePrice * 100) / (100 + settings.gst_rate_percent)) * 100
+    ) / 100;
+  const priceAfterGst = effectivePrice - gstAmount;
 
   // Gateway fee only applies to the prepaid share of orders (COD has none),
   // so blend it by the COD/prepaid mix from Settings.
@@ -395,7 +423,7 @@ function SettlementPreview({
 
   // What a *successful* order settles to, on average across COD + prepaid.
   const successfulSettlement =
-    Math.round((effectivePrice - blendedGatewayFee - logisticsFee - otherCharges) * 100) / 100;
+    Math.round((priceAfterGst - blendedGatewayFee - logisticsFee - otherCharges) * 100) / 100;
 
   const { safeSettlement, safeProfit } = calcSafeProfit(price, costPrice, settings);
 
@@ -410,8 +438,16 @@ function SettlementPreview({
       <div className="space-y-1 text-xs text-muted-foreground">
         {couponDiscount > 0 && (
           <div className="flex items-center justify-between">
-            <span>Avg. coupon discount ({settings.avg_coupon_discount_percent}%)</span>
+            <span>
+              Avg. coupon discount ({settings.coupon_discount_type === 'flat' ? formatINR(settings.coupon_discount_value) : `${settings.coupon_discount_value}%`} off, used on {settings.coupon_usage_percent}% of orders)
+            </span>
             <span>-{formatINR(couponDiscount)}</span>
+          </div>
+        )}
+        {gstAmount > 0 && (
+          <div className="flex items-center justify-between">
+            <span>GST ({settings.gst_rate_percent}%, already included in price — goes to govt.)</span>
+            <span>-{formatINR(gstAmount)}</span>
           </div>
         )}
         <div className="flex items-center justify-between">

@@ -131,13 +131,20 @@ export interface ShippingSettings {
    */
   prepaid_logistics_cost: number;
   /**
-   * Average coupon discount across ALL orders, as a % of order value —
-   * blended across orders that use no coupon and orders that do (e.g. if
-   * 30% of orders use a 10%-off coupon, the blended average is ~3%).
-   * Used only for the Safe Profit estimate; doesn't touch the real coupon
-   * engine at checkout.
+   * Average coupon usage rate across ALL orders, as a % (0-100) — e.g. if
+   * roughly 3 out of 10 orders use a coupon, enter 30. Used with
+   * `coupon_discount_type`/`coupon_discount_value` below to blend the
+   * average coupon cost into the Safe Profit estimate.
    */
-  avg_coupon_discount_percent: number;
+  coupon_usage_percent: number;
+  /** Whether your typical/main coupon is a flat rupee amount off or a percentage off. */
+  coupon_discount_type: 'flat' | 'percentage';
+  /**
+   * The discount value of your typical coupon — in rupees if
+   * coupon_discount_type is 'flat' (e.g. 50 = ₹50 off), or in % if
+   * 'percentage' (e.g. 10 = 10% off).
+   */
+  coupon_discount_value: number;
   /** Suggested markup % over cost price for everyday/entry-level products (used as a Product form quick-fill). */
   entry_markup_percent: number;
   /** Suggested markup % over cost price for mid-range/festive products. */
@@ -156,7 +163,9 @@ export const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
   return_rate_percent: 15,
   cod_logistics_cost: 0,
   prepaid_logistics_cost: 0,
-  avg_coupon_discount_percent: 0,
+  coupon_usage_percent: 0,
+  coupon_discount_type: 'flat',
+  coupon_discount_value: 0,
   entry_markup_percent: 35,
   mid_markup_percent: 45,
   premium_markup_percent: 85,

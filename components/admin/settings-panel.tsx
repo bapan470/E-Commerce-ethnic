@@ -37,6 +37,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
 
 export default function SettingsPanel() {
@@ -733,27 +740,63 @@ export default function SettingsPanel() {
               </p>
             </div>
           </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="avg-coupon-discount">Avg. coupon discount across all orders (%)</Label>
-            <Input
-              id="avg-coupon-discount"
-              type="number"
-              min={0}
-              max={100}
-              step="0.1"
-              value={checkoutForm.avg_coupon_discount_percent}
-              onChange={(e) =>
-                setCheckoutForm(
-                  (f) => f && { ...f, avg_coupon_discount_percent: Number(e.target.value) }
-                )
-              }
-            />
-            <p className="text-xs text-muted-foreground">
-              Blend usage rate × coupon size. E.g. if ~30% of orders use a 10%-off coupon, enter 3.
-              This reduces the effective price used in the Safe Profit math — it doesn't change
-              your real coupons at checkout.
-            </p>
+          <div className="grid grid-cols-[1fr_1fr_1fr] gap-4">
+            <div className="grid gap-1.5">
+              <Label htmlFor="coupon-type">Your typical coupon type</Label>
+              <Select
+                value={checkoutForm.coupon_discount_type}
+                onValueChange={(v: 'flat' | 'percentage') =>
+                  setCheckoutForm((f) => f && { ...f, coupon_discount_type: v })
+                }
+              >
+                <SelectTrigger id="coupon-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="flat">Flat ₹ off</SelectItem>
+                  <SelectItem value="percentage">% off</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="coupon-value">
+                {checkoutForm.coupon_discount_type === 'flat' ? 'Coupon amount (₹)' : 'Coupon amount (%)'}
+              </Label>
+              <Input
+                id="coupon-value"
+                type="number"
+                min={0}
+                step="1"
+                value={checkoutForm.coupon_discount_value}
+                onChange={(e) =>
+                  setCheckoutForm(
+                    (f) => f && { ...f, coupon_discount_value: Number(e.target.value) }
+                  )
+                }
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="coupon-usage">Used on (% of orders)</Label>
+              <Input
+                id="coupon-usage"
+                type="number"
+                min={0}
+                max={100}
+                step="1"
+                value={checkoutForm.coupon_usage_percent}
+                onChange={(e) =>
+                  setCheckoutForm(
+                    (f) => f && { ...f, coupon_usage_percent: Number(e.target.value) }
+                  )
+                }
+              />
+            </div>
           </div>
+          <p className="text-xs text-muted-foreground">
+            E.g. a flat ₹50-off coupon used on 30% of orders blends to an average ₹15/order —
+            reduces the effective price used in the Safe Profit math. Doesn't change your real
+            coupons at checkout.
+          </p>
           <div className="mt-2 border-t border-border/60 pt-4">
             <p className="text-sm font-medium">Suggested pricing tiers</p>
             <p className="text-xs text-muted-foreground">
