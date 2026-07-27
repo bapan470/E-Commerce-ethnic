@@ -1,8 +1,8 @@
 'use client';
 
 import { useMemo, useState, useEffect, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { SlidersHorizontal, TrendingDown, Flame, Gift } from 'lucide-react';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { SlidersHorizontal, TrendingDown, Flame, Gift, Camera } from 'lucide-react';
 import { useProducts } from '@/lib/cart-context';
 import { Product, Category } from '@/lib/types';
 import ProductCard from '@/components/product-card';
@@ -42,6 +42,13 @@ const QUICK_FILTERS: { key: SortKey; label: string; icon: typeof TrendingDown }[
 function ShopContent() {
   const { products, categories, loading } = useProducts();
   const params = useSearchParams();
+  const router = useRouter();
+
+  // Set by the header's "search by image" camera button: it ranks the
+  // catalog by visual similarity client-side (lib/image-search.ts) and
+  // hands us the ranked product ids via sessionStorage, since an uploaded
+  // photo can't be put in a URL the way a text query can.
+  const [imageSearchIds, setImageSearchIds] = useState<string[] | null>(null);
 
   const initialCategory = params.get('category') || '';
   const initialQuery = params.get('q') || '';
@@ -76,7 +83,24 @@ function ShopContent() {
     const c = params.get('category') || '';
     setSelectedCats(c ? [c] : []);
     setQuery(params.get('q') || '');
+
+    if (params.get('imgsearch') === '1') {
+      try {
+        const raw = sessionStorage.getItem('imageSearchResults');
+        setImageSearchIds(raw ? JSON.parse(raw) : null);
+      } catch {
+        setImageSearchIds(null);
+      }
+    } else {
+      setImageSearchIds(null);
+    }
   }, [params]);
+
+  const clearImageSearch = () => {
+    sessionStorage.removeItem('imageSearchResults');
+    setImageSearchIds(null);
+    router.replace('/shop');
+  };
 
   const toggle = (list: string[], value: string) =>
     list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
@@ -108,6 +132,16 @@ function ShopContent() {
           p.origin.toLowerCase().includes(q)
       );
     }
+    if (imageSearchIds) {
+      // Visual-similarity order takes over from the regular sort dropdown —
+      // most-similar-first is the whole point of an image search. Other
+      // filters (category/size/price/etc.) still apply on top of it.
+      const rank = new Map(imageSearchIds.map((id, i) => [id, i]));
+      list = list.filter((p) => rank.has(p.id));
+      list.sort((a, b) => rank.get(a.id)! - rank.get(b.id)!);
+      return list;
+    }
+
     switch (sort) {
       case 'price-asc':
         list.sort((a, b) => a.price - b.price);
@@ -133,7 +167,7 @@ function ShopContent() {
         list.sort((a, b) => Number(!!b.featured) - Number(!!a.featured));
     }
     return list;
-  }, [products, selectedCats, selectedSizes, selectedFabrics, selectedOccasions, priceRange, query, sort]);
+  }, [products, selectedCats, selectedSizes, selectedFabrics, selectedOccasions, priceRange, query, sort, imageSearchIds]);
 
   const activeCount =
     selectedCats.length +
@@ -149,6 +183,7 @@ function ShopContent() {
     setSelectedOccasions([]);
     setPriceRange([0, 35000]);
     setQuery('');
+    if (imageSearchIds) clearImageSearch();
   };
 
   const FiltersPanel = (
@@ -299,6 +334,19 @@ function ShopContent() {
         <p className="mt-2 text-sm text-muted-foreground">
           {loading ? 'Loading…' : `${filtered.length} ${filtered.length === 1 ? 'piece' : 'pieces'} found`}
         </p>
+
+        {imageSearchIds && (
+          <div className="mt-3 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+            <Camera className="h-4 w-4 shrink-0 text-primary" />
+            <span>Showing pieces visually similar to your uploaded photo.</span>
+            <button
+              onClick={clearImageSearch}
+              className="ml-auto shrink-0 text-xs font-medium text-primary underline underline-offset-2"
+            >
+              Clear
+            </button>
+          </div>
+        )}
 
         <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
           {QUICK_FILTERS.map((f) => (
