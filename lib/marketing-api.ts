@@ -141,6 +141,19 @@ export function applyFulfillmentTokens(
     .replace(/\{\{\s*return_days\s*\}\}/g, String(f.return_window_days))
     .replace(/\{\{\s*cancellation_hours\s*\}\}/g, String(f.cancellation_window_hours));
   if (shipping) {
+    // When the store is configured for free shipping on every order (no
+    // minimum order value — threshold 0), the literal "free shipping on
+    // orders above Rs 0 / a Rs 0 charge on orders below" phrasing is
+    // technically accurate but reads like a broken placeholder to
+    // customers. Swap in a clean, unconditional sentence instead, before
+    // resolving the raw {{shipping_fee}} / {{free_shipping_threshold}}
+    // numbers, so the resolved page never shows "Rs 0" for this line.
+    if (shipping.free_shipping_threshold <= 0) {
+      result = result.replace(
+        /Free shipping on all orders above \{\{\s*free_shipping_threshold\s*\}\}\.\s*A flat shipping charge of \{\{\s*shipping_fee\s*\}\}\s*applies on orders below that amount\./g,
+        'We currently offer free shipping on all orders, with no minimum order value.',
+      );
+    }
     result = result
       .replace(/\{\{\s*shipping_fee\s*\}\}/g, `Rs ${shipping.flat_rate.toLocaleString('en-IN')}`)
       .replace(
