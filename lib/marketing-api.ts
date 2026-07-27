@@ -212,16 +212,20 @@ export const PRIVACY_POLICY_TEMPLATE = `AruhiHandlooms ("we", "us", "our") opera
 Information We Collect
 We collect information you provide directly to us, including your name, email address, phone number, shipping and billing address, and payment details when you place an order, create an account, or contact us. We also automatically collect certain information such as your IP address, browser type, and browsing behaviour on our site through cookies and analytics tools.
 
+If you take part in optional programs on our site, we also collect information needed to run them: your loyalty points balance and history if you join our loyalty program; your unique referral code and the status of people you refer if you use our referral program; the recipient's name and email address if you purchase a gift card for someone else; your business name and reseller/wholesale account details if you join our reseller or wholesale programs; and the name, rating, comment, and any photos you submit if you write a product review (which may be displayed publicly on the relevant product page).
+
 How We Use Your Information
 We use your information to:
 Process and fulfil your orders, including shipping and delivery
 Communicate with you about your orders, account, or customer service requests
 Send you promotional emails or WhatsApp messages, only if you have opted in
+Operate optional programs you choose to join, such as loyalty points, referrals, gift cards, coupons, and reseller/wholesale accounts, and to calculate and apply any related rewards or discounts
+Display product reviews and ratings you choose to submit
 Improve our website, products, and customer experience
-Detect and prevent fraud
+Detect and prevent fraud, including misuse of discounts, referral codes, or gift cards
 
 Payment Information
-All payments are processed through secure, PCI-DSS compliant payment gateways. We do not store your full card details on our servers.
+All payments are processed through secure, PCI-DSS compliant payment gateways (including Razorpay). We do not store your full card details on our servers. Where we offer an additional discount for paying online instead of Cash on Delivery, this is applied at checkout only and does not involve collecting any extra personal information beyond your chosen payment method.
 
 Sharing of Information
 We do not sell your personal information. We may share your information with trusted third parties who help us operate our business, including payment processors, shipping and logistics partners (such as Delhivery), and email/SMS service providers, solely for the purpose of fulfilling your order and communicating with you.
@@ -260,6 +264,24 @@ All prices listed on the website are in Indian Rupees (INR) and are inclusive of
 
 Order Confirmation
 An order is confirmed only after successful payment and receipt of an order confirmation email/message from us. We reserve the right to cancel any order due to stock unavailability, pricing errors, or suspected fraudulent activity, in which case a full refund will be issued.
+
+Discounts, Coupons and Online Payment Discount
+From time to time we may offer coupon codes, checkout add-on offers, or an additional discount for choosing to pay online instead of Cash on Delivery. Any such discount is shown to you at checkout before you complete your order and applies only to that order; it is not a permanent price reduction, cannot be combined with other offers unless stated, has no cash value, and may be changed, withdrawn, or restricted (including by order value, product, or payment method) at our discretion without prior notice.
+
+Loyalty Points Program
+If enabled, our loyalty program lets you earn points on qualifying purchases, which can be redeemed for a discount on future orders once you reach the minimum redemption threshold shown on the site. Points have no cash value, are non-transferable, cannot be sold or exchanged, may be reversed if the related order is cancelled or returned, and may expire or be adjusted as described in the program details on the site. We reserve the right to modify, suspend, or discontinue the loyalty program at any time.
+
+Referral Program
+If enabled, our referral program lets existing customers invite others to shop with us in exchange for reward points for both the referrer and the referred customer, as described on the site at the time of referral. Referral rewards are credited only once the referred customer's qualifying order is completed and are subject to the same non-cash, non-transferable terms as loyalty points. We reserve the right to withhold or reverse rewards, and to suspend accounts, in cases of suspected abuse, self-referral, or fraud, and may modify or discontinue the program at any time.
+
+Gift Cards
+Gift cards purchased on our site are valid for the period shown at the time of purchase from the date of issue, are redeemable only for purchases on aruhihandlooms.com, cannot be redeemed for cash (in whole or in part) except where required by law, and are non-refundable once issued. You are responsible for keeping your gift card code secure; we are not liable for gift cards lost, stolen, or redeemed without authorisation due to a code being shared or compromised. Unused balances after expiry may be forfeited, subject to applicable law.
+
+Reseller and Wholesale Program
+We may allow eligible customers to join our reseller or wholesale program to purchase products at a different price for resale, subject to the terms shown at the time of joining. Participants in this program act on their own behalf and are independently responsible for their own pricing, marketing, and representations to their end-customers; AruhiHandlooms is not a party to and is not liable for arrangements between a reseller/wholesale participant and their customers. We reserve the right to approve, suspend, or terminate any reseller or wholesale account at our discretion.
+
+Product Reviews
+When you submit a product review, you confirm the content is your own genuine opinion and that you have not been paid or incentivised to post it unless we have explicitly disclosed otherwise. We may moderate, edit for length, or decline to publish reviews that are abusive, irrelevant, contain personal information about others, or otherwise violate these Terms, and may remove any review at our discretion.
 
 Intellectual Property
 All content on this website, including images, logos, and text, is the property of AruhiHandlooms and may not be reproduced or used without our written permission.
