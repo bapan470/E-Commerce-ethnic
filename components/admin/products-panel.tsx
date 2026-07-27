@@ -326,16 +326,35 @@ function setStoredCostPrice(productId: string, value: string) {
 // SettlementPreview so the compact version shown next to Price in the
 // table row (below) computes the exact same figures instead of a
 // slightly-different copy that could drift out of sync.
+// Your real courier cost per order — deliberately NOT the same as
+// settings.flat_rate. flat_rate is what the *customer* is charged at
+// checkout (often ₹0 if you run free shipping); this is what the courier
+// actually bills you, which keeps costing money either way. Falls back to
+// flat_rate for stores that haven't filled in the new fields yet, so the
+// estimate doesn't silently break for existing settings.
+function blendedLogisticsCost(settings: ShippingSettings): number {
+  const codCost = settings.cod_logistics_cost || settings.flat_rate;
+  const prepaidCost = settings.prepaid_logistics_cost || settings.flat_rate;
+  const codShare = settings.cod_order_percent / 100;
+  const prepaidShare = 1 - codShare;
+  return Math.round((codCost * codShare + prepaidCost * prepaidShare) * 100) / 100;
+}
+
 function calcSafeProfit(price: number, costPrice: number | null, settings: ShippingSettings) {
   const prepaidShare = (100 - settings.cod_order_percent) / 100;
   const returnRate = settings.return_rate_percent / 100;
-  const logisticsFee = settings.flat_rate;
+  const logisticsFee = blendedLogisticsCost(settings);
   const otherCharges = settings.other_charges;
+  // Average coupon discount blended across all orders (see ShippingSettings
+  // doc comment) — reduces the effective price before fees are taken out.
+  const couponDiscount =
+    Math.round((price * (settings.avg_coupon_discount_percent || 0)) / 100 * 100) / 100;
+  const effectivePrice = price - couponDiscount;
 
-  const fullGatewayFee = Math.round((price * settings.payment_gateway_fee_percent) / 100 * 100) / 100;
+  const fullGatewayFee = Math.round((effectivePrice * settings.payment_gateway_fee_percent) / 100 * 100) / 100;
   const blendedGatewayFee = Math.round(fullGatewayFee * prepaidShare * 100) / 100;
   const successfulSettlement =
-    Math.round((price - blendedGatewayFee - logisticsFee - otherCharges) * 100) / 100;
+    Math.round((effectivePrice - blendedGatewayFee - logisticsFee - otherCharges) * 100) / 100;
 
   const returnLossPerAttempt = returnRate * 2 * logisticsFee;
   const expectedPerAttempt = (1 - returnRate) * successfulSettlement - returnLossPerAttempt;
@@ -361,17 +380,22 @@ function SettlementPreview({
 }) {
   const prepaidShare = (100 - settings.cod_order_percent) / 100;
   const returnRate = settings.return_rate_percent / 100;
-  const logisticsFee = settings.flat_rate;
+  // Real courier cost (COD/prepaid blended), not the free-shipping fee
+  // shown to customers — see blendedLogisticsCost for why these differ.
+  const logisticsFee = blendedLogisticsCost(settings);
   const otherCharges = settings.other_charges;
+  const couponDiscount =
+    Math.round((price * (settings.avg_coupon_discount_percent || 0)) / 100 * 100) / 100;
+  const effectivePrice = price - couponDiscount;
 
   // Gateway fee only applies to the prepaid share of orders (COD has none),
   // so blend it by the COD/prepaid mix from Settings.
-  const fullGatewayFee = Math.round((price * settings.payment_gateway_fee_percent) / 100 * 100) / 100;
+  const fullGatewayFee = Math.round((effectivePrice * settings.payment_gateway_fee_percent) / 100 * 100) / 100;
   const blendedGatewayFee = Math.round(fullGatewayFee * prepaidShare * 100) / 100;
 
   // What a *successful* order settles to, on average across COD + prepaid.
   const successfulSettlement =
-    Math.round((price - blendedGatewayFee - logisticsFee - otherCharges) * 100) / 100;
+    Math.round((effectivePrice - blendedGatewayFee - logisticsFee - otherCharges) * 100) / 100;
 
   const { safeSettlement, safeProfit } = calcSafeProfit(price, costPrice, settings);
 
@@ -384,6 +408,12 @@ function SettlementPreview({
         </span>
       </div>
       <div className="space-y-1 text-xs text-muted-foreground">
+        {couponDiscount > 0 && (
+          <div className="flex items-center justify-between">
+            <span>Avg. coupon discount ({settings.avg_coupon_discount_percent}%)</span>
+            <span>-{formatINR(couponDiscount)}</span>
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <span>
             Payment gateway fee (blended, {settings.cod_order_percent}% COD / {Math.round(prepaidShare * 100)}% prepaid)
@@ -391,7 +421,9 @@ function SettlementPreview({
           <span>-{formatINR(blendedGatewayFee)}</span>
         </div>
         <div className="flex items-center justify-between">
-          <span>Shipping / logistics fee</span>
+          <span>
+            Your courier cost (blended, {settings.cod_order_percent}% COD @ {formatINR(settings.cod_logistics_cost || settings.flat_rate)} / {Math.round(prepaidShare * 100)}% prepaid @ {formatINR(settings.prepaid_logistics_cost || settings.flat_rate)})
+          </span>
           <span>-{formatINR(logisticsFee)}</span>
         </div>
         {otherCharges > 0 && (
@@ -437,7 +469,7 @@ function SettlementPreview({
         </p>
       )}
       <p className="mt-2 text-[11px] text-muted-foreground">
-        Estimate only, based on Admin → Settings → GST &amp; Shipping. Actual fees vary by real
+        Estimate only, based on Admin → Settings → Profit Estimate. Actual fees vary by real
         order zone, payment method, and return outcome.
       </p>
     </div>

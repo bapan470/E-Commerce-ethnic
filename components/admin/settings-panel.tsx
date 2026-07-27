@@ -523,7 +523,8 @@ export default function SettingsPanel() {
       <div className="mt-8">
         <h2 className="font-serif text-2xl font-bold text-primary">GST & Shipping</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Controls the tax rate and shipping fee applied at checkout storewide.
+          Controls the tax rate and shipping fee applied at checkout storewide. This is what the
+          CUSTOMER sees and pays — nothing here affects the Profit Estimate box below.
         </p>
       </div>
 
@@ -555,7 +556,7 @@ export default function SettingsPanel() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-1.5">
-              <Label htmlFor="shipping-fee">Shipping fee (₹)</Label>
+              <Label htmlFor="shipping-fee">Shipping fee shown to customer (₹)</Label>
               <Input
                 id="shipping-fee"
                 type="number"
@@ -568,6 +569,10 @@ export default function SettingsPanel() {
                   )
                 }
               />
+              <p className="text-xs text-muted-foreground">
+                What appears on cart/checkout. Set to 0 for storewide free shipping — this does
+                NOT affect the Profit Estimate box below, which uses your real courier cost instead.
+              </p>
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="free-shipping-threshold">Free shipping above (₹)</Label>
@@ -588,6 +593,67 @@ export default function SettingsPanel() {
               </p>
             </div>
           </div>
+          <Button type="submit" disabled={savingCheckout} className="mt-2 w-fit bg-primary">
+            <Save className="mr-1.5 h-4 w-4" />{' '}
+            {savingCheckout ? 'Saving…' : 'Save GST & Shipping'}
+          </Button>
+        </form>
+      )}
+
+      <div className="mt-8">
+        <h2 className="font-serif text-2xl font-bold text-primary">Profit Estimate (Admin-only)</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Powers the "Safe Profit" preview on the Add/Edit Product form only. Never shown to
+          customers, never sent to Merchant Center/product feed, never changes checkout pricing.
+        </p>
+      </div>
+
+      {!checkoutForm ? (
+        <p className="py-4 text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <form
+          onSubmit={onSubmitCheckout}
+          className="mt-4 grid max-w-xl gap-4 rounded-lg border border-primary/30 bg-primary/5 p-5"
+        >
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-1.5">
+              <Label htmlFor="cod-logistics-cost">Your actual COD courier cost (₹)</Label>
+              <Input
+                id="cod-logistics-cost"
+                type="number"
+                min={0}
+                step="1"
+                value={checkoutForm.cod_logistics_cost}
+                onChange={(e) =>
+                  setCheckoutForm(
+                    (f) => f && { ...f, cod_logistics_cost: Number(e.target.value) }
+                  )
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                What the courier actually charges you per COD order (forward freight + COD
+                handling) — used for Safe Profit even though customer shipping above is ₹0.
+              </p>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="prepaid-logistics-cost">Your actual prepaid courier cost (₹)</Label>
+              <Input
+                id="prepaid-logistics-cost"
+                type="number"
+                min={0}
+                step="1"
+                value={checkoutForm.prepaid_logistics_cost}
+                onChange={(e) =>
+                  setCheckoutForm(
+                    (f) => f && { ...f, prepaid_logistics_cost: Number(e.target.value) }
+                  )
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                Usually cheaper than COD — no cash handling fee.
+              </p>
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-1.5">
               <Label htmlFor="gateway-fee">Payment gateway fee (%)</Label>
@@ -605,7 +671,7 @@ export default function SettingsPanel() {
                 }
               />
               <p className="text-xs text-muted-foreground">
-                E.g. Razorpay's ~2.36% (2% + 18% GST). Used only to estimate settlement below.
+                E.g. Razorpay's ~2.36% (2% + 18% GST). Applied only to the prepaid share of orders.
               </p>
             </div>
             <div className="grid gap-1.5">
@@ -623,7 +689,7 @@ export default function SettingsPanel() {
                 }
               />
               <p className="text-xs text-muted-foreground">
-                Any manual deduction — packaging, handling, average extra logistics cost, etc.
+                Any manual deduction — packaging, handling, etc.
               </p>
             </div>
           </div>
@@ -644,7 +710,7 @@ export default function SettingsPanel() {
                 }
               />
               <p className="text-xs text-muted-foreground">
-                Rest is assumed prepaid. Used for the Safe Profit estimate on products.
+                Rest is assumed prepaid. E.g. 19 COD out of 25 orders = 76.
               </p>
             </div>
             <div className="grid gap-1.5">
@@ -663,14 +729,31 @@ export default function SettingsPanel() {
                 }
               />
               <p className="text-xs text-muted-foreground">
-                Returned orders lose both-way shipping with no revenue — factored into Safe Profit.
+                E.g. 5 returns out of 25 orders = 20. Returned orders lose both-way shipping.
               </p>
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">
-            The gateway fee and other charges above only power the estimated settlement preview
-            on the Add/Edit Product form — they don't change what the customer pays.
-          </p>
+          <div className="grid gap-1.5">
+            <Label htmlFor="avg-coupon-discount">Avg. coupon discount across all orders (%)</Label>
+            <Input
+              id="avg-coupon-discount"
+              type="number"
+              min={0}
+              max={100}
+              step="0.1"
+              value={checkoutForm.avg_coupon_discount_percent}
+              onChange={(e) =>
+                setCheckoutForm(
+                  (f) => f && { ...f, avg_coupon_discount_percent: Number(e.target.value) }
+                )
+              }
+            />
+            <p className="text-xs text-muted-foreground">
+              Blend usage rate × coupon size. E.g. if ~30% of orders use a 10%-off coupon, enter 3.
+              This reduces the effective price used in the Safe Profit math — it doesn't change
+              your real coupons at checkout.
+            </p>
+          </div>
           <div className="mt-2 border-t border-border/60 pt-4">
             <p className="text-sm font-medium">Suggested pricing tiers</p>
             <p className="text-xs text-muted-foreground">
@@ -727,10 +810,11 @@ export default function SettingsPanel() {
           </div>
           <Button type="submit" disabled={savingCheckout} className="mt-2 w-fit bg-primary">
             <Save className="mr-1.5 h-4 w-4" />{' '}
-            {savingCheckout ? 'Saving…' : 'Save GST & Shipping'}
+            {savingCheckout ? 'Saving…' : 'Save Profit Estimate Settings'}
           </Button>
         </form>
       )}
+
 
       <div className="mt-8">
         <h2 className="font-serif text-2xl font-bold text-primary">Delhivery Courier</h2>

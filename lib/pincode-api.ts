@@ -116,6 +116,28 @@ export interface ShippingSettings {
   cod_order_percent: number;
   /** Roughly what % of orders come back as a return/RTO (0-100). Used only for the safe-profit estimate. */
   return_rate_percent: number;
+  /**
+   * Your ACTUAL courier/logistics cost per COD order, in rupees (e.g. Delhivery's
+   * COD handling + forward freight). Used only for the Safe Profit estimate —
+   * kept separate from `flat_rate` (what the customer is charged) so that
+   * offering free shipping to customers doesn't zero out your real cost in
+   * the profit math.
+   */
+  cod_logistics_cost: number;
+  /**
+   * Your ACTUAL courier/logistics cost per prepaid order, in rupees. COD
+   * orders usually cost more than prepaid (COD handling fee + higher RTO
+   * rate), so this is tracked separately from `cod_logistics_cost`.
+   */
+  prepaid_logistics_cost: number;
+  /**
+   * Average coupon discount across ALL orders, as a % of order value —
+   * blended across orders that use no coupon and orders that do (e.g. if
+   * 30% of orders use a 10%-off coupon, the blended average is ~3%).
+   * Used only for the Safe Profit estimate; doesn't touch the real coupon
+   * engine at checkout.
+   */
+  avg_coupon_discount_percent: number;
   /** Suggested markup % over cost price for everyday/entry-level products (used as a Product form quick-fill). */
   entry_markup_percent: number;
   /** Suggested markup % over cost price for mid-range/festive products. */
@@ -132,6 +154,9 @@ export const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
   other_charges: 0,
   cod_order_percent: 60,
   return_rate_percent: 15,
+  cod_logistics_cost: 0,
+  prepaid_logistics_cost: 0,
+  avg_coupon_discount_percent: 0,
   entry_markup_percent: 35,
   mid_markup_percent: 45,
   premium_markup_percent: 85,
