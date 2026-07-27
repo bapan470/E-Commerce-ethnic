@@ -204,6 +204,29 @@ export function computeCouponDiscount(
 }
 
 /**
+ * Per-cart-line share of an applied coupon's discount, for showing each
+ * product's own "after coupon" price in the cart drawer/page (not just the
+ * order-wide total). Mirrors computeCouponDiscount's own rules so the sum
+ * across every line always lines up with the whole-cart figure:
+ *  - Percentage coupons: each line loses that same % of its own total.
+ *  - Flat coupons: applied once per distinct product line (not per unit),
+ *    same as computeCouponDiscount's `productCount` multiplier — so a flat
+ *    ₹100 coupon knocks ₹100 off THIS line specifically, capped at the
+ *    line's own total (never negative, never more than the line is worth).
+ */
+export function computeItemCouponDiscount(
+  coupon: Pick<Coupon, 'discount_type' | 'discount_value'>,
+  lineTotal: number
+): number {
+  if (lineTotal <= 0) return 0;
+  const raw =
+    coupon.discount_type === 'percentage'
+      ? Math.round((lineTotal * coupon.discount_value) / 100)
+      : Math.round(coupon.discount_value);
+  return Math.min(raw, lineTotal);
+}
+
+/**
  * Looks up a coupon code and checks it against the current cart subtotal.
  * Returns the rupee discount to apply (already clamped to the subtotal so
  * a coupon can never take a total below zero). Pass productCount = number

@@ -1,37 +1,30 @@
-BUG FIX — COUPON STAYS "APPLIED" ON A CART THAT NO LONGER QUALIFIES
-========================================================================
+PER-PRODUCT DISCOUNTED PRICE AFTER COUPON (Cart Drawer)
+============================================================
 
-PROBLEM (jo aap describe kar rahe the):
-  899 wale product pe ARUHI50 apply kiya (min order value pura hota tha).
-  Phir 485 wala product add kiya aur 899 wala hata diya. Ab cart me sirf
-  485 ka product bacha — jo coupon ke "orders above ₹X" minimum se kam
-  hai — phir bhi ARUHI50 "applied" dikhta reh gaya.
+Ab jab coupon apply hota hai, sirf total mein nahi — cart ke HAR product
+card ke "You Pay" ke neeche ek nayi line dikhti hai jo us specific
+product ka after-coupon price dikhati hai. Exactly jaisa aapne screenshot
+me dikhaya:
 
-ROOT CAUSE:
-  Discount amount already sahi tha (₹0 ho jaata tha jab subtotal min
-  order value se neeche chala jaata), LEKIN coupon khud "applied" state
-  se kabhi remove nahi hota tha — sirf uska discount 0 ho jaata tha. Isse
-  UI me coupon tag/badge "attached" dikhta rehta tha (jaise abhi bhi kaam
-  kar raha ho), jabki actually koi discount nahi mil raha tha.
+  🏷 ARUHI25 applied — you pay      ₹499  ₹474
 
-FIX:
-  lib/cart-context.tsx me ek naya check add kiya: jab bhi cart ka
-  subtotal, applied coupon ke minimum order value se neeche chala jaaye,
-  coupon AUTOMATICALLY remove ho jaata hai — aur ek toast message dikhta
-  hai: '"<CODE>" removed — your cart total dropped below the ₹X minimum
-  required for this coupon.'
+FILES IN THIS ZIP (repo me isi path pe REPLACE karo):
+  lib/coupons-api.ts          -> naya computeItemCouponDiscount() function
+  components/cart-drawer.tsx  -> har product card me ye price line dikhati hai
 
-  Ab aisa nahi hoga ki coupon "chipka hua" dikhe kisi aise product ke
-  saath jispe wo qualify hi nahi karta — jaise hi cart is minimum se
-  neeche jaata hai, coupon turant hat jaata hai aur shopper ko clearly
-  bata diya jaata hai kyun.
-
-FILE IN THIS ZIP (repo me isi path pe REPLACE karo):
-  lib/cart-context.tsx
+KAISE CALCULATE HOTA HAI (fair rehta hai, total se match karta hai):
+  - PERCENTAGE coupon (jaise 25% off): har product ka apna % discount
+    milta hai — uske apne line total ka utna hi %.
+  - FLAT coupon (jaise ₹100 off): jaisa checkout total mein bhi hota hai,
+    flat discount HAR DISTINCT PRODUCT pe ek baar milta hai (quantity se
+    matter nahi karta), us product ke total se zyada kabhi nahi.
+  - Agar koi product coupon minimum order value ki wajah se qualify hi
+    nahi karta (subtotal kam hai), to koi bhi line pe extra price nahi
+    dikhegi — jaisa pehle wale fix mein already handle ho chuka hai.
 
 APPLY:
-  git add lib/cart-context.tsx
-  git commit -m "Fix: auto-remove coupon when cart falls below its minimum order value"
+  git add lib/coupons-api.ts components/cart-drawer.tsx
+  git commit -m "Show per-product discounted price when a coupon is applied"
   git push
 
 `tsc --noEmit` se poora project clean type-check ho chuka hai.

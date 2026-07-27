@@ -20,7 +20,7 @@ import { useCart } from '@/lib/cart-context';
 import { useAuth } from '@/lib/auth-context';
 import { markCheckoutEntry } from '@/lib/checkout-return';
 import { formatINR, discountPct } from '@/lib/format';
-import { fetchProductPageCoupons, Coupon } from '@/lib/coupons-api';
+import { fetchProductPageCoupons, computeItemCouponDiscount, Coupon } from '@/lib/coupons-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -285,6 +285,12 @@ export default function CartDrawer() {
                 {items.map((item) => {
                   const discount = discountPct(item.product.price, item.product.mrp);
                   const mrp = item.product.mrp ?? item.product.price;
+                  const lineTotal = item.product.price * item.quantity;
+                  const itemCouponDiscount =
+                    appliedCoupon && couponDiscount > 0
+                      ? computeItemCouponDiscount(appliedCoupon, lineTotal)
+                      : 0;
+                  const linePriceAfterCoupon = Math.max(0, lineTotal - itemCouponDiscount);
                   return (
                     <div
                       key={`${item.product.id}-${item.size}-${item.product.colors?.[0] ?? ''}`}
@@ -384,6 +390,22 @@ export default function CartDrawer() {
                           )}
                         </span>
                       </div>
+
+                      {appliedCoupon && itemCouponDiscount > 0 && (
+                        <div className="mt-2 flex items-center justify-between text-xs">
+                          <span className="flex items-center gap-1 text-secondary-foreground">
+                            <Tag className="h-3 w-3" /> {appliedCoupon.code} applied — you pay
+                          </span>
+                          <span className="flex items-center gap-2">
+                            <span className="text-muted-foreground line-through">
+                              {formatINR(lineTotal)}
+                            </span>
+                            <span className="font-serif text-sm font-bold text-primary">
+                              {formatINR(linePriceAfterCoupon)}
+                            </span>
+                          </span>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
