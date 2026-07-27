@@ -9,11 +9,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
-import {
-  InputOTP,
-  InputOTPGroup,
-  InputOTPSlot,
-} from '@/components/ui/input-otp';
 import { toast } from 'sonner';
 
 function GoogleIcon() {
@@ -275,24 +270,23 @@ function LoginForm() {
                   <p className="text-sm font-medium text-foreground break-all">{otpEmail}</p>
                 </div>
                 <div className="flex justify-center py-1">
-                  <InputOTP
+                  {/* Plain numeric input instead of a fixed-length slot UI.
+                      Supabase's email OTP code length depends on the
+                      project's GOTRUE_MAILER_OTP_LENGTH setting (commonly
+                      6, sometimes 8) -- hardcoding a slot count here caused
+                      the Verify button to stay permanently disabled
+                      whenever the emailed code didn't match that count. */}
+                  <Input
                     id="otp-code"
-                    maxLength={8}
-                    value={otpCode}
-                    onChange={setOtpCode}
+                    name="otp-code"
                     inputMode="numeric"
-                  >
-                    <InputOTPGroup>
-                      <InputOTPSlot index={0} className="h-9 w-8 text-sm sm:h-10 sm:w-10 sm:text-base" />
-                      <InputOTPSlot index={1} className="h-9 w-8 text-sm sm:h-10 sm:w-10 sm:text-base" />
-                      <InputOTPSlot index={2} className="h-9 w-8 text-sm sm:h-10 sm:w-10 sm:text-base" />
-                      <InputOTPSlot index={3} className="h-9 w-8 text-sm sm:h-10 sm:w-10 sm:text-base" />
-                      <InputOTPSlot index={4} className="h-9 w-8 text-sm sm:h-10 sm:w-10 sm:text-base" />
-                      <InputOTPSlot index={5} className="h-9 w-8 text-sm sm:h-10 sm:w-10 sm:text-base" />
-                      <InputOTPSlot index={6} className="h-9 w-8 text-sm sm:h-10 sm:w-10 sm:text-base" />
-                      <InputOTPSlot index={7} className="h-9 w-8 text-sm sm:h-10 sm:w-10 sm:text-base" />
-                    </InputOTPGroup>
-                  </InputOTP>
+                    autoComplete="one-time-code"
+                    maxLength={10}
+                    placeholder="Enter the code from your email"
+                    className="text-center text-lg tracking-[0.3em]"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                  />
                 </div>
                 <button
                   type="button"
@@ -305,7 +299,7 @@ function LoginForm() {
               <Button
                 type="submit"
                 className="w-full bg-primary"
-                disabled={otpLoading || otpCode.length < 8}
+                disabled={otpLoading || otpCode.length < 6}
               >
                 {otpLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Verify &amp; Login
