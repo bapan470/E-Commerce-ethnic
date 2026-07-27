@@ -79,6 +79,13 @@ function ShopContent() {
     [products]
   );
 
+  // Only show categories that actually have at least one product,
+  // so the filter panel never lists an empty category.
+  const categoriesWithProducts = useMemo(() => {
+    const namesWithProducts = new Set(products.map((p) => p.category));
+    return categories.filter((c) => namesWithProducts.has(c.name));
+  }, [categories, products]);
+
   useEffect(() => {
     const c = params.get('category') || '';
     setSelectedCats(c ? [c] : []);
@@ -206,7 +213,7 @@ function ShopContent() {
           Category
         </h3>
         <div className="flex flex-col gap-2.5">
-          {categories.map((c) => (
+          {categoriesWithProducts.map((c) => (
             <label
               key={c.id}
               className="flex cursor-pointer items-center gap-2.5 text-sm"
