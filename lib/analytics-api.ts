@@ -48,10 +48,12 @@ export interface AnalyticsData {
   funnel: FunnelStage[];
   lowStock: LowStockProduct[];
   productPerformance: ProductPerformance[];
+  productPerformanceDays: number;
 }
 
-export async function fetchAnalytics(): Promise<AnalyticsData> {
-  const res = await fetch('/api/admin/analytics');
+export async function fetchAnalytics(productPerformanceDays?: number): Promise<AnalyticsData> {
+  const qs = productPerformanceDays ? `?days=${productPerformanceDays}` : '';
+  const res = await fetch(`/api/admin/analytics${qs}`);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || 'Failed to load analytics');

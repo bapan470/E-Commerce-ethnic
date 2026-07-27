@@ -1,36 +1,97 @@
 diff --git a/app/api/admin/analytics/route.ts b/app/api/admin/analytics/route.ts
-index 92b4e81..e95b417 100644
+index 92b4e81..ce91aa6 100644
 --- a/app/api/admin/analytics/route.ts
 +++ b/app/api/admin/analytics/route.ts
-@@ -35,7 +35,7 @@ export async function GET() {
+@@ -6,24 +6,40 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
+ const REVENUE_STATUSES = ['paid', 'shipped', 'delivered'];
+ const EXCLUDED_ORDER_STATUSES = ['cancelled', 'failed'];
+ const TREND_DAYS = 30;
++const ALLOWED_PERF_DAYS = [7, 30, 90];
+ 
+ function dayKey(dateStr: string) {
+   return new Date(dateStr).toISOString().slice(0, 10);
+ }
+ 
+-export async function GET() {
++export async function GET(req: Request) {
+   const cookie = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? null;
+   const verified = await verifyAdminToken(cookie);
+   if (!verified.valid) {
+     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+   }
+ 
++  // `?days=7|30|90` only controls the Product Performance table's window
++  // below -- the rest of the dashboard (sales trend, funnel, summary cards)
++  // intentionally stays pinned to the fixed last-30-days view.
++  const url = new URL(req.url);
++  const requestedDays = Number(url.searchParams.get('days'));
++  const perfDays = ALLOWED_PERF_DAYS.includes(requestedDays) ? requestedDays : TREND_DAYS;
++
+   try {
+     const supabase = getSupabaseAdmin();
+ 
+     const since = new Date();
+     since.setDate(since.getDate() - TREND_DAYS);
+ 
++    const perfSince = new Date();
++    perfSince.setDate(perfSince.getDate() - perfDays);
++
++    // Fetch events far enough back to cover whichever window is larger, then
++    // filter in-memory per section below so a wider Product Performance
++    // window never leaks into the fixed 30-day funnel/summary numbers.
++    const fetchSince = perfSince < since ? perfSince : since;
++
+     const [ordersRes, productsRes, eventsRes] = await Promise.all([
+       supabase
+         .from('orders')
+@@ -35,8 +51,8 @@ export async function GET() {
          .order('stock_quantity', { ascending: true }),
        supabase
          .from('activity_events')
 -        .select('session_id, event_type, created_at')
+-        .gte('created_at', since.toISOString()),
 +        .select('session_id, event_type, product_id, created_at')
-         .gte('created_at', since.toISOString()),
++        .gte('created_at', fetchSince.toISOString()),
      ]);
  
-@@ -139,6 +139,47 @@ export async function GET() {
+     if (ordersRes.error) throw ordersRes.error;
+@@ -105,6 +121,7 @@ export async function GET() {
+       .slice(0, 10);
+ 
+     // ---------------- Conversion funnel (session-based, last 30 days) ----------------
++    const eventsInTrendWindow = events.filter((ev) => ev.created_at && new Date(ev.created_at) >= since);
+     const sessionsByStage: Record<string, Set<string>> = {
+       page_view: new Set(),
+       product_view: new Set(),
+@@ -112,7 +129,7 @@ export async function GET() {
+       checkout_start: new Set(),
+       purchase: new Set(),
+     };
+-    for (const ev of events) {
++    for (const ev of eventsInTrendWindow) {
+       if (sessionsByStage[ev.event_type]) sessionsByStage[ev.event_type].add(ev.session_id);
+     }
+     const funnel = [
+@@ -139,6 +156,47 @@ export async function GET() {
          in_stock: p.in_stock,
        }));
  
-+    // ---------------- Product performance: Impressions vs Conversion (last 30 days) ----------------
++    // ---------------- Product performance: Impressions vs Conversion (perfDays window) ----------------
 +    // "Impressions" = how many times the product page was viewed (product_view
 +    // events). "Conversion" = what share of those views turned into an order
-+    // containing that product, within the same 30-day window. Same idea as
-+    // the per-product report Google Merchant Center shows -- built from data
-+    // we already track (activity_events + orders.items), no new tracking
-+    // needed.
++    // containing that product, within the same window. Same idea as the
++    // per-product report Google Merchant Center shows -- built from data we
++    // already track (activity_events + orders.items), no new tracking needed.
++    const eventsInPerfWindow = events.filter((ev) => ev.created_at && new Date(ev.created_at) >= perfSince);
 +    const productViewCounts = new Map<string, number>();
-+    for (const ev of events) {
++    for (const ev of eventsInPerfWindow) {
 +      if (ev.event_type !== 'product_view' || !ev.product_id) continue;
 +      productViewCounts.set(ev.product_id, (productViewCounts.get(ev.product_id) ?? 0) + 1);
 +    }
 +    const productPurchaseCounts = new Map<string, number>();
 +    for (const o of orders) {
 +      if (!REVENUE_STATUSES.includes(o.status)) continue;
-+      if (!o.created_at || new Date(o.created_at) < since) continue;
++      if (!o.created_at || new Date(o.created_at) < perfSince) continue;
 +      const items = Array.isArray(o.items) ? o.items : [];
 +      const countedInThisOrder = new Set<string>(); // one order buying 2x the same product still counts as 1 conversion
 +      for (const it of items) {
@@ -59,11 +120,12 @@ index 92b4e81..e95b417 100644
      return NextResponse.json({
        summary: {
          totalRevenue30d,
-@@ -151,6 +192,7 @@ export async function GET() {
+@@ -151,6 +209,8 @@ export async function GET() {
        topProducts,
        funnel,
        lowStock,
 +      productPerformance,
++      productPerformanceDays: perfDays,
      });
    } catch (err) {
      return NextResponse.json({ error: 'Failed to load analytics' }, { status: 500 });
@@ -198,10 +260,47 @@ index dc6ddd1..b77bfcb 100644
  
  /**
 diff --git a/components/admin/analytics-panel.tsx b/components/admin/analytics-panel.tsx
-index 56bd723..5f36239 100644
+index 56bd723..29a70cf 100644
 --- a/components/admin/analytics-panel.tsx
 +++ b/components/admin/analytics-panel.tsx
-@@ -102,7 +102,7 @@ function SalesPanel() {
+@@ -76,6 +76,9 @@ function TabButton({
+ function SalesPanel() {
+   const [data, setData] = useState<AnalyticsData | null>(null);
+   const [loading, setLoading] = useState(true);
++  const [perfDays, setPerfDays] = useState(30);
++  const [perfSearch, setPerfSearch] = useState('');
++  const [perfLoading, setPerfLoading] = useState(false);
+ 
+   useEffect(() => {
+     fetchAnalytics()
+@@ -84,6 +87,26 @@ function SalesPanel() {
+       .finally(() => setLoading(false));
+   }, []);
+ 
++  // Only re-fetches when the date-range filter changes (not on every
++  // keystroke of the search box, which just filters what's already loaded)
++  // -- and only swaps in the new productPerformance slice so the rest of
++  // the dashboard (charts, funnel) doesn't flicker/reload.
++  useEffect(() => {
++    if (!data) return; // wait for the initial full load above
++    setPerfLoading(true);
++    fetchAnalytics(perfDays)
++      .then((res) =>
++        setData((prev) =>
++          prev
++            ? { ...prev, productPerformance: res.productPerformance, productPerformanceDays: res.productPerformanceDays }
++            : res
++        )
++      )
++      .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load product performance'))
++      .finally(() => setPerfLoading(false));
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [perfDays]);
++
+   if (loading) {
+     return (
+       <div className="grid gap-6">
+@@ -102,7 +125,7 @@ function SalesPanel() {
      return <p className="text-sm text-muted-foreground">Could not load analytics right now.</p>;
    }
  
@@ -210,63 +309,99 @@ index 56bd723..5f36239 100644
  
    return (
      <div className="grid gap-6">
-@@ -202,6 +202,54 @@ function SalesPanel() {
+@@ -202,6 +225,90 @@ function SalesPanel() {
          </div>
        </div>
  
 +      {/* Product performance: Impressions vs Conversion */}
 +      <div className="rounded-lg border border-border/60 bg-card p-4">
-+        <h3 className="mb-1 font-serif text-lg font-bold text-primary">Product Performance — last 30 days</h3>
++        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
++          <h3 className="font-serif text-lg font-bold text-primary">Product Performance</h3>
++          <div className="flex items-center gap-2">
++            <select
++              value={perfDays}
++              onChange={(e) => setPerfDays(Number(e.target.value))}
++              className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs"
++            >
++              <option value={7}>Last 7 days</option>
++              <option value={30}>Last 30 days</option>
++              <option value={90}>Last 90 days</option>
++            </select>
++            <input
++              type="text"
++              value={perfSearch}
++              onChange={(e) => setPerfSearch(e.target.value)}
++              placeholder="Search product..."
++              className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs"
++            />
++          </div>
++        </div>
 +        <p className="mb-3 text-xs text-muted-foreground">
 +          Impressions = product page views. Conversion = % of those views that led to an order containing this product.
 +        </p>
-+        {productPerformance.length === 0 ? (
-+          <p className="text-sm text-muted-foreground">No product views recorded in the last 30 days yet.</p>
-+        ) : (
-+          <div className="overflow-x-auto">
-+            <table className="w-full text-sm">
-+              <thead>
-+                <tr className="border-b border-border/60 text-left text-xs text-muted-foreground">
-+                  <th className="pb-2 pr-3 font-medium">Product</th>
-+                  <th className="pb-2 pr-3 font-medium">Impressions</th>
-+                  <th className="pb-2 font-medium">Conversion</th>
-+                </tr>
-+              </thead>
-+              <tbody className="divide-y divide-border/40">
-+                {productPerformance.map((p) => (
-+                  <tr key={p.productId}>
-+                    <td className="py-2 pr-3">
-+                      <div className="flex items-center gap-2">
-+                        {p.image ? (
-+                          // eslint-disable-next-line @next/next/no-img-element
-+                          <img src={p.image} alt={p.name} className="h-8 w-8 rounded-md object-cover" />
-+                        ) : (
-+                          <div className="h-8 w-8 rounded-md bg-muted" />
-+                        )}
-+                        <span className="max-w-[220px] truncate font-medium">{p.name}</span>
-+                      </div>
-+                    </td>
-+                    <td className="py-2 pr-3 text-emerald-600">{p.impressions}</td>
-+                    <td
-+                      className={`py-2 font-medium ${
-+                        p.conversionRate > 0 ? 'text-emerald-600' : 'text-destructive'
-+                      }`}
-+                    >
-+                      {p.conversionRate.toFixed(2)}%
-+                    </td>
++        {(() => {
++          const filtered = productPerformance.filter((p) =>
++            p.name.toLowerCase().includes(perfSearch.trim().toLowerCase())
++          );
++          if (perfLoading) {
++            return <Skeleton className="h-40 rounded-lg" />;
++          }
++          if (productPerformance.length === 0) {
++            return (
++              <p className="text-sm text-muted-foreground">
++                No product views recorded in this period yet.
++              </p>
++            );
++          }
++          if (filtered.length === 0) {
++            return <p className="text-sm text-muted-foreground">No product matches "{perfSearch}".</p>;
++          }
++          return (
++            <div className="overflow-x-auto">
++              <table className="w-full text-sm">
++                <thead>
++                  <tr className="border-b border-border/60 text-left text-xs text-muted-foreground">
++                    <th className="pb-2 pr-3 font-medium">Product</th>
++                    <th className="pb-2 pr-3 font-medium">Impressions</th>
++                    <th className="pb-2 font-medium">Conversion</th>
 +                  </tr>
-+                ))}
-+              </tbody>
-+            </table>
-+          </div>
-+        )}
++                </thead>
++                <tbody className="divide-y divide-border/40">
++                  {filtered.map((p) => (
++                    <tr key={p.productId}>
++                      <td className="py-2 pr-3">
++                        <div className="flex items-center gap-2">
++                          {p.image ? (
++                            // eslint-disable-next-line @next/next/no-img-element
++                            <img src={p.image} alt={p.name} className="h-8 w-8 rounded-md object-cover" />
++                          ) : (
++                            <div className="h-8 w-8 rounded-md bg-muted" />
++                          )}
++                          <span className="max-w-[220px] truncate font-medium">{p.name}</span>
++                        </div>
++                      </td>
++                      <td className="py-2 pr-3 text-emerald-600">{p.impressions}</td>
++                      <td
++                        className={`py-2 font-medium ${
++                          p.conversionRate > 0 ? 'text-emerald-600' : 'text-destructive'
++                        }`}
++                      >
++                        {p.conversionRate.toFixed(2)}%
++                      </td>
++                    </tr>
++                  ))}
++                </tbody>
++              </table>
++            </div>
++          );
++        })()}
 +      </div>
 +
        {/* Low stock alerts */}
        <div className="rounded-lg border border-border/60 bg-card p-4">
          <div className="mb-3 flex items-center gap-2">
 diff --git a/lib/analytics-api.ts b/lib/analytics-api.ts
-index 241a65d..efdf175 100644
+index 241a65d..8f44baa 100644
 --- a/lib/analytics-api.ts
 +++ b/lib/analytics-api.ts
 @@ -17,6 +17,15 @@ export interface FunnelStage {
@@ -285,11 +420,19 @@ index 241a65d..efdf175 100644
  export interface LowStockProduct {
    id: string;
    name: string;
-@@ -38,6 +47,7 @@ export interface AnalyticsData {
+@@ -38,10 +47,13 @@ export interface AnalyticsData {
    topProducts: TopProduct[];
    funnel: FunnelStage[];
    lowStock: LowStockProduct[];
 +  productPerformance: ProductPerformance[];
++  productPerformanceDays: number;
  }
  
- export async function fetchAnalytics(): Promise<AnalyticsData> {
+-export async function fetchAnalytics(): Promise<AnalyticsData> {
+-  const res = await fetch('/api/admin/analytics');
++export async function fetchAnalytics(productPerformanceDays?: number): Promise<AnalyticsData> {
++  const qs = productPerformanceDays ? `?days=${productPerformanceDays}` : '';
++  const res = await fetch(`/api/admin/analytics${qs}`);
+   if (!res.ok) {
+     const body = await res.json().catch(() => ({}));
+     throw new Error(body.error || 'Failed to load analytics');

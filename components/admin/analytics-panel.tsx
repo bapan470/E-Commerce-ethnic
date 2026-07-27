@@ -76,6 +76,9 @@ function TabButton({
 function SalesPanel() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [perfDays, setPerfDays] = useState(30);
+  const [perfSearch, setPerfSearch] = useState('');
+  const [perfLoading, setPerfLoading] = useState(false);
 
   useEffect(() => {
     fetchAnalytics()
@@ -83,6 +86,26 @@ function SalesPanel() {
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load analytics'))
       .finally(() => setLoading(false));
   }, []);
+
+  // Only re-fetches when the date-range filter changes (not on every
+  // keystroke of the search box, which just filters what's already loaded)
+  // -- and only swaps in the new productPerformance slice so the rest of
+  // the dashboard (charts, funnel) doesn't flicker/reload.
+  useEffect(() => {
+    if (!data) return; // wait for the initial full load above
+    setPerfLoading(true);
+    fetchAnalytics(perfDays)
+      .then((res) =>
+        setData((prev) =>
+          prev
+            ? { ...prev, productPerformance: res.productPerformance, productPerformanceDays: res.productPerformanceDays }
+            : res
+        )
+      )
+      .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load product performance'))
+      .finally(() => setPerfLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [perfDays]);
 
   if (loading) {
     return (
@@ -204,50 +227,86 @@ function SalesPanel() {
 
       {/* Product performance: Impressions vs Conversion */}
       <div className="rounded-lg border border-border/60 bg-card p-4">
-        <h3 className="mb-1 font-serif text-lg font-bold text-primary">Product Performance — last 30 days</h3>
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-serif text-lg font-bold text-primary">Product Performance</h3>
+          <div className="flex items-center gap-2">
+            <select
+              value={perfDays}
+              onChange={(e) => setPerfDays(Number(e.target.value))}
+              className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs"
+            >
+              <option value={7}>Last 7 days</option>
+              <option value={30}>Last 30 days</option>
+              <option value={90}>Last 90 days</option>
+            </select>
+            <input
+              type="text"
+              value={perfSearch}
+              onChange={(e) => setPerfSearch(e.target.value)}
+              placeholder="Search product..."
+              className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs"
+            />
+          </div>
+        </div>
         <p className="mb-3 text-xs text-muted-foreground">
           Impressions = product page views. Conversion = % of those views that led to an order containing this product.
         </p>
-        {productPerformance.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No product views recorded in the last 30 days yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border/60 text-left text-xs text-muted-foreground">
-                  <th className="pb-2 pr-3 font-medium">Product</th>
-                  <th className="pb-2 pr-3 font-medium">Impressions</th>
-                  <th className="pb-2 font-medium">Conversion</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/40">
-                {productPerformance.map((p) => (
-                  <tr key={p.productId}>
-                    <td className="py-2 pr-3">
-                      <div className="flex items-center gap-2">
-                        {p.image ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={p.image} alt={p.name} className="h-8 w-8 rounded-md object-cover" />
-                        ) : (
-                          <div className="h-8 w-8 rounded-md bg-muted" />
-                        )}
-                        <span className="max-w-[220px] truncate font-medium">{p.name}</span>
-                      </div>
-                    </td>
-                    <td className="py-2 pr-3 text-emerald-600">{p.impressions}</td>
-                    <td
-                      className={`py-2 font-medium ${
-                        p.conversionRate > 0 ? 'text-emerald-600' : 'text-destructive'
-                      }`}
-                    >
-                      {p.conversionRate.toFixed(2)}%
-                    </td>
+        {(() => {
+          const filtered = productPerformance.filter((p) =>
+            p.name.toLowerCase().includes(perfSearch.trim().toLowerCase())
+          );
+          if (perfLoading) {
+            return <Skeleton className="h-40 rounded-lg" />;
+          }
+          if (productPerformance.length === 0) {
+            return (
+              <p className="text-sm text-muted-foreground">
+                No product views recorded in this period yet.
+              </p>
+            );
+          }
+          if (filtered.length === 0) {
+            return <p className="text-sm text-muted-foreground">No product matches "{perfSearch}".</p>;
+          }
+          return (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border/60 text-left text-xs text-muted-foreground">
+                    <th className="pb-2 pr-3 font-medium">Product</th>
+                    <th className="pb-2 pr-3 font-medium">Impressions</th>
+                    <th className="pb-2 font-medium">Conversion</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody className="divide-y divide-border/40">
+                  {filtered.map((p) => (
+                    <tr key={p.productId}>
+                      <td className="py-2 pr-3">
+                        <div className="flex items-center gap-2">
+                          {p.image ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={p.image} alt={p.name} className="h-8 w-8 rounded-md object-cover" />
+                          ) : (
+                            <div className="h-8 w-8 rounded-md bg-muted" />
+                          )}
+                          <span className="max-w-[220px] truncate font-medium">{p.name}</span>
+                        </div>
+                      </td>
+                      <td className="py-2 pr-3 text-emerald-600">{p.impressions}</td>
+                      <td
+                        className={`py-2 font-medium ${
+                          p.conversionRate > 0 ? 'text-emerald-600' : 'text-destructive'
+                        }`}
+                      >
+                        {p.conversionRate.toFixed(2)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Low stock alerts */}

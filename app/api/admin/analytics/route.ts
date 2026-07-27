@@ -6,23 +6,39 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 const REVENUE_STATUSES = ['paid', 'shipped', 'delivered'];
 const EXCLUDED_ORDER_STATUSES = ['cancelled', 'failed'];
 const TREND_DAYS = 30;
+const ALLOWED_PERF_DAYS = [7, 30, 90];
 
 function dayKey(dateStr: string) {
   return new Date(dateStr).toISOString().slice(0, 10);
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const cookie = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? null;
   const verified = await verifyAdminToken(cookie);
   if (!verified.valid) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  // `?days=7|30|90` only controls the Product Performance table's window
+  // below -- the rest of the dashboard (sales trend, funnel, summary cards)
+  // intentionally stays pinned to the fixed last-30-days view.
+  const url = new URL(req.url);
+  const requestedDays = Number(url.searchParams.get('days'));
+  const perfDays = ALLOWED_PERF_DAYS.includes(requestedDays) ? requestedDays : TREND_DAYS;
+
   try {
     const supabase = getSupabaseAdmin();
 
     const since = new Date();
     since.setDate(since.getDate() - TREND_DAYS);
+
+    const perfSince = new Date();
+    perfSince.setDate(perfSince.getDate() - perfDays);
+
+    // Fetch events far enough back to cover whichever window is larger, then
+    // filter in-memory per section below so a wider Product Performance
+    // window never leaks into the fixed 30-day funnel/summary numbers.
+    const fetchSince = perfSince < since ? perfSince : since;
 
     const [ordersRes, productsRes, eventsRes] = await Promise.all([
       supabase
@@ -36,7 +52,7 @@ export async function GET() {
       supabase
         .from('activity_events')
         .select('session_id, event_type, product_id, created_at')
-        .gte('created_at', since.toISOString()),
+        .gte('created_at', fetchSince.toISOString()),
     ]);
 
     if (ordersRes.error) throw ordersRes.error;
@@ -105,6 +121,7 @@ export async function GET() {
       .slice(0, 10);
 
     // ---------------- Conversion funnel (session-based, last 30 days) ----------------
+    const eventsInTrendWindow = events.filter((ev) => ev.created_at && new Date(ev.created_at) >= since);
     const sessionsByStage: Record<string, Set<string>> = {
       page_view: new Set(),
       product_view: new Set(),
@@ -112,7 +129,7 @@ export async function GET() {
       checkout_start: new Set(),
       purchase: new Set(),
     };
-    for (const ev of events) {
+    for (const ev of eventsInTrendWindow) {
       if (sessionsByStage[ev.event_type]) sessionsByStage[ev.event_type].add(ev.session_id);
     }
     const funnel = [
@@ -139,22 +156,22 @@ export async function GET() {
         in_stock: p.in_stock,
       }));
 
-    // ---------------- Product performance: Impressions vs Conversion (last 30 days) ----------------
+    // ---------------- Product performance: Impressions vs Conversion (perfDays window) ----------------
     // "Impressions" = how many times the product page was viewed (product_view
     // events). "Conversion" = what share of those views turned into an order
-    // containing that product, within the same 30-day window. Same idea as
-    // the per-product report Google Merchant Center shows -- built from data
-    // we already track (activity_events + orders.items), no new tracking
-    // needed.
+    // containing that product, within the same window. Same idea as the
+    // per-product report Google Merchant Center shows -- built from data we
+    // already track (activity_events + orders.items), no new tracking needed.
+    const eventsInPerfWindow = events.filter((ev) => ev.created_at && new Date(ev.created_at) >= perfSince);
     const productViewCounts = new Map<string, number>();
-    for (const ev of events) {
+    for (const ev of eventsInPerfWindow) {
       if (ev.event_type !== 'product_view' || !ev.product_id) continue;
       productViewCounts.set(ev.product_id, (productViewCounts.get(ev.product_id) ?? 0) + 1);
     }
     const productPurchaseCounts = new Map<string, number>();
     for (const o of orders) {
       if (!REVENUE_STATUSES.includes(o.status)) continue;
-      if (!o.created_at || new Date(o.created_at) < since) continue;
+      if (!o.created_at || new Date(o.created_at) < perfSince) continue;
       const items = Array.isArray(o.items) ? o.items : [];
       const countedInThisOrder = new Set<string>(); // one order buying 2x the same product still counts as 1 conversion
       for (const it of items) {
@@ -193,6 +210,7 @@ export async function GET() {
       funnel,
       lowStock,
       productPerformance,
+      productPerformanceDays: perfDays,
     });
   } catch (err) {
     return NextResponse.json({ error: 'Failed to load analytics' }, { status: 500 });
