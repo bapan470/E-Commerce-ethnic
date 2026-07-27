@@ -201,6 +201,83 @@ Once we receive and inspect the returned item, refunds will be processed within 
 Damaged or Defective Items
 If you receive a damaged, defective, or wrong item, please reach out within 48 hours of delivery with clear photos/video, and we will offer a free replacement or full refund, whichever you prefer.`;
 
+// AruhiHandlooms-specific ready-to-paste templates for Privacy Policy and
+// Terms & Conditions. These don't currently carry {{fulfillment}} tokens
+// (nothing in the source text maps to a Fulfillment Settings number), but
+// they're still run through applyFulfillmentTokens() on display like the
+// other two, so any tokens added here later resolve automatically without
+// further code changes.
+export const PRIVACY_POLICY_TEMPLATE = `AruhiHandlooms ("we", "us", "our") operates the website aruhihandlooms.com. This Privacy Policy explains how we collect, use, store and protect your personal information when you visit our website or make a purchase.
+
+Information We Collect
+We collect information you provide directly to us, including your name, email address, phone number, shipping and billing address, and payment details when you place an order, create an account, or contact us. We also automatically collect certain information such as your IP address, browser type, and browsing behaviour on our site through cookies and analytics tools.
+
+How We Use Your Information
+We use your information to:
+Process and fulfil your orders, including shipping and delivery
+Communicate with you about your orders, account, or customer service requests
+Send you promotional emails or WhatsApp messages, only if you have opted in
+Improve our website, products, and customer experience
+Detect and prevent fraud
+
+Payment Information
+All payments are processed through secure, PCI-DSS compliant payment gateways. We do not store your full card details on our servers.
+
+Sharing of Information
+We do not sell your personal information. We may share your information with trusted third parties who help us operate our business, including payment processors, shipping and logistics partners (such as Delhivery), and email/SMS service providers, solely for the purpose of fulfilling your order and communicating with you.
+
+Cookies
+Our website uses cookies to remember your cart, preferences, and to understand how visitors use our site. You can disable cookies through your browser settings, though some features of the site may not work correctly as a result.
+
+Data Security
+We take reasonable technical and organisational measures to protect your personal information from unauthorised access, alteration, or disclosure.
+
+Your Rights
+You may request access to, correction of, or deletion of your personal data by contacting us at contact@aruhihandlooms.com. You may also unsubscribe from marketing communications at any time.
+
+Children's Privacy
+Our website is not directed at children under 18. We do not knowingly collect personal information from children.
+
+Changes to This Policy
+We may update this Privacy Policy from time to time. Any changes will be posted on this page with an updated "Last updated" date.
+
+Contact Us
+If you have any questions about this Privacy Policy, please contact us at:
+Email: contact@aruhihandlooms.com
+Phone: +91 98045 91992
+Address: Bora, Mamudpur, Naihati, North 24 Parganas, West Bengal - 743166`;
+
+export const TERMS_CONDITIONS_TEMPLATE = `Welcome to AruhiHandlooms (aruhihandlooms.com). By accessing or using our website, you agree to be bound by the following Terms & Conditions. Please read them carefully before making a purchase.
+
+General
+These terms apply to all visitors, users, and customers of aruhihandlooms.com. By placing an order, you confirm that you are at least 18 years old or are using the site under the supervision of a parent/guardian.
+
+Products
+We make every effort to display our products, including colours and fabric details, as accurately as possible. However, slight variations in colour may occur due to photography, lighting, and screen settings, as our sarees and ethnic wear are handwoven/handcrafted and may have natural variations.
+
+Pricing and Payment
+All prices listed on the website are in Indian Rupees (INR) and are inclusive of applicable taxes unless stated otherwise. We accept payments through the payment methods listed at checkout. We reserve the right to change prices at any time without prior notice, though this will not affect orders already confirmed.
+
+Order Confirmation
+An order is confirmed only after successful payment and receipt of an order confirmation email/message from us. We reserve the right to cancel any order due to stock unavailability, pricing errors, or suspected fraudulent activity, in which case a full refund will be issued.
+
+Intellectual Property
+All content on this website, including images, logos, and text, is the property of AruhiHandlooms and may not be reproduced or used without our written permission.
+
+Limitation of Liability
+AruhiHandlooms shall not be liable for any indirect, incidental, or consequential damages arising from the use of our website or products, to the extent permitted by law.
+
+Governing Law
+These Terms & Conditions are governed by the laws of India. Any disputes shall be subject to the jurisdiction of the courts in North 24 Parganas, West Bengal, India.
+
+Changes to Terms
+We may revise these Terms & Conditions at any time. Continued use of the website after changes are posted constitutes acceptance of the revised terms.
+
+Contact Us
+For any questions regarding these Terms & Conditions, contact us at:
+Email: contact@aruhihandlooms.com
+Phone: +91 98045 91992`;
+
 // ---------------------------------------------------------------------
 // Legal pages (Privacy Policy, Terms, Shipping Policy, Refund Policy)
 // Stored as one settings row (key = 'legal_pages') so the admin can edit
@@ -224,10 +301,8 @@ export const LEGAL_PAGE_TITLES: Record<LegalSlug, string> = {
 };
 
 const DEFAULT_LEGAL_PAGES: LegalPages = {
-  'privacy-policy':
-    'This Privacy Policy explains how we collect, use and protect your personal information when you shop with us. Add your policy content here from the Admin > Marketing tab.',
-  'terms-conditions':
-    'These Terms & Conditions govern your use of this website and any purchases made through it. Add your policy content here from the Admin > Marketing tab.',
+  'privacy-policy': PRIVACY_POLICY_TEMPLATE,
+  'terms-conditions': TERMS_CONDITIONS_TEMPLATE,
   'shipping-policy': SHIPPING_POLICY_TEMPLATE,
   'refund-policy': REFUND_POLICY_TEMPLATE,
 };

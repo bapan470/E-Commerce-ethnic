@@ -26,6 +26,8 @@ import {
   saveFulfillmentSettings,
   SHIPPING_POLICY_TEMPLATE,
   REFUND_POLICY_TEMPLATE,
+  PRIVACY_POLICY_TEMPLATE,
+  TERMS_CONDITIONS_TEMPLATE,
 } from '@/lib/marketing-api';
 import {
   SocialPublishSettings,
@@ -276,6 +278,30 @@ function LegalPagesTab() {
             className="mt-2 rounded border border-primary/40 px-2 py-1 font-medium text-primary hover:bg-primary/10"
           >
             Replace with ready-made template (tokens included)
+          </button>
+        </div>
+      )}
+
+      {(activeSlug === 'privacy-policy' || activeSlug === 'terms-conditions') && (
+        <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs">
+          <p className="font-medium text-foreground">Ready-made AruhiHandlooms template</p>
+          <p className="mt-1 text-muted-foreground">
+            Drops in a complete, pre-written {LEGAL_PAGE_TITLES[activeSlug]} for aruhihandlooms.com
+            (contact email, phone number, and registered address already filled in). Review it and
+            adjust anything specific to your business before saving.
+          </p>
+          <button
+            type="button"
+            onClick={() =>
+              setPages({
+                ...pages,
+                [activeSlug]:
+                  activeSlug === 'privacy-policy' ? PRIVACY_POLICY_TEMPLATE : TERMS_CONDITIONS_TEMPLATE,
+              })
+            }
+            className="mt-2 rounded border border-primary/40 px-2 py-1 font-medium text-primary hover:bg-primary/10"
+          >
+            Replace with ready-made template
           </button>
         </div>
       )}
