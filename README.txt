@@ -1,41 +1,37 @@
-CART DRAWER — LIVE COUPON PRICE + AVAILABLE COUPONS LIST
-============================================================
+BUG FIX — COUPON STAYS "APPLIED" ON A CART THAT NO LONGER QUALIFIES
+========================================================================
 
-FILE IN THIS ZIP (apne repo me isi path pe REPLACE karo):
-  components/cart-drawer.tsx
+PROBLEM (jo aap describe kar rahe the):
+  899 wale product pe ARUHI50 apply kiya (min order value pura hota tha).
+  Phir 485 wala product add kiya aur 899 wala hata diya. Ab cart me sirf
+  485 ka product bacha — jo coupon ke "orders above ₹X" minimum se kam
+  hai — phir bhi ARUHI50 "applied" dikhta reh gaya.
 
-KYA BADLA:
+ROOT CAUSE:
+  Discount amount already sahi tha (₹0 ho jaata tha jab subtotal min
+  order value se neeche chala jaata), LEKIN coupon khud "applied" state
+  se kabhi remove nahi hota tha — sirf uska discount 0 ho jaata tha. Isse
+  UI me coupon tag/badge "attached" dikhta rehta tha (jaise abhi bhi kaam
+  kar raha ho), jabki actually koi discount nahi mil raha tha.
 
-1) LIVE DISCOUNT PRICE (coupon applied hone ke baad):
-   - "Price details" accordion ab coupon apply hote hi AUTO-OPEN ho jaata
-     hai — shopper ko turant, bina click kiye, after-coupon total dikh
-     jaata hai.
-   - Checkout button ke UPAR ab ek naya prominent row hai jo sirf tabhi
-     dikhta hai jab coupon applied ho: "<CODE> applied — you pay" ke
-     saath original price (strikethrough) aur final discounted price —
-     "You are saving" wale green strip ke bilkul saath, checkout se
-     pehle aakhri cheez jo shopper dekhta hai.
+FIX:
+  lib/cart-context.tsx me ek naya check add kiya: jab bhi cart ka
+  subtotal, applied coupon ke minimum order value se neeche chala jaaye,
+  coupon AUTOMATICALLY remove ho jaata hai — aur ek toast message dikhta
+  hai: '"<CODE>" removed — your cart total dropped below the ₹X minimum
+  required for this coupon.'
 
-2) AVAILABLE COUPONS LIST (jab koi coupon abhi tak apply nahi hua):
-   - Admin > Coupons me jis coupon ka "Show on Product Page" toggle ON
-     hai, wahi coupons ab cart drawer me bhi "Available Coupons" list ke
-     roop me dikhte hain (bilkul product page jaisa card — code, %
-     off/flat off, min order value, ek-click "Apply" button).
-   - Ye list sirf tab dikhti hai jab koi coupon already applied NA ho.
-     Jaise hi ek coupon apply ho jaata hai, list gayab ho jaati hai
-     (kyunki apply karne ko kuch bacha hi nahi) aur uski jagah applied
-     coupon + live discounted price dikhta hai.
-   - Manual "Coupon code" type-karke apply karne wala option bhi as-is
-     hai, list ke sirf sath extra hai, replace nahi kiya.
+  Ab aisa nahi hoga ki coupon "chipka hua" dikhe kisi aise product ke
+  saath jispe wo qualify hi nahi karta — jaise hi cart is minimum se
+  neeche jaata hai, coupon turant hat jaata hai aur shopper ko clearly
+  bata diya jaata hai kyun.
 
-Koi naya database table/migration nahi chahiye — yeh feature existing
-`coupons` table aur `show_on_product_page` column (jo already hai) use
-karta hai, wahi jo product page pe "Available Coupons" dikhata hai.
+FILE IN THIS ZIP (repo me isi path pe REPLACE karo):
+  lib/cart-context.tsx
 
 APPLY:
-  git add components/cart-drawer.tsx
-  git commit -m "Show live post-coupon price + available coupons in cart drawer"
+  git add lib/cart-context.tsx
+  git commit -m "Fix: auto-remove coupon when cart falls below its minimum order value"
   git push
 
-`tsc --noEmit` se poora project clean type-check ho chuka hai, koi build
-error nahi.
+`tsc --noEmit` se poora project clean type-check ho chuka hai.

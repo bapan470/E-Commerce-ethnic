@@ -240,6 +240,27 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     return computeCouponDiscount(appliedCoupon, subtotal, state.items.length);
   }, [appliedCoupon, subtotal, state.items.length]);
 
+  // A coupon that qualified when it was applied can stop qualifying later
+  // purely because the cart changed — e.g. the item that met "orders above
+  // ₹X" gets removed and a cheaper one takes its place. Without this, the
+  // coupon stayed silently "applied" (still showing its badge/tag) even
+  // though couponDiscount above had already dropped to ₹0 — it looked like
+  // the coupon was still attached and working, but zero discount was
+  // actually being applied. Auto-drop it the moment the cart falls below
+  // its minimum, and say why, so it never looks stuck on a product it no
+  // longer qualifies for.
+  useEffect(() => {
+    if (!appliedCoupon) return;
+    if (subtotal > 0 && subtotal < appliedCoupon.min_order_value) {
+      const code = appliedCoupon.code;
+      const minOrder = appliedCoupon.min_order_value;
+      setAppliedCoupon(null);
+      toast.error(
+        `"${code}" removed — your cart total dropped below the ₹${minOrder} minimum required for this coupon.`
+      );
+    }
+  }, [appliedCoupon, subtotal]);
+
   const applyCoupon = useCallback(
     async (
       code: string,
