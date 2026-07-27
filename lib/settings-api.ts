@@ -272,3 +272,52 @@ export async function fetchAiChatSettingsServer(): Promise<AiChatSettings> {
   if (error || !data) return DEFAULT_AI_CHAT_SETTINGS;
   return { ...DEFAULT_AI_CHAT_SETTINGS, ...(data.value as Partial<AiChatSettings>) };
 }
+
+// ---------------------------------------------------------------------
+// "Search by photo" AI toggle — controls whether the camera-icon search
+// in the header uses the real NVIDIA vision model (app/api/image-search)
+// to understand what's actually in the shopper's photo (garment type,
+// colour, pattern), or falls back to the free, always-available
+// client-side colour-fingerprint match in lib/image-search.ts. Same
+// NVIDIA_API_KEY as AI Chat / admin listing generation — no extra key
+// needed if that's already configured. Admins can flip this off instantly
+// (e.g. if the free NVIDIA tier is rate-limited) without a redeploy;
+// the feature keeps working either way, just with the simpler matching.
+// ---------------------------------------------------------------------
+export interface ImageSearchAiSettings {
+  enabled: boolean;
+}
+
+export const DEFAULT_IMAGE_SEARCH_AI_SETTINGS: ImageSearchAiSettings = {
+  enabled: false,
+};
+
+export async function fetchImageSearchAiSettings(): Promise<ImageSearchAiSettings> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'image_search_ai')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_IMAGE_SEARCH_AI_SETTINGS;
+  return { ...DEFAULT_IMAGE_SEARCH_AI_SETTINGS, ...(data.value as Partial<ImageSearchAiSettings>) };
+}
+
+export async function saveImageSearchAiSettings(settings: ImageSearchAiSettings) {
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ key: 'image_search_ai', value: settings }, { onConflict: 'key' });
+  if (error) throw error;
+}
+
+/** Server-only variant, same rationale as fetchAiChatSettingsServer above. */
+export async function fetchImageSearchAiSettingsServer(): Promise<ImageSearchAiSettings> {
+  const { getServerSupabase } = await import('./supabase-server');
+  const serverSupabase = getServerSupabase();
+  const { data, error } = await serverSupabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'image_search_ai')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_IMAGE_SEARCH_AI_SETTINGS;
+  return { ...DEFAULT_IMAGE_SEARCH_AI_SETTINGS, ...(data.value as Partial<ImageSearchAiSettings>) };
+}

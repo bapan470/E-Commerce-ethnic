@@ -15,6 +15,9 @@ import {
   fetchAiChatSettings,
   saveAiChatSettings,
   AI_CHAT_MODEL_OPTIONS,
+  ImageSearchAiSettings,
+  fetchImageSearchAiSettings,
+  saveImageSearchAiSettings,
   SocialLinks,
   fetchSocialLinks,
   saveSocialLinks,
@@ -61,6 +64,9 @@ export default function SettingsPanel() {
   const [testingAiChat, setTestingAiChat] = useState(false);
   const [aiTestResult, setAiTestResult] = useState<any>(null);
 
+  const [imageSearchAiForm, setImageSearchAiForm] = useState<ImageSearchAiSettings | null>(null);
+  const [savingImageSearchAi, setSavingImageSearchAi] = useState(false);
+
   const [socialForm, setSocialForm] = useState<SocialLinks | null>(null);
   const [savingSocial, setSavingSocial] = useState(false);
 
@@ -93,6 +99,10 @@ export default function SettingsPanel() {
     fetchAiChatSettings()
       .then(setAiChatForm)
       .catch(() => toast.error('Failed to load AI chat settings'));
+
+    fetchImageSearchAiSettings()
+      .then(setImageSearchAiForm)
+      .catch(() => toast.error('Failed to load image search AI settings'));
 
     fetchSocialLinks()
       .then(setSocialForm)
@@ -152,6 +162,20 @@ export default function SettingsPanel() {
       toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSavingAiChat(false);
+    }
+  };
+
+  const onSubmitImageSearchAi = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!imageSearchAiForm) return;
+    setSavingImageSearchAi(true);
+    try {
+      await saveImageSearchAiSettings(imageSearchAiForm);
+      toast.success('Image search AI settings saved');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSavingImageSearchAi(false);
     }
   };
 
@@ -936,6 +960,40 @@ export default function SettingsPanel() {
               ))}
             </div>
           )}
+        </form>
+      )}
+
+      <div className="mt-8">
+        <h2 className="font-serif text-2xl font-bold text-primary">Search by Photo — AI</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Controls the camera icon in the header search bar. When ON, an uploaded photo is read by
+          the NVIDIA vision model (garment type, colour, pattern) for real visual matching — same
+          NVIDIA_API_KEY as AI Chat above, no extra setup. When OFF (or if the AI call fails/rate-
+          limits), it automatically falls back to a free, instant colour-similarity match — the
+          feature keeps working either way.
+        </p>
+      </div>
+
+      {!imageSearchAiForm ? (
+        <p className="py-4 text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <form
+          onSubmit={onSubmitImageSearchAi}
+          className="mt-4 grid max-w-xl gap-4 rounded-lg border border-border/60 bg-card p-5"
+        >
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={imageSearchAiForm.enabled}
+              onChange={(e) => setImageSearchAiForm((f) => f && { ...f, enabled: e.target.checked })}
+            />
+            Enable AI-powered search by photo (uses NVIDIA_API_KEY; falls back to colour match if off)
+          </label>
+
+          <Button type="submit" disabled={savingImageSearchAi} className="mt-2 w-fit bg-primary">
+            <Save className="mr-1.5 h-4 w-4" />{' '}
+            {savingImageSearchAi ? 'Saving…' : 'Save Image Search Settings'}
+          </Button>
         </form>
       )}
 

@@ -69,8 +69,12 @@ export async function rankProductIdsByImage<T extends { id: string; images: stri
   products: T[],
   queryImageSrc: string
 ): Promise<string[]> {
-  const querySig = await getImageSignature(queryImageSrc);
-  if (!querySig) return [];
+  const querySigResult = await getImageSignature(queryImageSrc);
+  if (!querySigResult) return [];
+  // Re-bind to a variable whose type TS keeps narrowed to `number[]` inside
+  // the nested async worker below (closures over a reassignable outer
+  // binding don't retain the null-check narrowing across function bounds).
+  const querySig: number[] = querySigResult;
 
   const scored: { id: string; dist: number }[] = [];
   const CONCURRENCY = 6;

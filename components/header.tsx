@@ -180,13 +180,50 @@ export default function Header() {
   };
 
   // "Search by image": shopper taps the camera icon, picks a photo, and we
-  // rank the whole catalog by visual similarity (see lib/image-search.ts),
-  // then hand the ranked id list to /shop via sessionStorage — same pattern
-  // as the text search's `?q=` but there's no clean way to put an uploaded
-  // photo in a URL, so sessionStorage is the handoff instead.
+  // rank the whole catalog by visual similarity, then hand the ranked id
+  // list to /shop via sessionStorage — same pattern as the text search's
+  // `?q=` but there's no clean way to put an uploaded photo in a URL, so
+  // sessionStorage is the handoff instead.
+  //
+  // Two ranking methods, tried in order:
+  //  1. AI (app/api/image-search) — the real NVIDIA vision model reads the
+  //     photo (garment type/colour/pattern) and ranks the catalog against
+  //     that. Only used if the admin has turned it on in Settings AND
+  //     NVIDIA_API_KEY is configured; the route itself reports back which
+  //     of those wasn't true via `reason` so this never just hangs.
+  //  2. Colour-fingerprint match (lib/image-search.ts) — free, instant,
+  //     fully client-side. Always available as the fallback, so the
+  //     feature keeps working even with AI off or the free NVIDIA tier
+  //     rate-limited.
   const triggerImageSearch = () => {
     if (imageSearching) return;
     imageInputRef.current?.click();
+  };
+
+  const tryAiImageSearch = async (dataUrl: string): Promise<string[] | null> => {
+    try {
+      const liteProducts = products.map((p) => ({
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        colors: p.all_colors && p.all_colors.length > 0 ? p.all_colors : p.colors,
+        pattern: p.pattern,
+        occasion: p.occasion,
+        fabric: p.fabric,
+      }));
+
+      const res = await fetch('/api/image-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: dataUrl, products: liteProducts }),
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data?.ok) return null; // disabled / not configured / rate-limited / error — caller falls back
+      return Array.isArray(data.rankedIds) ? data.rankedIds : null;
+    } catch {
+      return null; // network hiccup — caller falls back
+    }
   };
 
   const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -204,7 +241,11 @@ export default function Header() {
         reader.readAsDataURL(file);
       });
 
-      const rankedIds = await rankProductIdsByImage(products, dataUrl);
+      let rankedIds = await tryAiImageSearch(dataUrl);
+      if (rankedIds === null) {
+        rankedIds = await rankProductIdsByImage(products, dataUrl);
+      }
+
       if (rankedIds.length === 0) {
         window.alert("Couldn't match that photo to any products — try a clearer photo of the item.");
         return;
