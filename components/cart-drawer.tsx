@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import {
@@ -20,6 +20,7 @@ import { useCart } from '@/lib/cart-context';
 import { useAuth } from '@/lib/auth-context';
 import { markCheckoutEntry } from '@/lib/checkout-return';
 import { formatINR, discountPct } from '@/lib/format';
+import { fetchProductPageCoupons, Coupon } from '@/lib/coupons-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -55,6 +56,34 @@ export default function CartDrawer() {
   const [couponError, setCouponError] = useState<string | null>(null);
   const [couponPanelOpen, setCouponPanelOpen] = useState(false);
   const [priceDetailsOpen, setPriceDetailsOpen] = useState(false);
+
+  // Coupons the admin has flagged "Show on Product Page" (Admin > Coupons)
+  // — surfaced here too, in the cart drawer, so a shopper who never
+  // visited a product page still sees offers they qualify for. Only
+  // fetched/shown while nothing is applied yet; once a coupon is active
+  // there's nothing to pick from.
+  const [availableCoupons, setAvailableCoupons] = useState<Coupon[]>([]);
+  const [applyingFromList, setApplyingFromList] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (appliedCoupon) return;
+    let cancelled = false;
+    fetchProductPageCoupons()
+      .then((c) => {
+        if (!cancelled) setAvailableCoupons(c);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [appliedCoupon]);
+
+  // Whenever a coupon becomes active, pop the Price Details accordion open
+  // automatically so the live after-coupon total is visible immediately —
+  // no extra tap needed to confirm what just got applied.
+  useEffect(() => {
+    if (appliedCoupon) setPriceDetailsOpen(true);
+  }, [appliedCoupon]);
 
   // Swipe-to-close for the side cart on mobile — drag the panel toward the
   // right edge (the side it slides in from) to dismiss it, same gesture
@@ -151,6 +180,21 @@ export default function CartDrawer() {
     removeCoupon();
     setCouponInput('');
     setCouponError(null);
+  };
+
+  const handleApplyFromList = async (c: Coupon) => {
+    setApplyingFromList(c.code);
+    setCouponError(null);
+    try {
+      const result = await applyCoupon(c.code);
+      if (!result.ok) {
+        setCouponError(result.error || 'Could not apply this coupon');
+      } else {
+        setCouponPanelOpen(false);
+      }
+    } finally {
+      setApplyingFromList(null);
+    }
   };
 
   // Total rupee amount the shopper is saving on this bag — MRP discount on
@@ -411,6 +455,50 @@ export default function CartDrawer() {
                 )}
               </div>
 
+              {/* Available coupons (admin-flagged "Show on Product Page"), only
+                  while nothing is applied yet — same offers a shopper would see
+                  on a product page, surfaced here too. */}
+              {!appliedCoupon && availableCoupons.length > 0 && (
+                <div className="flex flex-col gap-2 rounded-lg border border-border/60 bg-card p-4">
+                  <div className="flex items-center gap-1.5 text-sm font-semibold">
+                    <Tag className="h-4 w-4 text-secondary" />
+                    Available Coupons
+                  </div>
+                  {availableCoupons.map((c) => (
+                    <div
+                      key={c.id}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-secondary/60 bg-secondary/10 px-3 py-2.5"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-sm font-bold tracking-wide text-primary">
+                            {c.code}
+                          </span>
+                          <span className="text-xs font-semibold text-secondary-foreground">
+                            {c.discount_type === 'percentage'
+                              ? `${c.discount_value}% OFF`
+                              : `${formatINR(c.discount_value)} OFF`}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                          {c.min_order_value > 0
+                            ? `On orders above ${formatINR(c.min_order_value)}`
+                            : 'No minimum order value'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyFromList(c)}
+                        disabled={applyingFromList === c.code}
+                        className="flex shrink-0 items-center gap-1 rounded-md border border-primary bg-background px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary hover:text-primary-foreground disabled:opacity-60"
+                      >
+                        {applyingFromList === c.code ? 'Applying…' : 'Apply'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Price details */}
               <div className="rounded-lg border border-border/60 bg-card">
                 <button
@@ -463,6 +551,19 @@ export default function CartDrawer() {
                 <p className="bg-secondary/15 px-5 py-2 text-center text-sm font-medium text-secondary-foreground">
                   You are saving {formatINR(totalSavings)} on this order
                 </p>
+              )}
+              {appliedCoupon && couponDiscount > 0 && (
+                <div className="flex items-center justify-between px-5 pt-4 text-sm">
+                  <span className="flex items-center gap-1.5 font-medium text-secondary-foreground">
+                    <Tag className="h-3.5 w-3.5" /> {appliedCoupon.code} applied — you pay
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span className="text-muted-foreground line-through">{formatINR(subtotal)}</span>
+                    <span className="font-serif text-base font-bold text-primary">
+                      {formatINR(Math.max(0, subtotal - couponDiscount))}
+                    </span>
+                  </span>
+                </div>
               )}
               <div className="p-5">
                 <p className="mb-3 text-xs text-muted-foreground">
