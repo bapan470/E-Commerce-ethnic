@@ -27,6 +27,7 @@ import {
 } from '@/lib/vendor-api';
 import { formatINR, discountPct } from '@/lib/format';
 import { fetchShippingSettings, ShippingSettings, DEFAULT_SHIPPING_SETTINGS } from '@/lib/pincode-api';
+import { PaymentDiscountSettings } from '@/lib/settings-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -355,17 +356,42 @@ function blendedCouponDiscount(price: number, settings: ShippingSettings): numbe
   return Math.round(perUseDiscount * usageShare * 100) / 100;
 }
 
-function calcSafeProfit(price: number, costPrice: number | null, settings: ShippingSettings) {
+// Average online-payment-discount cost per order, blended across the
+// COD/prepaid mix — COD orders never get this discount (it's an
+// online-payment-only incentive, see checkout/page.tsx), so only the
+// prepaid share pays for it. Computed on the price after the average
+// coupon discount, same base the real checkout uses (discountedSubtotal
+// in app/checkout/page.tsx — after coupon/gift card/loyalty, before GST).
+function blendedPaymentDiscountCost(
+  priceAfterCoupon: number,
+  prepaidShare: number,
+  paymentDiscount: PaymentDiscountSettings,
+): number {
+  if (!paymentDiscount.enabled || !paymentDiscount.percent) return 0;
+  const fullDiscount = Math.round((priceAfterCoupon * paymentDiscount.percent) / 100 * 100) / 100;
+  return Math.round(fullDiscount * prepaidShare * 100) / 100;
+}
+
+function calcSafeProfit(
+  price: number,
+  costPrice: number | null,
+  settings: ShippingSettings,
+  paymentDiscount: PaymentDiscountSettings,
+) {
   const prepaidShare = (100 - settings.cod_order_percent) / 100;
   const returnRate = settings.return_rate_percent / 100;
   const logisticsFee = blendedLogisticsCost(settings);
   const otherCharges = settings.other_charges;
   const couponDiscount = blendedCouponDiscount(price, settings);
-  const effectivePrice = price - couponDiscount;
+  const priceAfterCoupon = price - couponDiscount;
+  const paymentDiscountCost = blendedPaymentDiscountCost(priceAfterCoupon, prepaidShare, paymentDiscount);
+  const effectivePrice = priceAfterCoupon - paymentDiscountCost;
 
   // Listing price is GST-inclusive (see app/checkout/page.tsx) — that slice
   // goes straight to the government, never to you, so it comes off before
-  // anything else.
+  // anything else. GST is extracted from the amount the customer actually
+  // pays (after coupon AND after the online-payment discount, same order
+  // checkout uses), not the pre-discount price.
   const gstAmount =
     Math.round(
       (effectivePrice - (effectivePrice * 100) / (100 + settings.gst_rate_percent)) * 100
@@ -394,10 +420,12 @@ function SettlementPreview({
   price,
   costPrice,
   settings,
+  paymentDiscount,
 }: {
   price: number;
   costPrice: number | null;
   settings: ShippingSettings;
+  paymentDiscount: PaymentDiscountSettings;
 }) {
   const prepaidShare = (100 - settings.cod_order_percent) / 100;
   const returnRate = settings.return_rate_percent / 100;
@@ -406,10 +434,14 @@ function SettlementPreview({
   const logisticsFee = blendedLogisticsCost(settings);
   const otherCharges = settings.other_charges;
   const couponDiscount = blendedCouponDiscount(price, settings);
-  const effectivePrice = price - couponDiscount;
+  const priceAfterCoupon = price - couponDiscount;
+  const paymentDiscountCost = blendedPaymentDiscountCost(priceAfterCoupon, prepaidShare, paymentDiscount);
+  const effectivePrice = priceAfterCoupon - paymentDiscountCost;
 
   // Listing price is GST-inclusive — that slice goes to the government, not
   // to you, so it's carved out before any of the seller-side deductions.
+  // Extracted from what the customer actually pays, i.e. after coupon AND
+  // after the online-payment discount (same order checkout uses).
   const gstAmount =
     Math.round(
       (effectivePrice - (effectivePrice * 100) / (100 + settings.gst_rate_percent)) * 100
@@ -425,7 +457,7 @@ function SettlementPreview({
   const successfulSettlement =
     Math.round((priceAfterGst - blendedGatewayFee - logisticsFee - otherCharges) * 100) / 100;
 
-  const { safeSettlement, safeProfit } = calcSafeProfit(price, costPrice, settings);
+  const { safeSettlement, safeProfit } = calcSafeProfit(price, costPrice, settings, paymentDiscount);
 
   return (
     <div className="rounded-lg border border-border/60 bg-card p-4 text-sm">
@@ -442,6 +474,14 @@ function SettlementPreview({
               Avg. coupon discount ({settings.coupon_discount_type === 'flat' ? formatINR(settings.coupon_discount_value) : `${settings.coupon_discount_value}%`} off, used on {settings.coupon_usage_percent}% of orders)
             </span>
             <span>-{formatINR(couponDiscount)}</span>
+          </div>
+        )}
+        {paymentDiscountCost > 0 && (
+          <div className="flex items-center justify-between">
+            <span>
+              Avg. online payment discount ({paymentDiscount.percent}% off, on {Math.round(prepaidShare * 100)}% prepaid orders)
+            </span>
+            <span>-{formatINR(paymentDiscountCost)}</span>
           </div>
         )}
         {gstAmount > 0 && (
@@ -513,7 +553,7 @@ function SettlementPreview({
 }
 
 export default function ProductsPanel() {
-  const { products, categories, loading, refresh } = useProducts();
+  const { products, categories, loading, refresh, paymentDiscount } = useProducts();
 
   // Phase 2, Part 5 — "Vendor Submissions" lives as a second tab inside
   // this same Products panel (same pattern already used for colour/size
@@ -1265,7 +1305,7 @@ export default function ProductsPanel() {
           <ul className="flex flex-col divide-y divide-border/60">
             {filteredProducts.map((p) => {
               const rowCostPrice = Number(getStoredCostPrice(p.id)) || null;
-              const rowProfit = rowCostPrice ? calcSafeProfit(p.price, rowCostPrice, shippingSettings) : null;
+              const rowProfit = rowCostPrice ? calcSafeProfit(p.price, rowCostPrice, shippingSettings, paymentDiscount) : null;
               return (
               <li
                 key={p.id}
@@ -1731,6 +1771,7 @@ export default function ProductsPanel() {
                   price={Number(form.price)}
                   costPrice={Number(costPrice) || null}
                   settings={shippingSettings}
+                  paymentDiscount={paymentDiscount}
                 />
               </div>
             )}
