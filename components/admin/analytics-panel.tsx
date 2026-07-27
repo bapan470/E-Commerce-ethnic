@@ -102,7 +102,7 @@ function SalesPanel() {
     return <p className="text-sm text-muted-foreground">Could not load analytics right now.</p>;
   }
 
-  const { summary, salesTrend, topProducts, funnel, lowStock } = data;
+  const { summary, salesTrend, topProducts, funnel, lowStock, productPerformance } = data;
 
   return (
     <div className="grid gap-6">
@@ -200,6 +200,54 @@ function SalesPanel() {
             </FunnelChart>
           </ResponsiveContainer>
         </div>
+      </div>
+
+      {/* Product performance: Impressions vs Conversion */}
+      <div className="rounded-lg border border-border/60 bg-card p-4">
+        <h3 className="mb-1 font-serif text-lg font-bold text-primary">Product Performance — last 30 days</h3>
+        <p className="mb-3 text-xs text-muted-foreground">
+          Impressions = product page views. Conversion = % of those views that led to an order containing this product.
+        </p>
+        {productPerformance.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No product views recorded in the last 30 days yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border/60 text-left text-xs text-muted-foreground">
+                  <th className="pb-2 pr-3 font-medium">Product</th>
+                  <th className="pb-2 pr-3 font-medium">Impressions</th>
+                  <th className="pb-2 font-medium">Conversion</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/40">
+                {productPerformance.map((p) => (
+                  <tr key={p.productId}>
+                    <td className="py-2 pr-3">
+                      <div className="flex items-center gap-2">
+                        {p.image ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={p.image} alt={p.name} className="h-8 w-8 rounded-md object-cover" />
+                        ) : (
+                          <div className="h-8 w-8 rounded-md bg-muted" />
+                        )}
+                        <span className="max-w-[220px] truncate font-medium">{p.name}</span>
+                      </div>
+                    </td>
+                    <td className="py-2 pr-3 text-emerald-600">{p.impressions}</td>
+                    <td
+                      className={`py-2 font-medium ${
+                        p.conversionRate > 0 ? 'text-emerald-600' : 'text-destructive'
+                      }`}
+                    >
+                      {p.conversionRate.toFixed(2)}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* Low stock alerts */}

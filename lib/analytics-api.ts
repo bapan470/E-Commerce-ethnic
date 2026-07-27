@@ -17,6 +17,15 @@ export interface FunnelStage {
   sessions: number;
 }
 
+export interface ProductPerformance {
+  productId: string;
+  name: string;
+  image: string | null;
+  impressions: number;
+  conversions: number;
+  conversionRate: number;
+}
+
 export interface LowStockProduct {
   id: string;
   name: string;
@@ -38,6 +47,7 @@ export interface AnalyticsData {
   topProducts: TopProduct[];
   funnel: FunnelStage[];
   lowStock: LowStockProduct[];
+  productPerformance: ProductPerformance[];
 }
 
 export async function fetchAnalytics(): Promise<AnalyticsData> {

@@ -35,7 +35,7 @@ export async function GET() {
         .order('stock_quantity', { ascending: true }),
       supabase
         .from('activity_events')
-        .select('session_id, event_type, created_at')
+        .select('session_id, event_type, product_id, created_at')
         .gte('created_at', since.toISOString()),
     ]);
 
@@ -139,6 +139,47 @@ export async function GET() {
         in_stock: p.in_stock,
       }));
 
+    // ---------------- Product performance: Impressions vs Conversion (last 30 days) ----------------
+    // "Impressions" = how many times the product page was viewed (product_view
+    // events). "Conversion" = what share of those views turned into an order
+    // containing that product, within the same 30-day window. Same idea as
+    // the per-product report Google Merchant Center shows -- built from data
+    // we already track (activity_events + orders.items), no new tracking
+    // needed.
+    const productViewCounts = new Map<string, number>();
+    for (const ev of events) {
+      if (ev.event_type !== 'product_view' || !ev.product_id) continue;
+      productViewCounts.set(ev.product_id, (productViewCounts.get(ev.product_id) ?? 0) + 1);
+    }
+    const productPurchaseCounts = new Map<string, number>();
+    for (const o of orders) {
+      if (!REVENUE_STATUSES.includes(o.status)) continue;
+      if (!o.created_at || new Date(o.created_at) < since) continue;
+      const items = Array.isArray(o.items) ? o.items : [];
+      const countedInThisOrder = new Set<string>(); // one order buying 2x the same product still counts as 1 conversion
+      for (const it of items) {
+        if (!it.product_id || countedInThisOrder.has(it.product_id)) continue;
+        countedInThisOrder.add(it.product_id);
+        productPurchaseCounts.set(it.product_id, (productPurchaseCounts.get(it.product_id) ?? 0) + 1);
+      }
+    }
+    const productPerformance = products
+      .map((p) => {
+        const impressions = productViewCounts.get(p.id) ?? 0;
+        const conversions = productPurchaseCounts.get(p.id) ?? 0;
+        return {
+          productId: p.id,
+          name: p.name,
+          image: p.images?.[0] ?? null,
+          impressions,
+          conversions,
+          conversionRate: impressions > 0 ? Number(((conversions / impressions) * 100).toFixed(2)) : 0,
+        };
+      })
+      .filter((p) => p.impressions > 0)
+      .sort((a, b) => b.impressions - a.impressions)
+      .slice(0, 25);
+
     return NextResponse.json({
       summary: {
         totalRevenue30d,
@@ -151,6 +192,7 @@ export async function GET() {
       topProducts,
       funnel,
       lowStock,
+      productPerformance,
     });
   } catch (err) {
     return NextResponse.json({ error: 'Failed to load analytics' }, { status: 500 });
