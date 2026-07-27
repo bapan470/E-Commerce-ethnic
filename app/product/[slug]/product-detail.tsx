@@ -9,6 +9,7 @@ import {
   Truck,
   ShieldCheck,
   RefreshCw,
+  Wallet,
 } from 'lucide-react';
 import { useProducts, useCart } from '@/lib/cart-context';
 import { fetchProductBySlug } from '@/lib/products-api';
@@ -649,6 +650,11 @@ function ProductInfo({
   fulfillment: FulfillmentSettings;
 }) {
   const discount = discountPct(product.price, product.mrp);
+  const { paymentDiscount } = useProducts();
+  const onlinePaymentSavings =
+    paymentDiscount.enabled && paymentDiscount.percent > 0
+      ? Math.round((product.price * paymentDiscount.percent) / 100)
+      : 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -729,6 +735,14 @@ function ProductInfo({
             after coupon &quot;{appliedCoupon.code}&quot;
           </span>
         </p>
+      )}
+
+      {onlinePaymentSavings > 0 && (
+        <div className="-mt-1 flex w-fit items-center gap-1.5 rounded-md bg-green-50 px-2.5 py-1.5 text-xs font-medium text-green-700">
+          <Wallet className="h-3.5 w-3.5" />
+          Get {formatINR(onlinePaymentSavings)} ({paymentDiscount.percent}%) extra off on{' '}
+          {paymentDiscount.label} — applied automatically at checkout
+        </div>
       )}
 
       <CouponList

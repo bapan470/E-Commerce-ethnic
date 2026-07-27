@@ -75,6 +75,51 @@ export async function saveSocialLinks(links: SocialLinks) {
   if (error) throw error;
 }
 
+// ---------------------------------------------------------------------
+// Online payment discount — an extra % off applied at checkout when the
+// customer pays online (Razorpay) instead of COD. Shown as an incentive
+// badge on the product page and cart drawer, and actually applied to the
+// order total in checkout once "Pay online" is selected.
+//
+// Deliberately NOT submitted to Google Merchant Center as a structured
+// "Promotion" or baked into the product feed / JSON-LD price: Merchant
+// Center's Promotions policy treats discounts restricted to a specific
+// payment method as an "overly restrictive" promotion outside Brazil, and
+// the [price] attribute must always reflect the standard (non-conditional)
+// price. This stays a checkout-time, on-site incentive only — the feed
+// price and structured data keep showing the normal price.
+// ---------------------------------------------------------------------
+export interface PaymentDiscountSettings {
+  enabled: boolean;
+  /** Extra discount percentage applied to the order subtotal when paying online (0-100). */
+  percent: number;
+  /** Short customer-facing label, e.g. "online payment" — used in "Get X% off on {label}". */
+  label: string;
+}
+
+export const DEFAULT_PAYMENT_DISCOUNT_SETTINGS: PaymentDiscountSettings = {
+  enabled: false,
+  percent: 5,
+  label: 'online payment',
+};
+
+export async function fetchPaymentDiscountSettings(): Promise<PaymentDiscountSettings> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'payment_discount')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_PAYMENT_DISCOUNT_SETTINGS;
+  return { ...DEFAULT_PAYMENT_DISCOUNT_SETTINGS, ...(data.value as Partial<PaymentDiscountSettings>) };
+}
+
+export async function savePaymentDiscountSettings(settings: PaymentDiscountSettings) {
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ key: 'payment_discount', value: settings }, { onConflict: 'key' });
+  if (error) throw error;
+}
+
 export interface SiteBanner {
   image_url: string;
   link_url?: string;

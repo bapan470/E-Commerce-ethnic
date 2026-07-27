@@ -21,6 +21,9 @@ import {
   SocialLinks,
   fetchSocialLinks,
   saveSocialLinks,
+  PaymentDiscountSettings,
+  fetchPaymentDiscountSettings,
+  savePaymentDiscountSettings,
 } from '@/lib/settings-api';
 import { uploadProductImage } from '@/lib/products-api';
 import {
@@ -37,6 +40,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectTrigger,
@@ -77,6 +81,9 @@ export default function SettingsPanel() {
   const [socialForm, setSocialForm] = useState<SocialLinks | null>(null);
   const [savingSocial, setSavingSocial] = useState(false);
 
+  const [paymentDiscountForm, setPaymentDiscountForm] = useState<PaymentDiscountSettings | null>(null);
+  const [savingPaymentDiscount, setSavingPaymentDiscount] = useState(false);
+
   useEffect(() => {
     fetchStoreInfo()
       .then(setForm)
@@ -114,6 +121,10 @@ export default function SettingsPanel() {
     fetchSocialLinks()
       .then(setSocialForm)
       .catch(() => toast.error('Failed to load social media links'));
+
+    fetchPaymentDiscountSettings()
+      .then(setPaymentDiscountForm)
+      .catch(() => toast.error('Failed to load online payment discount settings'));
   }, []);
 
   const onSubmit = async (e: FormEvent) => {
@@ -197,6 +208,20 @@ export default function SettingsPanel() {
       toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSavingSocial(false);
+    }
+  };
+
+  const onSubmitPaymentDiscount = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!paymentDiscountForm) return;
+    setSavingPaymentDiscount(true);
+    try {
+      await savePaymentDiscountSettings(paymentDiscountForm);
+      toast.success('Online payment discount saved');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSavingPaymentDiscount(false);
     }
   };
 
@@ -603,6 +628,85 @@ export default function SettingsPanel() {
           <Button type="submit" disabled={savingCheckout} className="mt-2 w-fit bg-primary">
             <Save className="mr-1.5 h-4 w-4" />{' '}
             {savingCheckout ? 'Saving…' : 'Save GST & Shipping'}
+          </Button>
+        </form>
+      )}
+
+      <div className="mt-8">
+        <h2 className="font-serif text-2xl font-bold text-primary">Online Payment Discount</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          An extra % off applied automatically when a customer pays online instead of COD. Shown
+          as a badge on the product page and cart drawer, and applied to the total the moment
+          "Pay online" is selected at checkout.
+        </p>
+        <p className="mt-2 max-w-xl rounded-md border border-amber-300/60 bg-amber-50 p-3 text-xs text-amber-900">
+          Google Merchant Center note: discounts restricted to one payment method aren't allowed
+          as a formal "Promotion" in the Shopping feed (outside Brazil). This stays an on-site,
+          checkout-time incentive only — it is never sent to Merchant Center as a promotion, and
+          your product feed / structured data keep showing the standard price, so this won't
+          create a policy or price-accuracy issue.
+        </p>
+      </div>
+
+      {!paymentDiscountForm ? (
+        <p className="py-4 text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <form
+          onSubmit={onSubmitPaymentDiscount}
+          className="mt-4 grid max-w-xl gap-4 rounded-lg border border-border/60 bg-card p-5"
+        >
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <Label htmlFor="payment-discount-enabled">Enable online payment discount</Label>
+              <p className="text-xs text-muted-foreground">
+                Turn off to stop showing/applying it anywhere, without losing your saved %.
+              </p>
+            </div>
+            <Switch
+              id="payment-discount-enabled"
+              checked={paymentDiscountForm.enabled}
+              onCheckedChange={(checked) =>
+                setPaymentDiscountForm((f) => f && { ...f, enabled: checked })
+              }
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="payment-discount-percent">Discount (%)</Label>
+            <Input
+              id="payment-discount-percent"
+              type="number"
+              min={0}
+              max={100}
+              step="0.5"
+              value={paymentDiscountForm.percent}
+              onChange={(e) =>
+                setPaymentDiscountForm(
+                  (f) => f && { ...f, percent: Number(e.target.value) }
+                )
+              }
+            />
+            <p className="text-xs text-muted-foreground">
+              Applied to the order subtotal (after coupon/gift card/loyalty, before shipping) only
+              when the customer chooses to pay online.
+            </p>
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="payment-discount-label">Customer-facing label</Label>
+            <Input
+              id="payment-discount-label"
+              value={paymentDiscountForm.label}
+              onChange={(e) =>
+                setPaymentDiscountForm((f) => f && { ...f, label: e.target.value })
+              }
+              placeholder="online payment"
+            />
+            <p className="text-xs text-muted-foreground">
+              Shown as: "Get {paymentDiscountForm.percent || 0}% off on {paymentDiscountForm.label || 'online payment'}".
+            </p>
+          </div>
+          <Button type="submit" disabled={savingPaymentDiscount} className="mt-2 w-fit bg-primary">
+            <Save className="mr-1.5 h-4 w-4" />{' '}
+            {savingPaymentDiscount ? 'Saving…' : 'Save Payment Discount'}
           </Button>
         </form>
       )}

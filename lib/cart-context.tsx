@@ -12,6 +12,11 @@ import React, {
 import { CartItem, Product, CategoryRow } from './types';
 import { fetchProducts, fetchCategories } from './products-api';
 import { validateCoupon, computeCouponDiscount, Coupon, CouponResult } from './coupons-api';
+import {
+  fetchPaymentDiscountSettings,
+  PaymentDiscountSettings,
+  DEFAULT_PAYMENT_DISCOUNT_SETTINGS,
+} from './settings-api';
 import { toast } from 'sonner';
 
 /* ---------------- Cart ---------------- */
@@ -356,6 +361,9 @@ interface ProductsContextValue {
   refresh: () => Promise<void>;
   getBySlug: (slug: string) => Product | undefined;
   getById: (id: string) => Product | undefined;
+  /** Admin-configured "extra % off on online payment" incentive — shared by the
+   * product page, cart drawer, and checkout so they never fall out of sync. */
+  paymentDiscount: PaymentDiscountSettings;
 }
 
 const ProductsContext = createContext<ProductsContextValue | undefined>(undefined);
@@ -365,6 +373,9 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [paymentDiscount, setPaymentDiscount] = useState<PaymentDiscountSettings>(
+    DEFAULT_PAYMENT_DISCOUNT_SETTINGS
+  );
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -378,6 +389,12 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    fetchPaymentDiscountSettings()
+      .then(setPaymentDiscount)
+      .catch(() => setPaymentDiscount(DEFAULT_PAYMENT_DISCOUNT_SETTINGS));
   }, []);
 
   useEffect(() => {
@@ -401,6 +418,7 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
     refresh,
     getBySlug,
     getById,
+    paymentDiscount,
   };
 
   return (

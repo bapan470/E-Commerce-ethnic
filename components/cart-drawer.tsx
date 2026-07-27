@@ -15,8 +15,9 @@ import {
   ChevronDown,
   ChevronRight,
   Info,
+  Wallet,
 } from 'lucide-react';
-import { useCart } from '@/lib/cart-context';
+import { useCart, useProducts } from '@/lib/cart-context';
 import { useAuth } from '@/lib/auth-context';
 import { markCheckoutEntry } from '@/lib/checkout-return';
 import { formatINR, discountPct } from '@/lib/format';
@@ -50,6 +51,12 @@ export default function CartDrawer() {
     clearBuyNow,
   } = useCart();
   const { user } = useAuth();
+  const { paymentDiscount } = useProducts();
+
+  const onlinePaymentSavings =
+    paymentDiscount.enabled && paymentDiscount.percent > 0
+      ? Math.round((Math.max(0, subtotal - couponDiscount) * paymentDiscount.percent) / 100)
+      : 0;
 
   const [couponInput, setCouponInput] = useState('');
   const [applyingCoupon, setApplyingCoupon] = useState(false);
@@ -588,6 +595,13 @@ export default function CartDrawer() {
                 </div>
               )}
               <div className="p-5">
+                {onlinePaymentSavings > 0 && (
+                  <div className="mb-3 flex items-center gap-1.5 rounded-md bg-green-50 px-2.5 py-1.5 text-xs font-medium text-green-700">
+                    <Wallet className="h-3.5 w-3.5 shrink-0" />
+                    Pay online and save an extra {formatINR(onlinePaymentSavings)} (
+                    {paymentDiscount.percent}%) at checkout
+                  </div>
+                )}
                 <p className="mb-3 text-xs text-muted-foreground">
                   Shipping &amp; taxes calculated at checkout.
                 </p>

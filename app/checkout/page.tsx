@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Lock, Loader2, CreditCard, Tag, X, Wallet, Sparkles, Gift, Store, Minus, Plus } from 'lucide-react';
-import { useCart } from '@/lib/cart-context';
+import { useCart, useProducts } from '@/lib/cart-context';
 import { useAuth } from '@/lib/auth-context';
 import { formatINR } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
@@ -84,6 +84,7 @@ export default function CheckoutPage() {
     updateBuyNowQuantity,
     clearBuyNow,
   } = useCart();
+  const { paymentDiscount } = useProducts();
   // Buy Now sends the shopper straight here with just the one item, kept
   // separate from whatever else is sitting in the persistent cart. Extra
   // add-ons picked up on this page (currently just the checkout bump) are
@@ -496,13 +497,22 @@ export default function CheckoutPage() {
       : 0;
 
   const discountedSubtotal = Math.max(0, afterGiftCardSubtotal - loyaltyDiscount);
+  // Extra incentive discount, only applied once the customer actually
+  // chooses to pay online (never for COD) — computed on the merchandise
+  // subtotal after coupon/gift card/loyalty, before shipping/tax.
+  const onlinePaymentDiscount =
+    paymentMethod === 'online' && paymentDiscount.enabled && paymentDiscount.percent > 0
+      ? Math.round((discountedSubtotal * paymentDiscount.percent) / 100)
+      : 0;
+  const subtotalAfterPaymentDiscount = Math.max(0, discountedSubtotal - onlinePaymentDiscount);
   // Prices are GST-inclusive: the tax is already baked into discountedSubtotal,
   // so we only extract it here for display/invoice purposes and do NOT add it
   // on top of the total again.
   const tax = Math.round(
-    discountedSubtotal - (discountedSubtotal * 100) / (100 + shippingSettings.gst_rate_percent)
+    subtotalAfterPaymentDiscount -
+      (subtotalAfterPaymentDiscount * 100) / (100 + shippingSettings.gst_rate_percent)
   );
-  const total = discountedSubtotal + shipping;
+  const total = subtotalAfterPaymentDiscount + shipping;
 
   const resaleSellingPriceNum = Math.max(0, Number(resaleSellingPrice) || 0);
   // What the reseller's own customer actually pays — the price the reseller
@@ -757,6 +767,7 @@ export default function CheckoutPage() {
           gift_card_discount: clampedGiftCardDiscount,
           loyalty_points_redeemed: loyaltyDiscount > 0 ? pointsToRedeem : 0,
           loyalty_discount: loyaltyDiscount,
+          online_payment_discount: onlinePaymentDiscount,
           is_reseller_order: isResale,
           reseller_id: resellerId,
           reseller_margin_percent: isResale && total > 0 ? Number(((resaleProfit / total) * 100).toFixed(1)) : null,
@@ -1172,6 +1183,11 @@ export default function CheckoutPage() {
                   <p className="text-xs text-muted-foreground">
                     Razorpay — card, UPI, netbanking
                   </p>
+                  {paymentDiscount.enabled && paymentDiscount.percent > 0 && (
+                    <p className="mt-0.5 text-xs font-medium text-green-700">
+                      Get {paymentDiscount.percent}% off — applied automatically
+                    </p>
+                  )}
                 </div>
               </button>
 
@@ -1413,6 +1429,12 @@ export default function CheckoutPage() {
                 <div className="flex justify-between text-secondary-foreground">
                   <span>Points redeemed ({pointsToRedeem})</span>
                   <span>-{formatINR(loyaltyDiscount)}</span>
+                </div>
+              )}
+              {onlinePaymentDiscount > 0 && (
+                <div className="flex justify-between text-green-700">
+                  <span>Online payment discount ({paymentDiscount.percent}%)</span>
+                  <span>-{formatINR(onlinePaymentDiscount)}</span>
                 </div>
               )}
               <div className="flex justify-between">
