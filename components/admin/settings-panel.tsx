@@ -316,6 +316,7 @@ export default function SettingsPanel() {
       if (res.ok) {
         toast.success('Test email sent — check the inbox (and spam folder)');
       } else {
+        if (body.details) console.error('[test-email] provider details:', body.details);
         toast.error(body.error || 'Failed to send test email');
       }
     } catch {
