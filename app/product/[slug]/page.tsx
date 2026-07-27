@@ -6,6 +6,14 @@ import ProductDetail from './product-detail';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
+// Safety net alongside the category page's identical fix (see the comment
+// there): without a `revalidate` value, once a product page is rendered and
+// cached it can be served stale indefinitely. 60s keeps this in sync with
+// admin edits/deletes even if the on-demand revalidatePath() call in
+// app/api/admin/products/[id]/route.ts is ever missed (e.g. a direct DB
+// edit, or a vendor-side approval-status change).
+export const revalidate = 60;
+
 type Params = { params: { slug: string } };
 
 /**

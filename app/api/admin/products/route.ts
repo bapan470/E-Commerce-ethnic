@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { revalidatePath } from 'next/cache';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
@@ -75,6 +76,12 @@ export async function POST(req: Request) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // See app/api/admin/products/[id]/route.ts for why this is needed --
+  // category pages are ISR-cached, so a brand-new product could otherwise
+  // take up to 60s to appear there.
+  revalidatePath('/');
+  revalidatePath('/category/[slug]', 'page');
 
   return NextResponse.json({ product: data });
 }

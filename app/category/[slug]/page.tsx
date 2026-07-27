@@ -7,6 +7,19 @@ import { safeJsonLd } from '@/lib/json-ld';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
+// This page uses generateStaticParams(), so without a `revalidate` value
+// Next.js caches it once at build time and NEVER regenerates it (revalidate:
+// false is the default for statically-generated pages). That meant a product
+// deleted from the admin panel kept showing up here on the category
+// storefront page indefinitely -- because it was baked into that static
+// HTML at build time -- while its own /product/[slug] page (rendered fresh,
+// no generateStaticParams) correctly 404'd on click. ISR with a 60s window
+// keeps this page nearly-static (cheap, fast) while making sure it drops
+// deleted/changed products within a minute instead of only on the next
+// deploy. Admin mutations also call revalidatePath() for an instant purge --
+// see app/api/admin/products/[id]/route.ts -- this is just the safety net.
+export const revalidate = 60;
+
 type Params = { params: { slug: string } };
 
 /**
