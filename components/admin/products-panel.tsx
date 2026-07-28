@@ -590,6 +590,10 @@ export default function ProductsPanel() {
   const [importUrl, setImportUrl] = useState('');
   const [importing, setImporting] = useState(false);
   const [cropOnImport, setCropOnImport] = useState(false);
+  // When true, ProductVariantsManager (rendered inside the edit dialog)
+  // opens its "Add Variant" form the moment it mounts -- lets the row's
+  // "Add Variation" button jump straight there without an extra click.
+  const [autoOpenVariantAdd, setAutoOpenVariantAdd] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -1537,6 +1541,18 @@ export default function ProductsPanel() {
                   <Button
                     size="icon"
                     variant="ghost"
+                    onClick={() => {
+                      openEdit(p);
+                      setAutoOpenVariantAdd(true);
+                    }}
+                    aria-label="Add colour variation"
+                    title="Add a new colour variation directly"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
                     onClick={() => openEdit(p)}
                     aria-label="Manage colour/size variants"
                     title="Manage colour/size variants (inside product details)"
@@ -1569,7 +1585,13 @@ export default function ProductsPanel() {
       )}
 
       {/* Add/Edit dialog */}
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(o) => {
+          setOpen(o);
+          if (!o) setAutoOpenVariantAdd(false);
+        }}
+      >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="font-serif text-xl text-primary">
@@ -2315,6 +2337,8 @@ export default function ProductsPanel() {
               productName={form.name}
               productSku={form.sku}
               baseImage={form.images[0]}
+              autoOpenAdd={autoOpenVariantAdd}
+              onAutoOpenAddHandled={() => setAutoOpenVariantAdd(false)}
             />
 
             {/* Product video (shows as the first slide in the gallery, before photos) */}

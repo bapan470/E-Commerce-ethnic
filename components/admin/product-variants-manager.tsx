@@ -85,6 +85,12 @@ interface Props {
   productName: string;
   productSku: string;
   baseImage?: string;
+  // When true, the "Add Variant" form opens automatically as soon as the
+  // product is ready -- lets a button outside this component (the row's
+  // "Add Variation" icon) jump straight to adding a colour without an
+  // extra click once the edit dialog is open.
+  autoOpenAdd?: boolean;
+  onAutoOpenAddHandled?: () => void;
 }
 
 /**
@@ -93,7 +99,14 @@ interface Props {
  * product's title/row in the list (or the palette icon) to open the same
  * dialog this lives in.
  */
-export default function ProductVariantsManager({ productId, productName, productSku, baseImage }: Props) {
+export default function ProductVariantsManager({
+  productId,
+  productName,
+  productSku,
+  baseImage,
+  autoOpenAdd,
+  onAutoOpenAddHandled,
+}: Props) {
   const [variants, setVariants] = useState<VariantWithSizes[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -136,6 +149,17 @@ export default function ProductVariantsManager({ productId, productName, product
     });
     setOpen(true);
   };
+
+  // Fired from the product row's "Add Variation" button (outside this
+  // component) -- opens the add-variant form the moment we have a real
+  // productId to attach the variant to.
+  useEffect(() => {
+    if (autoOpenAdd && productId) {
+      openNew();
+      onAutoOpenAddHandled?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenAdd, productId]);
 
   const openEdit = (v: VariantWithSizes) => {
     setEditing(v);
