@@ -1,7 +1,10 @@
 import { ImageResponse } from 'next/server';
 import { getServerSupabase } from '@/lib/supabase-server';
 
-export const size = { width: 32, height: 32 };
+// Google requires a square favicon of at least 48x48px to reliably show it
+// next to search results (32x32 is fine for browser tabs but too small for
+// Google Search).
+export const size = { width: 48, height: 48 };
 export const contentType = 'image/png';
 
 async function getFaviconUrl(): Promise<string> {
@@ -54,7 +57,7 @@ export default async function Icon() {
           borderRadius: 6,
         }}
       >
-        <span style={{ fontSize: 20, fontWeight: 700, color: '#DAAA2F' }}>A</span>
+        <span style={{ fontSize: 28, fontWeight: 700, color: '#DAAA2F' }}>A</span>
       </div>
     ),
     { ...size }
