@@ -3,41 +3,56 @@
 import { useEffect, useState } from 'react';
 import {
   ResponsiveContainer,
-  LineChart,
-  Line,
+  ComposedChart,
+  Bar,
+  Scatter,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   BarChart,
-  Bar,
   FunnelChart,
   Funnel,
   LabelList,
   Cell,
 } from 'recharts';
-import { AlertTriangle, TrendingUp, ShoppingBag, Percent, PackageX, BarChart3, Wifi } from 'lucide-react';
+import { AlertTriangle, TrendingUp, ShoppingBag, Percent, PackageX, BarChart3, Wifi, Receipt } from 'lucide-react';
+import { format, startOfDay, endOfDay, subDays } from 'date-fns';
 import { fetchAnalytics, AnalyticsData } from '@/lib/analytics-api';
 import { formatINR } from '@/lib/format';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import TrafficPanel from '@/components/admin/traffic-panel';
+import { DateRangePicker, SimpleRange } from '@/components/admin/date-range-picker';
 
 const FUNNEL_COLORS = ['#8b5e3c', '#a9744f', '#c68b5f', '#e0a374', '#f0b98a'];
+const BAR_COLOR = '#c9a48a';
+const ORDER_DOT_COLOR = '#8b5e3c';
 
 // ── Tab bar ────────────────────────────────────────────────────────────────
 
 type Tab = 'sales' | 'traffic';
 
-function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
+function TabBar({
+  active,
+  onChange,
+  right,
+}: {
+  active: Tab;
+  onChange: (t: Tab) => void;
+  right?: React.ReactNode;
+}) {
   return (
-    <div className="mb-6 flex gap-1 rounded-xl border border-border/60 bg-muted/40 p-1 w-fit">
-      <TabButton value="sales" active={active} onChange={onChange} icon={<BarChart3 className="h-4 w-4" />}>
-        Sales Analytics
-      </TabButton>
-      <TabButton value="traffic" active={active} onChange={onChange} icon={<Wifi className="h-4 w-4" />}>
-        Traffic
-      </TabButton>
+    <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+      <div className="flex gap-1 rounded-xl border border-border/60 bg-muted/40 p-1 w-fit">
+        <TabButton value="sales" active={active} onChange={onChange} icon={<BarChart3 className="h-4 w-4" />}>
+          Sales Analytics
+        </TabButton>
+        <TabButton value="traffic" active={active} onChange={onChange} icon={<Wifi className="h-4 w-4" />}>
+          Traffic
+        </TabButton>
+      </div>
+      {active === 'sales' && right}
     </div>
   );
 }
@@ -71,30 +86,82 @@ function TabButton({
   );
 }
 
+// ── Sales trend + order-level chart tooltip ─────────────────────────────────
+
+function SalesTooltip({ active, payload, label }: any) {
+  if (!active || !payload || payload.length === 0) return null;
+  const dayEntry = payload.find((p: any) => p.dataKey === 'revenue');
+  const orderEntries = payload.filter((p: any) => p.dataKey === 'amount');
+
+  return (
+    <div className="min-w-[200px] rounded-lg border border-border/60 bg-white/97 p-3 text-xs shadow-xl backdrop-blur-sm">
+      <p className="mb-1.5 font-serif text-sm font-bold text-primary">
+        {new Date(`${label}T00:00:00`).toLocaleDateString('en-IN', { dateStyle: 'medium' })}
+      </p>
+      {dayEntry && (
+        <p className="mb-1.5 flex items-center justify-between text-muted-foreground">
+          <span>Day revenue</span>
+          <span className="font-semibold text-foreground">{formatINR(dayEntry.value as number)}</span>
+        </p>
+      )}
+      {orderEntries.length > 0 ? (
+        <div className="max-h-40 space-y-1 overflow-y-auto border-t border-border/50 pt-1.5 pr-1">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Orders ({orderEntries.length})
+          </p>
+          {orderEntries.map((entry: any, i: number) => {
+            const o = entry.payload;
+            return (
+              <div key={i} className="flex items-center justify-between gap-3">
+                <span className="text-muted-foreground">
+                  {new Date(o.time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+                <span className="font-medium">{formatINR(o.amount)}</span>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="border-t border-border/50 pt-1.5 text-muted-foreground">No orders this day.</p>
+      )}
+    </div>
+  );
+}
+
 // ── Sales panel (existing analytics) ─────────────────────────────────────
 
-function SalesPanel() {
+function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChange: (r: SimpleRange) => void }) {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [perfDays, setPerfDays] = useState(30);
   const [perfSearch, setPerfSearch] = useState('');
   const [perfLoading, setPerfLoading] = useState(false);
 
+  // Refetch the whole dashboard whenever the top-right date range changes.
   useEffect(() => {
-    fetchAnalytics()
+    setLoading(true);
+    fetchAnalytics({
+      from: format(range.from, 'yyyy-MM-dd'),
+      to: format(range.to, 'yyyy-MM-dd'),
+      productPerformanceDays: perfDays,
+    })
       .then(setData)
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load analytics'))
       .finally(() => setLoading(false));
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range]);
 
-  // Only re-fetches when the date-range filter changes (not on every
-  // keystroke of the search box, which just filters what's already loaded)
-  // -- and only swaps in the new productPerformance slice so the rest of
-  // the dashboard (charts, funnel) doesn't flicker/reload.
+  // Only re-fetches when the Product Performance window changes (not on
+  // every keystroke of the search box) -- and only swaps in the new
+  // productPerformance slice so the rest of the dashboard doesn't flicker.
   useEffect(() => {
     if (!data) return; // wait for the initial full load above
     setPerfLoading(true);
-    fetchAnalytics(perfDays)
+    fetchAnalytics({
+      from: format(range.from, 'yyyy-MM-dd'),
+      to: format(range.to, 'yyyy-MM-dd'),
+      productPerformanceDays: perfDays,
+    })
       .then((res) =>
         setData((prev) =>
           prev
@@ -115,7 +182,7 @@ function SalesPanel() {
             <Skeleton key={i} className="h-24 rounded-lg" />
           ))}
         </div>
-        <Skeleton className="h-72 rounded-lg" />
+        <Skeleton className="h-80 rounded-lg" />
         <Skeleton className="h-72 rounded-lg" />
       </div>
     );
@@ -125,7 +192,23 @@ function SalesPanel() {
     return <p className="text-sm text-muted-foreground">Could not load analytics right now.</p>;
   }
 
-  const { summary, salesTrend, topProducts, funnel, lowStock, productPerformance } = data;
+  const { summary, salesTrend, orders, topProducts, funnel, lowStock, productPerformance, range: dataRange } = data;
+
+  // Bars: one per day in the selected range, showing that day's total revenue.
+  const dayData = salesTrend.map((d) => ({ date: d.date, revenue: d.revenue }));
+  // Dots: one per order, positioned on the same day-bucket, at its exact price —
+  // hovering a dot (or its day) surfaces the exact order time & price.
+  const orderScatterData = orders.map((o) => ({
+    date: o.time.slice(0, 10),
+    amount: o.amount,
+    time: o.time,
+    status: o.status,
+  }));
+
+  const rangeLabel =
+    dataRange.days === 1
+      ? new Date(`${dataRange.from}T00:00:00`).toLocaleDateString('en-IN', { dateStyle: 'medium' })
+      : `${dataRange.days} days`;
 
   return (
     <div className="grid gap-6">
@@ -133,22 +216,26 @@ function SalesPanel() {
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
         <SummaryCard
           icon={<TrendingUp className="h-4 w-4" />}
-          label="Revenue (30d)"
-          value={formatINR(summary.totalRevenue30d)}
+          label="Revenue"
+          sublabel={rangeLabel}
+          value={formatINR(summary.totalRevenue)}
         />
         <SummaryCard
           icon={<ShoppingBag className="h-4 w-4" />}
-          label="Orders (30d)"
-          value={String(summary.orderCount30d)}
+          label="Orders"
+          sublabel={rangeLabel}
+          value={String(summary.orderCount)}
         />
         <SummaryCard
-          icon={<ShoppingBag className="h-4 w-4" />}
+          icon={<Receipt className="h-4 w-4" />}
           label="Avg. order value"
-          value={formatINR(summary.avgOrderValue30d)}
+          sublabel={rangeLabel}
+          value={formatINR(summary.avgOrderValue)}
         />
         <SummaryCard
           icon={<Percent className="h-4 w-4" />}
           label="Conversion rate"
+          sublabel={rangeLabel}
           value={`${summary.conversionRate}%`}
         />
         <SummaryCard
@@ -159,33 +246,46 @@ function SalesPanel() {
         />
       </div>
 
-      {/* Sales trend */}
-      <div className="rounded-lg border border-border/60 bg-card p-4">
-        <h3 className="mb-3 font-serif text-lg font-bold text-primary">Sales Trend — last 30 days</h3>
-        <ResponsiveContainer width="100%" height={280}>
-          <LineChart data={salesTrend} margin={{ left: 0, right: 16, top: 8, bottom: 0 }}>
+      {/* Sales trend + exact order time & price */}
+      <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="font-serif text-lg font-bold text-primary">Sales Trend & Orders — {rangeLabel}</h3>
+        </div>
+        <div className="mb-3 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: BAR_COLOR }} />
+            Daily revenue
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span
+              className="h-2.5 w-2.5 rounded-full ring-2 ring-white"
+              style={{ backgroundColor: ORDER_DOT_COLOR }}
+            />
+            Individual order — exact time &amp; price (hover to see)
+          </span>
+        </div>
+        <ResponsiveContainer width="100%" height={320}>
+          <ComposedChart margin={{ left: 0, right: 16, top: 8, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
             <XAxis
               dataKey="date"
+              type="category"
+              allowDuplicatedCategory={false}
               tick={{ fontSize: 11 }}
-              tickFormatter={(d) => new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
-              minTickGap={24}
+              tickFormatter={(d) => new Date(`${d}T00:00:00`).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+              minTickGap={20}
             />
             <YAxis tick={{ fontSize: 11 }} width={70} tickFormatter={(v) => formatINR(v)} />
-            <Tooltip
-              labelFormatter={(d) => new Date(d as string).toLocaleDateString('en-IN', { dateStyle: 'medium' })}
-              formatter={(value: number, name: string) =>
-                name === 'revenue' ? [formatINR(value), 'Revenue'] : [value, 'Orders']
-              }
-            />
-            <Line type="monotone" dataKey="revenue" stroke="#8b5e3c" strokeWidth={2} dot={false} />
-          </LineChart>
+            <Tooltip content={<SalesTooltip />} />
+            <Bar dataKey="revenue" data={dayData as any} fill={BAR_COLOR} radius={[3, 3, 0, 0]} barSize={18} />
+            <Scatter dataKey="amount" data={orderScatterData as any} fill={ORDER_DOT_COLOR} />
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Top products */}
-        <div className="rounded-lg border border-border/60 bg-card p-4">
+        <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
           <h3 className="mb-3 font-serif text-lg font-bold text-primary">Top Products — by revenue</h3>
           <ResponsiveContainer width="100%" height={280}>
             <BarChart
@@ -209,8 +309,8 @@ function SalesPanel() {
         </div>
 
         {/* Conversion funnel */}
-        <div className="rounded-lg border border-border/60 bg-card p-4">
-          <h3 className="mb-3 font-serif text-lg font-bold text-primary">Conversion Funnel — last 30 days</h3>
+        <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+          <h3 className="mb-3 font-serif text-lg font-bold text-primary">Conversion Funnel — {rangeLabel}</h3>
           <ResponsiveContainer width="100%" height={280}>
             <FunnelChart>
               <Tooltip />
@@ -226,7 +326,7 @@ function SalesPanel() {
       </div>
 
       {/* Product performance: Impressions vs Conversion */}
-      <div className="rounded-lg border border-border/60 bg-card p-4">
+      <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
         <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-serif text-lg font-bold text-primary">Product Performance</h3>
           <div className="flex items-center gap-2">
@@ -310,7 +410,7 @@ function SalesPanel() {
       </div>
 
       {/* Low stock alerts */}
-      <div className="rounded-lg border border-border/60 bg-card p-4">
+      <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
         <div className="mb-3 flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-amber-500" />
           <h3 className="font-serif text-lg font-bold text-primary">
@@ -357,23 +457,28 @@ function SalesPanel() {
 function SummaryCard({
   icon,
   label,
+  sublabel,
   value,
   tone,
 }: {
   icon: React.ReactNode;
   label: string;
+  sublabel?: string;
   value: string;
   tone?: 'warn';
 }) {
   return (
     <div
-      className={`rounded-lg border p-4 ${
+      className={`rounded-xl border p-4 shadow-sm ${
         tone === 'warn' ? 'border-amber-300 bg-amber-50' : 'border-border/60 bg-card'
       }`}
     >
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        {icon}
-        {label}
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span className="flex items-center gap-1.5">
+          {icon}
+          {label}
+        </span>
+        {sublabel && <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px]">{sublabel}</span>}
       </div>
       <p className="mt-2 text-xl font-semibold">{value}</p>
     </div>
@@ -384,11 +489,19 @@ function SummaryCard({
 
 export default function AnalyticsPanel() {
   const [activeTab, setActiveTab] = useState<Tab>('sales');
+  const [range, setRange] = useState<SimpleRange>(() => ({
+    from: startOfDay(subDays(new Date(), 29)),
+    to: endOfDay(new Date()),
+  }));
 
   return (
     <div>
-      <TabBar active={activeTab} onChange={setActiveTab} />
-      {activeTab === 'sales' ? <SalesPanel /> : <TrafficPanel />}
+      <TabBar
+        active={activeTab}
+        onChange={setActiveTab}
+        right={<DateRangePicker value={range} onChange={setRange} />}
+      />
+      {activeTab === 'sales' ? <SalesPanel range={range} onRangeChange={setRange} /> : <TrafficPanel />}
     </div>
   );
 }

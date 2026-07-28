@@ -4,6 +4,15 @@ export interface SalesTrendPoint {
   orders: number;
 }
 
+export interface OrderPoint {
+  id: string;
+  /** exact order timestamp (ISO string) */
+  time: string;
+  /** exact order price/total */
+  amount: number;
+  status: string;
+}
+
 export interface TopProduct {
   productId: string | null;
   name: string;
@@ -35,15 +44,23 @@ export interface LowStockProduct {
   in_stock: boolean;
 }
 
+export interface AnalyticsRange {
+  from: string;
+  to: string;
+  days: number;
+}
+
 export interface AnalyticsData {
   summary: {
-    totalRevenue30d: number;
-    orderCount30d: number;
-    avgOrderValue30d: number;
+    totalRevenue: number;
+    orderCount: number;
+    avgOrderValue: number;
     conversionRate: number;
     lowStockCount: number;
   };
+  range: AnalyticsRange;
   salesTrend: SalesTrendPoint[];
+  orders: OrderPoint[];
   topProducts: TopProduct[];
   funnel: FunnelStage[];
   lowStock: LowStockProduct[];
@@ -51,9 +68,22 @@ export interface AnalyticsData {
   productPerformanceDays: number;
 }
 
-export async function fetchAnalytics(productPerformanceDays?: number): Promise<AnalyticsData> {
-  const qs = productPerformanceDays ? `?days=${productPerformanceDays}` : '';
-  const res = await fetch(`/api/admin/analytics${qs}`);
+export interface FetchAnalyticsOptions {
+  /** yyyy-MM-dd */
+  from?: string;
+  /** yyyy-MM-dd */
+  to?: string;
+  /** window (7 | 30 | 90) for the Product Performance table only */
+  productPerformanceDays?: number;
+}
+
+export async function fetchAnalytics(options: FetchAnalyticsOptions = {}): Promise<AnalyticsData> {
+  const params = new URLSearchParams();
+  if (options.from) params.set('from', options.from);
+  if (options.to) params.set('to', options.to);
+  if (options.productPerformanceDays) params.set('days', String(options.productPerformanceDays));
+  const qs = params.toString();
+  const res = await fetch(`/api/admin/analytics${qs ? `?${qs}` : ''}`);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || 'Failed to load analytics');

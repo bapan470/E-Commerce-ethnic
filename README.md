@@ -1,38 +1,56 @@
-# Social Media Links — Admin-managed footer icons
+# Analytics upgrade — order time + price chart, calendar date filter
 
-This zip mirrors your repo's exact folder structure — copy these 3 files
-straight into `E-Commerce-ethnic/`, overwriting the existing ones, then push.
+These 4 files replace the same-named files in `bapan470/E-Commerce-ethnic`.
+Everything type-checks clean (`npx tsc --noEmit` → 0 errors) against the
+project's existing dependencies — no new packages needed, since
+`react-day-picker`, `date-fns`, and the shadcn `Calendar`/`Popover` were
+already in the repo.
 
-## Files changed (3, no new files, no migration needed)
+## What changed
 
-- `lib/settings-api.ts` — adds a `SocialLinks` type + `fetchSocialLinks()` /
-  `saveSocialLinks()`, stored under the existing `settings` table
-  (key: `social_links`) — same pattern as your other settings, so **no SQL
-  migration is required**.
-- `components/admin/settings-panel.tsx` — adds a new "Social Media Links"
-  card (Instagram, Facebook, YouTube, Twitter/X, LinkedIn, WhatsApp) right
-  below Store Settings on the Admin > Settings page.
-- `components/footer.tsx` — footer now reads social links + support
-  email/phone from Admin Settings instead of hardcoded values. Any field
-  left blank in Admin is simply hidden as an icon — no dead links.
+1. **`app/api/admin/analytics/route.ts`**
+   Accepts `?from=YYYY-MM-DD&to=YYYY-MM-DD`. Defaults to the last 30 days
+   when absent (so nothing else that calls this route breaks). The response
+   now also includes:
+   - `range: { from, to, days }`
+   - `orders: [{ id, time, amount, status }, ...]` — every order in the
+     selected range with its **exact** timestamp and price.
+   All summary numbers (revenue, order count, avg order value, funnel) are
+   now computed over the selected range instead of a hardcoded 30 days.
 
-## Steps
+2. **`lib/analytics-api.ts`**
+   Updated types (`OrderPoint`, `AnalyticsRange`) and `fetchAnalytics(options)`
+   now takes `{ from, to, productPerformanceDays }` instead of a single
+   `days` number.
 
-1. Copy the 3 files into your repo (same relative paths), overwriting the
-   existing ones.
-2. `git add -A && git commit -m "Admin-managed social media links in footer" && git push`
-3. No database migration needed — it reuses the existing `settings` table.
+3. **`components/admin/date-range-picker.tsx`** (new)
+   A calendar-style date-range filter: click → pick a preset (Today, Last 7
+   / 30 / 90 days, This month, Last month) or drag a range on a two-month
+   calendar → Apply. Built entirely from the shadcn `Calendar`/`Popover`
+   components already in your `components/ui` folder.
 
-## How to use it
+4. **`components/admin/analytics-panel.tsx`**
+   - The date-range picker sits top-right, next to the Sales Analytics /
+     Traffic tabs.
+   - The first chart ("Sales Trend & Orders") is now a combo chart: bars
+     show daily revenue, and a dot is plotted for every individual order.
+     Hovering any point (bar or dot) shows a tooltip with that day's total
+     **and** a scrollable list of every order's exact time and price.
+   - Summary cards now show the range length (e.g. "7 days") instead of a
+     fixed "(30d)" label, and update live as you change the filter.
+   - Cards/panels got a slightly more polished look (rounded-xl, soft
+     shadows) to read as a more "professional" dashboard.
 
-1. Go to `Admin > Settings`.
-2. Scroll to the new **Social Media Links** card.
-3. Paste the full profile URL for whichever platforms you use
-   (e.g. `https://instagram.com/aruhihandlooms`).
-4. Click **Save Social Links**.
-5. Refresh the storefront — the footer's "Connect" section now shows only
-   the icons you filled in.
+## How to apply
 
-Note: Email and phone icons in the footer now come from the existing
-**Support email** / **Support phone** fields at the top of Admin > Settings
-(Store Settings card) — if those are blank, those two icons just won't show.
+From your repo root:
+
+```bash
+# copy these 4 files over the matching paths in your project, then:
+npm install   # no new deps required, just in case
+npm run dev   # or your usual build/deploy command
+```
+
+No database migration is needed — `orders.created_at` and
+`orders.total_amount` (already selected by the route) are what power the
+exact time/price chart.

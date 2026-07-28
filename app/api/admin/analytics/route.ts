@@ -5,11 +5,48 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 const REVENUE_STATUSES = ['paid', 'shipped', 'delivered'];
 const EXCLUDED_ORDER_STATUSES = ['cancelled', 'failed'];
-const TREND_DAYS = 30;
+const DEFAULT_RANGE_DAYS = 30;
+const MAX_RANGE_DAYS = 365;
+const MAX_ORDER_POINTS = 1000;
 const ALLOWED_PERF_DAYS = [7, 30, 90];
 
 function dayKey(dateStr: string) {
   return new Date(dateStr).toISOString().slice(0, 10);
+}
+
+/**
+ * Reads `?from=YYYY-MM-DD&to=YYYY-MM-DD` from the request. Falls back to the
+ * last 30 days (inclusive of today) when either is missing or invalid, so
+ * every existing caller that doesn't pass a range keeps working unchanged.
+ */
+function parseRange(url: URL) {
+  const fromParam = url.searchParams.get('from');
+  const toParam = url.searchParams.get('to');
+
+  let to = toParam ? new Date(`${toParam}T23:59:59.999Z`) : new Date();
+  let from = fromParam
+    ? new Date(`${fromParam}T00:00:00.000Z`)
+    : (() => {
+        const d = new Date(to);
+        d.setUTCDate(d.getUTCDate() - (DEFAULT_RANGE_DAYS - 1));
+        d.setUTCHours(0, 0, 0, 0);
+        return d;
+      })();
+
+  const invalid = isNaN(from.getTime()) || isNaN(to.getTime()) || from > to;
+  if (invalid) {
+    to = new Date();
+    from = new Date(to);
+    from.setUTCDate(from.getUTCDate() - (DEFAULT_RANGE_DAYS - 1));
+    from.setUTCHours(0, 0, 0, 0);
+  }
+
+  const rangeDays = Math.min(
+    MAX_RANGE_DAYS,
+    Math.max(1, Math.round((to.getTime() - from.getTime()) / 86_400_000) + 1)
+  );
+
+  return { from, to, rangeDays };
 }
 
 export async function GET(req: Request) {
@@ -19,26 +56,24 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // `?days=7|30|90` only controls the Product Performance table's window
-  // below -- the rest of the dashboard (sales trend, funnel, summary cards)
-  // intentionally stays pinned to the fixed last-30-days view.
   const url = new URL(req.url);
+  const { from, to, rangeDays } = parseRange(url);
+
+  // `?days=7|30|90` only controls the Product Performance table's window
+  // below -- it's independent of the `from`/`to` sales-trend date range.
   const requestedDays = Number(url.searchParams.get('days'));
-  const perfDays = ALLOWED_PERF_DAYS.includes(requestedDays) ? requestedDays : TREND_DAYS;
+  const perfDays = ALLOWED_PERF_DAYS.includes(requestedDays) ? requestedDays : DEFAULT_RANGE_DAYS;
 
   try {
     const supabase = getSupabaseAdmin();
-
-    const since = new Date();
-    since.setDate(since.getDate() - TREND_DAYS);
 
     const perfSince = new Date();
     perfSince.setDate(perfSince.getDate() - perfDays);
 
     // Fetch events far enough back to cover whichever window is larger, then
     // filter in-memory per section below so a wider Product Performance
-    // window never leaks into the fixed 30-day funnel/summary numbers.
-    const fetchSince = perfSince < since ? perfSince : since;
+    // window never leaks into the selected-range funnel/summary numbers.
+    const fetchSince = perfSince < from ? perfSince : from;
 
     const [ordersRes, productsRes, eventsRes] = await Promise.all([
       supabase
@@ -63,27 +98,33 @@ export async function GET(req: Request) {
     const products = productsRes.data ?? [];
     const events = eventsRes.data ?? [];
 
-    // ---------------- Sales trend (last 30 days) ----------------
+    // ---------------- Orders that fall inside the selected date range ----------------
+    const ordersInRange = orders.filter((o) => {
+      if (!o.created_at) return false;
+      const t = new Date(o.created_at).getTime();
+      return t >= from.getTime() && t <= to.getTime();
+    });
+
+    // ---------------- Sales trend (one bucket per day across the range) ----------------
     const trendMap = new Map<string, { revenue: number; orders: number }>();
-    for (let i = TREND_DAYS - 1; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
+    for (let i = 0; i < rangeDays; i++) {
+      const d = new Date(from);
+      d.setUTCDate(d.getUTCDate() + i);
       trendMap.set(d.toISOString().slice(0, 10), { revenue: 0, orders: 0 });
     }
-    let totalRevenue30d = 0;
-    let orderCount30d = 0;
-    for (const o of orders) {
-      if (!o.created_at) continue;
+    let totalRevenue = 0;
+    let orderCount = 0;
+    for (const o of ordersInRange) {
       const key = dayKey(o.created_at);
       const bucket = trendMap.get(key);
-      if (!bucket) continue; // outside the 30-day window
+      if (!bucket) continue;
       if (!EXCLUDED_ORDER_STATUSES.includes(o.status)) {
         bucket.orders += 1;
-        orderCount30d += 1;
+        orderCount += 1;
       }
       if (REVENUE_STATUSES.includes(o.status)) {
         bucket.revenue += o.total_amount || 0;
-        totalRevenue30d += o.total_amount || 0;
+        totalRevenue += o.total_amount || 0;
       }
     }
     const salesTrend = Array.from(trendMap.entries()).map(([date, v]) => ({
@@ -91,6 +132,21 @@ export async function GET(req: Request) {
       revenue: v.revenue,
       orders: v.orders,
     }));
+
+    // ---------------- Individual orders: exact time + price for the chart ----------------
+    // Every order in the selected range, with its precise timestamp and
+    // amount, so the chart can plot (and the tooltip can show) the exact
+    // order time and price rather than only a per-day average.
+    const orderPoints = ordersInRange
+      .filter((o) => !EXCLUDED_ORDER_STATUSES.includes(o.status))
+      .map((o) => ({
+        id: o.id,
+        time: o.created_at,
+        amount: o.total_amount || 0,
+        status: o.status,
+      }))
+      .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+      .slice(-MAX_ORDER_POINTS);
 
     // ---------------- Top products (all-time, by revenue) ----------------
     const productAgg = new Map<
@@ -120,8 +176,10 @@ export async function GET(req: Request) {
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 10);
 
-    // ---------------- Conversion funnel (session-based, last 30 days) ----------------
-    const eventsInTrendWindow = events.filter((ev) => ev.created_at && new Date(ev.created_at) >= since);
+    // ---------------- Conversion funnel (session-based, selected range) ----------------
+    const eventsInRange = events.filter(
+      (ev) => ev.created_at && new Date(ev.created_at) >= from && new Date(ev.created_at) <= to
+    );
     const sessionsByStage: Record<string, Set<string>> = {
       page_view: new Set(),
       product_view: new Set(),
@@ -129,7 +187,7 @@ export async function GET(req: Request) {
       checkout_start: new Set(),
       purchase: new Set(),
     };
-    for (const ev of eventsInTrendWindow) {
+    for (const ev of eventsInRange) {
       if (sessionsByStage[ev.event_type]) sessionsByStage[ev.event_type].add(ev.session_id);
     }
     const funnel = [
@@ -144,7 +202,7 @@ export async function GET(req: Request) {
         ? Number(((sessionsByStage.purchase.size / sessionsByStage.page_view.size) * 100).toFixed(1))
         : 0;
 
-    // ---------------- Low stock alerts ----------------
+    // ---------------- Low stock alerts (always all-time, not range-bound) ----------------
     const lowStock = products
       .filter((p) => p.stock_quantity <= (p.low_stock_threshold ?? 5))
       .map((p) => ({
@@ -157,11 +215,6 @@ export async function GET(req: Request) {
       }));
 
     // ---------------- Product performance: Impressions vs Conversion (perfDays window) ----------------
-    // "Impressions" = how many times the product page was viewed (product_view
-    // events). "Conversion" = what share of those views turned into an order
-    // containing that product, within the same window. Same idea as the
-    // per-product report Google Merchant Center shows -- built from data we
-    // already track (activity_events + orders.items), no new tracking needed.
     const eventsInPerfWindow = events.filter((ev) => ev.created_at && new Date(ev.created_at) >= perfSince);
     const productViewCounts = new Map<string, number>();
     for (const ev of eventsInPerfWindow) {
@@ -173,7 +226,7 @@ export async function GET(req: Request) {
       if (!REVENUE_STATUSES.includes(o.status)) continue;
       if (!o.created_at || new Date(o.created_at) < perfSince) continue;
       const items = Array.isArray(o.items) ? o.items : [];
-      const countedInThisOrder = new Set<string>(); // one order buying 2x the same product still counts as 1 conversion
+      const countedInThisOrder = new Set<string>();
       for (const it of items) {
         if (!it.product_id || countedInThisOrder.has(it.product_id)) continue;
         countedInThisOrder.add(it.product_id);
@@ -199,13 +252,19 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       summary: {
-        totalRevenue30d,
-        orderCount30d,
-        avgOrderValue30d: orderCount30d > 0 ? Math.round(totalRevenue30d / orderCount30d) : 0,
+        totalRevenue,
+        orderCount,
+        avgOrderValue: orderCount > 0 ? Math.round(totalRevenue / orderCount) : 0,
         conversionRate,
         lowStockCount: lowStock.length,
       },
+      range: {
+        from: from.toISOString().slice(0, 10),
+        to: to.toISOString().slice(0, 10),
+        days: rangeDays,
+      },
       salesTrend,
+      orders: orderPoints,
       topProducts,
       funnel,
       lowStock,
