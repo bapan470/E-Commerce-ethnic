@@ -178,6 +178,8 @@ export default async function ProductPage({ params }: Params) {
                 applicableCountry: 'IN',
                 returnPolicyCategory: 'https://schema.org/MerchantReturnFiniteReturnWindow',
                 merchantReturnDays: fulfillment.return_window_days,
+                returnMethod: 'https://schema.org/ReturnByMail',
+                returnFees: 'https://schema.org/FreeReturn',
               }
             : undefined,
         },
