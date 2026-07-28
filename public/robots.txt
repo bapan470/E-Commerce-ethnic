@@ -1,6 +1,0 @@
-User-agent: *
-Disallow:
-Allow: /
-
-# Sitemap (relative path, will resolve on your domain)
-Sitemap: /sitemap.xml
