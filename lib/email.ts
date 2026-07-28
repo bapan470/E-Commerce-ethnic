@@ -9,7 +9,14 @@
 //   RESEND_API_KEY, EMAIL_FROM_ADDRESS, EMAIL_FROM_NAME        (Resend)
 //   ZEPTOMAIL_API_KEY, EMAIL_FROM_ADDRESS, EMAIL_FROM_NAME, ZEPTOMAIL_REGION ('in' | 'com')
 
-import { getServerSupabase } from './supabase-server';
+// IMPORTANT: uses the service-role admin client (not the anon-key
+// getServerSupabase client) because Supabase RLS deliberately blocks
+// anon/authenticated reads of the `email_provider` settings row (it
+// stores a live API key secret -- see supabase/migrations). Reading it
+// with the anon client silently returned nothing, so every email send
+// fell through to the (usually unset) env-var fallback and failed with
+// "No sender email configured" even when the admin had saved settings.
+import { getSupabaseAdmin } from './supabase-admin';
 
 type SendEmailArgs = {
   to: string;
@@ -33,7 +40,7 @@ interface ResolvedEmailConfig {
 async function resolveEmailConfig(): Promise<ResolvedEmailConfig> {
   let dbConfig: any = null;
   try {
-    const supabase = getServerSupabase();
+    const supabase = getSupabaseAdmin();
     const { data } = await supabase
       .from('settings')
       .select('value')
@@ -47,6 +54,7 @@ async function resolveEmailConfig(): Promise<ResolvedEmailConfig> {
   const provider: ResolvedEmailConfig['provider'] =
     dbConfig?.provider ||
     (process.env.RESEND_API_KEY ? 'resend' : process.env.ZEPTOMAIL_API_KEY ? 'zeptomail' : '');
+
 
   if (provider === 'zeptomail') {
     return {
