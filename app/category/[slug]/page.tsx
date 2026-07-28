@@ -128,7 +128,10 @@ export default async function CategoryPage({ params }: Params) {
       : {}),
   };
 
-  // Breadcrumb rich snippet: Home > Categories > {Category Name}.
+  // Breadcrumb rich snippet: Home > {Category Name}.
+  // Simplified to 2 levels (was Home > Categories > Category Name) so that
+  // Google's SERP breadcrumb display shows the actual category name instead
+  // of the generic "Categories" middle node when space is limited.
   // Purely a search-results enhancement (bigger, more clickable listing) --
   // doesn't change indexing eligibility, which is controlled by the
   // canonical + robots meta in generateMetadata() above.
@@ -137,8 +140,7 @@ export default async function CategoryPage({ params }: Params) {
     '@type': 'BreadcrumbList',
     itemListElement: [
       { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
-      { '@type': 'ListItem', position: 2, name: 'Categories', item: `${SITE_URL}/categories` },
-      { '@type': 'ListItem', position: 3, name: category.name, item: url },
+      { '@type': 'ListItem', position: 2, name: category.name, item: url },
     ],
   };
 
