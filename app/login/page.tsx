@@ -3,7 +3,7 @@
 import { useState, FormEvent, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Loader2 } from 'lucide-react';
+import { Loader2, KeyRound } from 'lucide-react';
 import { getSupabaseBrowser } from '@/lib/supabase-browser';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -269,24 +269,27 @@ function LoginForm() {
                   <Label htmlFor="otp-code">Enter the code sent to</Label>
                   <p className="text-sm font-medium text-foreground break-all">{otpEmail}</p>
                 </div>
-                <div className="flex justify-center py-1">
+                <div className="py-1">
                   {/* Plain numeric input instead of a fixed-length slot UI.
                       Supabase's email OTP code length depends on the
                       project's GOTRUE_MAILER_OTP_LENGTH setting (commonly
                       6, sometimes 8) -- hardcoding a slot count here caused
                       the Verify button to stay permanently disabled
                       whenever the emailed code didn't match that count. */}
-                  <Input
-                    id="otp-code"
-                    name="otp-code"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    maxLength={10}
-                    placeholder="Enter the code from your email"
-                    className="text-center text-lg tracking-[0.3em]"
-                    value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                  />
+                  <div className="relative mx-auto max-w-[220px]">
+                    <KeyRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-primary/50" />
+                    <Input
+                      id="otp-code"
+                      name="otp-code"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={10}
+                      placeholder="• • • • • •"
+                      className="h-14 rounded-xl border-2 border-border/80 bg-card pl-10 text-center text-2xl font-semibold tracking-[0.35em] shadow-sm transition-colors placeholder:text-base placeholder:font-normal placeholder:tracking-normal placeholder:text-muted-foreground/60 focus-visible:border-primary focus-visible:ring-4 focus-visible:ring-primary/15"
+                      value={otpCode}
+                      onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                    />
+                  </div>
                 </div>
                 <button
                   type="button"
