@@ -1,42 +1,133 @@
-diff --git a/app/categories/page.tsx b/app/categories/page.tsx
-index e5d6902..53358a7 100644
---- a/app/categories/page.tsx
-+++ b/app/categories/page.tsx
-@@ -31,10 +31,11 @@ const GROUP_RULES: { label: string; test: (name: string) => boolean }[] = [
-   { label: 'Kurti', test: (n) => /kurt[ai]/i.test(n) },
-   { label: 'Lehenga', test: (n) => /lehenga/i.test(n) },
-   { label: 'Suits', test: (n) => /suit|anarkali/i.test(n) },
--  { label: 'Bridal', test: (n) => /bridal/i.test(n) },
-   { label: 'Gowns', test: (n) => /gown/i.test(n) },
-   { label: 'Palazzo', test: (n) => /palazzo/i.test(n) },
--  { label: 'Fabric & Accessories', test: (n) => /dupatta|stole|blouse|dress material|fabric/i.test(n) },
-+  { label: 'Blouse', test: (n) => /blouse/i.test(n) },
-+  { label: 'Dress', test: (n) => /dress/i.test(n) },
-+  { label: 'Fabric & Accessories', test: (n) => /dupatta|stole|fabric/i.test(n) },
- ];
+diff --git a/components/admin/marketing-panel.tsx b/components/admin/marketing-panel.tsx
+index dec4f8a..2a51fa5 100644
+--- a/components/admin/marketing-panel.tsx
++++ b/components/admin/marketing-panel.tsx
+@@ -1,7 +1,8 @@
+ 'use client';
  
- function groupFor(name: string): string {
-@@ -57,6 +58,7 @@ export default function CategoriesPage() {
-   // it until it has something in it.
-   const rows = useMemo(() => {
-     return categories
-+      .filter((c) => !/bridal/i.test(c.name))
-       .map((c) => {
-         const inCat = products.filter((p) => p.category === c.name);
-         const thumbs = inCat
-diff --git a/app/home-client.tsx b/app/home-client.tsx
-index 1bf8c99..f85fac2 100644
---- a/app/home-client.tsx
-+++ b/app/home-client.tsx
-@@ -69,7 +69,10 @@ export default function HomeClient() {
-   }, [categories, products]);
+ import { useEffect, useState, FormEvent } from 'react';
+-import { Save, Download, Trash2, ExternalLink, Copy } from 'lucide-react';
++import { Save, Download, Trash2, ExternalLink, Copy, Upload, Loader2 } from 'lucide-react';
++import Image from 'next/image';
+ import {
+   LegalPages,
+   LEGAL_PAGE_TITLES,
+@@ -44,7 +45,7 @@ import {
+   fetchCheckoutBumpSettings,
+   saveCheckoutBumpSettings,
+ } from '@/lib/checkout-bump-api';
+-import { fetchProducts } from '@/lib/products-api';
++import { fetchProducts, uploadProductImage } from '@/lib/products-api';
+ import { Product } from '@/lib/types';
+ import { Button } from '@/components/ui/button';
+ import { Input } from '@/components/ui/input';
+@@ -594,6 +595,7 @@ function NewsletterTab() {
+ function SeoTab() {
+   const [seo, setSeo] = useState<SeoSettings | null>(null);
+   const [saving, setSaving] = useState(false);
++  const [uploadingFavicon, setUploadingFavicon] = useState(false);
  
-   const visibleCategories = useMemo(
--    () => categories.filter((c) => (categoryCounts.get(c.id) ?? 0) > 0),
-+    () =>
-+      categories.filter(
-+        (c) => (categoryCounts.get(c.id) ?? 0) > 0 && !/bridal/i.test(c.name)
-+      ),
-     [categories, categoryCounts]
-   );
+   useEffect(() => {
+     fetchSeoSettings()
+@@ -615,6 +617,36 @@ function SeoTab() {
+     }
+   };
  
++  const onUploadFavicon = async (e: React.ChangeEvent<HTMLInputElement>) => {
++    const file = e.target.files?.[0];
++    if (!file || !seo) return;
++    setUploadingFavicon(true);
++    try {
++      const url = await uploadProductImage(file, 'favicon');
++      const next = { ...seo, favicon_url: url };
++      setSeo(next);
++      await saveSeoSettings(next);
++      toast.success('Favicon uploaded');
++    } catch (err) {
++      toast.error(err instanceof Error ? err.message : 'Favicon upload failed');
++    } finally {
++      setUploadingFavicon(false);
++      e.target.value = '';
++    }
++  };
++
++  const removeFavicon = async () => {
++    if (!seo) return;
++    const next = { ...seo, favicon_url: '' };
++    setSeo(next);
++    try {
++      await saveSeoSettings(next);
++      toast.success('Favicon removed');
++    } catch (err) {
++      toast.error(err instanceof Error ? err.message : 'Failed to remove favicon');
++    }
++  };
++
+   if (!seo) return <p className="py-6 text-sm text-muted-foreground">Loading...</p>;
+ 
+   return (
+@@ -671,17 +703,57 @@ function SeoTab() {
+       </div>
+ 
+       <div className="space-y-2">
+-        <Label htmlFor="seo-favicon">Favicon / logo image URL</Label>
++        <Label>Favicon</Label>
++        {seo.favicon_url ? (
++          <div className="flex items-center gap-3">
++            <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md border border-border bg-muted">
++              <Image
++                src={seo.favicon_url}
++                alt="Favicon preview"
++                fill
++                sizes="48px"
++                className="object-contain"
++              />
++            </div>
++            <Button
++              type="button"
++              variant="outline"
++              size="sm"
++              onClick={removeFavicon}
++              className="gap-1.5 text-destructive"
++            >
++              <Trash2 className="h-3.5 w-3.5" />
++              Remove favicon
++            </Button>
++          </div>
++        ) : (
++          <label className="flex w-fit cursor-pointer items-center gap-2 rounded-md border border-dashed border-border bg-muted/40 px-4 py-2 text-sm hover:border-primary/50">
++            {uploadingFavicon ? (
++              <Loader2 className="h-4 w-4 animate-spin" />
++            ) : (
++              <Upload className="h-4 w-4" />
++            )}
++            <span>{uploadingFavicon ? 'Uploading…' : 'Upload favicon image'}</span>
++            <input
++              type="file"
++              accept="image/png,image/x-icon,image/svg+xml,image/jpeg,image/webp"
++              className="hidden"
++              onChange={onUploadFavicon}
++              disabled={uploadingFavicon}
++            />
++          </label>
++        )}
++        <p className="text-xs text-muted-foreground">
++          Used as the browser tab icon and phone home-screen icon. Square image, at least 180×180px
++          (PNG recommended). Leave empty to use the default monogram icon.
++        </p>
+         <Input
+-          id="seo-favicon"
+           value={seo.favicon_url}
+           onChange={(e) => setSeo({ ...seo, favicon_url: e.target.value })}
+-          placeholder="https://your-cdn.com/logo-square.png"
++          onBlur={() => seo && saveSeoSettings(seo).catch(() => toast.error('Save failed'))}
++          placeholder="Or paste an image URL directly"
++          className="text-xs"
+         />
+-        <p className="text-xs text-muted-foreground">
+-          Used as the browser tab icon and phone home-screen icon. Square image, at least 180×180px.
+-          Leave blank to use the default monogram icon.
+-        </p>
+       </div>
+ 
+       <div className="space-y-2">

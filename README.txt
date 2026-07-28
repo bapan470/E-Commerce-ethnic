@@ -1,30 +1,47 @@
-PER-PRODUCT DISCOUNTED PRICE AFTER COUPON (Cart Drawer)
-============================================================
+FAVICON UPLOAD FEATURE — INSTRUCTIONS (Hinglish)
+==================================================
 
-Ab jab coupon apply hota hai, sirf total mein nahi — cart ke HAR product
-card ke "You Pay" ke neeche ek nayi line dikhti hai jo us specific
-product ka after-coupon price dikhati hai. Exactly jaisa aapne screenshot
-me dikhaya:
+Kya change hua:
+----------------
+Sirf 1 file change hui hai:
+  components/admin/marketing-panel.tsx
 
-  🏷 ARUHI25 applied — you pay      ₹499  ₹474
+Admin panel me: Marketing > SEO tab me pehle sirf ek plain text "Favicon URL"
+input tha jaha aapko khud CDN se URL paste karna padta tha.
 
-FILES IN THIS ZIP (repo me isi path pe REPLACE karo):
-  lib/coupons-api.ts          -> naya computeItemCouponDiscount() function
-  components/cart-drawer.tsx  -> har product card me ye price line dikhati hai
+Ab wahan:
+  - "Upload favicon image" button hai — seedha apne computer se image
+    choose karke upload kar sakte ho (PNG/JPG/WEBP/SVG/ICO).
+  - Upload hote hi image Supabase Storage ke 'product-images' bucket
+    me save hoti hai aur favicon_url apne aap set + save ho jata hai.
+  - Preview thumbnail aur "Remove favicon" button bhi milega.
+  - Neeche ek chhota text input bhi hai agar aap manually URL paste
+    karna chaho (fallback / advanced use).
 
-KAISE CALCULATE HOTA HAI (fair rehta hai, total se match karta hai):
-  - PERCENTAGE coupon (jaise 25% off): har product ka apna % discount
-    milta hai — uske apne line total ka utna hi %.
-  - FLAT coupon (jaise ₹100 off): jaisa checkout total mein bhi hota hai,
-    flat discount HAR DISTINCT PRODUCT pe ek baar milta hai (quantity se
-    matter nahi karta), us product ke total se zyada kabhi nahi.
-  - Agar koi product coupon minimum order value ki wajah se qualify hi
-    nahi karta (subtotal kam hai), to koi bhi line pe extra price nahi
-    dikhegi — jaisa pehle wale fix mein already handle ho chuka hai.
+Baaki poora system (favicon actually site pe kaise dikhta hai — via
+app/icon.tsx jo seo_settings.favicon_url read karta hai) already
+maujood tha, maine sirf upload UI add ki hai.
 
-APPLY:
-  git add lib/coupons-api.ts components/cart-drawer.tsx
-  git commit -m "Show per-product discounted price when a coupon is applied"
-  git push
+Kaise apply karein:
+--------------------
+1) Is zip me se "components/admin/marketing-panel.tsx" file ko
+   apne repo ke usi path par REPLACE kar dijiye:
+     components/admin/marketing-panel.tsx
 
-`tsc --noEmit` se poora project clean type-check ho chuka hai.
+2) Phir apne terminal me:
+     git add components/admin/marketing-panel.tsx
+     git commit -m "Add favicon upload UI in Admin > Marketing > SEO"
+     git push
+
+(Agar chahein to attached "changes.patch" file bhi use kar sakte ho:
+     git apply changes.patch
+ lekin seedha file replace karna sabse simple tarika hai.)
+
+Test karne ka tarika:
+----------------------
+- npm run dev karke Admin > Marketing > SEO tab kholiye.
+- "Upload favicon image" par click karke koi square image (e.g. 512x512
+  PNG logo) choose kijiye.
+- Upload complete hote hi preview dikhega aur toast "Favicon uploaded"
+  aayega. Browser tab refresh karne par naya favicon dikhna chahiye
+  (kabhi kabhi favicon dikhne me thoda cache time lagta hai).

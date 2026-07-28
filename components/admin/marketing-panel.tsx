@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState, FormEvent } from 'react';
-import { Save, Download, Trash2, ExternalLink, Copy } from 'lucide-react';
+import { Save, Download, Trash2, ExternalLink, Copy, Upload, Loader2 } from 'lucide-react';
+import Image from 'next/image';
 import {
   LegalPages,
   LEGAL_PAGE_TITLES,
@@ -44,7 +45,7 @@ import {
   fetchCheckoutBumpSettings,
   saveCheckoutBumpSettings,
 } from '@/lib/checkout-bump-api';
-import { fetchProducts } from '@/lib/products-api';
+import { fetchProducts, uploadProductImage } from '@/lib/products-api';
 import { Product } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -594,6 +595,7 @@ function NewsletterTab() {
 function SeoTab() {
   const [seo, setSeo] = useState<SeoSettings | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploadingFavicon, setUploadingFavicon] = useState(false);
 
   useEffect(() => {
     fetchSeoSettings()
@@ -612,6 +614,36 @@ function SeoTab() {
       toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const onUploadFavicon = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !seo) return;
+    setUploadingFavicon(true);
+    try {
+      const url = await uploadProductImage(file, 'favicon');
+      const next = { ...seo, favicon_url: url };
+      setSeo(next);
+      await saveSeoSettings(next);
+      toast.success('Favicon uploaded');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Favicon upload failed');
+    } finally {
+      setUploadingFavicon(false);
+      e.target.value = '';
+    }
+  };
+
+  const removeFavicon = async () => {
+    if (!seo) return;
+    const next = { ...seo, favicon_url: '' };
+    setSeo(next);
+    try {
+      await saveSeoSettings(next);
+      toast.success('Favicon removed');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to remove favicon');
     }
   };
 
@@ -671,17 +703,57 @@ function SeoTab() {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="seo-favicon">Favicon / logo image URL</Label>
+        <Label>Favicon</Label>
+        {seo.favicon_url ? (
+          <div className="flex items-center gap-3">
+            <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md border border-border bg-muted">
+              <Image
+                src={seo.favicon_url}
+                alt="Favicon preview"
+                fill
+                sizes="48px"
+                className="object-contain"
+              />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={removeFavicon}
+              className="gap-1.5 text-destructive"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Remove favicon
+            </Button>
+          </div>
+        ) : (
+          <label className="flex w-fit cursor-pointer items-center gap-2 rounded-md border border-dashed border-border bg-muted/40 px-4 py-2 text-sm hover:border-primary/50">
+            {uploadingFavicon ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Upload className="h-4 w-4" />
+            )}
+            <span>{uploadingFavicon ? 'Uploading…' : 'Upload favicon image'}</span>
+            <input
+              type="file"
+              accept="image/png,image/x-icon,image/svg+xml,image/jpeg,image/webp"
+              className="hidden"
+              onChange={onUploadFavicon}
+              disabled={uploadingFavicon}
+            />
+          </label>
+        )}
+        <p className="text-xs text-muted-foreground">
+          Used as the browser tab icon and phone home-screen icon. Square image, at least 180×180px
+          (PNG recommended). Leave empty to use the default monogram icon.
+        </p>
         <Input
-          id="seo-favicon"
           value={seo.favicon_url}
           onChange={(e) => setSeo({ ...seo, favicon_url: e.target.value })}
-          placeholder="https://your-cdn.com/logo-square.png"
+          onBlur={() => seo && saveSeoSettings(seo).catch(() => toast.error('Save failed'))}
+          placeholder="Or paste an image URL directly"
+          className="text-xs"
         />
-        <p className="text-xs text-muted-foreground">
-          Used as the browser tab icon and phone home-screen icon. Square image, at least 180×180px.
-          Leave blank to use the default monogram icon.
-        </p>
       </div>
 
       <div className="space-y-2">
