@@ -977,7 +977,7 @@ export default function ProductsPanel() {
       }
       setForm((f) => ({ ...f, images: [...f.images, data.url] }));
       setImportUrl('');
-      toast.success(cropOnImport ? 'Image imported and cropped to 4:5' : 'Image imported and converted to WebP');
+      toast.success(cropOnImport ? 'Image imported and bottom 10% trimmed' : 'Image imported and converted to WebP');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Image import failed');
     } finally {
@@ -2270,7 +2270,7 @@ export default function ProductsPanel() {
               <p className="text-xs text-muted-foreground">
                 This downloads the image and saves it in your own Supabase
                 storage — so it keeps working even if the original site removes it.
-                {cropOnImport && ' Crop is ON — the imported image will be auto-cropped to the 4:5 product frame.'}
+                {cropOnImport && ' Crop is ON — the bottom 10% of the image will be trimmed off automatically, whatever its size.'}
               </p>
               <div className="flex flex-wrap gap-3">
                 {form.images.map((url, idx) => (

@@ -6,10 +6,10 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 const MAX_BYTES = 15 * 1024 * 1024; // 15MB safety cap on the source image
 
-// Same portrait ratio the storefront already uses for every product image
-// (see aspect-[4/5] in components/product-card.tsx and product-gallery.tsx),
-// so a "cropped" import lines up with how it'll actually be displayed.
-const CROP_ASPECT = 4 / 5;
+// How much of the bottom of the image gets trimmed off, regardless of the
+// source size/aspect ratio. 0.10 = keep the top 90% of the height, drop the
+// bottom 10%. Width is never touched.
+const BOTTOM_TRIM_FRACTION = 0.10;
 
 const EXT_BY_MIME: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -21,7 +21,9 @@ const EXT_BY_MIME: Record<string, string> = {
 };
 
 /**
- * Center-crops a downloaded image to the storefront's 4:5 portrait ratio.
+ * Trims the bottom BOTTOM_TRIM_FRACTION of the image's height, no matter
+ * what size or aspect ratio the source image is. Full width is always kept;
+ * only the last slice of the height is cut off (top-aligned crop).
  * Uses jimp (pure JS, no native binary) so it stays reliable on serverless --
  * same reasoning the "no conversion" path below already relies on.
  * Re-encodes as JPEG regardless of source format; that's fine for photos and
@@ -31,24 +33,11 @@ async function cropToProductFrame(buffer: Buffer): Promise<{ buffer: Buffer; con
   const image = await Jimp.fromBuffer(buffer);
   const w = image.bitmap.width;
   const h = image.bitmap.height;
-  const currentRatio = w / h;
 
-  let cropWidth = w;
-  let cropHeight = h;
-  let cropX = 0;
-  let cropY = 0;
+  // Keep full width, keep only the top (1 - BOTTOM_TRIM_FRACTION) of the height.
+  const cropHeight = Math.max(1, Math.round(h * (1 - BOTTOM_TRIM_FRACTION)));
 
-  if (currentRatio > CROP_ASPECT) {
-    // wider than target -- trim the sides
-    cropWidth = Math.round(h * CROP_ASPECT);
-    cropX = Math.round((w - cropWidth) / 2);
-  } else if (currentRatio < CROP_ASPECT) {
-    // taller than target -- trim top/bottom
-    cropHeight = Math.round(w / CROP_ASPECT);
-    cropY = Math.round((h - cropHeight) / 2);
-  }
-
-  image.crop({ x: cropX, y: cropY, w: cropWidth, h: cropHeight });
+  image.crop({ x: 0, y: 0, w, h: cropHeight });
   const out = await image.getBuffer(JimpMime.jpeg);
   return { buffer: out, contentType: 'image/jpeg', ext: 'jpg' };
 }

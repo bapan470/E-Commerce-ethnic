@@ -252,7 +252,7 @@ export default function ProductVariantsManager({ productId, productName, product
       const isFirstImage = form.images.length === 0;
       setForm((f) => ({ ...f, images: [...f.images, data.url] }));
       setImportUrl('');
-      toast.success(cropOnImport ? 'Image imported and cropped to 4:5' : 'Image imported and converted to WebP');
+      toast.success(cropOnImport ? 'Image imported and bottom 10% trimmed' : 'Image imported and converted to WebP');
       if (isFirstImage && !form.color.trim()) {
         detectColorFromImage(data.url, { silent: true });
       }
@@ -755,7 +755,7 @@ export default function ProductVariantsManager({ productId, productName, product
               </div>
               <p className="text-xs text-muted-foreground">
                 Nothing uploaded yet? The base product photo is used automatically as a placeholder — swap it out any time.
-                {cropOnImport && ' Crop is ON — the imported image will be auto-cropped to the 4:5 product frame.'}
+                {cropOnImport && ' Crop is ON — the bottom 10% of the image will be trimmed off automatically, whatever its size.'}
               </p>
               <div className="flex flex-wrap gap-3">
                 {form.images.map((url, idx) => (
