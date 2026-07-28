@@ -33,6 +33,7 @@ import { fetchApprovedReviews, summarizeReviews, RatingSummary } from '@/lib/rev
 import PincodeChecker from '@/components/product/pincode-checker';
 import VariantSwatches from '@/components/product/variant-swatches';
 import ProductHighlights from '@/components/product/product-highlights';
+import SizeChart from '@/components/product/size-chart';
 import ProductGallery from '@/components/product/product-gallery';
 import ProductVideo from '@/components/product/product-video';
 import MobileStickyCartBar from '@/components/product/mobile-sticky-cart-bar';
@@ -749,6 +750,9 @@ function ProductInfo({
                 {s}
               </button>
             ))}
+          </div>
+          <div className="mt-3">
+            <SizeChart sizes={product.sizes} />
           </div>
         </div>
       )}

@@ -16,6 +16,7 @@ import { generateSlideshowVideo } from '@/lib/slideshow-video-generator';
 import { generateProductSku } from '@/lib/sku';
 import { searchPresets, ColorPreset } from '@/lib/color-presets';
 import { Product, CategoryRow, ProductHighlights } from '@/lib/types';
+import { STANDARD_SIZES } from '@/lib/size-chart';
 import ProductVariantsManager from '@/components/admin/product-variants-manager';
 import VendorSubmissionsPanel from '@/components/admin/vendor-submissions-panel';
 import {
@@ -1896,15 +1897,52 @@ export default function ProductsPanel() {
                 </p>
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="sizes">Sizes (comma-separated)</Label>
-                <Input
-                  id="sizes"
-                  value={form.sizes}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, sizes: e.target.value }))
-                  }
-                  placeholder="S, M, L, XL"
-                />
+                <Label>Sizes</Label>
+                <div className="flex flex-wrap gap-2">
+                  {STANDARD_SIZES.map((size) => {
+                    const selected = form.sizes
+                      .split(',')
+                      .map((s) => s.trim())
+                      .filter(Boolean);
+                    const isFreeSize = size === 'Free Size';
+                    const isChecked = isFreeSize || selected.includes(size);
+                    return (
+                      <button
+                        key={size}
+                        type="button"
+                        disabled={isFreeSize}
+                        onClick={() => {
+                          if (isFreeSize) return; // always on, can't be removed
+                          setForm((f) => {
+                            const current = f.sizes.split(',').map((s) => s.trim()).filter(Boolean);
+                            const has = current.includes(size);
+                            const next = new Set(has ? current.filter((s) => s !== size) : [...current, size]);
+                            next.add('Free Size'); // always included
+                            // Keep a stable, predictable order; carry over any
+                            // legacy/custom size names that aren't in the
+                            // standard list so old data isn't silently dropped.
+                            const ordered = STANDARD_SIZES.filter((s) => next.has(s));
+                            const customs = Array.from(next).filter(
+                              (s) => !(STANDARD_SIZES as readonly string[]).includes(s)
+                            );
+                            return { ...f, sizes: [...ordered, ...customs].join(', ') };
+                          });
+                        }}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                          isChecked
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-border bg-background hover:border-primary/50'
+                        } ${isFreeSize ? 'cursor-not-allowed opacity-90' : ''}`}
+                        title={isFreeSize ? 'Free Size is always available on every product' : undefined}
+                      >
+                        {size}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  &quot;Free Size&quot; is always included. Pick any other sizes this product also comes in.
+                </p>
               </div>
             </div>
 
