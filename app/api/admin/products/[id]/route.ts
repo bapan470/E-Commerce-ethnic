@@ -21,6 +21,7 @@ function revalidateStorefront(slug?: string | null) {
   // so revalidating them all is simpler and just as cheap as figuring out
   // which single category this product belonged to.
   revalidatePath('/category/[slug]', 'page');
+  revalidatePath('/shop');
   if (slug) revalidatePath(`/product/${slug}`);
 }
 

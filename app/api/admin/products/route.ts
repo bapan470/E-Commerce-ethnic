@@ -82,6 +82,7 @@ export async function POST(req: Request) {
   // take up to 60s to appear there.
   revalidatePath('/');
   revalidatePath('/category/[slug]', 'page');
+  revalidatePath('/shop');
 
   return NextResponse.json({ product: data });
 }
