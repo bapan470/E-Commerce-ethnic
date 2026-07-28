@@ -140,7 +140,7 @@ export default function HomeClient({
                 variant="outline"
                 className="w-full justify-center border-primary-foreground/30 bg-transparent text-primary-foreground transition-all duration-300 hover:scale-[1.02] hover:bg-primary-foreground/10 sm:w-auto"
               >
-                <Link href="/shop?category=Silk%20Sarees">Explore Silk Sarees</Link>
+                <Link href="/category/silk-sarees">Explore Silk Sarees</Link>
               </Button>
             </div>
             <div
@@ -201,7 +201,7 @@ export default function HomeClient({
                 return (
                   <Link
                     key={c.id}
-                    href={`/shop?category=${encodeURIComponent(c.name)}`}
+                    href={`/category/${c.slug}`}
                     className="group flex flex-col items-center gap-2 text-center"
                   >
                     <div className="relative h-16 w-16 overflow-hidden rounded-full border border-border/60 bg-muted shadow-sm transition-transform duration-300 group-hover:scale-105 sm:h-20 sm:w-20">

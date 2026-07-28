@@ -47,7 +47,7 @@ export default function Footer() {
           </h4>
           <ul className="mt-3 space-y-2 text-sm text-primary-foreground/80">
             <li><Link href="/shop" className="hover:text-secondary">All Products</Link></li>
-            <li><Link href="/shop?category=Silk+Sarees" className="hover:text-secondary">Silk Sarees</Link></li>
+            <li><Link href="/category/silk-sarees" className="hover:text-secondary">Silk Sarees</Link></li>
             <li><Link href="/shop?category=Lehenga" className="hover:text-secondary">Lehenga</Link></li>
             <li><Link href="/shop?category=Bridal" className="hover:text-secondary">Bridal</Link></li>
             <li><Link href="/gift-cards" className="hover:text-secondary">Gift Cards</Link></li>
