@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { Jimp, JimpMime } from 'jimp';
+import sharp from 'sharp';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
@@ -24,21 +24,28 @@ const EXT_BY_MIME: Record<string, string> = {
  * Trims the bottom BOTTOM_TRIM_FRACTION of the image's height, no matter
  * what size or aspect ratio the source image is. Full width is always kept;
  * only the last slice of the height is cut off (top-aligned crop).
- * Uses jimp (pure JS, no native binary) so it stays reliable on serverless --
- * same reasoning the "no conversion" path below already relies on.
+ * Uses sharp so JPEG, PNG, WebP, AVIF, GIF, and TIFF sources all work --
+ * jimp (the previous implementation) silently failed on WebP/AVIF, which is
+ * what most modern image CDNs (Pexels, Unsplash, etc.) serve by default.
  * Re-encodes as JPEG regardless of source format; that's fine for photos and
  * keeps the crop path simple.
  */
 async function cropToProductFrame(buffer: Buffer): Promise<{ buffer: Buffer; contentType: string; ext: string }> {
-  const image = await Jimp.fromBuffer(buffer);
-  const w = image.bitmap.width;
-  const h = image.bitmap.height;
+  const image = sharp(buffer);
+  const metadata = await image.metadata();
+  const w = metadata.width;
+  const h = metadata.height;
+  if (!w || !h) {
+    throw new Error('Could not read image dimensions.');
+  }
 
   // Keep full width, keep only the top (1 - BOTTOM_TRIM_FRACTION) of the height.
   const cropHeight = Math.max(1, Math.round(h * (1 - BOTTOM_TRIM_FRACTION)));
 
-  image.crop({ x: 0, y: 0, w, h: cropHeight });
-  const out = await image.getBuffer(JimpMime.jpeg);
+  const out = await image
+    .extract({ left: 0, top: 0, width: w, height: cropHeight })
+    .jpeg()
+    .toBuffer();
   return { buffer: out, contentType: 'image/jpeg', ext: 'jpg' };
 }
 
