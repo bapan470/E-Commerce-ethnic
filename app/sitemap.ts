@@ -53,9 +53,9 @@ function toAbsoluteImageUrls(images: string[] | null | undefined): string[] {
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [products, categories, variants, blogPosts] = await Promise.all([
-    fetchAllRows<Pick<ProductRow, 'slug' | 'updated_at' | 'images'>>(
+    fetchAllRows<Pick<ProductRow, 'slug' | 'updated_at' | 'images'> & { category_name: string }>(
       'products',
-      'slug, updated_at, images',
+      'slug, updated_at, images, category_name',
       (q) => q.eq('approval_status', 'live')
     ),
     fetchAllRows<Pick<CategoryRow, 'slug' | 'name'>>('categories', 'slug, name'),
@@ -81,12 +81,21 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
   ];
 
-  const categoryPages: MetadataRoute.Sitemap = categories.map((c) => ({
-    url: `${SITE_URL}/category/${c.slug}`,
-    lastModified: new Date(),
-    changeFrequency: 'weekly' as const,
-    priority: 0.7,
-  }));
+  // Only submit categories that currently have at least one live product --
+  // an empty category page is noindex (see app/category/[slug]/page.tsx),
+  // and listing a noindex URL in the sitemap just generates a confusing
+  // "Submitted URL marked noindex" warning in Search Console. A category
+  // rejoins the sitemap automatically on the next build/revalidation once
+  // it has a product.
+  const namesWithProducts = new Set(products.map((p) => p.category_name));
+  const categoryPages: MetadataRoute.Sitemap = categories
+    .filter((c) => namesWithProducts.has(c.name))
+    .map((c) => ({
+      url: `${SITE_URL}/category/${c.slug}`,
+      lastModified: new Date(),
+      changeFrequency: 'weekly' as const,
+      priority: 0.7,
+    }));
 
   const blogPages: MetadataRoute.Sitemap = [
     {

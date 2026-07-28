@@ -41,7 +41,10 @@ function fallbackIntro(name: string): string {
 }
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
-  const categories = await fetchCategoriesServer();
+  const [categories, products] = await Promise.all([
+    fetchCategoriesServer(),
+    fetchProductsServer(),
+  ]);
   const category = categories.find((c) => c.slug === params.slug);
 
   if (!category) {
@@ -54,6 +57,14 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const description = (category.description || fallbackIntro(category.name)).slice(0, 160);
   const url = `${SITE_URL}/category/${category.slug}`;
   const title = `${category.name} | AruhiHandlooms`;
+
+  // An empty category ("No products yet") is thin content -- indexing it
+  // risks a low-quality signal on the whole domain, and it's not a page
+  // we want ranking anyway. noindex,follow keeps it crawlable (so links
+  // out of it still pass equity) without submitting it to Google's index.
+  // The page re-qualifies for indexing automatically the moment a product
+  // is added, since this check runs fresh on every request/revalidation.
+  const hasProducts = products.some((p) => p.category === category.name);
 
   return {
     title,
@@ -72,9 +83,9 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
       description,
     },
     robots: {
-      index: true,
+      index: hasProducts,
       follow: true,
-      googleBot: { index: true, follow: true, 'max-image-preview': 'large' },
+      googleBot: { index: hasProducts, follow: true, 'max-image-preview': 'large' },
     },
   };
 }
@@ -117,11 +128,29 @@ export default async function CategoryPage({ params }: Params) {
       : {}),
   };
 
+  // Breadcrumb rich snippet: Home > Categories > {Category Name}.
+  // Purely a search-results enhancement (bigger, more clickable listing) --
+  // doesn't change indexing eligibility, which is controlled by the
+  // canonical + robots meta in generateMetadata() above.
+  const breadcrumbJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
+      { '@type': 'ListItem', position: 2, name: 'Categories', item: `${SITE_URL}/categories` },
+      { '@type': 'ListItem', position: 3, name: category.name, item: url },
+    ],
+  };
+
   return (
     <div className="container-boutique py-8 pb-24 md:pb-12">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbJsonLd) }}
       />
 
       <nav className="mb-4 text-xs text-muted-foreground">

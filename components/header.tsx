@@ -22,10 +22,10 @@ import {
 
 const navLinks = [
   { href: '/shop', label: 'Shop All' },
-  { href: '/shop?category=Silk+Sarees', label: 'Silk Sarees' },
-  { href: '/shop?category=Lehenga', label: 'Lehenga' },
-  { href: '/shop?category=Bridal', label: 'Bridal' },
-  { href: '/shop?category=Kurti', label: 'Kurti' },
+  { href: '/category/silk-sarees', label: 'Silk Sarees' },
+  { href: '/category/cotton-silk', label: 'Cotton Silk' },
+  { href: '/category/cotton-blend', label: 'Cotton Blend' },
+  { href: '/category/mulmul-cotton-saree', label: 'Mulmul Cotton' },
   { href: '/blog', label: 'Blog' },
 ];
 
@@ -82,7 +82,7 @@ export default function Header() {
     const categoryLinks = categories
       .filter((c) => namesWithProducts.has(c.name))
       .map((c) => ({
-        href: `/shop?category=${encodeURIComponent(c.name)}`,
+        href: `/category/${c.slug}`,
         label: c.name,
       }));
 
