@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Loader2, Truck, Search, X, Copy, Check } from 'lucide-react';
+import { Loader2, Truck, Search, X, Copy, Check, Trash2 } from 'lucide-react';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import OrderTracking from '@/components/order/order-tracking';
 import CreateShipmentModal, {
@@ -166,6 +176,64 @@ export default function OrdersPanel() {
     }
   };
 
+  // ---- Select rows + bulk delete ----
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const toggleSelectOne = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const allVisibleSelected =
+    filteredOrders.length > 0 && filteredOrders.every((o) => selectedIds.has(o.id));
+  const someVisibleSelected = filteredOrders.some((o) => selectedIds.has(o.id));
+
+  const toggleSelectAllVisible = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        filteredOrders.forEach((o) => next.delete(o.id));
+      } else {
+        filteredOrders.forEach((o) => next.add(o.id));
+      }
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const deleteSelectedOrders = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setDeleting(true);
+    try {
+      const res = await fetch('/api/admin/orders', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast.success(`${ids.length} order${ids.length === 1 ? '' : 's'} deleted`);
+        clearSelection();
+        setConfirmBulkDelete(false);
+        await load();
+      } else {
+        toast.error(body.error || 'Failed to delete orders');
+      }
+    } catch (err) {
+      toast.error('Failed to delete orders');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="grid gap-6">
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -254,10 +322,39 @@ export default function OrdersPanel() {
         </div>
       </div>
 
+      {selectedIds.size > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-2.5">
+          <p className="text-sm font-medium">
+            {selectedIds.size} order{selectedIds.size === 1 ? '' : 's'} selected
+          </p>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={clearSelection}>
+              Clear
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setConfirmBulkDelete(true)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete Selected
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-lg border border-border/60 bg-card">
         <table className="w-full table-auto">
           <thead className="bg-muted/40 text-left text-xs uppercase tracking-wider text-muted-foreground">
             <tr>
+              <th className="w-10 px-4 py-3">
+                <Checkbox
+                  checked={allVisibleSelected ? true : someVisibleSelected ? 'indeterminate' : false}
+                  onCheckedChange={toggleSelectAllVisible}
+                  aria-label="Select all orders"
+                />
+              </th>
               <th className="px-4 py-3">Order ID</th>
               <th className="px-4 py-3">Customer</th>
               <th className="px-4 py-3">Product</th>
@@ -272,7 +369,7 @@ export default function OrdersPanel() {
           <tbody>
             {filteredOrders.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-4 py-10 text-center text-sm text-muted-foreground">
+                <td colSpan={10} className="px-4 py-10 text-center text-sm text-muted-foreground">
                   No orders match your search or filters.
                 </td>
               </tr>
@@ -281,6 +378,8 @@ export default function OrdersPanel() {
                 <OrderRow
                   key={o.id}
                   order={o}
+                  selected={selectedIds.has(o.id)}
+                  onToggleSelect={toggleSelectOne}
                   onChangeStatus={updateStatus}
                   onCreateShipment={openShipmentModal}
                   creatingShipment={creatingShipmentFor === o.id}
@@ -304,17 +403,52 @@ export default function OrdersPanel() {
         confirming={creatingShipmentFor === shipmentModalOrderId}
         onConfirm={confirmShipmentFromModal}
       />
+
+      {/* Bulk delete confirm */}
+      <Dialog open={confirmBulkDelete} onOpenChange={(open) => !open && setConfirmBulkDelete(false)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-xl text-primary">
+              Delete {selectedIds.size} order{selectedIds.size === 1 ? '' : 's'}?
+            </DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. The selected order{selectedIds.size === 1 ? '' : 's'} will be
+              permanently removed.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline" disabled={deleting}>
+                Cancel
+              </Button>
+            </DialogClose>
+            <Button
+              variant="destructive"
+              disabled={deleting}
+              onClick={deleteSelectedOrders}
+              className="gap-1.5"
+            >
+              {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
 function OrderRow({
   order,
+  selected,
+  onToggleSelect,
   onChangeStatus,
   onCreateShipment,
   creatingShipment,
 }: {
   order: Order;
+  selected: boolean;
+  onToggleSelect: (id: string) => void;
   onChangeStatus: (id: string, status: string) => void;
   onCreateShipment: (id: string) => void;
   creatingShipment: boolean;
@@ -335,7 +469,14 @@ function OrderRow({
 
   return (
     <>
-      <tr className="border-t">
+      <tr className={`border-t ${selected ? 'bg-destructive/5' : ''}`}>
+        <td className="px-4 py-3 align-top">
+          <Checkbox
+            checked={selected}
+            onCheckedChange={() => onToggleSelect(order.id)}
+            aria-label={`Select order ${order.id}`}
+          />
+        </td>
         <td className="px-4 py-3 align-top">
           <div className="flex items-center gap-1.5">
             <span className="font-mono text-xs font-semibold" title={order.id}>
@@ -439,7 +580,7 @@ function OrderRow({
       </tr>
       {open && (
         <tr className="bg-muted/20">
-          <td colSpan={9} className="px-4 py-3">
+          <td colSpan={10} className="px-4 py-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
                 <h4 className="mb-2 text-sm font-semibold">Items</h4>

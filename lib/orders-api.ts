@@ -24,3 +24,14 @@ export async function updateOrderStatus(id: string, status: string) {
   if (error) throw error;
   return data;
 }
+
+// Bulk delete -- used by the admin "select rows -> Delete Selected" action.
+// Related rows (returns, tracking events, etc.) are cleaned up automatically
+// by the ON DELETE CASCADE / SET NULL constraints already defined on the
+// orders foreign keys, so a plain delete here is safe.
+export async function deleteOrders(ids: string[]) {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.from('orders').delete().in('id', ids).select('id');
+  if (error) throw error;
+  return data;
+}
