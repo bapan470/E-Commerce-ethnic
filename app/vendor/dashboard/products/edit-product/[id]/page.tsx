@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { uploadProductImage } from '@/lib/products-api';
-import { useProducts } from '@/lib/cart-context';
+import { useCategories } from '@/lib/cart-context';
 import {
   fetchMyVendorProducts,
   updateVendorProduct,
@@ -29,7 +29,7 @@ import PhotographyGuidelines from '@/components/vendor/photography-guidelines';
 export default function EditVendorProductPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { categories } = useProducts();
+  const { categories } = useCategories();
 
   const [loading, setLoading] = useState(true);
   const [product, setProduct] = useState<VendorProductRow | null>(null);

@@ -4,7 +4,7 @@ import { useState, FormEvent, useEffect, useMemo, useCallback, useRef } from 're
 import Image from 'next/image';
 import Link from 'next/link';
 import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles, Link2, Palette, Wand2, Search, X, Truck, Package, Facebook, Instagram, Video, ExternalLink } from 'lucide-react';
-import { useProducts } from '@/lib/cart-context';
+import { useProducts, usePaymentDiscount } from '@/lib/cart-context';
 import {
   createProduct,
   updateProduct,
@@ -553,7 +553,8 @@ function SettlementPreview({
 }
 
 export default function ProductsPanel() {
-  const { products, categories, loading, refresh, paymentDiscount } = useProducts();
+  const { products, categories, loading, refresh } = useProducts();
+  const { paymentDiscount } = usePaymentDiscount();
 
   // Phase 2, Part 5 — "Vendor Submissions" lives as a second tab inside
   // this same Products panel (same pattern already used for colour/size

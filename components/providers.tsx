@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { usePathname } from 'next/navigation';
-import { CartProvider, ProductsProvider } from '@/lib/cart-context';
+import { CartProvider, CategoriesProvider, PaymentDiscountProvider } from '@/lib/cart-context';
 import { AuthProvider } from '@/lib/auth-context';
 import { Toaster } from 'sonner';
 import CartDrawer from './cart-drawer';
@@ -31,26 +31,28 @@ export default function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthProvider>
-      <ProductsProvider>
-        <CartProvider>
-          <ActivityTracker />
-          <div className="flex min-h-screen flex-col bg-background">
-            <UrgencyBanner />
-            <SaleCountdownBar />
-            <Header />
-            <SiteBanner />
-            <main className={`flex-1 ${isHome ? 'pb-16 md:pb-0' : ''}`}>{children}</main>
-            <Footer />
-            <CartDrawer />
-            <WhatsAppButton />
-            {!hideChatWidget && <LiveChatWidget />}
-            <ExitIntentModal />
-            <SocialProofToast />
-            {isHome && <MobileBottomNav />}
-          </div>
-          <Toaster position="top-center" richColors closeButton />
-        </CartProvider>
-      </ProductsProvider>
+      <CategoriesProvider>
+        <PaymentDiscountProvider>
+          <CartProvider>
+            <ActivityTracker />
+            <div className="flex min-h-screen flex-col bg-background">
+              <UrgencyBanner />
+              <SaleCountdownBar />
+              <Header />
+              <SiteBanner />
+              <main className={`flex-1 ${isHome ? 'pb-16 md:pb-0' : ''}`}>{children}</main>
+              <Footer />
+              <CartDrawer />
+              <WhatsAppButton />
+              {!hideChatWidget && <LiveChatWidget />}
+              <ExitIntentModal />
+              <SocialProofToast />
+              {isHome && <MobileBottomNav />}
+            </div>
+            <Toaster position="top-center" richColors closeButton />
+          </CartProvider>
+        </PaymentDiscountProvider>
+      </CategoriesProvider>
     </AuthProvider>
   );
 }

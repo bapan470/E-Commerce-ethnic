@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Lock, Loader2, CreditCard, Tag, X, Wallet, Sparkles, Gift, Store, Minus, Plus } from 'lucide-react';
-import { useCart, useProducts } from '@/lib/cart-context';
+import { useCart, usePaymentDiscount } from '@/lib/cart-context';
 import { useAuth } from '@/lib/auth-context';
 import { formatINR } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
@@ -84,7 +84,7 @@ export default function CheckoutPage() {
     updateBuyNowQuantity,
     clearBuyNow,
   } = useCart();
-  const { paymentDiscount } = useProducts();
+  const { paymentDiscount } = usePaymentDiscount();
   // Buy Now sends the shopper straight here with just the one item, kept
   // separate from whatever else is sitting in the persistent cart. Extra
   // add-ons picked up on this page (currently just the checkout bump) are

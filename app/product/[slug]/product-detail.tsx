@@ -11,7 +11,7 @@ import {
   RefreshCw,
   Wallet,
 } from 'lucide-react';
-import { useProducts, useCart } from '@/lib/cart-context';
+import { useProducts, usePaymentDiscount, useCart } from '@/lib/cart-context';
 import { fetchProductBySlug } from '@/lib/products-api';
 import { fetchVariantBySlug, fetchVariantsForProduct, ProductVariant, VariantWithSizes } from '@/lib/variants-api';
 import { Product } from '@/lib/types';
@@ -650,7 +650,7 @@ function ProductInfo({
   fulfillment: FulfillmentSettings;
 }) {
   const discount = discountPct(product.price, product.mrp);
-  const { paymentDiscount } = useProducts();
+  const { paymentDiscount } = usePaymentDiscount();
   const priceAfterCoupon = appliedCoupon ? Math.max(0, product.price - couponDiscount) : product.price;
   const onlinePaymentSavings =
     paymentDiscount.enabled && paymentDiscount.percent > 0

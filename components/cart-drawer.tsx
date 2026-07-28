@@ -17,7 +17,7 @@ import {
   Info,
   Wallet,
 } from 'lucide-react';
-import { useCart, useProducts } from '@/lib/cart-context';
+import { useCart, usePaymentDiscount } from '@/lib/cart-context';
 import { useAuth } from '@/lib/auth-context';
 import { markCheckoutEntry } from '@/lib/checkout-return';
 import { formatINR, discountPct } from '@/lib/format';
@@ -51,7 +51,7 @@ export default function CartDrawer() {
     clearBuyNow,
   } = useCart();
   const { user } = useAuth();
-  const { paymentDiscount } = useProducts();
+  const { paymentDiscount } = usePaymentDiscount();
 
   const onlinePaymentSavings =
     paymentDiscount.enabled && paymentDiscount.percent > 0

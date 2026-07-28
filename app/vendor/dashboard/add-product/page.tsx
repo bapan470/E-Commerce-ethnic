@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { uploadProductImage } from '@/lib/products-api';
-import { useProducts } from '@/lib/cart-context';
+import { useCategories } from '@/lib/cart-context';
 import { fetchMyVendorProfile, submitVendorProduct, triggerVendorAIProcess } from '@/lib/vendor-api';
 import PhotographyGuidelines from '@/components/vendor/photography-guidelines';
 
@@ -32,7 +32,7 @@ const EMPTY_FORM = {
 };
 
 export default function AddVendorProductPage() {
-  const { categories } = useProducts();
+  const { categories } = useCategories();
 
   const [checkingVendor, setCheckingVendor] = useState(true);
   const [vendorApproved, setVendorApproved] = useState(false);

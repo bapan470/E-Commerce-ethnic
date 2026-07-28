@@ -3,12 +3,14 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
-import { useState, useMemo, useRef, useEffect, FormEvent } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback, FormEvent } from 'react';
 import { Search, ShoppingBag, Menu, User, Heart, ArrowLeft, Camera, Loader2 } from 'lucide-react';
-import { useCart, useProducts } from '@/lib/cart-context';
+import { useCart, useCategories } from '@/lib/cart-context';
 import { useAuth } from '@/lib/auth-context';
 import { getCheckoutReturnPath, isCheckoutReturnFromBuyNow, clearCheckoutReturnBuyNowFlag } from '@/lib/checkout-return';
 import { rankProductIdsByImage } from '@/lib/image-search';
+import { fetchProducts } from '@/lib/products-api';
+import { Product } from '@/lib/types';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,8 +31,35 @@ const navLinks = [
 
 export default function Header() {
   const { count, setCartOpen, addItem, buyNowItem, clearBuyNow } = useCart();
-  const { products, categories } = useProducts();
+  const { categories } = useCategories();
   const { user } = useAuth();
+  // Header renders on every page, so it can't sit behind the heavy
+  // ProductsProvider (root layout only carries the light Categories/
+  // PaymentDiscount providers now). Products are only needed for search
+  // suggestions, the mobile menu's category list, and image search — all
+  // things the shopper opts into — so we fetch the catalog lazily, once,
+  // the first time any of those is used, instead of on every page load.
+  const [products, setProducts] = useState<Product[]>([]);
+  const productsLoadedRef = useRef(false);
+  const productsPromiseRef = useRef<Promise<Product[]> | null>(null);
+
+  const ensureProductsLoaded = useCallback((): Promise<Product[]> => {
+    if (productsLoadedRef.current) return Promise.resolve(products);
+    if (productsPromiseRef.current) return productsPromiseRef.current;
+    const promise = fetchProducts()
+      .then((prods) => {
+        productsLoadedRef.current = true;
+        setProducts(prods);
+        return prods;
+      })
+      .catch(() => [] as Product[])
+      .finally(() => {
+        productsPromiseRef.current = null;
+      });
+    productsPromiseRef.current = promise;
+    return promise;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const router = useRouter();
   const pathname = usePathname();
   const [query, setQuery] = useState('');
@@ -219,12 +248,18 @@ export default function Header() {
   //     rate-limited.
   const triggerImageSearch = () => {
     if (imageSearching) return;
+    // Kick off the product fetch as early as possible — the file picker
+    // (imageInputRef.current?.click()) hands control to the OS/browser UI
+    // while the shopper picks a photo, which gives this a head start so the
+    // catalog is often already loaded by the time handleImageFileChange
+    // needs it.
+    ensureProductsLoaded();
     imageInputRef.current?.click();
   };
 
-  const tryAiImageSearch = async (dataUrl: string): Promise<string[] | null> => {
+  const tryAiImageSearch = async (currentProducts: Product[], dataUrl: string): Promise<string[] | null> => {
     try {
-      const liteProducts = products.map((p) => ({
+      const liteProducts = currentProducts.map((p) => ({
         id: p.id,
         name: p.name,
         category: p.category,
@@ -263,9 +298,16 @@ export default function Header() {
         reader.readAsDataURL(file);
       });
 
-      let rankedIds = await tryAiImageSearch(dataUrl);
+      // Don't rely on the `products` state closure here — it may still be
+      // empty if this fires before the lazy fetch (started in
+      // triggerImageSearch) has resolved. Awaiting the same in-flight
+      // promise guarantees whichever caller gets here first, everyone
+      // resolves against the same up-to-date catalog.
+      const currentProducts = await ensureProductsLoaded();
+
+      let rankedIds = await tryAiImageSearch(currentProducts, dataUrl);
       if (rankedIds === null) {
-        rankedIds = await rankProductIdsByImage(products, dataUrl);
+        rankedIds = await rankProductIdsByImage(currentProducts, dataUrl);
       }
 
       if (rankedIds.length === 0) {
@@ -313,7 +355,13 @@ export default function Header() {
               <ArrowLeft className="h-5 w-5" />
             </Button>
           ) : (
-          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+          <Sheet
+            open={mobileOpen}
+            onOpenChange={(open) => {
+              setMobileOpen(open);
+              if (open) ensureProductsLoaded();
+            }}
+          >
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon" className="shrink-0 md:hidden" aria-label="Menu">
                 <Menu className="h-5 w-5" />
@@ -407,7 +455,10 @@ export default function Header() {
                 placeholder="Search sarees, lehenga, kurti..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                onFocus={() => setSuggestOpen(true)}
+                onFocus={() => {
+                  setSuggestOpen(true);
+                  ensureProductsLoaded();
+                }}
                 className="border-border/60 bg-muted/40 pl-9 pr-9"
               />
               <button
@@ -463,7 +514,10 @@ export default function Header() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setMobileSearchOpen((v) => !v)}
+            onClick={() => {
+              setMobileSearchOpen((v) => !v);
+              ensureProductsLoaded();
+            }}
             className="md:hidden"
             aria-label="Search"
           >

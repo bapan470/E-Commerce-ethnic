@@ -351,50 +351,137 @@ export function useCart() {
   return ctx;
 }
 
-/* ---------------- Products (Supabase-backed) ---------------- */
+/* ---------------- Categories (light, root-safe) ---------------- */
+//
+// Split out of ProductsProvider so pages that only need the category list
+// (header nav, vendor "choose a category" forms, admin categories panel)
+// never have to pull in the full product catalog just to render a dropdown.
+// Cheap enough to sit at the root layout for every page.
 
-interface ProductsContextValue {
-  products: Product[];
+interface CategoriesContextValue {
   categories: CategoryRow[];
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
-  getBySlug: (slug: string) => Product | undefined;
-  getById: (id: string) => Product | undefined;
-  /** Admin-configured "extra % off on online payment" incentive — shared by the
-   * product page, cart drawer, and checkout so they never fall out of sync. */
-  paymentDiscount: PaymentDiscountSettings;
 }
 
-const ProductsContext = createContext<ProductsContextValue | undefined>(undefined);
+const CategoriesContext = createContext<CategoriesContextValue | undefined>(undefined);
 
-export function ProductsProvider({ children }: { children: React.ReactNode }) {
-  const [products, setProducts] = useState<Product[]>([]);
+export function CategoriesProvider({ children }: { children: React.ReactNode }) {
   const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [paymentDiscount, setPaymentDiscount] = useState<PaymentDiscountSettings>(
-    DEFAULT_PAYMENT_DISCOUNT_SETTINGS
-  );
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [prods, cats] = await Promise.all([fetchProducts(), fetchCategories()]);
-      setProducts(prods);
+      const cats = await fetchCategories();
       setCategories(cats);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load products');
+      setError(err instanceof Error ? err.message : 'Failed to load categories');
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const value: CategoriesContextValue = { categories, loading, error, refresh };
+
+  return (
+    <CategoriesContext.Provider value={value}>{children}</CategoriesContext.Provider>
+  );
+}
+
+export function useCategories() {
+  const ctx = useContext(CategoriesContext);
+  if (!ctx) throw new Error('useCategories must be used within CategoriesProvider');
+  return ctx;
+}
+
+/* ---------------- Payment discount settings (light, root-safe) ---------------- */
+//
+// Split out of ProductsProvider — the cart drawer (mounted on every page) and
+// checkout only ever needed this one setting, not the whole product catalog.
+
+interface PaymentDiscountContextValue {
+  /** Admin-configured "extra % off on online payment" incentive — shared by the
+   * product page, cart drawer, and checkout so they never fall out of sync. */
+  paymentDiscount: PaymentDiscountSettings;
+}
+
+const PaymentDiscountContext = createContext<PaymentDiscountContextValue | undefined>(
+  undefined
+);
+
+export function PaymentDiscountProvider({ children }: { children: React.ReactNode }) {
+  const [paymentDiscount, setPaymentDiscount] = useState<PaymentDiscountSettings>(
+    DEFAULT_PAYMENT_DISCOUNT_SETTINGS
+  );
+
+  useEffect(() => {
     fetchPaymentDiscountSettings()
       .then(setPaymentDiscount)
       .catch(() => setPaymentDiscount(DEFAULT_PAYMENT_DISCOUNT_SETTINGS));
+  }, []);
+
+  const value: PaymentDiscountContextValue = { paymentDiscount };
+
+  return (
+    <PaymentDiscountContext.Provider value={value}>
+      {children}
+    </PaymentDiscountContext.Provider>
+  );
+}
+
+export function usePaymentDiscount() {
+  const ctx = useContext(PaymentDiscountContext);
+  if (!ctx) throw new Error('usePaymentDiscount must be used within PaymentDiscountProvider');
+  return ctx;
+}
+
+/* ---------------- Products (Supabase-backed, heavy) ---------------- */
+//
+// This now only carries the full product catalog (with variants/images) —
+// categories and paymentDiscount moved to the light providers above, so this
+// only needs to be mounted on the pages that actually render/search the
+// catalog (product page, home, /categories, admin), not the whole app.
+
+interface ProductsContextValue {
+  products: Product[];
+  /** Re-exposed from CategoriesContext for convenience/back-compat — this
+   * provider must be mounted inside a CategoriesProvider (true everywhere,
+   * since CategoriesProvider sits at the root). It's not fetched here. */
+  categories: CategoryRow[];
+  loading: boolean;
+  error: string | null;
+  refresh: () => Promise<void>;
+  getBySlug: (slug: string) => Product | undefined;
+  getById: (id: string) => Product | undefined;
+}
+
+const ProductsContext = createContext<ProductsContextValue | undefined>(undefined);
+
+export function ProductsProvider({ children }: { children: React.ReactNode }) {
+  const { categories } = useCategories();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const prods = await fetchProducts();
+      setProducts(prods);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load products');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -418,7 +505,6 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
     refresh,
     getBySlug,
     getById,
-    paymentDiscount,
   };
 
   return (

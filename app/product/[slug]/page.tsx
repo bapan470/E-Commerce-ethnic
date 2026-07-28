@@ -1,4 +1,5 @@
 import { Metadata } from 'next';
+import { ProductsProvider } from '@/lib/cart-context';
 import { fetchProductBySlugServer } from '@/lib/products-api-server';
 import { fetchVariantBySlug, VariantWithSizes } from '@/lib/variants-api';
 import { safeJsonLd } from '@/lib/json-ld';
@@ -157,7 +158,9 @@ export default async function ProductPage({ params }: Params) {
           dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }}
         />
       )}
-      <ProductDetail />
+      <ProductsProvider>
+        <ProductDetail />
+      </ProductsProvider>
     </>
   );
 }

@@ -1,5 +1,6 @@
 import { getServerSupabase } from '@/lib/supabase-server';
 import { safeJsonLd } from '@/lib/json-ld';
+import { ProductsProvider } from '@/lib/cart-context';
 import HomeClient from './home-client';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
@@ -85,7 +86,9 @@ export default async function Home() {
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }}
       />
-      <HomeClient />
+      <ProductsProvider>
+        <HomeClient />
+      </ProductsProvider>
     </>
   );
 }

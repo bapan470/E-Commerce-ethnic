@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { ChevronRight, ImageOff } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import { useProducts } from '@/lib/cart-context';
+import { useProducts, ProductsProvider } from '@/lib/cart-context';
 import { Skeleton } from '@/components/ui/skeleton';
 import { blurDataURL } from '@/lib/utils';
 
@@ -44,6 +44,16 @@ function groupFor(name: string): string {
 }
 
 export default function CategoriesPage() {
+  return (
+    <ProductsProvider>
+      <CategoriesPageContent />
+    </ProductsProvider>
+  );
+}
+
+// Needs the full catalog (to group products by category) — ProductsProvider
+// is no longer mounted at the root, so this page mounts its own copy.
+function CategoriesPageContent() {
   const { products, categories, loading } = useProducts();
   const [activeGroup, setActiveGroup] = useState('All');
 
