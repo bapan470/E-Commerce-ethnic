@@ -2,58 +2,33 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { ArrowRight, Sparkles, Truck, ShieldCheck } from 'lucide-react';
-import { useProducts } from '@/lib/cart-context';
-import { fetchSiteBanner, SiteBanner } from '@/lib/settings-api';
-import { fetchShippingSettings } from '@/lib/pincode-api';
-import { fetchPublicCollections, PublicCollectionRow } from '@/lib/admin-collections-api';
+import { Product, CategoryRow } from '@/lib/types';
+import type { HomeBanner } from '@/lib/home-data-server';
+import type { PublicCollectionRow } from '@/lib/collections-api-server';
 import ProductCard from '@/components/product-card';
 import CouponStrip from '@/components/home/coupon-strip';
 import PromoSlider from '@/components/home/promo-slider';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 
-export default function HomeClient() {
-  const { products, categories, loading } = useProducts();
+interface HomeClientProps {
+  products: Product[];
+  categories: CategoryRow[];
+  banner: HomeBanner | null;
+  freeShippingThreshold: number | null;
+  collections: PublicCollectionRow[];
+}
+
+export default function HomeClient({
+  products,
+  categories,
+  banner,
+  freeShippingThreshold,
+  collections,
+}: HomeClientProps) {
   const featured = products.filter((p) => p.featured).slice(0, 8);
   const newArrivals = products.slice(0, 4);
-
-  // Admin > Settings > Store Banner — same image shown storewide, but on
-  // the homepage it takes over the hero slot entirely (like a clearance
-  // banner) instead of stacking on top of the marketing copy below. Falls
-  // back to the default hero until the admin uploads one.
-  const [banner, setBanner] = useState<SiteBanner | null>(null);
-  useEffect(() => {
-    fetchSiteBanner()
-      .then((b) => setBanner(b.image_url ? b : null))
-      .catch(() => setBanner(null));
-  }, []);
-
-  // Admin > Settings > GST & Shipping — the free-shipping threshold shown
-  // in the hero badge is the exact same number checkout actually charges
-  // against, so this line never contradicts what a shopper pays.
-  const [freeShippingThreshold, setFreeShippingThreshold] = useState<number | null>(null);
-  useEffect(() => {
-    fetchShippingSettings()
-      .then((s) => setFreeShippingThreshold(s.free_shipping_threshold || null))
-      .catch(() => setFreeShippingThreshold(null));
-  }, []);
-
-  // Admin > Collections — curated groupings (e.g. "Diwali Specials"),
-  // shown here the same way categories are: a row of clickable circles
-  // that link through to /collection/[slug]. Only ever contains active
-  // collections that already have at least one live product (enforced
-  // server-side in /api/collections), so an empty or draft collection
-  // never shows up on the storefront.
-  const [collections, setCollections] = useState<PublicCollectionRow[]>([]);
-  const [collectionsLoading, setCollectionsLoading] = useState(true);
-  useEffect(() => {
-    fetchPublicCollections()
-      .then(setCollections)
-      .catch(() => setCollections([]))
-      .finally(() => setCollectionsLoading(false));
-  }, []);
 
   // Each category row's circle is pulled live from that category's own
   // products — the admin's Featured pick first, else just the newest —
@@ -221,14 +196,7 @@ export default function HomeClient() {
           </Link>
         </div>
         <div className="grid grid-cols-4 gap-x-3 gap-y-6 sm:grid-cols-6 lg:grid-cols-8">
-          {loading
-            ? Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="flex flex-col items-center gap-2">
-                  <Skeleton className="h-16 w-16 rounded-full sm:h-20 sm:w-20" />
-                  <Skeleton className="h-3 w-12 rounded" />
-                </div>
-              ))
-            : visibleCategories.map((c) => {
+          {visibleCategories.map((c) => {
                 const thumb = categoryThumbs.get(c.id);
                 return (
                   <Link
@@ -257,7 +225,7 @@ export default function HomeClient() {
                   </Link>
                 );
               })}
-          {!loading && visibleCategories.length === 0 && (
+          {visibleCategories.length === 0 && (
             <p className="col-span-full text-sm text-muted-foreground">
               New categories are on their way — check back soon.
             </p>
@@ -267,10 +235,9 @@ export default function HomeClient() {
 
       {/* Collections — same circle-row treatment as categories above, but
           sourced from Admin > Collections instead of the categories table.
-          Hidden entirely once collectionsLoading finishes if there are no
-          active collections with products yet, so it never leaves an odd
-          empty gap on a fresh store. */}
-      {(collectionsLoading || collections.length > 0) && (
+          Hidden entirely when there are no active collections with
+          products, so it never leaves an odd empty gap on a fresh store. */}
+      {collections.length > 0 && (
         <section className="container-boutique pb-14">
           <div className="mb-8 flex items-end justify-between">
             <div>
@@ -283,42 +250,36 @@ export default function HomeClient() {
             </div>
           </div>
           <div className="grid grid-cols-4 gap-x-3 gap-y-6 sm:grid-cols-6 lg:grid-cols-8">
-            {collectionsLoading
-              ? Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="flex flex-col items-center gap-2">
-                    <Skeleton className="h-16 w-16 rounded-full sm:h-20 sm:w-20" />
-                    <Skeleton className="h-3 w-12 rounded" />
-                  </div>
-                ))
-              : collections.map((c) => (
-                  <Link
-                    key={c.id}
-                    href={`/collection/${c.slug}`}
-                    className="group flex flex-col items-center gap-2 text-center"
-                  >
-                    <div className="relative h-16 w-16 overflow-hidden rounded-full border border-border/60 bg-muted shadow-sm transition-transform duration-300 group-hover:scale-105 sm:h-20 sm:w-20">
-                      {c.thumbnail ? (
-                        <Image
-                          src={c.thumbnail}
-                          alt={`${c.name} - curated collection at AruhiHandlooms`}
-                          fill
-                          sizes="80px"
-                          className="object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground">
-                          {c.name.slice(0, 1)}
-                        </div>
-                      )}
+            {collections.map((c) => (
+              <Link
+                key={c.id}
+                href={`/collection/${c.slug}`}
+                className="group flex flex-col items-center gap-2 text-center"
+              >
+                <div className="relative h-16 w-16 overflow-hidden rounded-full border border-border/60 bg-muted shadow-sm transition-transform duration-300 group-hover:scale-105 sm:h-20 sm:w-20">
+                  {c.thumbnail ? (
+                    <Image
+                      src={c.thumbnail}
+                      alt={`${c.name} - curated collection at AruhiHandlooms`}
+                      fill
+                      sizes="80px"
+                      className="object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-[10px] text-muted-foreground">
+                      {c.name.slice(0, 1)}
                     </div>
-                    <p className="line-clamp-2 font-serif text-xs font-semibold leading-tight text-foreground sm:text-sm">
-                      {c.name}
-                    </p>
-                  </Link>
-                ))}
+                  )}
+                </div>
+                <p className="line-clamp-2 font-serif text-xs font-semibold leading-tight text-foreground sm:text-sm">
+                  {c.name}
+                </p>
+              </Link>
+            ))}
           </div>
         </section>
       )}
+
 
       <PromoSlider />
 
@@ -344,13 +305,9 @@ export default function HomeClient() {
             </Link>
           </div>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            {loading
-              ? Array.from({ length: 8 }).map((_, i) => (
-                  <Skeleton key={i} className="aspect-[4/5] rounded-lg" />
-                ))
-              : featured.map((p, idx) => (
-                  <ProductCard key={p.id} product={p} priority={idx < 4} />
-                ))}
+            {featured.map((p, idx) => (
+              <ProductCard key={p.id} product={p} priority={idx < 4} />
+            ))}
           </div>
         </div>
       </section>
@@ -395,13 +352,9 @@ export default function HomeClient() {
           </div>
         </div>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-          {loading
-            ? Array.from({ length: 4 }).map((_, i) => (
-                <Skeleton key={i} className="aspect-[4/5] rounded-lg" />
-              ))
-            : newArrivals.map((p) => (
-                <ProductCard key={p.id} product={p} />
-              ))}
+          {newArrivals.map((p) => (
+            <ProductCard key={p.id} product={p} />
+          ))}
         </div>
       </section>
     </div>

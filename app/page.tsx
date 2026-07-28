@@ -1,9 +1,17 @@
 import { getServerSupabase } from '@/lib/supabase-server';
 import { safeJsonLd } from '@/lib/json-ld';
-import { ProductsProvider } from '@/lib/cart-context';
+import { fetchHomeData } from '@/lib/home-data-server';
 import HomeClient from './home-client';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
+
+// Homepage now fetches products/categories/collections server-side (see
+// fetchHomeData below) instead of the client re-fetching them fresh on
+// every visit. Without a revalidate value this page would render once at
+// build time and could go stale indefinitely as products/collections
+// change in admin — 60s keeps it fresh, same safety net used on the
+// product and category pages.
+export const revalidate = 60;
 
 interface HomeSeoData {
   name: string;
@@ -44,7 +52,7 @@ async function getHomeSeoData(): Promise<HomeSeoData> {
 }
 
 export default async function Home() {
-  const data = await getHomeSeoData();
+  const [data, homeData] = await Promise.all([getHomeSeoData(), fetchHomeData()]);
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -86,9 +94,13 @@ export default async function Home() {
         // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }}
       />
-      <ProductsProvider>
-        <HomeClient />
-      </ProductsProvider>
+      <HomeClient
+        products={homeData.products}
+        categories={homeData.categories}
+        banner={homeData.banner}
+        freeShippingThreshold={homeData.freeShippingThreshold}
+        collections={homeData.collections}
+      />
     </>
   );
 }
