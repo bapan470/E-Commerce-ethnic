@@ -1,9 +1,15 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { Jimp, JimpMime } from 'jimp';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 const MAX_BYTES = 15 * 1024 * 1024; // 15MB safety cap on the source image
+
+// Same portrait ratio the storefront already uses for every product image
+// (see aspect-[4/5] in components/product-card.tsx and product-gallery.tsx),
+// so a "cropped" import lines up with how it'll actually be displayed.
+const CROP_ASPECT = 4 / 5;
 
 const EXT_BY_MIME: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -13,6 +19,39 @@ const EXT_BY_MIME: Record<string, string> = {
   'image/gif': 'gif',
   'image/avif': 'avif',
 };
+
+/**
+ * Center-crops a downloaded image to the storefront's 4:5 portrait ratio.
+ * Uses jimp (pure JS, no native binary) so it stays reliable on serverless --
+ * same reasoning the "no conversion" path below already relies on.
+ * Re-encodes as JPEG regardless of source format; that's fine for photos and
+ * keeps the crop path simple.
+ */
+async function cropToProductFrame(buffer: Buffer): Promise<{ buffer: Buffer; contentType: string; ext: string }> {
+  const image = await Jimp.fromBuffer(buffer);
+  const w = image.bitmap.width;
+  const h = image.bitmap.height;
+  const currentRatio = w / h;
+
+  let cropWidth = w;
+  let cropHeight = h;
+  let cropX = 0;
+  let cropY = 0;
+
+  if (currentRatio > CROP_ASPECT) {
+    // wider than target -- trim the sides
+    cropWidth = Math.round(h * CROP_ASPECT);
+    cropX = Math.round((w - cropWidth) / 2);
+  } else if (currentRatio < CROP_ASPECT) {
+    // taller than target -- trim top/bottom
+    cropHeight = Math.round(w / CROP_ASPECT);
+    cropY = Math.round((h - cropHeight) / 2);
+  }
+
+  image.crop({ x: cropX, y: cropY, w: cropWidth, h: cropHeight });
+  const out = await image.getBuffer(JimpMime.jpeg);
+  return { buffer: out, contentType: 'image/jpeg', ext: 'jpg' };
+}
 
 export async function POST(req: Request) {
   const cookie = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? null;
@@ -25,6 +64,9 @@ export async function POST(req: Request) {
   const sourceUrl = (body?.url as string | undefined)?.trim();
   // "products" (default) or "variants" — just changes the storage sub-folder.
   const bucketFolder = body?.folder === 'variants' ? 'variants' : 'products';
+  // Off by default -- when true, center-crop to the storefront's 4:5 frame
+  // before saving. Everything else behaves exactly as before either way.
+  const shouldCrop = body?.crop === true;
 
   if (!sourceUrl) {
     return NextResponse.json({ error: 'Give an image URL to import.' }, { status: 400 });
@@ -63,21 +105,38 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Image is too large (max 15MB).' }, { status: 400 });
     }
 
-    // Re-host the image in our own storage exactly as downloaded (no
-    // conversion) — this avoids native-binary image libraries, which are
-    // unreliable to run in serverless functions, while still fixing the
-    // main problem: the image keeps working even if the original site
-    // removes it or blocks hotlinking.
-    const ext = EXT_BY_MIME[contentType] || 'jpg';
+    // By default we re-host the image exactly as downloaded (no conversion)
+    // — this avoids native-binary image libraries, which are unreliable to
+    // run in serverless functions, while still fixing the main problem: the
+    // image keeps working even if the original site removes it or blocks
+    // hotlinking. When the "Crop" toggle is on, we additionally center-crop
+    // to the storefront's 4:5 frame using jimp (pure JS, so this stays safe
+    // on serverless too) before uploading.
+    let uploadBuffer = Buffer.from(arrayBuffer);
+    let uploadContentType = contentType;
+    let ext = EXT_BY_MIME[contentType] || 'jpg';
+
+    if (shouldCrop) {
+      try {
+        const cropped = await cropToProductFrame(uploadBuffer);
+        uploadBuffer = cropped.buffer;
+        uploadContentType = cropped.contentType;
+        ext = cropped.ext;
+      } catch (cropErr) {
+        console.error('[import-image] crop error, falling back to uncropped:', cropErr);
+        // fall through and upload the original, uncropped image instead of failing the whole import
+      }
+    }
+
     const path = `${bucketFolder}/${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
 
     const admin = getSupabaseAdmin();
     const { error: uploadError } = await admin.storage
       .from('product-images')
-      .upload(path, Buffer.from(arrayBuffer), {
+      .upload(path, uploadBuffer, {
         cacheControl: '31536000',
         upsert: false,
-        contentType,
+        contentType: uploadContentType,
       });
 
     if (uploadError) {

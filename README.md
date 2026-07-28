@@ -54,3 +54,34 @@ npm run dev   # or your usual build/deploy command
 No database migration is needed — `orders.created_at` and
 `orders.total_amount` (already selected by the route) are what power the
 exact time/price chart.
+
+---
+
+## Bonus: "Crop" toggle on Import from URL
+
+Also added a **Crop** toggle next to every "Import from URL" button
+(main product images, and both variant-image import spots).
+
+- **Off by default** — behaves exactly as it does today.
+- **When ON** — the imported image is center-cropped to a 4:5 portrait
+  ratio (the same ratio your storefront already uses for product images
+  via `aspect-[4/5]`) before it's saved to Supabase Storage.
+
+### Files touched for this part
+
+- `app/api/admin/import-image/route.ts` — accepts `crop: true/false` in the
+  POST body; crops with `jimp` (pure JS, no native binaries — safe on
+  Netlify serverless functions) when true.
+- `components/admin/products-panel.tsx` — Crop switch next to "Import from
+  URL" in the main product form.
+- `components/admin/product-variants-manager.tsx` and
+  `components/admin/variants-panel.tsx` — same switch for variant images.
+
+### New dependency
+
+```bash
+npm install jimp
+```
+
+(Already added to `package.json` if you copy that file too — otherwise just
+run the install command above after copying the files in.)

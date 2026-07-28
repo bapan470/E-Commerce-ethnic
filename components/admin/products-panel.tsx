@@ -41,6 +41,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import {
   Dialog,
   DialogContent,
@@ -588,6 +589,7 @@ export default function ProductsPanel() {
   const [uploading, setUploading] = useState(false);
   const [importUrl, setImportUrl] = useState('');
   const [importing, setImporting] = useState(false);
+  const [cropOnImport, setCropOnImport] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -966,7 +968,7 @@ export default function ProductsPanel() {
       const res = await fetch('/api/admin/import-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, folder: 'products' }),
+        body: JSON.stringify({ url, folder: 'products', crop: cropOnImport }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -975,7 +977,7 @@ export default function ProductsPanel() {
       }
       setForm((f) => ({ ...f, images: [...f.images, data.url] }));
       setImportUrl('');
-      toast.success('Image imported and converted to WebP');
+      toast.success(cropOnImport ? 'Image imported and cropped to 4:5' : 'Image imported and converted to WebP');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Image import failed');
     } finally {
@@ -2256,10 +2258,19 @@ export default function ProductsPanel() {
                   )}
                   {importing ? 'Importing…' : 'Import from URL'}
                 </Button>
+                <label className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-1.5 text-xs">
+                  <Switch
+                    checked={cropOnImport}
+                    onCheckedChange={setCropOnImport}
+                    className="scale-90"
+                  />
+                  <span className="font-medium">Crop</span>
+                </label>
               </div>
               <p className="text-xs text-muted-foreground">
                 This downloads the image and saves it in your own Supabase
                 storage — so it keeps working even if the original site removes it.
+                {cropOnImport && ' Crop is ON — the imported image will be auto-cropped to the 4:5 product frame.'}
               </p>
               <div className="flex flex-wrap gap-3">
                 {form.images.map((url, idx) => (

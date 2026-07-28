@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import {
   Dialog,
   DialogContent,
@@ -103,6 +104,7 @@ export default function ProductVariantsManager({ productId, productName, product
   const [uploading, setUploading] = useState(false);
   const [importUrl, setImportUrl] = useState('');
   const [importing, setImporting] = useState(false);
+  const [cropOnImport, setCropOnImport] = useState(false);
   const [detectingColor, setDetectingColor] = useState(false);
   const [confirmVariant, setConfirmVariant] = useState<VariantWithSizes | null>(null);
   const [colorSuggestions, setColorSuggestions] = useState<ColorPreset[]>([]);
@@ -240,7 +242,7 @@ export default function ProductVariantsManager({ productId, productName, product
       const res = await fetch('/api/admin/import-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, folder: 'variants' }),
+        body: JSON.stringify({ url, folder: 'variants', crop: cropOnImport }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -250,7 +252,7 @@ export default function ProductVariantsManager({ productId, productName, product
       const isFirstImage = form.images.length === 0;
       setForm((f) => ({ ...f, images: [...f.images, data.url] }));
       setImportUrl('');
-      toast.success('Image imported and converted to WebP');
+      toast.success(cropOnImport ? 'Image imported and cropped to 4:5' : 'Image imported and converted to WebP');
       if (isFirstImage && !form.color.trim()) {
         detectColorFromImage(data.url, { silent: true });
       }
@@ -746,9 +748,14 @@ export default function ProductVariantsManager({ productId, productName, product
                   {importing ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Link2 className="mr-1.5 h-4 w-4" />}
                   {importing ? 'Importing…' : 'Import from URL'}
                 </Button>
+                <label className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-1.5 text-xs">
+                  <Switch checked={cropOnImport} onCheckedChange={setCropOnImport} className="scale-90" />
+                  <span className="font-medium">Crop</span>
+                </label>
               </div>
               <p className="text-xs text-muted-foreground">
                 Nothing uploaded yet? The base product photo is used automatically as a placeholder — swap it out any time.
+                {cropOnImport && ' Crop is ON — the imported image will be auto-cropped to the 4:5 product frame.'}
               </p>
               <div className="flex flex-wrap gap-3">
                 {form.images.map((url, idx) => (

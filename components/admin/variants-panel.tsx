@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -88,6 +89,7 @@ export default function VariantsPanel() {
   const [uploading, setUploading] = useState(false);
   const [importUrl, setImportUrl] = useState('');
   const [importing, setImporting] = useState(false);
+  const [cropOnImport, setCropOnImport] = useState(false);
   const [confirmVariant, setConfirmVariant] = useState<VariantWithSizes | null>(null);
 
   const selectedProduct = products.find((p) => p.id === selectedProductId) || null;
@@ -190,7 +192,7 @@ export default function VariantsPanel() {
       const res = await fetch('/api/admin/import-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, folder: 'variants' }),
+        body: JSON.stringify({ url, folder: 'variants', crop: cropOnImport }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -199,7 +201,7 @@ export default function VariantsPanel() {
       }
       setForm((f) => ({ ...f, images: [...f.images, data.url] }));
       setImportUrl('');
-      toast.success('Image imported and converted to WebP');
+      toast.success(cropOnImport ? 'Image imported and cropped to 4:5' : 'Image imported and converted to WebP');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Image import failed');
     } finally {
@@ -576,6 +578,10 @@ export default function VariantsPanel() {
                   )}
                   {importing ? 'Importing…' : 'Import from URL'}
                 </Button>
+                <label className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-1.5 text-xs">
+                  <Switch checked={cropOnImport} onCheckedChange={setCropOnImport} className="scale-90" />
+                  <span className="font-medium">Crop</span>
+                </label>
               </div>
               <div className="flex flex-wrap gap-3">
                 {form.images.map((url, idx) => (
