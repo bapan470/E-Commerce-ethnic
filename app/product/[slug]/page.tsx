@@ -3,6 +3,8 @@ import { ProductsProvider } from '@/lib/cart-context';
 import { fetchProductBySlugServer } from '@/lib/products-api-server';
 import { fetchVariantBySlug, VariantWithSizes } from '@/lib/variants-api';
 import { safeJsonLd } from '@/lib/json-ld';
+import { fetchFulfillmentSettings } from '@/lib/marketing-api';
+import { fetchShippingSettings } from '@/lib/pincode-api';
 import ProductDetail from './product-detail';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
@@ -100,6 +102,14 @@ export default async function ProductPage({ params }: Params) {
   const product = resolved?.product ?? null;
   const variant = resolved?.variant ?? null;
 
+  // Same source of truth as app/api/merchant-feed/route.ts (Admin >
+  // Marketing > Shipping & Returns Timing) -- keeping this schema in sync
+  // with the feed avoids a shipping/returns misrepresentation mismatch
+  // between what's declared on-page vs to Google Merchant Center.
+  const [fulfillment, shipping] = product
+    ? await Promise.all([fetchFulfillmentSettings(), fetchShippingSettings()])
+    : [null, null];
+
   const jsonLd = product
     ? {
         '@context': 'https://schema.org',
@@ -133,6 +143,43 @@ export default async function ProductPage({ params }: Params) {
             '@type': 'Organization',
             name: 'AruhiHandlooms',
           },
+          shippingDetails: fulfillment && shipping
+            ? {
+                '@type': 'OfferShippingDetails',
+                shippingRate: {
+                  '@type': 'MonetaryAmount',
+                  value: shipping.flat_rate,
+                  currency: 'INR',
+                },
+                shippingDestination: {
+                  '@type': 'DefinedRegion',
+                  addressCountry: 'IN',
+                },
+                deliveryTime: {
+                  '@type': 'ShippingDeliveryTime',
+                  handlingTime: {
+                    '@type': 'QuantitativeValue',
+                    minValue: fulfillment.dispatch_days_min,
+                    maxValue: fulfillment.dispatch_days_max,
+                    unitCode: 'DAY',
+                  },
+                  transitTime: {
+                    '@type': 'QuantitativeValue',
+                    minValue: fulfillment.delivery_metro_min,
+                    maxValue: fulfillment.delivery_remote_max,
+                    unitCode: 'DAY',
+                  },
+                },
+              }
+            : undefined,
+          hasMerchantReturnPolicy: fulfillment
+            ? {
+                '@type': 'MerchantReturnPolicy',
+                applicableCountry: 'IN',
+                returnPolicyCategory: 'https://schema.org/MerchantReturnFiniteReturnWindow',
+                merchantReturnDays: fulfillment.return_window_days,
+              }
+            : undefined,
         },
         aggregateRating:
           (variant?.reviews ?? product.reviews) > 0
