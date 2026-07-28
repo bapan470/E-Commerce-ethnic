@@ -91,6 +91,23 @@ const config: Config = {
           '0%, 100%': { transform: 'translateY(0px)' },
           '50%': { transform: 'translateY(-14px)' },
         },
+        'ken-burns': {
+          '0%': { transform: 'scale(1) translate(0, 0)' },
+          '50%': { transform: 'scale(1.08) translate(-1%, -1%)' },
+          '100%': { transform: 'scale(1) translate(0, 0)' },
+        },
+        'shine-sweep': {
+          '0%': { transform: 'translateX(-150%) skewX(-12deg)' },
+          '60%, 100%': { transform: 'translateX(150%) skewX(-12deg)' },
+        },
+        'badge-pop': {
+          '0%, 100%': { transform: 'scale(1)' },
+          '50%': { transform: 'scale(1.06)' },
+        },
+        'pulse-ring': {
+          '0%': { boxShadow: '0 0 0 0 hsl(var(--secondary) / 0.55)' },
+          '100%': { boxShadow: '0 0 0 14px hsl(var(--secondary) / 0)' },
+        },
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
@@ -98,6 +115,10 @@ const config: Config = {
         'fade-in': 'fade-in 0.6s ease-out both',
         'scale-in': 'scale-in 0.3s ease-out both',
         'float': 'float 6s ease-in-out infinite',
+        'ken-burns': 'ken-burns 14s ease-in-out infinite',
+        'shine-sweep': 'shine-sweep 3.2s ease-in-out infinite',
+        'badge-pop': 'badge-pop 2.4s ease-in-out infinite',
+        'pulse-ring': 'pulse-ring 2s cubic-bezier(0.4,0,0.6,1) infinite',
       },
       fontFamily: {
         serif: ['var(--font-serif)', 'Georgia', 'serif'],

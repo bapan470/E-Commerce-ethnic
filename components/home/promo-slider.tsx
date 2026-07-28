@@ -150,7 +150,7 @@ export default function PromoSlider() {
   };
 
   return (
-    <section className="container-boutique py-8">
+    <section className="container-boutique py-5 sm:py-6">
       <div
         className="relative overflow-hidden rounded-2xl shadow-lg"
         onMouseEnter={() => (pausedRef.current = true)}

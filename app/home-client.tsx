@@ -68,25 +68,40 @@ export default function HomeClient({
       {banner ? (
         <section className="w-full">
           {banner.link_url ? (
-            <Link href={banner.link_url} className="relative block aspect-[4/5] w-full sm:aspect-[16/6]">
+            <Link
+              href={banner.link_url}
+              className="group relative block aspect-[4/5] w-full overflow-hidden sm:aspect-[16/6]"
+            >
               <Image
                 src={banner.image_url}
                 alt="Current promotion"
                 fill
                 priority
+                fetchPriority="high"
                 sizes="100vw"
-                className="object-cover"
+                className="animate-ken-burns object-cover"
+              />
+              {/* Light sweep gives the static banner a "live" glint without
+                  needing extra images from the admin panel. */}
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-y-0 left-0 w-1/3 animate-shine-sweep bg-gradient-to-r from-transparent via-white/25 to-transparent"
               />
             </Link>
           ) : (
-            <div className="relative aspect-[4/5] w-full sm:aspect-[16/6]">
+            <div className="group relative aspect-[4/5] w-full overflow-hidden sm:aspect-[16/6]">
               <Image
                 src={banner.image_url}
                 alt="Current promotion"
                 fill
                 priority
+                fetchPriority="high"
                 sizes="100vw"
-                className="object-cover"
+                className="animate-ken-burns object-cover"
+              />
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-y-0 left-0 w-1/3 animate-shine-sweep bg-gradient-to-r from-transparent via-white/25 to-transparent"
               />
             </div>
           )}
@@ -100,7 +115,7 @@ export default function HomeClient({
             style={{ animationDelay: '1.5s' }}
           />
         </div>
-        <div className="container-boutique relative grid items-center gap-6 py-8 pb-6 sm:gap-8 sm:py-12 sm:pb-10 md:grid-cols-2 md:py-24">
+        <div className="container-boutique relative grid items-center gap-6 py-7 pb-6 sm:gap-8 sm:py-10 sm:pb-8 md:grid-cols-[1.1fr_0.9fr] md:py-14">
           <div className="flex flex-col gap-5 text-primary-foreground sm:gap-6">
             <span
               className="animate-fade-in inline-flex w-fit items-center gap-2 rounded-full bg-secondary/20 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-secondary"
@@ -153,16 +168,17 @@ export default function HomeClient({
               ) : null}
             </div>
           </div>
-          <div className="relative hidden md:block">
-            <div className="animate-scale-in relative aspect-[4/5] w-full overflow-hidden rounded-2xl border border-secondary/30 shadow-2xl" style={{ animationDelay: '150ms' }}>
-              <Image
-                src="https://images.pexels.com/photos/1043471/pexels-photo-1043471.jpeg?auto=compress&cs=tinysrgb&w=900&h=1125&fit=crop"
-                alt="Model wearing a handwoven embroidered Banarasi silk saree from AruhiHandlooms"
-                fill
-                priority
-                sizes="(max-width: 768px) 0px, 50vw"
-                className="object-cover"
-              />
+          <div className="animate-scale-in relative hidden md:block" style={{ animationDelay: '150ms' }}>
+            <div className="relative aspect-[4/5] w-full overflow-hidden rounded-2xl border border-secondary/30 bg-primary/40 shadow-2xl">
+              {/* Decorative motif instead of a stock photo — glowing gold
+                  rings that gently pulse/rotate for a "live" feel while
+                  staying on-brand and photo-free. */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="animate-float h-56 w-56 rounded-full border-2 border-secondary/40" style={{ animationDelay: '0.3s' }} />
+                <div className="animate-float absolute h-40 w-40 rounded-full border-2 border-secondary/60" style={{ animationDelay: '0.9s' }} />
+                <Sparkles className="absolute h-10 w-10 animate-badge-pop text-secondary" />
+              </div>
+              <div className="absolute inset-0 bg-gradient-to-t from-primary/70 via-transparent to-transparent" />
               <div className="absolute bottom-4 left-4 right-4 rounded-xl bg-background/90 p-4 backdrop-blur-sm">
                 <p className="font-serif text-sm font-semibold text-primary">
                   Banarasi Crimson Bridal
@@ -178,8 +194,8 @@ export default function HomeClient({
       )}
 
       {/* Categories */}
-      <section className="container-boutique py-14">
-        <div className="mb-8 flex items-end justify-between">
+      <section className="container-boutique py-8 sm:py-10">
+        <div className="mb-5 flex items-end justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
               Curated Collections
@@ -195,7 +211,7 @@ export default function HomeClient({
             View all <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
-        <div className="grid grid-cols-4 gap-x-3 gap-y-6 sm:grid-cols-6 lg:grid-cols-8">
+        <div className="grid grid-cols-4 gap-x-3 gap-y-4 sm:grid-cols-6 lg:grid-cols-8">
           {visibleCategories.map((c) => {
                 const thumb = categoryThumbs.get(c.id);
                 return (
@@ -238,8 +254,8 @@ export default function HomeClient({
           Hidden entirely when there are no active collections with
           products, so it never leaves an odd empty gap on a fresh store. */}
       {collections.length > 0 && (
-        <section className="container-boutique pb-14">
-          <div className="mb-8 flex items-end justify-between">
+        <section className="container-boutique pb-8 sm:pb-10">
+          <div className="mb-5 flex items-end justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
                 Handpicked For You
@@ -249,7 +265,7 @@ export default function HomeClient({
               </h2>
             </div>
           </div>
-          <div className="grid grid-cols-4 gap-x-3 gap-y-6 sm:grid-cols-6 lg:grid-cols-8">
+          <div className="grid grid-cols-4 gap-x-3 gap-y-4 sm:grid-cols-6 lg:grid-cols-8">
             {collections.map((c) => (
               <Link
                 key={c.id}
@@ -286,9 +302,9 @@ export default function HomeClient({
       <CouponStrip />
 
       {/* Featured */}
-      <section className="bg-muted/40 py-14">
+      <section className="bg-muted/40 py-9 sm:py-11">
         <div className="container-boutique">
-          <div className="mb-8 flex items-end justify-between">
+          <div className="mb-5 flex items-end justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
                 Editor’s Picks
@@ -313,7 +329,7 @@ export default function HomeClient({
       </section>
 
       {/* Banner */}
-      <section className="container-boutique py-14">
+      <section className="container-boutique py-8 sm:py-10">
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-primary to-primary/80 px-8 py-12 text-primary-foreground sm:px-12">
           <div className="absolute -right-10 top-0 h-40 w-40 rounded-full bg-secondary/30 blur-3xl" />
           <div className="relative max-w-xl">
@@ -340,8 +356,8 @@ export default function HomeClient({
       </section>
 
       {/* New arrivals */}
-      <section className="container-boutique pb-16">
-        <div className="mb-8 flex items-end justify-between">
+      <section className="container-boutique pb-10 sm:pb-12">
+        <div className="mb-5 flex items-end justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
               Just In
