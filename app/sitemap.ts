@@ -6,6 +6,15 @@ import { fetchPublishedBlogPostsServer } from '@/lib/blog-api-server';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
+// Without a `revalidate` value, Next.js treats this route as static and
+// bakes it ONCE at build/deploy time -- so a new product/variant added in
+// Admin would NOT show up in sitemap.xml until the next deployment, even
+// though the product page itself is already live (see the 60s revalidate
+// on product/category/shop pages). 3600s (1 hour) means new products get
+// picked up automatically without requiring a redeploy, same idea as the
+// force-dynamic fix on the merchant-feed route.
+export const revalidate = 3600;
+
 // Supabase/PostgREST caps unbounded selects at 1000 rows by default. As the
 // catalog grows past that, a plain `.select()` would silently drop rows from
 // the sitemap -- so we page through everything explicitly instead of trusting
