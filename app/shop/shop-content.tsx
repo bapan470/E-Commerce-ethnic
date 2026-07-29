@@ -57,6 +57,13 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
   // hands us the ranked product ids via sessionStorage, since an uploaded
   // photo can't be put in a URL the way a text query can.
   const [imageSearchIds, setImageSearchIds] = useState<string[] | null>(null);
+  // Per-product id, the exact photo (default OR a colour variant's) that
+  // matched the shopper's uploaded photo best — lets each card show that
+  // specific photo instead of always falling back to its default image.
+  const [imageSearchMatches, setImageSearchMatches] = useState<Record<string, string>>({});
+  // Small preview of the photo the shopper searched with, shown in the
+  // banner below so it's obvious the results are tied to that photo.
+  const [imageSearchThumbnail, setImageSearchThumbnail] = useState<string | null>(null);
 
   const initialCategory = params.get('category') || '';
   const initialQuery = params.get('q') || '';
@@ -106,14 +113,27 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
       } catch {
         setImageSearchIds(null);
       }
+      try {
+        const rawMatches = sessionStorage.getItem('imageSearchMatchedImages');
+        setImageSearchMatches(rawMatches ? JSON.parse(rawMatches) : {});
+      } catch {
+        setImageSearchMatches({});
+      }
+      setImageSearchThumbnail(sessionStorage.getItem('imageSearchThumbnail'));
     } else {
       setImageSearchIds(null);
+      setImageSearchMatches({});
+      setImageSearchThumbnail(null);
     }
   }, [params]);
 
   const clearImageSearch = () => {
     sessionStorage.removeItem('imageSearchResults');
+    sessionStorage.removeItem('imageSearchMatchedImages');
+    sessionStorage.removeItem('imageSearchThumbnail');
     setImageSearchIds(null);
+    setImageSearchMatches({});
+    setImageSearchThumbnail(null);
     router.replace('/shop');
   };
 
@@ -352,7 +372,16 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
 
         {imageSearchIds && (
           <div className="mt-3 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
-            <Camera className="h-4 w-4 shrink-0 text-primary" />
+            {imageSearchThumbnail ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={imageSearchThumbnail}
+                alt="Your uploaded search photo"
+                className="h-8 w-8 shrink-0 rounded-md object-cover ring-1 ring-primary/30"
+              />
+            ) : (
+              <Camera className="h-4 w-4 shrink-0 text-primary" />
+            )}
             <span>Showing pieces visually similar to your uploaded photo.</span>
             <button
               onClick={clearImageSearch}
@@ -445,7 +474,12 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
               {filtered.map((p: Product, idx: number) => (
-                <ProductCard key={p.id} product={p} priority={idx < 4} />
+                <ProductCard
+                  key={p.id}
+                  product={p}
+                  priority={idx < 4}
+                  imageOverride={imageSearchIds ? imageSearchMatches[p.id] : undefined}
+                />
               ))}
             </div>
           )}

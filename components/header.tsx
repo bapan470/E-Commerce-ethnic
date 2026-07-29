@@ -8,7 +8,7 @@ import { Search, ShoppingBag, Menu, User, Heart, ArrowLeft, Camera, Loader2 } fr
 import { useCart, useCategories } from '@/lib/cart-context';
 import { useAuth } from '@/lib/auth-context';
 import { getCheckoutReturnPath, isCheckoutReturnFromBuyNow, clearCheckoutReturnBuyNowFlag } from '@/lib/checkout-return';
-import { rankProductIdsByImage } from '@/lib/image-search';
+import { rankProductIdsByImage, createSearchThumbnail } from '@/lib/image-search';
 import { fetchProducts } from '@/lib/products-api';
 import { Product } from '@/lib/types';
 import { formatINR } from '@/lib/format';
@@ -317,19 +317,27 @@ export default function Header() {
         return;
       }
 
-      let rankedIds = await tryAiImageSearch(currentProducts, dataUrl);
-      let systemicFailure = false;
-      // Fall back to the client-side colour match whenever AI didn't give
-      // us a usable, non-empty result — not just when it returned null.
+      const aiRankedIds = await tryAiImageSearch(currentProducts, dataUrl);
+
+      // Always run the colour fingerprint pass too — even when the AI call
+      // succeeds — because it's the only thing that tells us WHICH photo of
+      // a product (its default shot, or a specific colour variant's shot)
+      // actually looks like what the shopper uploaded. The AI path only
+      // ranks products, it doesn't say which of a product's several photos
+      // matched, so without this every card would keep showing its default
+      // image even when the shopper's photo was clearly the "blue" variant.
+      const colourMatch = await rankProductIdsByImage(currentProducts, dataUrl);
+
+      // Prefer the AI's ordering when it gave us a usable, non-empty
+      // result; otherwise fall back to the colour match's own ordering.
       // Previously an AI response of `rankedIds: []` (photo understood,
       // but nothing scored) was treated as final and skipped the fallback
       // entirely, so the shopper saw "couldn't match" even though the
       // colour-fingerprint method might have found something.
-      if (!rankedIds || rankedIds.length === 0) {
-        const fallback = await rankProductIdsByImage(currentProducts, dataUrl);
-        rankedIds = fallback.ids;
-        systemicFailure = fallback.systemicFailure;
-      }
+      const rankedIds =
+        aiRankedIds && aiRankedIds.length > 0 ? aiRankedIds : colourMatch.ids;
+      const systemicFailure =
+        !(aiRankedIds && aiRankedIds.length > 0) && colourMatch.systemicFailure;
 
       if (!rankedIds || rankedIds.length === 0) {
         // A systemic failure means we couldn't read the photo or any
@@ -342,7 +350,22 @@ export default function Header() {
         );
         return;
       }
+
+      // Small preview of the shopper's own uploaded photo, shown back to
+      // them in the "showing pieces similar to..." banner as confirmation
+      // of what they searched with.
+      const thumbnail = await createSearchThumbnail(dataUrl);
+
       sessionStorage.setItem('imageSearchResults', JSON.stringify(rankedIds));
+      sessionStorage.setItem(
+        'imageSearchMatchedImages',
+        JSON.stringify(colourMatch.bestImageByProductId)
+      );
+      if (thumbnail) {
+        sessionStorage.setItem('imageSearchThumbnail', thumbnail);
+      } else {
+        sessionStorage.removeItem('imageSearchThumbnail');
+      }
       setMobileOpen(false);
       setMobileSearchOpen(false);
       router.push('/shop?imgsearch=1');

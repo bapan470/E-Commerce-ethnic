@@ -16,6 +16,7 @@ export default function ProductCard({
   product,
   priority = false,
   compact = false,
+  imageOverride,
 }: {
   product: Product;
   /** Set true for cards in the first visible row so their image gets
@@ -24,6 +25,15 @@ export default function ProductCard({
   /** Smaller padding/type for horizontal carousels (Similar Products,
    *  Recently Viewed) where cards sit in a narrower, scrollable strip. */
   compact?: boolean;
+  /**
+   * Used by "search by photo" results: the exact photo (which may be a
+   * colour variant's photo, not the product's default image) that actually
+   * matched the shopper's uploaded photo. When present it takes priority
+   * over the product's own default/first image, so a shopper who searched
+   * with a photo of the "blue" variant sees that blue photo on the card
+   * instead of whatever colour happens to be the product's default.
+   */
+  imageOverride?: string;
 }) {
   const { addItem } = useCart();
   const router = useRouter();
@@ -54,7 +64,8 @@ export default function ProductCard({
   // the default one -- shoppers land straight on that colour, and clicking
   // through from shop/category always opens that exact variant.
   const href = `/product/${product.default_variant_slug || product.slug}`;
-  const img = product.default_variant_image || product.images[0] || 'https://placehold.co/800x1000?text=No+Image';
+  const img =
+    imageOverride || product.default_variant_image || product.images[0] || 'https://placehold.co/800x1000?text=No+Image';
   const hoverImg = product.images[1];
   const altText = `${product.name} - ${product.fabric} ${product.category} from ${product.origin}`;
 

@@ -38,6 +38,39 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+/**
+ * Shrinks the shopper's uploaded photo down to a small JPEG data URL, purely
+ * so we have something cheap to stash in sessionStorage and show back to
+ * them (in the search bar and the "showing pieces similar to..." banner) as
+ * confirmation of what they searched with. The original photo can be
+ * several MB as a base64 data URL — way too big to comfortably round-trip
+ * through sessionStorage alongside the ranked ids — so this is capped to a
+ * small square thumbnail instead.
+ */
+export function createSearchThumbnail(src: string, maxDim = 96): Promise<string | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return resolve(null);
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.72));
+      } catch {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
+
 /** Returns a 192-number colour/layout fingerprint, or null if it couldn't be read. */
 export async function getImageSignature(src: string): Promise<number[] | null> {
   if (!src) return null;
@@ -79,6 +112,15 @@ export function signatureDistance(a: number[], b: number[]): number {
 export interface ImageSearchResult {
   ids: string[];
   /**
+   * Per-product id, the single photo (base product photo OR a colour
+   * variant's photo — see the `work` array below) that was closest to the
+   * shopper's uploaded photo. Lets the caller show that exact matched photo
+   * (e.g. the "blue" variant shot) instead of always falling back to the
+   * product's default/first image, which may be a totally different
+   * colour/angle than what the shopper searched with.
+   */
+  bestImageByProductId: Record<string, string>;
+  /**
    * True when we couldn't fingerprint ANY product photo at all (e.g. the
    * proxy/network is down), as opposed to fingerprinting them fine and
    * simply finding nothing visually close. The caller should show a very
@@ -93,7 +135,7 @@ export async function rankProductIdsByImage<
   T extends { id: string; images: string[] | null | undefined; all_images?: string[] | null }
 >(products: T[], queryImageSrc: string): Promise<ImageSearchResult> {
   const querySigResult = await getImageSignature(queryImageSrc);
-  if (!querySigResult) return { ids: [], systemicFailure: true };
+  if (!querySigResult) return { ids: [], bestImageByProductId: {}, systemicFailure: true };
   // Re-bind to a variable whose type TS keeps narrowed to `number[]` inside
   // the nested async worker below (closures over a reassignable outer
   // binding don't retain the null-check narrowing across function bounds).
@@ -121,6 +163,7 @@ export async function rankProductIdsByImage<
   }
 
   const bestDist = new Map<string, number>();
+  const bestImage = new Map<string, string>();
   const fingerprintedProductIds = new Set<string>();
   const CONCURRENCY = 6;
   let cursor = 0;
@@ -133,7 +176,13 @@ export async function rankProductIdsByImage<
       fingerprintedProductIds.add(item.id);
       const dist = signatureDistance(querySig, sig);
       const prev = bestDist.get(item.id);
-      if (prev === undefined || dist < prev) bestDist.set(item.id, dist);
+      // Whichever single photo (default OR any colour variant's) comes out
+      // closest for this product is the one we'll want to show back to the
+      // shopper — so bestImage is updated in lockstep with bestDist.
+      if (prev === undefined || dist < prev) {
+        bestDist.set(item.id, dist);
+        bestImage.set(item.id, item.src);
+      }
     }
   }
 
@@ -154,5 +203,9 @@ export async function rankProductIdsByImage<
     );
   }
 
-  return { ids: scored.map((s) => s.id), systemicFailure };
+  return {
+    ids: scored.map((s) => s.id),
+    bestImageByProductId: Object.fromEntries(bestImage),
+    systemicFailure,
+  };
 }

@@ -1,438 +1,292 @@
-diff --git a/app/api/admin/analytics/route.ts b/app/api/admin/analytics/route.ts
-index 92b4e81..ce91aa6 100644
---- a/app/api/admin/analytics/route.ts
-+++ b/app/api/admin/analytics/route.ts
-@@ -6,24 +6,40 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
- const REVENUE_STATUSES = ['paid', 'shipped', 'delivered'];
- const EXCLUDED_ORDER_STATUSES = ['cancelled', 'failed'];
- const TREND_DAYS = 30;
-+const ALLOWED_PERF_DAYS = [7, 30, 90];
+diff --git a/app/shop/shop-content.tsx b/app/shop/shop-content.tsx
+index 8152b1c..e21aa4e 100644
+--- a/app/shop/shop-content.tsx
++++ b/app/shop/shop-content.tsx
+@@ -57,6 +57,13 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
+   // hands us the ranked product ids via sessionStorage, since an uploaded
+   // photo can't be put in a URL the way a text query can.
+   const [imageSearchIds, setImageSearchIds] = useState<string[] | null>(null);
++  // Per-product id, the exact photo (default OR a colour variant's) that
++  // matched the shopper's uploaded photo best — lets each card show that
++  // specific photo instead of always falling back to its default image.
++  const [imageSearchMatches, setImageSearchMatches] = useState<Record<string, string>>({});
++  // Small preview of the photo the shopper searched with, shown in the
++  // banner below so it's obvious the results are tied to that photo.
++  const [imageSearchThumbnail, setImageSearchThumbnail] = useState<string | null>(null);
  
- function dayKey(dateStr: string) {
-   return new Date(dateStr).toISOString().slice(0, 10);
- }
- 
--export async function GET() {
-+export async function GET(req: Request) {
-   const cookie = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? null;
-   const verified = await verifyAdminToken(cookie);
-   if (!verified.valid) {
-     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-   }
- 
-+  // `?days=7|30|90` only controls the Product Performance table's window
-+  // below -- the rest of the dashboard (sales trend, funnel, summary cards)
-+  // intentionally stays pinned to the fixed last-30-days view.
-+  const url = new URL(req.url);
-+  const requestedDays = Number(url.searchParams.get('days'));
-+  const perfDays = ALLOWED_PERF_DAYS.includes(requestedDays) ? requestedDays : TREND_DAYS;
-+
-   try {
-     const supabase = getSupabaseAdmin();
- 
-     const since = new Date();
-     since.setDate(since.getDate() - TREND_DAYS);
- 
-+    const perfSince = new Date();
-+    perfSince.setDate(perfSince.getDate() - perfDays);
-+
-+    // Fetch events far enough back to cover whichever window is larger, then
-+    // filter in-memory per section below so a wider Product Performance
-+    // window never leaks into the fixed 30-day funnel/summary numbers.
-+    const fetchSince = perfSince < since ? perfSince : since;
-+
-     const [ordersRes, productsRes, eventsRes] = await Promise.all([
-       supabase
-         .from('orders')
-@@ -35,8 +51,8 @@ export async function GET() {
-         .order('stock_quantity', { ascending: true }),
-       supabase
-         .from('activity_events')
--        .select('session_id, event_type, created_at')
--        .gte('created_at', since.toISOString()),
-+        .select('session_id, event_type, product_id, created_at')
-+        .gte('created_at', fetchSince.toISOString()),
-     ]);
- 
-     if (ordersRes.error) throw ordersRes.error;
-@@ -105,6 +121,7 @@ export async function GET() {
-       .slice(0, 10);
- 
-     // ---------------- Conversion funnel (session-based, last 30 days) ----------------
-+    const eventsInTrendWindow = events.filter((ev) => ev.created_at && new Date(ev.created_at) >= since);
-     const sessionsByStage: Record<string, Set<string>> = {
-       page_view: new Set(),
-       product_view: new Set(),
-@@ -112,7 +129,7 @@ export async function GET() {
-       checkout_start: new Set(),
-       purchase: new Set(),
-     };
--    for (const ev of events) {
-+    for (const ev of eventsInTrendWindow) {
-       if (sessionsByStage[ev.event_type]) sessionsByStage[ev.event_type].add(ev.session_id);
-     }
-     const funnel = [
-@@ -139,6 +156,47 @@ export async function GET() {
-         in_stock: p.in_stock,
-       }));
- 
-+    // ---------------- Product performance: Impressions vs Conversion (perfDays window) ----------------
-+    // "Impressions" = how many times the product page was viewed (product_view
-+    // events). "Conversion" = what share of those views turned into an order
-+    // containing that product, within the same window. Same idea as the
-+    // per-product report Google Merchant Center shows -- built from data we
-+    // already track (activity_events + orders.items), no new tracking needed.
-+    const eventsInPerfWindow = events.filter((ev) => ev.created_at && new Date(ev.created_at) >= perfSince);
-+    const productViewCounts = new Map<string, number>();
-+    for (const ev of eventsInPerfWindow) {
-+      if (ev.event_type !== 'product_view' || !ev.product_id) continue;
-+      productViewCounts.set(ev.product_id, (productViewCounts.get(ev.product_id) ?? 0) + 1);
-+    }
-+    const productPurchaseCounts = new Map<string, number>();
-+    for (const o of orders) {
-+      if (!REVENUE_STATUSES.includes(o.status)) continue;
-+      if (!o.created_at || new Date(o.created_at) < perfSince) continue;
-+      const items = Array.isArray(o.items) ? o.items : [];
-+      const countedInThisOrder = new Set<string>(); // one order buying 2x the same product still counts as 1 conversion
-+      for (const it of items) {
-+        if (!it.product_id || countedInThisOrder.has(it.product_id)) continue;
-+        countedInThisOrder.add(it.product_id);
-+        productPurchaseCounts.set(it.product_id, (productPurchaseCounts.get(it.product_id) ?? 0) + 1);
+   const initialCategory = params.get('category') || '';
+   const initialQuery = params.get('q') || '';
+@@ -106,14 +113,27 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
+       } catch {
+         setImageSearchIds(null);
+       }
++      try {
++        const rawMatches = sessionStorage.getItem('imageSearchMatchedImages');
++        setImageSearchMatches(rawMatches ? JSON.parse(rawMatches) : {});
++      } catch {
++        setImageSearchMatches({});
 +      }
-+    }
-+    const productPerformance = products
-+      .map((p) => {
-+        const impressions = productViewCounts.get(p.id) ?? 0;
-+        const conversions = productPurchaseCounts.get(p.id) ?? 0;
-+        return {
-+          productId: p.id,
-+          name: p.name,
-+          image: p.images?.[0] ?? null,
-+          impressions,
-+          conversions,
-+          conversionRate: impressions > 0 ? Number(((conversions / impressions) * 100).toFixed(2)) : 0,
-+        };
-+      })
-+      .filter((p) => p.impressions > 0)
-+      .sort((a, b) => b.impressions - a.impressions)
-+      .slice(0, 25);
++      setImageSearchThumbnail(sessionStorage.getItem('imageSearchThumbnail'));
+     } else {
+       setImageSearchIds(null);
++      setImageSearchMatches({});
++      setImageSearchThumbnail(null);
+     }
+   }, [params]);
+ 
+   const clearImageSearch = () => {
+     sessionStorage.removeItem('imageSearchResults');
++    sessionStorage.removeItem('imageSearchMatchedImages');
++    sessionStorage.removeItem('imageSearchThumbnail');
+     setImageSearchIds(null);
++    setImageSearchMatches({});
++    setImageSearchThumbnail(null);
+     router.replace('/shop');
+   };
+ 
+@@ -352,7 +372,16 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
+ 
+         {imageSearchIds && (
+           <div className="mt-3 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+-            <Camera className="h-4 w-4 shrink-0 text-primary" />
++            {imageSearchThumbnail ? (
++              // eslint-disable-next-line @next/next/no-img-element
++              <img
++                src={imageSearchThumbnail}
++                alt="Your uploaded search photo"
++                className="h-8 w-8 shrink-0 rounded-md object-cover ring-1 ring-primary/30"
++              />
++            ) : (
++              <Camera className="h-4 w-4 shrink-0 text-primary" />
++            )}
+             <span>Showing pieces visually similar to your uploaded photo.</span>
+             <button
+               onClick={clearImageSearch}
+@@ -445,7 +474,12 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
+           ) : (
+             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
+               {filtered.map((p: Product, idx: number) => (
+-                <ProductCard key={p.id} product={p} priority={idx < 4} />
++                <ProductCard
++                  key={p.id}
++                  product={p}
++                  priority={idx < 4}
++                  imageOverride={imageSearchIds ? imageSearchMatches[p.id] : undefined}
++                />
+               ))}
+             </div>
+           )}
+diff --git a/components/header.tsx b/components/header.tsx
+index 3fdc1a0..12346b9 100644
+--- a/components/header.tsx
++++ b/components/header.tsx
+@@ -8,7 +8,7 @@ import { Search, ShoppingBag, Menu, User, Heart, ArrowLeft, Camera, Loader2 } fr
+ import { useCart, useCategories } from '@/lib/cart-context';
+ import { useAuth } from '@/lib/auth-context';
+ import { getCheckoutReturnPath, isCheckoutReturnFromBuyNow, clearCheckoutReturnBuyNowFlag } from '@/lib/checkout-return';
+-import { rankProductIdsByImage } from '@/lib/image-search';
++import { rankProductIdsByImage, createSearchThumbnail } from '@/lib/image-search';
+ import { fetchProducts } from '@/lib/products-api';
+ import { Product } from '@/lib/types';
+ import { formatINR } from '@/lib/format';
+@@ -317,19 +317,27 @@ export default function Header() {
+         return;
+       }
+ 
+-      let rankedIds = await tryAiImageSearch(currentProducts, dataUrl);
+-      let systemicFailure = false;
+-      // Fall back to the client-side colour match whenever AI didn't give
+-      // us a usable, non-empty result — not just when it returned null.
++      const aiRankedIds = await tryAiImageSearch(currentProducts, dataUrl);
 +
-     return NextResponse.json({
-       summary: {
-         totalRevenue30d,
-@@ -151,6 +209,8 @@ export async function GET() {
-       topProducts,
-       funnel,
-       lowStock,
-+      productPerformance,
-+      productPerformanceDays: perfDays,
-     });
-   } catch (err) {
-     return NextResponse.json({ error: 'Failed to load analytics' }, { status: 500 });
-diff --git a/app/api/admin/products/[id]/route.ts b/app/api/admin/products/[id]/route.ts
-index 9d7cff4..f2f145a 100644
---- a/app/api/admin/products/[id]/route.ts
-+++ b/app/api/admin/products/[id]/route.ts
-@@ -1,10 +1,29 @@
- import { NextResponse } from 'next/server';
- import { cookies } from 'next/headers';
-+import { revalidatePath } from 'next/cache';
- import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
- import { getSupabaseAdmin } from '@/lib/supabase-admin';
++      // Always run the colour fingerprint pass too — even when the AI call
++      // succeeds — because it's the only thing that tells us WHICH photo of
++      // a product (its default shot, or a specific colour variant's shot)
++      // actually looks like what the shopper uploaded. The AI path only
++      // ranks products, it doesn't say which of a product's several photos
++      // matched, so without this every card would keep showing its default
++      // image even when the shopper's photo was clearly the "blue" variant.
++      const colourMatch = await rankProductIdsByImage(currentProducts, dataUrl);
++
++      // Prefer the AI's ordering when it gave us a usable, non-empty
++      // result; otherwise fall back to the colour match's own ordering.
+       // Previously an AI response of `rankedIds: []` (photo understood,
+       // but nothing scored) was treated as final and skipped the fallback
+       // entirely, so the shopper saw "couldn't match" even though the
+       // colour-fingerprint method might have found something.
+-      if (!rankedIds || rankedIds.length === 0) {
+-        const fallback = await rankProductIdsByImage(currentProducts, dataUrl);
+-        rankedIds = fallback.ids;
+-        systemicFailure = fallback.systemicFailure;
+-      }
++      const rankedIds =
++        aiRankedIds && aiRankedIds.length > 0 ? aiRankedIds : colourMatch.ids;
++      const systemicFailure =
++        !(aiRankedIds && aiRankedIds.length > 0) && colourMatch.systemicFailure;
  
- // SECURITY: see app/api/admin/products/route.ts for the full writeup.
+       if (!rankedIds || rankedIds.length === 0) {
+         // A systemic failure means we couldn't read the photo or any
+@@ -342,7 +350,22 @@ export default function Header() {
+         );
+         return;
+       }
++
++      // Small preview of the shopper's own uploaded photo, shown back to
++      // them in the "showing pieces similar to..." banner as confirmation
++      // of what they searched with.
++      const thumbnail = await createSearchThumbnail(dataUrl);
++
+       sessionStorage.setItem('imageSearchResults', JSON.stringify(rankedIds));
++      sessionStorage.setItem(
++        'imageSearchMatchedImages',
++        JSON.stringify(colourMatch.bestImageByProductId)
++      );
++      if (thumbnail) {
++        sessionStorage.setItem('imageSearchThumbnail', thumbnail);
++      } else {
++        sessionStorage.removeItem('imageSearchThumbnail');
++      }
+       setMobileOpen(false);
+       setMobileSearchOpen(false);
+       router.push('/shop?imgsearch=1');
+diff --git a/components/product-card.tsx b/components/product-card.tsx
+index 3ca8e73..fd68f5f 100644
+--- a/components/product-card.tsx
++++ b/components/product-card.tsx
+@@ -16,6 +16,7 @@ export default function ProductCard({
+   product,
+   priority = false,
+   compact = false,
++  imageOverride,
+ }: {
+   product: Product;
+   /** Set true for cards in the first visible row so their image gets
+@@ -24,6 +25,15 @@ export default function ProductCard({
+   /** Smaller padding/type for horizontal carousels (Similar Products,
+    *  Recently Viewed) where cards sit in a narrower, scrollable strip. */
+   compact?: boolean;
++  /**
++   * Used by "search by photo" results: the exact photo (which may be a
++   * colour variant's photo, not the product's default image) that actually
++   * matched the shopper's uploaded photo. When present it takes priority
++   * over the product's own default/first image, so a shopper who searched
++   * with a photo of the "blue" variant sees that blue photo on the card
++   * instead of whatever colour happens to be the product's default.
++   */
++  imageOverride?: string;
+ }) {
+   const { addItem } = useCart();
+   const router = useRouter();
+@@ -54,7 +64,8 @@ export default function ProductCard({
+   // the default one -- shoppers land straight on that colour, and clicking
+   // through from shop/category always opens that exact variant.
+   const href = `/product/${product.default_variant_slug || product.slug}`;
+-  const img = product.default_variant_image || product.images[0] || 'https://placehold.co/800x1000?text=No+Image';
++  const img =
++    imageOverride || product.default_variant_image || product.images[0] || 'https://placehold.co/800x1000?text=No+Image';
+   const hoverImg = product.images[1];
+   const altText = `${product.name} - ${product.fabric} ${product.category} from ${product.origin}`;
  
-+// The category and product storefront pages are ISR-cached (see
-+// `export const revalidate = 60` on app/category/[slug]/page.tsx and
-+// app/product/[slug]/page.tsx) so they don't hammer the DB on every visit.
-+// That's great for performance but on its own means an admin edit/delete
-+// can take up to 60s to actually disappear from the storefront -- long
-+// enough that a just-deleted product kept showing on its category page and
-+// 404'ing when clicked. Purging the specific paths on every write makes the
-+// change visible immediately instead of waiting out that window.
-+function revalidateStorefront(slug?: string | null) {
-+  revalidatePath('/');
-+  // Dynamic-segment pattern: revalidates every /category/[slug] page in one
-+  // call. Products don't store a category *slug* (only category_name/id),
-+  // so revalidating them all is simpler and just as cheap as figuring out
-+  // which single category this product belonged to.
-+  revalidatePath('/category/[slug]', 'page');
-+  if (slug) revalidatePath(`/product/${slug}`);
+diff --git a/lib/image-search.ts b/lib/image-search.ts
+index 1a133a8..539d3a3 100644
+--- a/lib/image-search.ts
++++ b/lib/image-search.ts
+@@ -38,6 +38,39 @@ function loadImage(src: string): Promise<HTMLImageElement> {
+   });
+ }
+ 
++/**
++ * Shrinks the shopper's uploaded photo down to a small JPEG data URL, purely
++ * so we have something cheap to stash in sessionStorage and show back to
++ * them (in the search bar and the "showing pieces similar to..." banner) as
++ * confirmation of what they searched with. The original photo can be
++ * several MB as a base64 data URL — way too big to comfortably round-trip
++ * through sessionStorage alongside the ranked ids — so this is capped to a
++ * small square thumbnail instead.
++ */
++export function createSearchThumbnail(src: string, maxDim = 96): Promise<string | null> {
++  return new Promise((resolve) => {
++    const img = new Image();
++    img.onload = () => {
++      try {
++        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
++        const w = Math.max(1, Math.round(img.width * scale));
++        const h = Math.max(1, Math.round(img.height * scale));
++        const canvas = document.createElement('canvas');
++        canvas.width = w;
++        canvas.height = h;
++        const ctx = canvas.getContext('2d');
++        if (!ctx) return resolve(null);
++        ctx.drawImage(img, 0, 0, w, h);
++        resolve(canvas.toDataURL('image/jpeg', 0.72));
++      } catch {
++        resolve(null);
++      }
++    };
++    img.onerror = () => resolve(null);
++    img.src = src;
++  });
 +}
 +
- async function requireAdmin() {
-   const cookie = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? null;
-   const verified = await verifyAdminToken(cookie);
-@@ -43,6 +62,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
-     return NextResponse.json({ error: error.message }, { status: 500 });
+ /** Returns a 192-number colour/layout fingerprint, or null if it couldn't be read. */
+ export async function getImageSignature(src: string): Promise<number[] | null> {
+   if (!src) return null;
+@@ -78,6 +111,15 @@ export function signatureDistance(a: number[], b: number[]): number {
+  */
+ export interface ImageSearchResult {
+   ids: string[];
++  /**
++   * Per-product id, the single photo (base product photo OR a colour
++   * variant's photo — see the `work` array below) that was closest to the
++   * shopper's uploaded photo. Lets the caller show that exact matched photo
++   * (e.g. the "blue" variant shot) instead of always falling back to the
++   * product's default/first image, which may be a totally different
++   * colour/angle than what the shopper searched with.
++   */
++  bestImageByProductId: Record<string, string>;
+   /**
+    * True when we couldn't fingerprint ANY product photo at all (e.g. the
+    * proxy/network is down), as opposed to fingerprinting them fine and
+@@ -93,7 +135,7 @@ export async function rankProductIdsByImage<
+   T extends { id: string; images: string[] | null | undefined; all_images?: string[] | null }
+ >(products: T[], queryImageSrc: string): Promise<ImageSearchResult> {
+   const querySigResult = await getImageSignature(queryImageSrc);
+-  if (!querySigResult) return { ids: [], systemicFailure: true };
++  if (!querySigResult) return { ids: [], bestImageByProductId: {}, systemicFailure: true };
+   // Re-bind to a variable whose type TS keeps narrowed to `number[]` inside
+   // the nested async worker below (closures over a reassignable outer
+   // binding don't retain the null-check narrowing across function bounds).
+@@ -121,6 +163,7 @@ export async function rankProductIdsByImage<
    }
  
-+  revalidateStorefront(data?.slug);
-   return NextResponse.json({ product: data });
- }
- 
-@@ -52,11 +72,20 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
+   const bestDist = new Map<string, number>();
++  const bestImage = new Map<string, string>();
+   const fingerprintedProductIds = new Set<string>();
+   const CONCURRENCY = 6;
+   let cursor = 0;
+@@ -133,7 +176,13 @@ export async function rankProductIdsByImage<
+       fingerprintedProductIds.add(item.id);
+       const dist = signatureDistance(querySig, sig);
+       const prev = bestDist.get(item.id);
+-      if (prev === undefined || dist < prev) bestDist.set(item.id, dist);
++      // Whichever single photo (default OR any colour variant's) comes out
++      // closest for this product is the one we'll want to show back to the
++      // shopper — so bestImage is updated in lockstep with bestDist.
++      if (prev === undefined || dist < prev) {
++        bestDist.set(item.id, dist);
++        bestImage.set(item.id, item.src);
++      }
+     }
    }
  
-   const supabase = getSupabaseAdmin();
--  const { error } = await supabase.from('products').delete().eq('id', params.id);
-+  // .select() on a delete returns the deleted row(s) -- grabbing the slug
-+  // here (instead of a bare delete) is what lets us purge that exact
-+  // /product/[slug] page below.
-+  const { data, error } = await supabase
-+    .from('products')
-+    .delete()
-+    .eq('id', params.id)
-+    .select('slug')
-+    .maybeSingle();
- 
-   if (error) {
-     return NextResponse.json({ error: error.message }, { status: 500 });
+@@ -154,5 +203,9 @@ export async function rankProductIdsByImage<
+     );
    }
  
-+  revalidateStorefront(data?.slug);
-   return NextResponse.json({ success: true });
+-  return { ids: scored.map((s) => s.id), systemicFailure };
++  return {
++    ids: scored.map((s) => s.id),
++    bestImageByProductId: Object.fromEntries(bestImage),
++    systemicFailure,
++  };
  }
-diff --git a/app/api/admin/products/route.ts b/app/api/admin/products/route.ts
-index a6d6a92..5bf721d 100644
---- a/app/api/admin/products/route.ts
-+++ b/app/api/admin/products/route.ts
-@@ -1,5 +1,6 @@
- import { NextResponse } from 'next/server';
- import { cookies } from 'next/headers';
-+import { revalidatePath } from 'next/cache';
- import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
- import { getSupabaseAdmin } from '@/lib/supabase-admin';
- 
-@@ -76,5 +77,11 @@ export async function POST(req: Request) {
-     return NextResponse.json({ error: error.message }, { status: 500 });
-   }
- 
-+  // See app/api/admin/products/[id]/route.ts for why this is needed --
-+  // category pages are ISR-cached, so a brand-new product could otherwise
-+  // take up to 60s to appear there.
-+  revalidatePath('/');
-+  revalidatePath('/category/[slug]', 'page');
-+
-   return NextResponse.json({ product: data });
- }
-diff --git a/app/category/[slug]/page.tsx b/app/category/[slug]/page.tsx
-index 97469b1..758fd4a 100644
---- a/app/category/[slug]/page.tsx
-+++ b/app/category/[slug]/page.tsx
-@@ -7,6 +7,19 @@ import { safeJsonLd } from '@/lib/json-ld';
- 
- const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
- 
-+// This page uses generateStaticParams(), so without a `revalidate` value
-+// Next.js caches it once at build time and NEVER regenerates it (revalidate:
-+// false is the default for statically-generated pages). That meant a product
-+// deleted from the admin panel kept showing up here on the category
-+// storefront page indefinitely -- because it was baked into that static
-+// HTML at build time -- while its own /product/[slug] page (rendered fresh,
-+// no generateStaticParams) correctly 404'd on click. ISR with a 60s window
-+// keeps this page nearly-static (cheap, fast) while making sure it drops
-+// deleted/changed products within a minute instead of only on the next
-+// deploy. Admin mutations also call revalidatePath() for an instant purge --
-+// see app/api/admin/products/[id]/route.ts -- this is just the safety net.
-+export const revalidate = 60;
-+
- type Params = { params: { slug: string } };
- 
- /**
-diff --git a/app/product/[slug]/page.tsx b/app/product/[slug]/page.tsx
-index dc6ddd1..b77bfcb 100644
---- a/app/product/[slug]/page.tsx
-+++ b/app/product/[slug]/page.tsx
-@@ -6,6 +6,14 @@ import ProductDetail from './product-detail';
- 
- const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
- 
-+// Safety net alongside the category page's identical fix (see the comment
-+// there): without a `revalidate` value, once a product page is rendered and
-+// cached it can be served stale indefinitely. 60s keeps this in sync with
-+// admin edits/deletes even if the on-demand revalidatePath() call in
-+// app/api/admin/products/[id]/route.ts is ever missed (e.g. a direct DB
-+// edit, or a vendor-side approval-status change).
-+export const revalidate = 60;
-+
- type Params = { params: { slug: string } };
- 
- /**
-diff --git a/components/admin/analytics-panel.tsx b/components/admin/analytics-panel.tsx
-index 56bd723..29a70cf 100644
---- a/components/admin/analytics-panel.tsx
-+++ b/components/admin/analytics-panel.tsx
-@@ -76,6 +76,9 @@ function TabButton({
- function SalesPanel() {
-   const [data, setData] = useState<AnalyticsData | null>(null);
-   const [loading, setLoading] = useState(true);
-+  const [perfDays, setPerfDays] = useState(30);
-+  const [perfSearch, setPerfSearch] = useState('');
-+  const [perfLoading, setPerfLoading] = useState(false);
- 
-   useEffect(() => {
-     fetchAnalytics()
-@@ -84,6 +87,26 @@ function SalesPanel() {
-       .finally(() => setLoading(false));
-   }, []);
- 
-+  // Only re-fetches when the date-range filter changes (not on every
-+  // keystroke of the search box, which just filters what's already loaded)
-+  // -- and only swaps in the new productPerformance slice so the rest of
-+  // the dashboard (charts, funnel) doesn't flicker/reload.
-+  useEffect(() => {
-+    if (!data) return; // wait for the initial full load above
-+    setPerfLoading(true);
-+    fetchAnalytics(perfDays)
-+      .then((res) =>
-+        setData((prev) =>
-+          prev
-+            ? { ...prev, productPerformance: res.productPerformance, productPerformanceDays: res.productPerformanceDays }
-+            : res
-+        )
-+      )
-+      .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load product performance'))
-+      .finally(() => setPerfLoading(false));
-+    // eslint-disable-next-line react-hooks/exhaustive-deps
-+  }, [perfDays]);
-+
-   if (loading) {
-     return (
-       <div className="grid gap-6">
-@@ -102,7 +125,7 @@ function SalesPanel() {
-     return <p className="text-sm text-muted-foreground">Could not load analytics right now.</p>;
-   }
- 
--  const { summary, salesTrend, topProducts, funnel, lowStock } = data;
-+  const { summary, salesTrend, topProducts, funnel, lowStock, productPerformance } = data;
- 
-   return (
-     <div className="grid gap-6">
-@@ -202,6 +225,90 @@ function SalesPanel() {
-         </div>
-       </div>
- 
-+      {/* Product performance: Impressions vs Conversion */}
-+      <div className="rounded-lg border border-border/60 bg-card p-4">
-+        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-+          <h3 className="font-serif text-lg font-bold text-primary">Product Performance</h3>
-+          <div className="flex items-center gap-2">
-+            <select
-+              value={perfDays}
-+              onChange={(e) => setPerfDays(Number(e.target.value))}
-+              className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs"
-+            >
-+              <option value={7}>Last 7 days</option>
-+              <option value={30}>Last 30 days</option>
-+              <option value={90}>Last 90 days</option>
-+            </select>
-+            <input
-+              type="text"
-+              value={perfSearch}
-+              onChange={(e) => setPerfSearch(e.target.value)}
-+              placeholder="Search product..."
-+              className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs"
-+            />
-+          </div>
-+        </div>
-+        <p className="mb-3 text-xs text-muted-foreground">
-+          Impressions = product page views. Conversion = % of those views that led to an order containing this product.
-+        </p>
-+        {(() => {
-+          const filtered = productPerformance.filter((p) =>
-+            p.name.toLowerCase().includes(perfSearch.trim().toLowerCase())
-+          );
-+          if (perfLoading) {
-+            return <Skeleton className="h-40 rounded-lg" />;
-+          }
-+          if (productPerformance.length === 0) {
-+            return (
-+              <p className="text-sm text-muted-foreground">
-+                No product views recorded in this period yet.
-+              </p>
-+            );
-+          }
-+          if (filtered.length === 0) {
-+            return <p className="text-sm text-muted-foreground">No product matches "{perfSearch}".</p>;
-+          }
-+          return (
-+            <div className="overflow-x-auto">
-+              <table className="w-full text-sm">
-+                <thead>
-+                  <tr className="border-b border-border/60 text-left text-xs text-muted-foreground">
-+                    <th className="pb-2 pr-3 font-medium">Product</th>
-+                    <th className="pb-2 pr-3 font-medium">Impressions</th>
-+                    <th className="pb-2 font-medium">Conversion</th>
-+                  </tr>
-+                </thead>
-+                <tbody className="divide-y divide-border/40">
-+                  {filtered.map((p) => (
-+                    <tr key={p.productId}>
-+                      <td className="py-2 pr-3">
-+                        <div className="flex items-center gap-2">
-+                          {p.image ? (
-+                            // eslint-disable-next-line @next/next/no-img-element
-+                            <img src={p.image} alt={p.name} className="h-8 w-8 rounded-md object-cover" />
-+                          ) : (
-+                            <div className="h-8 w-8 rounded-md bg-muted" />
-+                          )}
-+                          <span className="max-w-[220px] truncate font-medium">{p.name}</span>
-+                        </div>
-+                      </td>
-+                      <td className="py-2 pr-3 text-emerald-600">{p.impressions}</td>
-+                      <td
-+                        className={`py-2 font-medium ${
-+                          p.conversionRate > 0 ? 'text-emerald-600' : 'text-destructive'
-+                        }`}
-+                      >
-+                        {p.conversionRate.toFixed(2)}%
-+                      </td>
-+                    </tr>
-+                  ))}
-+                </tbody>
-+              </table>
-+            </div>
-+          );
-+        })()}
-+      </div>
-+
-       {/* Low stock alerts */}
-       <div className="rounded-lg border border-border/60 bg-card p-4">
-         <div className="mb-3 flex items-center gap-2">
-diff --git a/lib/analytics-api.ts b/lib/analytics-api.ts
-index 241a65d..8f44baa 100644
---- a/lib/analytics-api.ts
-+++ b/lib/analytics-api.ts
-@@ -17,6 +17,15 @@ export interface FunnelStage {
-   sessions: number;
- }
- 
-+export interface ProductPerformance {
-+  productId: string;
-+  name: string;
-+  image: string | null;
-+  impressions: number;
-+  conversions: number;
-+  conversionRate: number;
-+}
-+
- export interface LowStockProduct {
-   id: string;
-   name: string;
-@@ -38,10 +47,13 @@ export interface AnalyticsData {
-   topProducts: TopProduct[];
-   funnel: FunnelStage[];
-   lowStock: LowStockProduct[];
-+  productPerformance: ProductPerformance[];
-+  productPerformanceDays: number;
- }
- 
--export async function fetchAnalytics(): Promise<AnalyticsData> {
--  const res = await fetch('/api/admin/analytics');
-+export async function fetchAnalytics(productPerformanceDays?: number): Promise<AnalyticsData> {
-+  const qs = productPerformanceDays ? `?days=${productPerformanceDays}` : '';
-+  const res = await fetch(`/api/admin/analytics${qs}`);
-   if (!res.ok) {
-     const body = await res.json().catch(() => ({}));
-     throw new Error(body.error || 'Failed to load analytics');
