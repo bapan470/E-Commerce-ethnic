@@ -99,6 +99,11 @@ interface Props {
   productName: string;
   productSku: string;
   baseImage?: string;
+  // Comma-separated list from the main product's "Colours" field. The
+  // first entry is the product's own base colour (never a real row in
+  // product_variants until explicitly converted -- see
+  // "Add original colour as a variant" button below).
+  productColors?: string;
   // Comma-separated list of sizes ticked in the main product's "Sizes"
   // field (e.g. "Free Size, S, M, L"). Used to pre-select the same sizes
   // when a new colour/variant is added, instead of always defaulting to
@@ -123,6 +128,7 @@ export default function ProductVariantsManager({
   productName,
   productSku,
   baseImage,
+  productColors,
   productSizes,
   autoOpenAdd,
   onAutoOpenAddHandled,
@@ -166,6 +172,37 @@ export default function ProductVariantsManager({
     setForm({
       ...emptyVariantForm(productSizes),
       images: baseImage ? [baseImage] : [],
+    });
+    setOpen(true);
+  };
+
+  // The product's own base colour (first entry of the "Colours" field on
+  // the main product form) -- only relevant when there's a real size
+  // spread to price separately. A single "Free Size" product has nothing
+  // to gain from a size-price grid, so the button below only shows once
+  // more than one size is selected.
+  const baseColorName = (productColors ?? '').split(',')[0]?.trim() || '';
+  const productSizeList = (productSizes ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const hasMultipleSizes = productSizeList.length > 1;
+  const baseColorAlreadyVariant = baseColorName
+    ? variants.some((v) => v.color.trim().toLowerCase() === baseColorName.toLowerCase())
+    : false;
+  const showConvertBaseColorButton = !!baseColorName && hasMultipleSizes && !baseColorAlreadyVariant;
+
+  // Turns the base colour into a proper variant row, pre-filled with its
+  // name, image and the product's sizes -- the admin just fills in
+  // price/stock per size and hits "Add Variant".
+  const openNewFromBaseColour = () => {
+    setEditing(null);
+    setForm({
+      ...emptyVariantForm(productSizes),
+      color: baseColorName,
+      colorHex: findPresetByName(baseColorName)?.hex ?? '',
+      images: baseImage ? [baseImage] : [],
+      isDefault: true,
     });
     setOpen(true);
   };
@@ -488,9 +525,23 @@ export default function ProductVariantsManager({
             Each colour gets its own photos, SKU and per-size stock — managed right here.
           </p>
         </div>
-        <Button type="button" size="sm" variant="outline" onClick={openNew} className="shrink-0 gap-1.5">
-          <Plus className="h-3.5 w-3.5" /> Add colour
-        </Button>
+        <div className="flex shrink-0 gap-1.5">
+          {showConvertBaseColorButton && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={openNewFromBaseColour}
+              className="gap-1.5"
+              title={`"${baseColorName}" is the product's own colour and isn't priced per-size yet`}
+            >
+              <Plus className="h-3.5 w-3.5" /> Add &quot;{baseColorName}&quot; as variant
+            </Button>
+          )}
+          <Button type="button" size="sm" variant="outline" onClick={openNew} className="gap-1.5">
+            <Plus className="h-3.5 w-3.5" /> Add colour
+          </Button>
+        </div>
       </div>
 
       {loading ? (

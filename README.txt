@@ -1,50 +1,52 @@
-CHANGE: Variant "Add Variant" size pre-select
-================================================
+CHANGES INCLUDED IN THIS ZIP
+=============================
 
-Problem: Jab aap kisi product me naya color/variation add karte the,
-size list hamesha sirf "Free Size" se start hoti thi — chahe aapne
-main product ke "Sizes" section me XS, S, M, L, XL jo bhi tick kiya ho.
+1) "Add Variant" ab sizes pre-select karta hai
+------------------------------------------------
+Naya color/variant add karte waqt, ab wahi sizes automatically pre-fill
+hote hain jo aapne main product ke "Sizes" section me tick kiye hain
+(pehle hamesha sirf "Free Size" se start hota tha).
 
-Fix: Ab jo sizes aapne product ke "Sizes" field me select kiye hain
-(comma-separated string, e.g. "Free Size, S, M, L, XL"), wahi sizes
-naye variant/color add karte waqt automatically pre-fill ho jayenge
-(stock=3, price/SKU blank rahega, aap edit kar sakte hain).
+2) Naya button: Add "<BaseColour>" as variant
+------------------------------------------------
+Product ka apna base colour (jo "Colours" field me pehla naam hai, e.g.
+"White") normally kabhi ek real variant row nahi banta -- isliye uska
+size-wise price/stock alag se edit nahi ho pata tha.
+
+Ab "Colour & size variants" section me ek naya button dikhega:
+   Add "White" as variant
+   (button me white ki jagah aapka asli base-colour ka naam aayega)
+
+Yeh button SIRF tabhi dikhega jab:
+   - Product me ek se zyada size selected ho (Free Size akela ho to
+     button nahi dikhega -- single-size product ko per-size pricing
+     ki zaroorat nahi hoti)
+   - Base colour abhi tak real variant ke roop me add nahi hua ho
+Ek baar base colour ko variant bana doge (ya woh already ek variant ho),
+yeh button apne aap gayab ho jayega -- duplicate add nahi hone dega.
+
+Click karte hi "Add Variant" form khulega jisme:
+   - Colour naam pehle se bhara hoga (product ka base colour)
+   - Product image pehle se laga hoga
+   - Har size ki row already ban chuki hogi (Stock=3, Price khali)
+   - "Set as default colour" already tick hoga
+Aapko bas har size ka Price/Stock check/bhar ke "Add Variant" dabana hai.
+
+Note: Colour-name match karke duplicate "White, White" swatch product
+page par nahi banta -- yeh pehle se hi safe-guarded hai (case-insensitive
+match by colour name), is change se koi naya risk nahi bana.
 
 Files changed (2):
-  1. components/admin/product-variants-manager.tsx
-  2. components/admin/products-panel.tsx
+  - components/admin/product-variants-manager.tsx
+  - components/admin/products-panel.tsx
 
 HOW TO APPLY
 ------------
-Option A (recommended) - apply the patch:
-  1. Copy "size-preselect-changes.patch" into the root of your cloned repo.
-  2. Run:  git apply size-preselect-changes.patch
-  3. Verify with: git diff
-  4. Commit & push:
-       git add -A
-       git commit -m "Pre-select product sizes when adding a new colour variant"
-       git push
+Option A (patch):
+  1. size-preselect-changes.patch ko repo root me copy karo
+  2. git apply size-preselect-changes.patch
+  3. git diff se verify karo
+  4. git add -A && git commit -m "Pre-select sizes + one-click convert base colour to variant" && git push
 
-Option B - manual replace:
-  Just replace these 2 files in your repo with the ones in this zip
-  (same relative paths):
-    components/admin/product-variants-manager.tsx
-    components/admin/products-panel.tsx
-  Then commit & push as above.
-
-NOTE ON YOUR SECOND QUESTION (size price kaha dalu)
-----------------------------------------------------
-Is repo ke structure me PRICE hamesha VARIANT (colour) level par set
-hoti hai, main product par size-wise price ka koi alag field nahi hai.
-  - Product ka base/default price      -> "Price" field (main product form)
-  - Har colour ka apna price           -> variant ke "Price" field
-    (blank chhodo to product ke price se inherit hoga)
-  - Ek hi colour ke andar kisi size ka
-    alag price (e.g. XXL costlier)     -> wahi size row ka
-                                          "Price (₹, optional)" box
-                                          (yeh aapko dikh bhi raha hai
-                                          screenshot me) — blank chhodo to
-                                          colour/product price use hoga.
-So agar plain size-wise price chahiye without colour, sabse aasan tarika:
-ek hi variant/colour bana lo (jaise product ka main colour), aur uske
-andar har size row me apna price bhar do.
+Option B (manual replace):
+  Dono .tsx files ko same relative path par overwrite karo, phir commit+push.

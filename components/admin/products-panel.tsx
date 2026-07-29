@@ -2371,6 +2371,7 @@ export default function ProductsPanel() {
               productName={form.name}
               productSku={form.sku}
               baseImage={form.images[0]}
+              productColors={form.colors}
               productSizes={form.sizes}
               autoOpenAdd={autoOpenVariantAdd}
               onAutoOpenAddHandled={() => setAutoOpenVariantAdd(false)}
