@@ -6,6 +6,7 @@ import { safeJsonLd } from '@/lib/json-ld';
 import { fetchFulfillmentSettings } from '@/lib/marketing-api';
 import { fetchShippingSettings } from '@/lib/pincode-api';
 import { generateVariantSeoContent } from '@/lib/variant-seo-content';
+import { getVariantDisplayName } from '@/lib/variant-display-name';
 import ProductDetail from './product-detail';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
@@ -48,7 +49,15 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   }
 
   const { product, variant } = resolved;
-  const displayName = variant ? `${product.name} - ${variant.color}` : product.name;
+  // BUG FIX: this used to just append " - {colour}" onto product.name,
+  // which duplicates the colour when it's already baked into the base
+  // name (e.g. "Maroon Handloom Rayon Kurti with Palazzo - Steel Blue" --
+  // both colours in one title). getVariantDisplayName swaps the base
+  // product's own colour for the variant's instead. See
+  // lib/variant-display-name.ts.
+  const displayName = variant
+    ? getVariantDisplayName(product?.name || '', product?.colors?.[0], variant.color)
+    : product?.name || '';
 
   // BUG FIX: this used to fall back to `product.description` for every
   // colour variant that had no meta_description of its own — meaning every
@@ -148,11 +157,21 @@ export default async function ProductPage({ params, searchParams }: Params) {
       product?.description
     : product?.description;
 
+  // Same colour-correct name as generateMetadata() above (this is a
+  // separate function so it needs its own copy) -- avoids the base
+  // product's own colour and the variant's colour both ending up in the
+  // structured-data name.
+  const displayName = product
+    ? variant
+      ? getVariantDisplayName(product.name, product.colors?.[0], variant.color)
+      : product.name
+    : '';
+
   const jsonLd = product
     ? {
         '@context': 'https://schema.org',
         '@type': 'Product',
-        name: variant ? `${product.name} - ${variant.color}` : product.name,
+        name: displayName,
         description: jsonLdDescription,
         slug: params.slug,
         category: product.category,

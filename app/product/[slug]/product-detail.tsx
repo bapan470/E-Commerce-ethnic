@@ -52,6 +52,7 @@ import { trackEvent } from '@/lib/track-api';
 import { useAuth } from '@/lib/auth-context';
 import { toast } from 'sonner';
 import { markCheckoutEntry } from '@/lib/checkout-return';
+import { getVariantDisplayName } from '@/lib/variant-display-name';
 
 // Coupon "preview" applied on a product page before Add to Cart. Persisted
 // so it survives a page reload, or a trip to another product and back —
@@ -468,12 +469,22 @@ export default function ProductDetail() {
 
   const discount = discountPct(product.price, product.mrp);
 
+  // Colour-correct name for whatever's actually being viewed: the base
+  // product's own name usually has its original colour baked in (e.g.
+  // "Maroon Handloom Rayon Kurti with Palazzo"), so on a different colour
+  // variant's page that name needs swapping to match -- otherwise the H1,
+  // share text, etc. contradict the URL/swatch/selected colour. See
+  // lib/variant-display-name.ts.
+  const displayName = variant
+    ? getVariantDisplayName(product.name, product.colors?.[0], variant.color)
+    : product.name;
+
   // SEO-friendly alt text, generated automatically from the product's own
   // details — never from the uploaded file's original name (which may just
   // be a generic export like "WhatsApp Image 2026-07-21 at 20.49.28.jpg").
   // This is what Google Images actually reads to understand and rank the
   // photo, so it always reflects the product, not the source file.
-  const seoAltText = [product.name, product.fabric, product.category, product.origin ? `from ${product.origin}` : '']
+  const seoAltText = [displayName, product.fabric, product.category, product.origin ? `from ${product.origin}` : '']
     .filter(Boolean)
     .join(' - ');
 
@@ -648,7 +659,7 @@ export default function ProductDetail() {
       <RecentlyViewedSection excludeId={product.id} />
 
       <MobileStickyCartBar
-        name={product.name}
+        name={displayName}
         price={selectedSizePrice}
         mrp={product.mrp}
         inStock={selectedSizeStock > 0}
@@ -731,12 +742,12 @@ function ProductInfo({
               )}
             </p>
             <h1 className="mt-1 font-serif text-base font-bold text-primary sm:text-xl">
-              {product.name}
+              {displayName}
             </h1>
           </div>
           <div className="flex shrink-0 items-start gap-4 pt-1">
             <WishlistButton productId={product.id} showLabel />
-            <ShareButton title={product.name} text={`Check out ${product.name} on Aruhi`} />
+            <ShareButton title={displayName} text={`Check out ${displayName} on Aruhi`} />
           </div>
         </div>
         <button
