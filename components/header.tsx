@@ -306,7 +306,13 @@ export default function Header() {
       const currentProducts = await ensureProductsLoaded();
 
       let rankedIds = await tryAiImageSearch(currentProducts, dataUrl);
-      if (rankedIds === null) {
+      // Fall back to the client-side colour match whenever AI didn't give
+      // us a usable, non-empty result — not just when it returned null.
+      // Previously an AI response of `rankedIds: []` (photo understood,
+      // but nothing scored) was treated as final and skipped the fallback
+      // entirely, so the shopper saw "couldn't match" even though the
+      // colour-fingerprint method might have found something.
+      if (!rankedIds || rankedIds.length === 0) {
         rankedIds = await rankProductIdsByImage(currentProducts, dataUrl);
       }
 
