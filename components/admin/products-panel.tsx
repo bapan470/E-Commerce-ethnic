@@ -587,6 +587,12 @@ export default function ProductsPanel() {
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [aiHint, setAiHint] = useState('');
+  // Fields the AI itself only "guesses" from the photo (see the prompt in
+  // app/api/admin/generate-listing/route.ts) -- surfaced as a persistent
+  // checklist after generation instead of a toast that disappears, since
+  // publishing a wrong fabric/material/pattern to Google Merchant Center's
+  // feed risks a misrepresentation disapproval, not just an on-site typo.
+  const [aiNeedsReview, setAiNeedsReview] = useState<string[] | null>(null);
   const [uploading, setUploading] = useState(false);
   const [importUrl, setImportUrl] = useState('');
   const [importing, setImporting] = useState(false);
@@ -870,6 +876,7 @@ export default function ProductsPanel() {
     setForm(emptyForm());
     setCostPrice('');
     setAiHint('');
+    setAiNeedsReview(null);
     setOpen(true);
   };
 
@@ -878,6 +885,7 @@ export default function ProductsPanel() {
     setForm(fromProduct(p));
     setCostPrice(getStoredCostPrice(p.id));
     setAiHint('');
+    setAiNeedsReview(null);
     setOpen(true);
   };
 
@@ -904,6 +912,7 @@ export default function ProductsPanel() {
           material: form.material,
           pattern: form.pattern,
           imageUrl: referenceImage || undefined,
+          productId: editing?.id || undefined,
         }),
       });
       let data: any;
@@ -921,7 +930,7 @@ export default function ProductsPanel() {
         toast.error(data.error || 'AI generation failed');
         return;
       }
-      const { listing } = data;
+      const { listing, duplicateTitleAdjusted } = data;
       setForm((f) => ({
         ...f,
         name: listing.name || f.name,
@@ -936,9 +945,26 @@ export default function ProductsPanel() {
         gender: f.gender !== 'female' ? f.gender : listing.gender || f.gender,
         highlights: { ...f.highlights, ...(listing.highlights || {}) },
       }));
-      toast.success(
-        'AI listing generated — including Product Highlights. Review and tweak before saving'
-      );
+
+      // These are the fields the AI can only estimate from a photo (see the
+      // prompt) -- wrong values here don't just look bad on-site, they can
+      // trigger a Google Merchant Center misrepresentation disapproval, so
+      // call them out explicitly rather than trusting the toast alone.
+      const reviewFields: string[] = ['Fabric', 'Material', 'Pattern', 'Colour'];
+      if (listing.highlights?.border) reviewFields.push('Border');
+      if (listing.highlights?.ornamentation) reviewFields.push('Ornamentation');
+      if (listing.highlights?.surface_styling) reviewFields.push('Surface Styling');
+      setAiNeedsReview(reviewFields);
+
+      if (duplicateTitleAdjusted) {
+        toast.success(
+          'AI listing generated. Title matched an existing product, so a distinguishing detail was appended — check it reads well.'
+        );
+      } else {
+        toast.success(
+          'AI listing generated — including Product Highlights. Review and tweak before saving'
+        );
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'AI generation failed');
     } finally {
@@ -1590,7 +1616,10 @@ export default function ProductsPanel() {
         open={open}
         onOpenChange={(o) => {
           setOpen(o);
-          if (!o) setAutoOpenVariantAdd(false);
+          if (!o) {
+            setAutoOpenVariantAdd(false);
+            setAiNeedsReview(null);
+          }
         }}
       >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
@@ -1657,6 +1686,17 @@ export default function ProductsPanel() {
                   {generating ? 'Generating…' : 'Generate with AI'}
                 </Button>
               </div>
+              {aiNeedsReview && (
+                <div className="mt-1 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900">
+                  <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <p>
+                    <strong>Verify before saving:</strong> the AI estimated these from the photo/notes —{' '}
+                    {aiNeedsReview.join(', ')}. Wrong values here can get the listing disapproved in
+                    Google Merchant Center for misrepresentation, so double-check they actually match
+                    this product.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">

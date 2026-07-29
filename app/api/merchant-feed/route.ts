@@ -3,6 +3,7 @@ import { getServerSupabase } from '@/lib/supabase-server';
 import { fetchProductsServer } from '@/lib/products-api-server';
 import { fetchFulfillmentSettings } from '@/lib/marketing-api';
 import { fetchShippingSettings } from '@/lib/pincode-api';
+import { resolveGoogleProductCategory } from '@/lib/google-category';
 import type { Product } from '@/lib/types';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
@@ -149,7 +150,7 @@ export async function GET() {
       <g:brand>${escapeXml(brand)}</g:brand>
       <g:condition>new</g:condition>
       <g:product_type>${escapeXml(product.category)}</g:product_type>
-      <g:google_product_category>Apparel &amp; Accessories &gt; Clothing</g:google_product_category>
+      <g:google_product_category>${escapeXml(resolveGoogleProductCategory(product.category, product.name))}</g:google_product_category>
       <g:identifier_exists>false</g:identifier_exists>
       <g:color>${escapeXml(color)}</g:color>
       <g:size>${escapeXml(size)}</g:size>

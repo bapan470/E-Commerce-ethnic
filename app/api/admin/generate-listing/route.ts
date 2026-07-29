@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 // Vercel kills serverless functions after 10s by default (Hobby plan).
 // The NVIDIA vision model + image fetch routinely takes longer than that on
@@ -142,6 +143,64 @@ For the "highlights" object: look closely at the attached photo (if any) and inf
 CRITICAL OUTPUT RULE: Reply with the raw JSON object ONLY. Do not use markdown formatting, headers (e.g. "**Product Listing**"), bullet points, or any text before or after the JSON. Your entire reply must start with { and end with }.`;
 }
 
+/**
+ * Checks whether another product (excluding the one currently being edited,
+ * if any) already has this exact title (case-insensitive) and, if so,
+ * deterministically appends a distinguishing detail the AI itself already
+ * generated (colour, border, ornamentation, pattern, origin, or occasion --
+ * whichever isn't already present in the title text) so the two listings
+ * read differently in Search Console and on-site.
+ *
+ * This mirrors ensureUniqueVendorTitle() in lib/vendor-ai-listing.ts, which
+ * only ran for vendor-submitted products -- admin-generated listings had no
+ * equivalent check, so two AI-generated admin products could easily end up
+ * with byte-identical titles (same photo style, same "e.g." anchoring the
+ * prompt warns against), which reads as duplicate content to Google.
+ */
+async function ensureUniqueAdminTitle(
+  listing: GeneratedListing,
+  excludeProductId: string | null
+): Promise<{ name: string; wasDuplicate: boolean }> {
+  const baseName = listing.name;
+  if (!baseName) return { name: baseName, wasDuplicate: false };
+
+  try {
+    const admin = getSupabaseAdmin();
+    let query = admin.from('products').select('id').ilike('name', baseName);
+    if (excludeProductId) query = query.neq('id', excludeProductId);
+    const { data: matches, error } = await query;
+
+    if (error) {
+      console.error('[generate-listing] uniqueness check failed, keeping AI title as-is:', error);
+      return { name: baseName, wasDuplicate: false };
+    }
+    if (!matches || matches.length === 0) return { name: baseName, wasDuplicate: false };
+
+    const lowerBase = baseName.toLowerCase();
+    const candidates = [
+      listing.colors?.[0],
+      listing.highlights?.border,
+      listing.highlights?.ornamentation,
+      listing.highlights?.saree_pattern,
+      listing.pattern,
+      listing.origin,
+      listing.occasion?.[0],
+    ].filter((v): v is string => !!v && v.trim() !== '' && !lowerBase.includes(v.toLowerCase()));
+
+    if (candidates.length > 0) {
+      return { name: `${baseName} – ${candidates[0]}`, wasDuplicate: true };
+    }
+
+    // Every distinguishing detail the AI generated is already in the title
+    // and it's still an exact duplicate -- number it so the title text
+    // itself is never repeated.
+    return { name: `${baseName} (Batch ${matches.length + 1})`, wasDuplicate: true };
+  } catch (err) {
+    console.error('[generate-listing] uniqueness check threw, keeping AI title as-is:', err);
+    return { name: baseName, wasDuplicate: false };
+  }
+}
+
 /** Fetches a product image and returns it as a base64 data: URI for NIM's image_url input. */
 async function fetchImageAsDataUri(imageUrl: string) {
   const controller = new AbortController();
@@ -187,6 +246,11 @@ export async function POST(req: Request) {
     pattern: (body?.pattern as string | undefined)?.trim() || '',
   };
   const imageUrl = (body?.imageUrl as string | undefined)?.trim() || '';
+  // Present only when the admin is editing an already-live product (see
+  // components/admin/products-panel.tsx) -- excluded from its own
+  // duplicate-title check below so a product isn't flagged as a dupe of
+  // itself when the AI simply regenerates the same/similar title.
+  const productId = (body?.productId as string | undefined)?.trim() || null;
 
   if (!input.hint && !input.name && !input.category && !imageUrl) {
     return NextResponse.json(
@@ -296,7 +360,16 @@ export async function POST(req: Request) {
       parsed.colors = parsed.colors.slice(0, 1);
     }
 
-    return NextResponse.json({ listing: parsed });
+    const { name: uniqueName, wasDuplicate } = await ensureUniqueAdminTitle(parsed, productId);
+    parsed.name = uniqueName;
+
+    return NextResponse.json({
+      listing: parsed,
+      // Lets the admin UI show a heads-up banner instead of silently
+      // renaming -- an admin who typed a specific name expects to see if/why
+      // the AI's title changed.
+      duplicateTitleAdjusted: wasDuplicate,
+    });
   } catch (err) {
     console.error('[generate-listing] error:', err);
     const timedOut = err instanceof Error && err.name === 'AbortError';
