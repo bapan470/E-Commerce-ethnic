@@ -26,8 +26,9 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
+import { STANDARD_SIZES } from '@/lib/size-chart';
 
-const ALL_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'Free Size'];
+const ALL_SIZES = [...STANDARD_SIZES];
 
 type SortKey = 'featured' | 'price-asc' | 'price-desc' | 'rating' | 'newest' | 'price-drop' | 'most-gifted';
 

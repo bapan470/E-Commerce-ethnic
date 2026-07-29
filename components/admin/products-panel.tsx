@@ -1904,20 +1904,16 @@ export default function ProductsPanel() {
                       .split(',')
                       .map((s) => s.trim())
                       .filter(Boolean);
-                    const isFreeSize = size === 'Free Size';
-                    const isChecked = isFreeSize || selected.includes(size);
+                    const isChecked = selected.includes(size);
                     return (
                       <button
                         key={size}
                         type="button"
-                        disabled={isFreeSize}
                         onClick={() => {
-                          if (isFreeSize) return; // always on, can't be removed
                           setForm((f) => {
                             const current = f.sizes.split(',').map((s) => s.trim()).filter(Boolean);
                             const has = current.includes(size);
                             const next = new Set(has ? current.filter((s) => s !== size) : [...current, size]);
-                            next.add('Free Size'); // always included
                             // Keep a stable, predictable order; carry over any
                             // legacy/custom size names that aren't in the
                             // standard list so old data isn't silently dropped.
@@ -1932,8 +1928,7 @@ export default function ProductsPanel() {
                           isChecked
                             ? 'border-primary bg-primary text-primary-foreground'
                             : 'border-border bg-background hover:border-primary/50'
-                        } ${isFreeSize ? 'cursor-not-allowed opacity-90' : ''}`}
-                        title={isFreeSize ? 'Free Size is always available on every product' : undefined}
+                        }`}
                       >
                         {size}
                       </button>
@@ -1941,7 +1936,8 @@ export default function ProductsPanel() {
                   })}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  &quot;Free Size&quot; is always included. Pick any other sizes this product also comes in.
+                  Pick every size this product comes in. &quot;Free Size&quot; starts checked
+                  for a new product but you can uncheck it — your choice is saved as-is.
                 </p>
               </div>
             </div>

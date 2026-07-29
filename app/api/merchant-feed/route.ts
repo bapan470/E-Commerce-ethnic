@@ -183,35 +183,60 @@ export async function GET() {
         });
       }
 
-      // One item per colour variant, all sharing item_group_id = product id
-      // so Google groups them as swatches of the same product.
+      // One item per SIZE within each colour variant (all sharing
+      // item_group_id = product id, so Google groups every colour/size
+      // combo as swatches of the same product). This used to be one item
+      // per colour with every size squashed into a single "S/M/L/XL"
+      // string and one flat price -- but sizes can each have their own
+      // price_override now, and Google Merchant Center compares the price
+      // in this feed against the price it actually finds on the landing
+      // page. Sending one price for a bundle of sizes that don't all cost
+      // the same is exactly what triggers "price mismatch" disapprovals,
+      // so each size gets its own feed item with its own price and stock.
       return variants
-        .map((v) => {
+        .flatMap((v) => {
           const sizes = v.product_variant_sizes ?? [];
-          const totalStock = sizes.reduce((sum, s) => sum + (s.stock_quantity || 0), 0);
-          const inStock = sizes.length === 0 ? p.inStock && p.stock_quantity > 0 : totalStock > 0;
-          const sizeText = sizes.length > 0 ? sizes.map((s) => s.size).join('/') : (p.sizes || [])[0] || 'Free Size';
-          const price = v.price_override ?? p.price;
           const images = v.images && v.images.length > 0 ? v.images : p.images || [];
 
-          return renderItem({
-            // Google Merchant Center caps the `id` attribute at 50 characters.
-            // Both p.id and v.id are 36-char Supabase UUIDs, so `${p.id}-${v.id}`
-            // was 73 characters and got rejected as "Value too long in attribute:
-            // id" (Needs attention > Data sources). v.id alone is already the
-            // product_variants primary key, so it's globally unique on its own --
-            // the parent product is still recoverable via item_group_id below.
-            id: v.id,
-            itemGroupId: p.id,
-            title: `${p.name} - ${v.color}`,
-            link: `${SITE_URL}/product/${v.slug}`,
-            images,
-            inStock,
-            price,
-            mrp: p.mrp,
-            color: v.color,
-            size: sizeText,
-            product: p,
+          if (sizes.length === 0) {
+            const price = v.price_override ?? p.price;
+            return [
+              renderItem({
+                id: v.id,
+                itemGroupId: p.id,
+                title: `${p.name} - ${v.color}`,
+                link: `${SITE_URL}/product/${v.slug}`,
+                images,
+                inStock: p.inStock && p.stock_quantity > 0,
+                price,
+                mrp: p.mrp,
+                color: v.color,
+                size: (p.sizes || [])[0] || 'Free Size',
+                product: p,
+              }),
+            ];
+          }
+
+          return sizes.map((s) => {
+            const price = s.price_override ?? v.price_override ?? p.price;
+            // Google Merchant Center caps the `id` attribute at 50
+            // characters. v.id alone is a 36-char Supabase UUID, so we
+            // only have ~13 chars of headroom to keep the size suffix
+            // unique per colour without ever crossing that limit.
+            const sizeSlug = s.size.replace(/\s+/g, '').slice(0, 10);
+            return renderItem({
+              id: `${v.id}-${sizeSlug}`,
+              itemGroupId: p.id,
+              title: `${p.name} - ${v.color} - ${s.size}`,
+              link: `${SITE_URL}/product/${v.slug}`,
+              images,
+              inStock: (s.stock_quantity || 0) > 0,
+              price,
+              mrp: p.mrp,
+              color: v.color,
+              size: s.size,
+              product: p,
+            });
           });
         })
         .join('');

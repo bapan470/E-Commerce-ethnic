@@ -18,6 +18,14 @@ export interface SizeChartRow {
 }
 
 export const SIZE_CHART: Record<string, SizeChartRow> = {
+  XS: {
+    size: 'XS',
+    shoulder: { cm: 68.6, inch: 27 },
+    length: { cm: 104.1, inch: 41 },
+    waist: { cm: 78.7, inch: 31 },
+    bust: { cm: 86.4, inch: 34 },
+    hip: { cm: 91.4, inch: 36 },
+  },
   S: {
     size: 'S',
     shoulder: { cm: 71.1, inch: 28 },
@@ -58,8 +66,54 @@ export const SIZE_CHART: Record<string, SizeChartRow> = {
     bust: { cm: 111.8, inch: 44 },
     hip: { cm: 116.8, inch: 46 },
   },
+  XXXL: {
+    size: 'XXXL',
+    shoulder: { cm: 86.4, inch: 34 },
+    length: { cm: 104.1, inch: 41 },
+    waist: { cm: 109.2, inch: 43 },
+    bust: { cm: 116.8, inch: 46 },
+    hip: { cm: 121.9, inch: 48 },
+  },
+  '4XL': {
+    size: '4XL',
+    shoulder: { cm: 88.9, inch: 35 },
+    length: { cm: 104.1, inch: 41 },
+    waist: { cm: 114.3, inch: 45 },
+    bust: { cm: 121.9, inch: 48 },
+    hip: { cm: 127, inch: 50 },
+  },
+  '5XL': {
+    size: '5XL',
+    shoulder: { cm: 91.4, inch: 36 },
+    length: { cm: 104.1, inch: 41 },
+    waist: { cm: 119.4, inch: 47 },
+    bust: { cm: 127, inch: 50 },
+    hip: { cm: 132.1, inch: 52 },
+  },
+  '6XL': {
+    size: '6XL',
+    shoulder: { cm: 94, inch: 37 },
+    length: { cm: 104.1, inch: 41 },
+    waist: { cm: 124.5, inch: 49 },
+    bust: { cm: 132.1, inch: 52 },
+    hip: { cm: 137.2, inch: 54 },
+  },
 };
 
 /** The fixed, standard set of sizes an admin can pick from for a product.
- *  "Free Size" is always included/locked on -- it can't be removed. */
-export const STANDARD_SIZES = ['Free Size', 'S', 'M', 'L', 'XL', 'XXL'] as const;
+ *  "Free Size" is just a normal option here now — it starts pre-checked
+ *  on a brand-new product (see emptyForm() in products-panel.tsx) but can
+ *  be unchecked and saved like any other size. */
+export const STANDARD_SIZES = [
+  'Free Size',
+  'XS',
+  'S',
+  'M',
+  'L',
+  'XL',
+  'XXL',
+  'XXXL',
+  '4XL',
+  '5XL',
+  '6XL',
+] as const;

@@ -6,8 +6,8 @@ import { SIZE_CHART, SizeChartUnit } from '@/lib/size-chart';
 
 interface Props {
   /** The sizes this specific product offers (product.sizes). Only the ones
-   *  with a fixed entry in SIZE_CHART (S/M/L/XL/XXL) get a row -- "Free Size"
-   *  has no fixed measurements so it's skipped automatically. */
+   *  with a fixed entry in SIZE_CHART get a row -- "Free Size" has no fixed
+   *  measurements so it's skipped automatically. */
   sizes: string[];
 }
 
