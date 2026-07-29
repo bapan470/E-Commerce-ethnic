@@ -303,9 +303,22 @@ export default function Header() {
       // triggerImageSearch) has resolved. Awaiting the same in-flight
       // promise guarantees whichever caller gets here first, everyone
       // resolves against the same up-to-date catalog.
-      const currentProducts = await ensureProductsLoaded();
+      let currentProducts = await ensureProductsLoaded();
+      // The catalog fetch is lazy and best-effort (see ensureProductsLoaded),
+      // so it can legitimately come back empty on a network blip. Retry once
+      // before giving up — otherwise every photo looks "unmatched" for a
+      // reason that has nothing to do with the photo.
+      if (currentProducts.length === 0) {
+        productsLoadedRef.current = false;
+        currentProducts = await ensureProductsLoaded();
+      }
+      if (currentProducts.length === 0) {
+        window.alert("Couldn't load the product catalog — check your connection and try again.");
+        return;
+      }
 
       let rankedIds = await tryAiImageSearch(currentProducts, dataUrl);
+      let systemicFailure = false;
       // Fall back to the client-side colour match whenever AI didn't give
       // us a usable, non-empty result — not just when it returned null.
       // Previously an AI response of `rankedIds: []` (photo understood,
@@ -313,11 +326,20 @@ export default function Header() {
       // entirely, so the shopper saw "couldn't match" even though the
       // colour-fingerprint method might have found something.
       if (!rankedIds || rankedIds.length === 0) {
-        rankedIds = await rankProductIdsByImage(currentProducts, dataUrl);
+        const fallback = await rankProductIdsByImage(currentProducts, dataUrl);
+        rankedIds = fallback.ids;
+        systemicFailure = fallback.systemicFailure;
       }
 
-      if (rankedIds.length === 0) {
-        window.alert("Couldn't match that photo to any products — try a clearer photo of the item.");
+      if (!rankedIds || rankedIds.length === 0) {
+        // A systemic failure means we couldn't read the photo or any
+        // product photo at all (network/proxy issue) — that's not the
+        // shopper's fault, so don't tell them to "try a clearer photo".
+        window.alert(
+          systemicFailure
+            ? "Image search is having trouble loading photos right now — please try again in a moment."
+            : "Couldn't match that photo to any products — try a clearer photo of the item."
+        );
         return;
       }
       sessionStorage.setItem('imageSearchResults', JSON.stringify(rankedIds));

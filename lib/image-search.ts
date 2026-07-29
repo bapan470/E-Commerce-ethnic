@@ -76,12 +76,25 @@ export function signatureDistance(a: number[], b: number[]): number {
  * image, CORS-blocked host, decode failure — are silently skipped instead
  * of breaking the whole search for everyone else.
  */
+export interface ImageSearchResult {
+  ids: string[];
+  /**
+   * True when we couldn't fingerprint ANY product photo at all (e.g. the
+   * proxy/network is down), as opposed to fingerprinting them fine and
+   * simply finding nothing visually close. The caller should show a very
+   * different message for these two cases — "couldn't match your photo"
+   * is misleading when the real problem is that no product photo could be
+   * read at all.
+   */
+  systemicFailure: boolean;
+}
+
 export async function rankProductIdsByImage<T extends { id: string; images: string[] | null | undefined }>(
   products: T[],
   queryImageSrc: string
-): Promise<string[]> {
+): Promise<ImageSearchResult> {
   const querySigResult = await getImageSignature(queryImageSrc);
-  if (!querySigResult) return [];
+  if (!querySigResult) return { ids: [], systemicFailure: true };
   // Re-bind to a variable whose type TS keeps narrowed to `number[]` inside
   // the nested async worker below (closures over a reassignable outer
   // binding don't retain the null-check narrowing across function bounds).
@@ -90,18 +103,35 @@ export async function rankProductIdsByImage<T extends { id: string; images: stri
   const scored: { id: string; dist: number }[] = [];
   const CONCURRENCY = 6;
   let cursor = 0;
+  let withPhoto = 0;
+  let fingerprinted = 0;
 
   async function worker() {
     while (cursor < products.length) {
       const p = products[cursor++];
       const src = p.images?.[0];
       if (!src) continue;
+      withPhoto++;
       const sig = await getImageSignature(src);
-      if (sig) scored.push({ id: p.id, dist: signatureDistance(querySig, sig) });
+      if (sig) {
+        fingerprinted++;
+        scored.push({ id: p.id, dist: signatureDistance(querySig, sig) });
+      }
     }
   }
 
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
   scored.sort((a, b) => a.dist - b.dist);
-  return scored.map((s) => s.id);
+
+  // If there were photos to check but literally none of them could be
+  // read, that's a proxy/network problem, not "no similar products" —
+  // e.g. every product photo host is unreachable or being blocked.
+  const systemicFailure = withPhoto > 0 && fingerprinted === 0;
+  if (systemicFailure) {
+    console.error(
+      `[image-search] fingerprinted 0/${withPhoto} product photos — likely /api/image-proxy or network issue, not a genuine "no match".`
+    );
+  }
+
+  return { ids: scored.map((s) => s.id), systemicFailure };
 }
