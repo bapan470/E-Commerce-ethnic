@@ -224,6 +224,7 @@ export default function ProductDetail() {
       price_override: null,
       meta_title: null,
       meta_description: null,
+      style_note: null,
       is_default: true,
       sku: baseProduct.sku ?? null,
       rating: null,
