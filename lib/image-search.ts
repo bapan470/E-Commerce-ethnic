@@ -13,17 +13,28 @@
 
 const GRID = 8;
 
+// Product photos (Supabase Storage etc.) don't always send CORS headers,
+// which taints the canvas and makes getImageData() throw for every single
+// product — the whole reason "search by photo" was silently returning
+// "couldn't match anything". Routing through our own /api/image-proxy
+// makes every image same-origin from the browser's point of view, so the
+// canvas read always works regardless of the upstream host's CORS config.
+// Data URLs (the shopper's own uploaded photo) are already same-origin/
+// inline, so those go straight through untouched.
+function toSameOriginSrc(src: string): string {
+  if (src.startsWith('data:')) return src;
+  return `/api/image-proxy?url=${encodeURIComponent(src)}`;
+}
+
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    // Needed so getImageData() doesn't throw on cross-origin product photos
-    // (e.g. Supabase storage). If the host doesn't send CORS headers this
-    // will fail and the caller treats the product as "unrankable" rather
-    // than crashing the whole search.
+    // Kept as a defensive fallback — with the proxy in place this is no
+    // longer load-bearing, but it's harmless to leave on.
     img.crossOrigin = 'anonymous';
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
-    img.src = src;
+    img.src = toSameOriginSrc(src);
   });
 }
 
