@@ -307,6 +307,32 @@ export default function ProductDetail() {
     return match ? match.stock_quantity : 0;
   }, [variant, selectedSize, product]);
 
+  // Per-size price: a size row can carry its own `price_override` (e.g. XL
+  // costs more fabric than S). Falls back to the current colour's price
+  // (which itself already falls back to the base product price) whenever
+  // the selected size has no override of its own.
+  const selectedSizePrice = useMemo(() => {
+    if (!product) return 0;
+    if (!variant || variant.sizes.length === 0) return product.price;
+    const match = variant.sizes.find((s) => s.size === selectedSize);
+    return match?.price_override ?? product.price;
+  }, [variant, selectedSize, product]);
+
+  // Same idea but for every size at once, so the size-selector can show a
+  // price under each pill the way a shopper expects (S ₹260, XL ₹274, ...).
+  const sizePriceMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    if (!product) return map;
+    if (variant && variant.sizes.length > 0) {
+      for (const s of variant.sizes) {
+        map[s.size] = s.price_override ?? product.price;
+      }
+    } else {
+      for (const s of product.sizes) map[s] = product.price;
+    }
+    return map;
+  }, [variant, product]);
+
   // Restore a previously-applied coupon preview for this product (or the
   // current colour variant's price) whenever the product changes — this
   // fires on first load too, so a reload restores it, and it re-runs when
@@ -332,7 +358,7 @@ export default function ProductDetail() {
       setCouponHydrated(true);
       return;
     }
-    validateCoupon(storedCode, product.price)
+    validateCoupon(storedCode, selectedSizePrice)
       .then((result) => {
         if (cancelled) return;
         if (result.ok && result.coupon) {
@@ -350,7 +376,7 @@ export default function ProductDetail() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [product?.id, product?.price]);
+  }, [product?.id, selectedSizePrice]);
 
   // Keep localStorage in sync with the current preview coupon so it can be
   // restored later. Gated on couponHydrated so this never fires with the
@@ -453,7 +479,7 @@ export default function ProductDetail() {
       toast.error('Out of stock');
       return;
     }
-    const cartProduct = { ...product, stock_quantity: selectedSizeStock, inStock: selectedSizeStock > 0 };
+    const cartProduct = { ...product, price: selectedSizePrice, stock_quantity: selectedSizeStock, inStock: selectedSizeStock > 0 };
     addItem(cartProduct, selectedSize, quantity);
     if (appliedCoupon) {
       // Carry the coupon previewed on this page into the real cart so it
@@ -483,10 +509,10 @@ export default function ProductDetail() {
     // an extra click to actually leave the checkout page.
     if (buyNowNavigatingRef.current) return;
     buyNowNavigatingRef.current = true;
-    const cartProduct = { ...product, stock_quantity: selectedSizeStock, inStock: selectedSizeStock > 0 };
+    const cartProduct = { ...product, price: selectedSizePrice, stock_quantity: selectedSizeStock, inStock: selectedSizeStock > 0 };
     startBuyNow(cartProduct, selectedSize, quantity);
     if (appliedCoupon) {
-      applyCartCoupon(appliedCoupon.code, product.price * quantity, 1).then((result) => {
+      applyCartCoupon(appliedCoupon.code, selectedSizePrice * quantity, 1).then((result) => {
         if (!result.ok) {
           toast.error(result.error || 'Could not apply this coupon to your order');
         }
@@ -534,6 +560,8 @@ export default function ProductDetail() {
           selectedSize={selectedSize}
           setSelectedSize={setSelectedSize}
           selectedSizeStock={selectedSizeStock}
+          selectedSizePrice={selectedSizePrice}
+          sizePriceMap={sizePriceMap}
           quantity={quantity}
           setQuantity={setQuantity}
           onAdd={handleAddToCart}
@@ -602,7 +630,7 @@ export default function ProductDetail() {
 
       <MobileStickyCartBar
         name={product.name}
-        price={product.price}
+        price={selectedSizePrice}
         mrp={product.mrp}
         inStock={selectedSizeStock > 0}
         onAdd={handleAddToCart}
@@ -623,6 +651,8 @@ function ProductInfo({
   selectedSize,
   setSelectedSize,
   selectedSizeStock,
+  selectedSizePrice,
+  sizePriceMap,
   quantity,
   setQuantity,
   onAdd,
@@ -640,6 +670,8 @@ function ProductInfo({
   selectedSize: string | null;
   setSelectedSize: (s: string) => void;
   selectedSizeStock: number;
+  selectedSizePrice: number;
+  sizePriceMap: Record<string, number>;
   quantity: number;
   setQuantity: (n: number | ((q: number) => number)) => void;
   onAdd: () => void;
@@ -650,9 +682,9 @@ function ProductInfo({
   onCouponRemove: () => void;
   fulfillment: FulfillmentSettings;
 }) {
-  const discount = discountPct(product.price, product.mrp);
+  const discount = discountPct(selectedSizePrice, product.mrp);
   const { paymentDiscount } = usePaymentDiscount();
-  const priceAfterCoupon = appliedCoupon ? Math.max(0, product.price - couponDiscount) : product.price;
+  const priceAfterCoupon = appliedCoupon ? Math.max(0, selectedSizePrice - couponDiscount) : selectedSizePrice;
   const onlinePaymentSavings =
     paymentDiscount.enabled && paymentDiscount.percent > 0
       ? Math.round((priceAfterCoupon * paymentDiscount.percent) / 100)
@@ -716,15 +748,15 @@ function ProductInfo({
 
       <div className="flex items-baseline gap-3">
         <span className="font-serif text-3xl font-bold text-primary">
-          {formatINR(product.price)}
+          {formatINR(selectedSizePrice)}
         </span>
-        {product.mrp && product.mrp > product.price && (
+        {product.mrp && product.mrp > selectedSizePrice && (
           <>
             <span className="text-base text-muted-foreground line-through">
               {formatINR(product.mrp)}
             </span>
             <Badge className="bg-secondary/20 text-secondary-foreground">
-              Save {formatINR(product.mrp - product.price)}
+              Save {formatINR(product.mrp - selectedSizePrice)}
             </Badge>
           </>
         )}
@@ -737,19 +769,25 @@ function ProductInfo({
             <button className="text-xs text-primary underline">Size guide</button>
           </div>
           <div className="flex flex-wrap gap-2">
-            {product.sizes.map((s) => (
-              <button
-                key={s}
-                onClick={() => setSelectedSize(s)}
-                className={`min-w-[3rem] rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
-                  selectedSize === s
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-border bg-background hover:border-primary/50'
-                }`}
-              >
-                {s}
-              </button>
-            ))}
+            {product.sizes.map((s) => {
+              const sizePrice = sizePriceMap[s] ?? product.price;
+              return (
+                <button
+                  key={s}
+                  onClick={() => setSelectedSize(s)}
+                  className={`flex min-w-[3.5rem] flex-col items-center gap-0.5 rounded-full border px-4 py-1.5 text-sm font-medium transition-colors ${
+                    selectedSize === s
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-border bg-background hover:border-primary/50'
+                  }`}
+                >
+                  <span>{s}</span>
+                  <span className="text-[11px] font-normal text-muted-foreground">
+                    {formatINR(sizePrice)}
+                  </span>
+                </button>
+              );
+            })}
           </div>
           <div className="mt-3">
             <SizeChart sizes={product.sizes} />
@@ -759,7 +797,7 @@ function ProductInfo({
 
       {appliedCoupon && (
         <p className="-mt-3 font-serif text-xl font-bold text-green-600">
-          {formatINR(Math.max(0, product.price - couponDiscount))}{' '}
+          {formatINR(Math.max(0, selectedSizePrice - couponDiscount))}{' '}
           <span className="text-xs font-normal">
             after coupon &quot;{appliedCoupon.code}&quot;
           </span>
@@ -775,7 +813,7 @@ function ProductInfo({
       )}
 
       <CouponList
-        productPrice={product.price}
+        productPrice={selectedSizePrice}
         appliedCode={appliedCoupon?.code ?? null}
         onApply={onCouponApply}
         onRemove={onCouponRemove}
