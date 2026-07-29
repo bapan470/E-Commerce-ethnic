@@ -91,7 +91,37 @@ export default function SizeChart({ sizes }: Props) {
                 </div>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[420px] text-xs">
+                {/* Mobile: one card per size, measurements stacked in a
+                    2-col grid -- avoids the 6-column table forcing a
+                    horizontal scroll that silently cut off the "Hip"
+                    column on narrow phones with no visible scroll hint. */}
+                <div className="grid gap-2 sm:hidden">
+                  {rows.map((r) => (
+                    <div key={r.size} className="rounded-lg border border-border p-3">
+                      <p className="mb-2 text-sm font-bold">{r.size}</p>
+                      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
+                        <div>
+                          <span className="font-medium text-foreground">Shoulder:</span> {r.shoulder[unit]} {unit}
+                        </div>
+                        <div>
+                          <span className="font-medium text-foreground">Length:</span> {r.length[unit]} {unit}
+                        </div>
+                        <div>
+                          <span className="font-medium text-foreground">Waist:</span> {r.waist[unit]} {unit}
+                        </div>
+                        <div>
+                          <span className="font-medium text-foreground">Bust:</span> {r.bust[unit]} {unit}
+                        </div>
+                        <div>
+                          <span className="font-medium text-foreground">Hip:</span> {r.hip[unit]} {unit}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {/* Tablet/desktop: the full comparison table, with room to
+                    breathe so it doesn't need to scroll. */}
+                <table className="hidden w-full min-w-[420px] text-xs sm:table">
                   <thead>
                     <tr className="bg-muted/50 text-left">
                       <th className="p-2 font-semibold">Size</th>
