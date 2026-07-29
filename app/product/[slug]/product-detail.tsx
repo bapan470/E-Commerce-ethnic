@@ -601,6 +601,13 @@ export default function ProductDetail() {
           </TabsList>
           <TabsContent value="description" className="max-w-3xl text-sm leading-relaxed text-foreground/80">
             <p>{product.description}</p>
+            {/* Colour-specific paragraph (see lib/variant-seo-content.ts) —
+               without this, every colour of a product rendered the exact
+               same description text, which is duplicate on-page content
+               even when the <title>/meta tags differ. Keeping this visible
+               (not just in metadata) is what actually makes each colour's
+               page read as distinct to Google. */}
+            {variant?.style_note && <p className="mt-3">{variant.style_note}</p>}
             <p className="mt-3">
               Each piece is handcrafted by skilled artisans, carrying forward
               centuries of weaving tradition. Subtle variations in motif and

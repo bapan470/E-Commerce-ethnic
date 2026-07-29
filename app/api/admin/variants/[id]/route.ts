@@ -30,6 +30,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     'price_override',
     'meta_title',
     'meta_description',
+    'style_note',
     'is_default',
     'sku',
     'rating',

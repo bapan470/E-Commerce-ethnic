@@ -5,6 +5,7 @@ import { fetchVariantBySlug, VariantWithSizes } from '@/lib/variants-api';
 import { safeJsonLd } from '@/lib/json-ld';
 import { fetchFulfillmentSettings } from '@/lib/marketing-api';
 import { fetchShippingSettings } from '@/lib/pincode-api';
+import { generateVariantSeoContent } from '@/lib/variant-seo-content';
 import ProductDetail from './product-detail';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
@@ -49,9 +50,27 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { product, variant } = resolved;
   const displayName = variant ? `${product.name} - ${variant.color}` : product.name;
 
-  const title = variant?.meta_title || `${displayName} | AruhiHandlooms`;
+  // BUG FIX: this used to fall back to `product.description` for every
+  // colour variant that had no meta_description of its own — meaning every
+  // colour of a product could ship the exact same <meta name="description">,
+  // which reads as duplicate content to Google (a likely reason most
+  // colour-variant URLs sat stuck as "Discovered - currently not indexed").
+  // For a variant page, generate colour-specific fallback copy instead of
+  // ever reusing the shared base-product description.
+  const variantSeoFallback = variant
+    ? generateVariantSeoContent({
+        productName: product.name,
+        fabric: product.fabric,
+        category: product.category,
+        occasion: product.occasion,
+        color: variant.color,
+      })
+    : null;
+
+  const title = variant?.meta_title || variantSeoFallback?.metaTitle || `${displayName} | AruhiHandlooms`;
   const description =
     variant?.meta_description ||
+    variantSeoFallback?.metaDescription ||
     product.description ||
     `Buy ${displayName} - ${product.fabric} from ${product.origin}. Handwoven ethnic wear from AruhiHandlooms.`;
   const url = `${SITE_URL}/product/${params.slug}`;
@@ -120,12 +139,21 @@ export default async function ProductPage({ params, searchParams }: Params) {
     ? await Promise.all([fetchFulfillmentSettings(), fetchShippingSettings()])
     : [null, null];
 
+  // Same duplicate-content concern as generateMetadata() above -- a
+  // variant's structured-data description shouldn't just repeat the base
+  // product's shared text either.
+  const jsonLdDescription = variant
+    ? variant.meta_description ||
+      [product?.description, variant.style_note].filter(Boolean).join(' ') ||
+      product?.description
+    : product?.description;
+
   const jsonLd = product
     ? {
         '@context': 'https://schema.org',
         '@type': 'Product',
         name: variant ? `${product.name} - ${variant.color}` : product.name,
-        description: product.description,
+        description: jsonLdDescription,
         slug: params.slug,
         category: product.category,
         color: variant?.color || product.colors[0] || undefined,

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { generateVariantSeoContent } from '@/lib/variant-seo-content';
 
 // SECURITY: variant create/update/delete used to go straight from the
 // browser to Supabase using the anon key (lib/variants-api.ts via
@@ -45,6 +46,7 @@ export async function POST(req: Request) {
     priceOverride,
     metaTitle,
     metaDescription,
+    styleNote,
     isDefault,
     sku,
     rating,
@@ -58,6 +60,31 @@ export async function POST(req: Request) {
 
   const supabase = getSupabaseAdmin();
   try {
+    // SEO SAFEGUARD: if the admin/vendor left meta_title/meta_description/
+    // style_note blank (the common case -- these are optional fields on
+    // the form), auto-generate them here instead of leaving all colours on
+    // identical fallback text. Without this, every colour of a product can
+    // render the same <title> and the same on-page description, which
+    // reads as duplicate content to Google and is why most variant URLs
+    // were stuck on "Discovered - currently not indexed" instead of being
+    // crawled and indexed individually. See lib/variant-seo-content.ts.
+    let seoDefaults: { metaTitle: string; metaDescription: string; styleNote: string } | null = null;
+    if (!metaTitle || !metaDescription || !styleNote) {
+      const { data: productRow } = await supabase
+        .from('products')
+        .select('name, fabric, category_name, occasion')
+        .eq('id', productId)
+        .maybeSingle();
+
+      seoDefaults = generateVariantSeoContent({
+        productName: productRow?.name ?? color,
+        fabric: productRow?.fabric ?? null,
+        category: productRow?.category_name ?? null,
+        occasion: productRow?.occasion ?? null,
+        color,
+      });
+    }
+
     const { data: variant, error } = await supabase
       .from('product_variants')
       .insert({
@@ -68,8 +95,9 @@ export async function POST(req: Request) {
         images: images ?? [],
         video: video ?? null,
         price_override: priceOverride ?? null,
-        meta_title: metaTitle ?? null,
-        meta_description: metaDescription ?? null,
+        meta_title: metaTitle || seoDefaults?.metaTitle || null,
+        meta_description: metaDescription || seoDefaults?.metaDescription || null,
+        style_note: styleNote || seoDefaults?.styleNote || null,
         is_default: isDefault ?? false,
         sku: sku ?? null,
         rating: rating ?? null,

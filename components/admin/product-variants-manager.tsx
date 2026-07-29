@@ -16,6 +16,7 @@ import {
   VariantWithSizes,
 } from '@/lib/variants-api';
 import { generateVariantSku, generateSizeSku } from '@/lib/sku';
+import { generateVariantSeoContent } from '@/lib/variant-seo-content';
 import { COLOR_PRESETS, findPresetByName, searchPresets, ColorPreset } from '@/lib/color-presets';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -57,6 +58,10 @@ interface VariantFormState {
   sku: string;
   metaTitle: string;
   metaDescription: string;
+  /** Unique on-page paragraph for this colour, shown in the PDP
+   *  Description tab so each colour's visible content (not just its meta
+   *  tags) differs from its siblings -- see lib/variant-seo-content.ts. */
+  styleNote: string;
   isDefault: boolean;
   /** Optional per-colour rating (0-5) / review-count override, shown as
    *  plain strings in the form (empty = no override, falls back to the
@@ -88,6 +93,7 @@ const emptyVariantForm = (productSizes?: string): VariantFormState => ({
   sku: '',
   metaTitle: '',
   metaDescription: '',
+  styleNote: '',
   isDefault: false,
   rating: '',
   reviews: '',
@@ -230,6 +236,7 @@ export default function ProductVariantsManager({
       sku: v.sku ?? '',
       metaTitle: v.meta_title ?? '',
       metaDescription: v.meta_description ?? '',
+      styleNote: v.style_note ?? '',
       isDefault: v.is_default,
       rating: v.rating != null ? String(v.rating) : '',
       reviews: v.reviews != null ? String(v.reviews) : '',
@@ -243,6 +250,29 @@ export default function ProductVariantsManager({
         : defaultSizeRows(productSizes),
     });
     setOpen(true);
+  };
+
+  // Fills meta title/description + the on-page style note with unique,
+  // keyword-aware copy for this colour (see lib/variant-seo-content.ts).
+  // Same generator the server falls back to on save, exposed here so the
+  // admin/vendor can preview and hand-edit it before publishing, or
+  // regenerate fresh copy after changing the colour name.
+  const autoFillSeo = () => {
+    if (!form.color.trim()) {
+      toast.error('Add a colour name first');
+      return;
+    }
+    const seo = generateVariantSeoContent({
+      productName,
+      color: form.color.trim(),
+    });
+    setForm((f) => ({
+      ...f,
+      metaTitle: seo.metaTitle,
+      metaDescription: seo.metaDescription,
+      styleNote: seo.styleNote,
+    }));
+    toast.success('SEO content generated for this colour');
   };
 
   // Auto-fill the colour + size SKUs from the product SKU the moment a
@@ -411,6 +441,7 @@ export default function ProductVariantsManager({
           price_override: priceOverride,
           meta_title: form.metaTitle.trim() || null,
           meta_description: form.metaDescription.trim() || null,
+          style_note: form.styleNote.trim() || null,
           sku: vSku,
           rating: ratingOverride,
           reviews: reviewsOverride,
@@ -459,6 +490,7 @@ export default function ProductVariantsManager({
           priceOverride,
           metaTitle: form.metaTitle.trim() || undefined,
           metaDescription: form.metaDescription.trim() || undefined,
+          styleNote: form.styleNote.trim() || undefined,
           isDefault: form.isDefault,
           sku: vSku,
           rating: ratingOverride,
@@ -814,6 +846,60 @@ export default function ProductVariantsManager({
                   value={form.priceOverride}
                   onChange={(e) => setForm((f) => ({ ...f, priceOverride: e.target.value }))}
                   placeholder="Leave blank to use base product price"
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-1.5 rounded-md border border-dashed border-border p-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">
+                  SEO — Meta title, meta description &amp; style note
+                </Label>
+                <Button type="button" variant="outline" size="sm" onClick={autoFillSeo}>
+                  <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                  Auto-generate
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Each colour needs its own text here — leaving these blank (or copy-pasting the
+                same text across colours) makes Google treat the colour pages as duplicates of
+                each other, which is why they can end up stuck as &quot;Discovered - currently
+                not indexed&quot;. Click Auto-generate for unique, keyword-aware copy, then tweak
+                it if you like.
+              </p>
+              <div className="grid gap-1.5">
+                <Label htmlFor="v-meta-title">Meta title</Label>
+                <Input
+                  id="v-meta-title"
+                  value={form.metaTitle}
+                  onChange={(e) => setForm((f) => ({ ...f, metaTitle: e.target.value }))}
+                  placeholder="Auto-generated from colour + product name if left blank"
+                  maxLength={100}
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="v-meta-description">Meta description</Label>
+                <textarea
+                  id="v-meta-description"
+                  value={form.metaDescription}
+                  onChange={(e) => setForm((f) => ({ ...f, metaDescription: e.target.value }))}
+                  placeholder="Auto-generated from colour + product name if left blank"
+                  maxLength={160}
+                  rows={2}
+                  className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="v-style-note">
+                  Style note <span className="text-muted-foreground">(shown on the product page)</span>
+                </Label>
+                <textarea
+                  id="v-style-note"
+                  value={form.styleNote}
+                  onChange={(e) => setForm((f) => ({ ...f, styleNote: e.target.value }))}
+                  placeholder="A colour-specific styling tip or occasion note, e.g. what to pair this shade with"
+                  rows={2}
+                  className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 />
               </div>
             </div>

@@ -25,6 +25,12 @@ export interface ProductVariant {
   price_override: number | null;
   meta_title: string | null;
   meta_description: string | null;
+  /** Unique on-page paragraph for this colour (styling tip / occasion
+   *  note) — rendered in the PDP Description tab so the page's visible
+   *  content differs between colours, not just its meta tags. Auto-filled
+   *  by lib/variant-seo-content.ts when left blank. See migration
+   *  20260902000000_variant_seo_style_note.sql. */
+  style_note: string | null;
   is_default: boolean;
   sku: string | null;
   /** Per-colour rating/review-count override. NULL means "no override" --
@@ -97,6 +103,7 @@ export async function createVariant(input: {
   priceOverride?: number | null;
   metaTitle?: string;
   metaDescription?: string;
+  styleNote?: string;
   isDefault?: boolean;
   sku?: string | null;
   rating?: number | null;
@@ -141,6 +148,7 @@ export async function updateVariant(
     price_override: number | null;
     meta_title: string | null;
     meta_description: string | null;
+    style_note: string | null;
     is_default: boolean;
     sku: string | null;
     rating: number | null;
