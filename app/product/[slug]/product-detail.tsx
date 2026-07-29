@@ -765,21 +765,21 @@ function ProductInfo({
       {product.sizes.length > 1 && (
         <div>
           <p className="mb-2 text-sm font-semibold">Select Size</p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             {product.sizes.map((s) => {
               const sizePrice = sizePriceMap[s] ?? product.price;
               return (
                 <button
                   key={s}
                   onClick={() => setSelectedSize(s)}
-                  className={`flex min-w-[3.5rem] flex-col items-center gap-0.5 rounded-full border px-4 py-1.5 text-sm font-medium transition-colors ${
+                  className={`flex min-w-[3rem] flex-col items-center gap-px rounded-lg border px-2.5 py-1 leading-tight transition-colors ${
                     selectedSize === s
                       ? 'border-primary bg-primary/10 text-primary'
                       : 'border-border bg-background hover:border-primary/50'
                   }`}
                 >
-                  <span>{s}</span>
-                  <span className="text-[11px] font-normal text-muted-foreground">
+                  <span className="text-xs font-semibold">{s}</span>
+                  <span className="text-[10px] text-muted-foreground">
                     {formatINR(sizePrice)}
                   </span>
                 </button>
