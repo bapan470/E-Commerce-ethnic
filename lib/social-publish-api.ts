@@ -341,9 +341,20 @@ async function publishInstagramContainer(
 
 async function postToThreads(
   settings: SocialPublishSettings,
-  caption: string,
+  rawCaption: string,
   imageUrls: string[]
 ): Promise<string | null> {
+  // Threads hard-caps the `text` param at 500 characters (unlike Facebook's
+  // feed message or Instagram's 2200-char caption) -- the same caption that
+  // works fine on FB/IG can still be rejected here with "Param text must be
+  // at most 500 characters long". Truncate on a word boundary and keep an
+  // ellipsis so it doesn't cut off mid-word.
+  const THREADS_TEXT_LIMIT = 500;
+  const caption =
+    rawCaption.length > THREADS_TEXT_LIMIT
+      ? rawCaption.slice(0, THREADS_TEXT_LIMIT - 1).replace(/\s+\S*$/, '') + '…'
+      : rawCaption;
+
   if (imageUrls.length === 0) {
     // Text-only thread.
     const createRes = await fetch(`${THREADS_API_BASE}/${settings.threads_user_id}/threads`, {
