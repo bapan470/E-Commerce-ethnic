@@ -28,7 +28,7 @@ export default function SizeChart({ sizes }: Props) {
   if (rows.length === 0) return null;
 
   return (
-    <div className="border-t border-border pt-3">
+    <div className="border-b border-border pb-3">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}

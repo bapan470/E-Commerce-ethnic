@@ -764,10 +764,7 @@ function ProductInfo({
 
       {product.sizes.length > 1 && (
         <div>
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-sm font-semibold">Select Size</p>
-            <button className="text-xs text-primary underline">Size guide</button>
-          </div>
+          <p className="mb-2 text-sm font-semibold">Select Size</p>
           <div className="flex flex-wrap gap-2">
             {product.sizes.map((s) => {
               const sizePrice = sizePriceMap[s] ?? product.price;
