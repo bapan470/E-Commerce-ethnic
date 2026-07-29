@@ -77,6 +77,8 @@ export default function SettingsPanel() {
 
   const [imageSearchAiForm, setImageSearchAiForm] = useState<ImageSearchAiSettings | null>(null);
   const [savingImageSearchAi, setSavingImageSearchAi] = useState(false);
+  const [testingImageSearchAi, setTestingImageSearchAi] = useState(false);
+  const [imageSearchAiTestResult, setImageSearchAiTestResult] = useState<any>(null);
 
   const [socialForm, setSocialForm] = useState<SocialLinks | null>(null);
   const [savingSocial, setSavingSocial] = useState(false);
@@ -222,6 +224,27 @@ export default function SettingsPanel() {
       toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSavingPaymentDiscount(false);
+    }
+  };
+
+  const onTestImageSearchAi = async () => {
+    setTestingImageSearchAi(true);
+    setImageSearchAiTestResult(null);
+    try {
+      const res = await fetch('/api/admin/image-search-ai-test', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      setImageSearchAiTestResult(data);
+      if (!data.keyPresent) {
+        toast.error('NVIDIA_API_KEY is missing on this deployment');
+      } else if (data.results?.every((r: any) => r.ok)) {
+        toast.success('AI connection is working');
+      } else {
+        toast.error('AI connection test found a problem — see details below');
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Test failed');
+    } finally {
+      setTestingImageSearchAi(false);
     }
   };
 
@@ -1222,10 +1245,51 @@ export default function SettingsPanel() {
             Enable AI-powered search by photo (uses NVIDIA_API_KEY; falls back to colour match if off)
           </label>
 
-          <Button type="submit" disabled={savingImageSearchAi} className="mt-2 w-fit bg-primary">
-            <Save className="mr-1.5 h-4 w-4" />{' '}
-            {savingImageSearchAi ? 'Saving…' : 'Save Image Search Settings'}
-          </Button>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <Button type="submit" disabled={savingImageSearchAi} className="w-fit bg-primary">
+              <Save className="mr-1.5 h-4 w-4" />{' '}
+              {savingImageSearchAi ? 'Saving…' : 'Save Image Search Settings'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={testingImageSearchAi}
+              onClick={onTestImageSearchAi}
+            >
+              {testingImageSearchAi ? 'Testing…' : 'Test AI connection'}
+            </Button>
+          </div>
+
+          {imageSearchAiTestResult && (
+            <div className="mt-2 grid gap-2 rounded-lg border border-border/60 bg-muted/40 p-4 text-sm">
+              {imageSearchAiTestResult.summary && (
+                <p className="font-medium text-destructive">{imageSearchAiTestResult.summary}</p>
+              )}
+              {imageSearchAiTestResult.keyPresent && (
+                <p className="text-xs text-muted-foreground">
+                  Using key {imageSearchAiTestResult.keyPreview} · Search by photo AI enabled:{' '}
+                  {String(imageSearchAiTestResult.imageSearchAiEnabled)}
+                </p>
+              )}
+              {(imageSearchAiTestResult.results || []).map((r: any) => (
+                <div
+                  key={r.model}
+                  className={`rounded border p-3 ${r.ok ? 'border-emerald-300 bg-emerald-50' : 'border-destructive/40 bg-destructive/5'}`}
+                >
+                  <p className="font-mono text-xs font-semibold">{r.model}</p>
+                  {r.ok ? (
+                    <p className="mt-1 text-xs text-emerald-800">
+                      ✅ Working ({r.ms}ms) — model replied: &quot;{r.reply}&quot;
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-xs text-destructive">
+                      ❌ HTTP {r.httpStatus || 'network error'} ({r.ms}ms) — {r.errorDetail}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </form>
       )}
 
