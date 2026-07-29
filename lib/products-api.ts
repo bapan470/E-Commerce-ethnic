@@ -31,6 +31,30 @@ function resolveDefaultVariant(row: ProductRow) {
 }
 
 /**
+ * Every photo this product has anywhere: the base product's own `images`
+ * plus every image on every `product_variants` row, de-duplicated. Powers
+ * "search by photo" matching against ALL colour variants instead of just
+ * the base product's first photo (see lib/image-search.ts).
+ */
+function resolveAllImages(row: ProductRow): string[] {
+  const seen = new Set<string>();
+  const all: string[] = [];
+  for (const img of row.images ?? []) {
+    if (!img || seen.has(img)) continue;
+    seen.add(img);
+    all.push(img);
+  }
+  for (const v of row.product_variants ?? []) {
+    for (const img of v.images ?? []) {
+      if (!img || seen.has(img)) continue;
+      seen.add(img);
+      all.push(img);
+    }
+  }
+  return all;
+}
+
+/**
  * Every distinct colour this product comes in: the base product's own
  * `colors` entry plus every colour recorded on a `product_variants` row,
  * de-duplicated case-insensitively. A vendor's originally-listed colour
@@ -80,6 +104,7 @@ export function mapRowToProduct(row: ProductRow): Product {
     material: row.material ?? null,
     pattern: row.pattern ?? null,
     images: row.images ?? [],
+    all_images: resolveAllImages(row),
     video_url: row.video_url ?? null,
     sku: row.sku ?? null,
     highlights: row.highlights ?? null,

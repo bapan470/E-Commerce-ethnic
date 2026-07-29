@@ -100,6 +100,15 @@ export interface Product {
   /** First image of the default colour variant, used as the card thumbnail
    *  in place of the base product's own photos when variants exist. */
   default_variant_image?: string | null;
+  /**
+   * Every photo this product has anywhere -- the base product's own
+   * `images` plus every image on every `product_variants` row,
+   * de-duplicated. Exists so "search by photo" (lib/image-search.ts) can
+   * match a shopper's uploaded photo against ALL of a product's colour
+   * variants, not just its first/default photo. Undefined/empty falls
+   * back to `images` wherever it's read.
+   */
+  all_images?: string[];
   /** The vendor's public storefront collection this product belongs to --
    *  e.g. "Aruhi Weaves's Collection" at /collection/aruhi-weaves-a1b2c3.
    *  Null/undefined if the product has no approved vendor. Shown next to

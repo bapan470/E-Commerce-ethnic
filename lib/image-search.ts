@@ -89,10 +89,9 @@ export interface ImageSearchResult {
   systemicFailure: boolean;
 }
 
-export async function rankProductIdsByImage<T extends { id: string; images: string[] | null | undefined }>(
-  products: T[],
-  queryImageSrc: string
-): Promise<ImageSearchResult> {
+export async function rankProductIdsByImage<
+  T extends { id: string; images: string[] | null | undefined; all_images?: string[] | null }
+>(products: T[], queryImageSrc: string): Promise<ImageSearchResult> {
   const querySigResult = await getImageSignature(queryImageSrc);
   if (!querySigResult) return { ids: [], systemicFailure: true };
   // Re-bind to a variable whose type TS keeps narrowed to `number[]` inside
@@ -100,36 +99,58 @@ export async function rankProductIdsByImage<T extends { id: string; images: stri
   // binding don't retain the null-check narrowing across function bounds).
   const querySig: number[] = querySigResult;
 
-  const scored: { id: string; dist: number }[] = [];
+  // Flatten to (productId, imageUrl) pairs across ALL of a product's photos
+  // -- base product photos AND every colour variant's photos (all_images,
+  // see lib/products-api.ts) -- instead of just each product's first photo.
+  // That way a shopper's photo of, say, the "blue" variant of a saree still
+  // matches the product even if its base/default photo is a different
+  // colour entirely.
+  const work: { id: string; src: string }[] = [];
+  const productIds = new Set<string>();
+  for (const p of products) {
+    const candidates = p.all_images && p.all_images.length > 0 ? p.all_images : p.images;
+    if (!candidates || candidates.length === 0) continue;
+    productIds.add(p.id);
+    // De-dupe per-product in case all_images ever contains repeats.
+    const seen = new Set<string>();
+    for (const src of candidates) {
+      if (!src || seen.has(src)) continue;
+      seen.add(src);
+      work.push({ id: p.id, src });
+    }
+  }
+
+  const bestDist = new Map<string, number>();
+  const fingerprintedProductIds = new Set<string>();
   const CONCURRENCY = 6;
   let cursor = 0;
-  let withPhoto = 0;
-  let fingerprinted = 0;
 
   async function worker() {
-    while (cursor < products.length) {
-      const p = products[cursor++];
-      const src = p.images?.[0];
-      if (!src) continue;
-      withPhoto++;
-      const sig = await getImageSignature(src);
-      if (sig) {
-        fingerprinted++;
-        scored.push({ id: p.id, dist: signatureDistance(querySig, sig) });
-      }
+    while (cursor < work.length) {
+      const item = work[cursor++];
+      const sig = await getImageSignature(item.src);
+      if (!sig) continue;
+      fingerprintedProductIds.add(item.id);
+      const dist = signatureDistance(querySig, sig);
+      const prev = bestDist.get(item.id);
+      if (prev === undefined || dist < prev) bestDist.set(item.id, dist);
     }
   }
 
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+
+  const scored = Array.from(bestDist.entries()).map(([id, dist]) => ({ id, dist }));
   scored.sort((a, b) => a.dist - b.dist);
 
   // If there were photos to check but literally none of them could be
   // read, that's a proxy/network problem, not "no similar products" —
   // e.g. every product photo host is unreachable or being blocked.
+  const withPhoto = productIds.size;
+  const fingerprinted = fingerprintedProductIds.size;
   const systemicFailure = withPhoto > 0 && fingerprinted === 0;
   if (systemicFailure) {
     console.error(
-      `[image-search] fingerprinted 0/${withPhoto} product photos — likely /api/image-proxy or network issue, not a genuine "no match".`
+      `[image-search] fingerprinted 0/${withPhoto} products' photos — likely /api/image-proxy or network issue, not a genuine "no match".`
     );
   }
 
