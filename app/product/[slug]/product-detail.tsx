@@ -577,6 +577,7 @@ export default function ProductDetail() {
         </div>
         <ProductInfo
           product={product}
+          displayName={displayName}
           displayRating={displayRating}
           displayRatingsCount={displayRatingsCount}
           displayReviewsCount={displayReviewsCount}
@@ -675,6 +676,7 @@ export default function ProductDetail() {
 
 function ProductInfo({
   product,
+  displayName,
   displayRating,
   displayRatingsCount,
   displayReviewsCount,
@@ -694,6 +696,7 @@ function ProductInfo({
   fulfillment,
 }: {
   product: Product;
+  displayName: string;
   displayRating: number;
   displayRatingsCount: number;
   displayReviewsCount: number;
