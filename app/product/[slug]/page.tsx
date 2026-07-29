@@ -17,7 +17,7 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms
 // edit, or a vendor-side approval-status change).
 export const revalidate = 60;
 
-type Params = { params: { slug: string } };
+type Params = { params: { slug: string }; searchParams?: { size?: string } };
 
 /**
  * Resolves either a base product slug or an independent colour-variant
@@ -97,10 +97,20 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   };
 }
 
-export default async function ProductPage({ params }: Params) {
+export default async function ProductPage({ params, searchParams }: Params) {
   const resolved = await resolveSeoTarget(params.slug);
   const product = resolved?.product ?? null;
   const variant = resolved?.variant ?? null;
+
+  // If this request came from a Merchant Center feed link (which appends
+  // ?size=XL for products with per-size pricing -- see
+  // app/api/merchant-feed/route.ts), resolve that exact size's price so
+  // the structured-data <Offer> below matches what was advertised for it,
+  // not just the colour's default price. Falls back to the colour/product
+  // price when there's no ?size=, no matching size, or no override for it.
+  const sizeParam = searchParams?.size?.trim();
+  const matchedSize = sizeParam ? variant?.sizes.find((s) => s.size === sizeParam) : undefined;
+  const offerPrice = matchedSize?.price_override ?? variant?.price_override ?? product?.price ?? 0;
 
   // Same source of truth as app/api/merchant-feed/route.ts (Admin >
   // Marketing > Shipping & Returns Timing) -- keeping this schema in sync
@@ -132,12 +142,13 @@ export default async function ProductPage({ params }: Params) {
         },
         offers: {
           '@type': 'Offer',
-          url: `${SITE_URL}/product/${params.slug}`,
+          url: `${SITE_URL}/product/${params.slug}${sizeParam ? `?size=${encodeURIComponent(sizeParam)}` : ''}`,
           priceCurrency: 'INR',
-          price: variant?.price_override ?? product.price,
-          availability: product.inStock
-            ? 'https://schema.org/InStock'
-            : 'https://schema.org/OutOfStock',
+          price: offerPrice,
+          availability:
+            (matchedSize ? matchedSize.stock_quantity > 0 : product.inStock)
+              ? 'https://schema.org/InStock'
+              : 'https://schema.org/OutOfStock',
           itemCondition: 'https://schema.org/NewCondition',
           seller: {
             '@type': 'Organization',

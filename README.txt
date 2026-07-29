@@ -1,52 +1,79 @@
-CHANGES INCLUDED IN THIS ZIP
-=============================
+SAB CHANGES — ISS ZIP ME 5 FILES HAIN
+========================================
 
-1) "Add Variant" ab sizes pre-select karta hai
-------------------------------------------------
-Naya color/variant add karte waqt, ab wahi sizes automatically pre-fill
-hote hain jo aapne main product ke "Sizes" section me tick kiye hain
-(pehle hamesha sirf "Free Size" se start hota tha).
+PART 1 — Admin: Add Variant me sizes pre-select + "Add as variant" button
+----------------------------------------------------------------------------
+Files: components/admin/product-variants-manager.tsx
+       components/admin/products-panel.tsx
 
-2) Naya button: Add "<BaseColour>" as variant
-------------------------------------------------
-Product ka apna base colour (jo "Colours" field me pehla naam hai, e.g.
-"White") normally kabhi ek real variant row nahi banta -- isliye uska
-size-wise price/stock alag se edit nahi ho pata tha.
+- Naya colour/variant add karte waqt, product ke "Sizes" section me jo
+  sizes tick hain wahi ab pre-fill hote hain (pehle hamesha "Free Size").
+- Naya button "Add "<BaseColour>" as variant" dikhta hai (sirf jab: (a)
+  product me 1 se zyada size ho, (b) base colour abhi tak real variant na
+  ho). Click karte hi variant form pre-filled khulta hai.
 
-Ab "Colour & size variants" section me ek naya button dikhega:
-   Add "White" as variant
-   (button me white ki jagah aapka asli base-colour ka naam aayega)
 
-Yeh button SIRF tabhi dikhega jab:
-   - Product me ek se zyada size selected ho (Free Size akela ho to
-     button nahi dikhega -- single-size product ko per-size pricing
-     ki zaroorat nahi hoti)
-   - Base colour abhi tak real variant ke roop me add nahi hua ho
-Ek baar base colour ko variant bana doge (ya woh already ek variant ho),
-yeh button apne aap gayab ho jayega -- duplicate add nahi hone dega.
+PART 2 — Google Merchant Center price-mismatch FIX (final fix)
+----------------------------------------------------------------------------
+Files: app/api/merchant-feed/route.ts
+       app/product/[slug]/page.tsx
+       app/product/[slug]/product-detail.tsx
 
-Click karte hi "Add Variant" form khulega jisme:
-   - Colour naam pehle se bhara hoga (product ka base colour)
-   - Product image pehle se laga hoga
-   - Har size ki row already ban chuki hogi (Stock=3, Price khali)
-   - "Set as default colour" already tick hoga
-Aapko bas har size ka Price/Stock check/bhar ke "Add Variant" dabana hai.
+PROBLEM: Jab kisi colour ke andar alag-alag sizes ka alag price ho
+(jaise XXL costlier), to feed har size ke liye ek alag <g:price> bhejta
+tha -- lekin sab sizes ek hi product-page URL share karte the, jo hamesha
+sirf PEHLE size ka price dikhata tha (structured data + visible price
+dono). Google apne hi documentation me yeh exact scenario "price
+mismatch" ka sabse bada karan batata hai:
+  "If your product has variants such as different sizes, make sure the
+   price in your data source corresponds to the price of the variant
+   that is pre-selected when the page loads."
+  "Where possible, assign unique URLs for each product variant to
+   clearly define individual prices."
 
-Note: Colour-name match karke duplicate "White, White" swatch product
-page par nahi banta -- yeh pehle se hi safe-guarded hai (case-insensitive
-match by colour name), is change se koi naya risk nahi bana.
+FIX (Google ki hi recommended approach use ki hai):
+  1. Feed ab har size-item ke link me ?size=XL jaisa query param jodta
+     hai (sirf un items ke liye jinka apna size-level price hai).
+  2. Product page (client side) ab is ?size= param ko padhta hai aur
+     load hote hi WAHI size pre-select karta hai (pehle hamesha pehla
+     size select hota tha) -- isse visible price bhi turant sahi size
+     ka dikhta hai.
+  3. Product page ka structured data (JSON-LD <Offer>) bhi ab isi size
+     ka exact price aur stock status use karta hai, feed ke number se
+     hubahu match karte hue.
 
-Files changed (2):
-  - components/admin/product-variants-manager.tsx
-  - components/admin/products-panel.tsx
+RESULT: Ab feed price, landing-page visible price, aur structured-data
+price -- teeno HAMESHA match karenge, chahe kitne bhi sizes ka price
+alag-alag kyun na ho. Yeh "price mismatch" disapproval risk poori tarah
+khatam kar deta hai.
+
+Agar aap per-size price hi use nahi karte (sab size same price), to yeh
+fix chalte hue bhi kuch change nahi mehsoos hoga -- sab kuch pehle jaisa
+hi kaam karega, bas extra safety hai.
 
 HOW TO APPLY
 ------------
-Option A (patch):
-  1. size-preselect-changes.patch ko repo root me copy karo
-  2. git apply size-preselect-changes.patch
+Option A (patch) -- sabse aasan, saari 5 files ek saath apply ho jayengi:
+  1. all-changes-final.patch ko repo root me copy karo
+  2. git apply all-changes-final.patch
   3. git diff se verify karo
-  4. git add -A && git commit -m "Pre-select sizes + one-click convert base colour to variant" && git push
+  4. git add -A && git commit -m "Pre-select sizes on add-variant + fix GMC price-mismatch via per-size landing pages" && git push
 
 Option B (manual replace):
-  Dono .tsx files ko same relative path par overwrite karo, phir commit+push.
+  In 5 files ko unke exact same relative path par overwrite karo:
+    components/admin/product-variants-manager.tsx
+    components/admin/products-panel.tsx
+    app/api/merchant-feed/route.ts
+    app/product/[slug]/page.tsx
+    app/product/[slug]/product-detail.tsx
+  Phir commit + push.
+
+DEPLOY KE BAAD
+--------------
+- Google Merchant Center me "Fetch now" karo (Feeds > apna feed >
+  three-dot menu > Fetch now) taaki naye ?size= links turant use ho
+  jayein, warna Google apne normal schedule (usually daily) tak purana
+  feed hi use karega.
+- Kuch din diagnostics check karte raho -- "Mismatched value (price)"
+  warnings gayab honi chahiye purani entries ke liye bhi jaise hi Google
+  naya feed + naya crawl kar leta hai.

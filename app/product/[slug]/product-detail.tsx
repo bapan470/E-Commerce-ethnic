@@ -286,8 +286,19 @@ export default function ProductDetail() {
     };
   }, [baseProduct, variant]);
 
+  // Defaults to the first size, UNLESS the URL carries a `?size=` param --
+  // that's how each Google Merchant Center feed item links back here (see
+  // app/api/merchant-feed/route.ts), so the page must land on that exact
+  // size pre-selected. Without this, every size shares one URL that always
+  // opens on size #1, and Google's landing-page price check flags every
+  // other size's feed item as a "price mismatch" since the visible price
+  // never matches what was advertised for it.
   useEffect(() => {
-    if (product) setSelectedSize(product.sizes[0] ?? null);
+    if (!product) return;
+    const sizeFromUrl =
+      typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('size') : null;
+    const matched = sizeFromUrl && product.sizes.includes(sizeFromUrl) ? sizeFromUrl : null;
+    setSelectedSize(matched ?? product.sizes[0] ?? null);
   }, [product]);
 
   // The `product` object above intentionally keeps an aggregate stock

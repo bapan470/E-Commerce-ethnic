@@ -224,11 +224,18 @@ export async function GET() {
             // only have ~13 chars of headroom to keep the size suffix
             // unique per colour without ever crossing that limit.
             const sizeSlug = s.size.replace(/\s+/g, '').slice(0, 10);
+            // ?size= makes this item's landing page pre-select this exact
+            // size on load (see product-detail.tsx), so the visible price
+            // and structured-data price both match what's advertised here
+            // -- without it, every size in this colour shares one URL that
+            // always opens on the first size, and Google flags every other
+            // size's price as a landing-page mismatch.
+            const sizeLink = `${SITE_URL}/product/${v.slug}?size=${encodeURIComponent(s.size)}`;
             return renderItem({
               id: `${v.id}-${sizeSlug}`,
               itemGroupId: p.id,
               title: `${p.name} - ${v.color} - ${s.size}`,
-              link: `${SITE_URL}/product/${v.slug}`,
+              link: sizeLink,
               images,
               inStock: (s.stock_quantity || 0) > 0,
               price,
