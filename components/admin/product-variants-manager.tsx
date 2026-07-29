@@ -32,6 +32,8 @@ import {
   DialogClose,
 } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { STANDARD_SIZES } from '@/lib/size-chart';
 import { toast } from 'sonner';
 
 const slugify = (s: string) =>
@@ -61,7 +63,7 @@ interface VariantFormState {
    *  base product's rating/reviews on the storefront). */
   rating: string;
   reviews: string;
-  sizes: { size: string; stockQuantity: string; sku: string }[];
+  sizes: { size: string; stockQuantity: string; priceOverride: string; sku: string }[];
 }
 
 const emptyVariantForm = (): VariantFormState => ({
@@ -77,7 +79,7 @@ const emptyVariantForm = (): VariantFormState => ({
   isDefault: false,
   rating: '',
   reviews: '',
-  sizes: [{ size: 'Free Size', stockQuantity: '3', sku: '' }],
+  sizes: [{ size: 'Free Size', stockQuantity: '3', priceOverride: '', sku: '' }],
 });
 
 interface Props {
@@ -177,8 +179,13 @@ export default function ProductVariantsManager({
       rating: v.rating != null ? String(v.rating) : '',
       reviews: v.reviews != null ? String(v.reviews) : '',
       sizes: v.sizes.length
-        ? v.sizes.map((s) => ({ size: s.size, stockQuantity: String(s.stock_quantity), sku: s.sku ?? '' }))
-        : [{ size: 'Free Size', stockQuantity: '3', sku: '' }],
+        ? v.sizes.map((s) => ({
+            size: s.size,
+            stockQuantity: String(s.stock_quantity),
+            priceOverride: s.price_override != null ? String(s.price_override) : '',
+            sku: s.sku ?? '',
+          }))
+        : [{ size: 'Free Size', stockQuantity: '3', priceOverride: '', sku: '' }],
     });
     setOpen(true);
   };
@@ -287,7 +294,7 @@ export default function ProductVariantsManager({
     }
   };
 
-  const updateSizeRow = (idx: number, patch: Partial<{ size: string; stockQuantity: string; sku: string }>) => {
+  const updateSizeRow = (idx: number, patch: Partial<{ size: string; stockQuantity: string; priceOverride: string; sku: string }>) => {
     setForm((f) => ({
       ...f,
       sizes: f.sizes.map((s, i) => (i === idx ? { ...s, ...patch } : s)),
@@ -295,7 +302,7 @@ export default function ProductVariantsManager({
   };
 
   const addSizeRow = () => {
-    setForm((f) => ({ ...f, sizes: [...f.sizes, { size: '', stockQuantity: '3', sku: '' }] }));
+    setForm((f) => ({ ...f, sizes: [...f.sizes, { size: '', stockQuantity: '3', priceOverride: '', sku: '' }] }));
   };
 
   const removeSizeRow = (idx: number) => {
@@ -365,6 +372,7 @@ export default function ProductVariantsManager({
             await updateVariantSize(match.id, {
               size: row.size.trim(),
               stock_quantity: Number(row.stockQuantity) || 0,
+              price_override: row.priceOverride.trim() ? Number(row.priceOverride) : null,
               sku: rowSku,
             });
           } else {
@@ -372,6 +380,7 @@ export default function ProductVariantsManager({
               variantId: editing.id,
               size: row.size.trim(),
               stockQuantity: Number(row.stockQuantity) || 0,
+              priceOverride: row.priceOverride.trim() ? Number(row.priceOverride) : null,
               sku: rowSku,
             });
           }
@@ -402,6 +411,7 @@ export default function ProductVariantsManager({
           sizes: validSizes.map((s) => ({
             size: s.size.trim(),
             stockQuantity: Number(s.stockQuantity) || 0,
+            priceOverride: s.priceOverride.trim() ? Number(s.priceOverride) : null,
             sku: s.sku.trim() || (vSku ? generateSizeSku(vSku, s.size) : null),
           })),
         });
@@ -848,39 +858,66 @@ export default function ProductVariantsManager({
             </div>
 
             <div className="grid gap-1.5">
-              <Label>Sizes, stock &amp; SKU *</Label>
+              <Label>Sizes, stock, price &amp; SKU *</Label>
               <div className="grid gap-2">
-                {form.sizes.map((row, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <Input
-                      value={row.size}
-                      onChange={(e) => updateSizeRow(idx, { size: e.target.value })}
-                      placeholder="Size (e.g. M)"
-                      className="w-24"
-                    />
-                    <Input
-                      type="number"
-                      min={0}
-                      value={row.stockQuantity}
-                      onChange={(e) => updateSizeRow(idx, { stockQuantity: e.target.value })}
-                      placeholder="Stock"
-                      className="w-20"
-                    />
-                    <Input
-                      value={row.sku}
-                      onChange={(e) => updateSizeRow(idx, { sku: e.target.value })}
-                      placeholder="SKU (auto)"
-                      className="flex-1"
-                    />
-                    <Button type="button" size="sm" variant="outline" onClick={() => removeSizeRow(idx)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                ))}
+                {form.sizes.map((row, idx) => {
+                  const usedByOtherRows = new Set(
+                    form.sizes.filter((_, i) => i !== idx).map((r) => r.size).filter(Boolean)
+                  );
+                  const sizeOptions = Array.from(new Set([...STANDARD_SIZES, ...(row.size ? [row.size] : [])])).filter(
+                    (sz) => sz === row.size || !usedByOtherRows.has(sz)
+                  );
+                  return (
+                    <div key={idx} className="flex items-center gap-2">
+                      <Select value={row.size || undefined} onValueChange={(v) => updateSizeRow(idx, { size: v })}>
+                        <SelectTrigger className="w-28">
+                          <SelectValue placeholder="Size" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {sizeOptions.map((sz) => (
+                            <SelectItem key={sz} value={sz}>
+                              {sz}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={row.stockQuantity}
+                        onChange={(e) => updateSizeRow(idx, { stockQuantity: e.target.value })}
+                        placeholder="Stock"
+                        className="w-20"
+                      />
+                      <Input
+                        type="number"
+                        min={0}
+                        value={row.priceOverride}
+                        onChange={(e) => updateSizeRow(idx, { priceOverride: e.target.value })}
+                        placeholder="Price (₹, optional)"
+                        title="Leave blank to use this colour's price"
+                        className="w-32"
+                      />
+                      <Input
+                        value={row.sku}
+                        onChange={(e) => updateSizeRow(idx, { sku: e.target.value })}
+                        placeholder="SKU (auto)"
+                        className="flex-1"
+                      />
+                      <Button type="button" size="sm" variant="outline" onClick={() => removeSizeRow(idx)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  );
+                })}
               </div>
               <Button type="button" size="sm" variant="outline" onClick={addSizeRow} className="w-fit">
                 <Plus className="mr-1 h-3.5 w-3.5" /> Add size
               </Button>
+              <p className="text-xs text-muted-foreground">
+                Leave a size&apos;s price blank to use this colour&apos;s price (or the base product price if the
+                colour has none either). Set a number here only for sizes that should cost more or less.
+              </p>
             </div>
 
             <label className="flex cursor-pointer items-center gap-2 text-sm">
