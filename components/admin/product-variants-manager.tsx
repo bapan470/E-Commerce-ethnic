@@ -104,6 +104,12 @@ interface Props {
   productId: string | null;
   productName: string;
   productSku: string;
+  // Used only to pick the right SEO vocabulary (saree vs kurti vs lehenga
+  // etc.) when auto-generating meta title/description/style note below --
+  // without these the generator has no way to tell a Kurti apart from a
+  // Saree and defaults to saree wording for everything.
+  productFabric?: string | null;
+  productCategory?: string | null;
   baseImage?: string;
   // Comma-separated list from the main product's "Colours" field. The
   // first entry is the product's own base colour (never a real row in
@@ -133,6 +139,8 @@ export default function ProductVariantsManager({
   productId,
   productName,
   productSku,
+  productFabric,
+  productCategory,
   baseImage,
   productColors,
   productSizes,
@@ -264,6 +272,8 @@ export default function ProductVariantsManager({
     }
     const seo = generateVariantSeoContent({
       productName,
+      fabric: productFabric,
+      category: productCategory,
       color: form.color.trim(),
     });
     setForm((f) => ({

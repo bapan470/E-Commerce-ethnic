@@ -2370,6 +2370,8 @@ export default function ProductsPanel() {
               productId={editing?.id ?? null}
               productName={form.name}
               productSku={form.sku}
+              productFabric={form.fabric}
+              productCategory={form.category_name}
               baseImage={form.images[0]}
               productColors={form.colors}
               productSizes={form.sizes}
