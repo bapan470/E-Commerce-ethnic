@@ -66,7 +66,19 @@ interface VariantFormState {
   sizes: { size: string; stockQuantity: string; priceOverride: string; sku: string }[];
 }
 
-const emptyVariantForm = (): VariantFormState => ({
+// Builds the starting size rows for a brand-new variant from the sizes
+// ticked on the main product form (e.g. "Free Size, S, M, L"). Falls back
+// to "Free Size" if the product has none selected yet.
+const defaultSizeRows = (productSizes?: string) => {
+  const sizes = (productSizes ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const list = sizes.length ? sizes : ['Free Size'];
+  return list.map((size) => ({ size, stockQuantity: '3', priceOverride: '', sku: '' }));
+};
+
+const emptyVariantForm = (productSizes?: string): VariantFormState => ({
   color: '',
   colorHex: '',
   slug: '',
@@ -79,7 +91,7 @@ const emptyVariantForm = (): VariantFormState => ({
   isDefault: false,
   rating: '',
   reviews: '',
-  sizes: [{ size: 'Free Size', stockQuantity: '3', priceOverride: '', sku: '' }],
+  sizes: defaultSizeRows(productSizes),
 });
 
 interface Props {
@@ -87,6 +99,11 @@ interface Props {
   productName: string;
   productSku: string;
   baseImage?: string;
+  // Comma-separated list of sizes ticked in the main product's "Sizes"
+  // field (e.g. "Free Size, S, M, L"). Used to pre-select the same sizes
+  // when a new colour/variant is added, instead of always defaulting to
+  // just "Free Size".
+  productSizes?: string;
   // When true, the "Add Variant" form opens automatically as soon as the
   // product is ready -- lets a button outside this component (the row's
   // "Add Variation" icon) jump straight to adding a colour without an
@@ -106,6 +123,7 @@ export default function ProductVariantsManager({
   productName,
   productSku,
   baseImage,
+  productSizes,
   autoOpenAdd,
   onAutoOpenAddHandled,
 }: Props) {
@@ -114,7 +132,7 @@ export default function ProductVariantsManager({
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<VariantWithSizes | null>(null);
-  const [form, setForm] = useState<VariantFormState>(emptyVariantForm());
+  const [form, setForm] = useState<VariantFormState>(emptyVariantForm(productSizes));
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [importUrl, setImportUrl] = useState('');
@@ -146,7 +164,7 @@ export default function ProductVariantsManager({
   const openNew = () => {
     setEditing(null);
     setForm({
-      ...emptyVariantForm(),
+      ...emptyVariantForm(productSizes),
       images: baseImage ? [baseImage] : [],
     });
     setOpen(true);
@@ -185,7 +203,7 @@ export default function ProductVariantsManager({
             priceOverride: s.price_override != null ? String(s.price_override) : '',
             sku: s.sku ?? '',
           }))
-        : [{ size: 'Free Size', stockQuantity: '3', priceOverride: '', sku: '' }],
+        : defaultSizeRows(productSizes),
     });
     setOpen(true);
   };
