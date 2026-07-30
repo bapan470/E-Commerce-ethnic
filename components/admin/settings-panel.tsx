@@ -7,6 +7,10 @@ import {
   StoreInfo,
   fetchStoreInfo,
   saveStoreInfo,
+  AboutContent,
+  fetchAboutContent,
+  saveAboutContent,
+  DEFAULT_ABOUT_CONTENT,
   EmailSettings,
   SiteBanner,
   fetchSiteBanner,
@@ -55,6 +59,9 @@ export default function SettingsPanel() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const [aboutForm, setAboutForm] = useState<AboutContent | null>(null);
+  const [savingAbout, setSavingAbout] = useState(false);
+
   const [checkoutForm, setCheckoutForm] = useState<ShippingSettings | null>(null);
   const [savingCheckout, setSavingCheckout] = useState(false);
 
@@ -91,6 +98,10 @@ export default function SettingsPanel() {
       .then(setForm)
       .catch(() => toast.error('Failed to load store settings'))
       .finally(() => setLoading(false));
+
+    fetchAboutContent()
+      .then(setAboutForm)
+      .catch(() => toast.error('Failed to load About Us content'));
 
     fetchShippingSettings()
       .then(setCheckoutForm)
@@ -141,6 +152,38 @@ export default function SettingsPanel() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const onSubmitAbout = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!aboutForm) return;
+    setSavingAbout(true);
+    try {
+      await saveAboutContent(aboutForm);
+      toast.success('About Us content saved');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSavingAbout(false);
+    }
+  };
+
+  const updateAboutValue = (index: number, field: 'title' | 'body', text: string) => {
+    setAboutForm((f) => {
+      if (!f) return f;
+      const values = f.values.map((v, i) => (i === index ? { ...v, [field]: text } : v));
+      return { ...f, values };
+    });
+  };
+
+  const updateAboutStep = (index: number, field: 'title' | 'body', text: string) => {
+    setAboutForm((f) => {
+      if (!f) return f;
+      const process_steps = f.process_steps.map((s, i) =>
+        i === index ? { ...s, [field]: text } : s
+      );
+      return { ...f, process_steps };
+    });
   };
 
   const onSubmitCheckout = async (e: FormEvent) => {
@@ -425,6 +468,125 @@ export default function SettingsPanel() {
           <Save className="mr-1.5 h-4 w-4" /> {saving ? 'Saving…' : 'Save Settings'}
         </Button>
       </form>
+
+      <div className="mt-8">
+        <h2 className="font-serif text-2xl font-bold text-primary">About Us Page Content</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Edits the story, values and process steps shown on the public /about page.
+          Address, GSTIN, email and phone shown there come from Store Settings above,
+          not from here.
+        </p>
+      </div>
+
+      {!aboutForm ? (
+        <p className="py-4 text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <form
+          onSubmit={onSubmitAbout}
+          className="mt-4 grid max-w-2xl gap-4 rounded-lg border border-border/60 bg-card p-5"
+        >
+          <div className="grid gap-1.5">
+            <Label htmlFor="about-hero-heading">Hero heading</Label>
+            <Textarea
+              id="about-hero-heading"
+              rows={2}
+              value={aboutForm.hero_heading}
+              onChange={(e) => setAboutForm((f) => f && { ...f, hero_heading: e.target.value })}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="about-hero-subtext">Hero subtext</Label>
+            <Textarea
+              id="about-hero-subtext"
+              rows={2}
+              value={aboutForm.hero_subtext}
+              onChange={(e) => setAboutForm((f) => f && { ...f, hero_subtext: e.target.value })}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="about-story-1">Story — paragraph 1</Label>
+            <Textarea
+              id="about-story-1"
+              rows={3}
+              value={aboutForm.story_paragraph_1}
+              onChange={(e) => setAboutForm((f) => f && { ...f, story_paragraph_1: e.target.value })}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="about-story-2">Story — paragraph 2</Label>
+            <Textarea
+              id="about-story-2"
+              rows={3}
+              value={aboutForm.story_paragraph_2}
+              onChange={(e) => setAboutForm((f) => f && { ...f, story_paragraph_2: e.target.value })}
+            />
+            <p className="text-xs text-muted-foreground">
+              Links to the refund policy and contact page are appended automatically after this text.
+            </p>
+          </div>
+
+          <div className="mt-2 border-t border-border/60 pt-4">
+            <p className="text-sm font-medium">Values (4 cards — icons are fixed, only text is editable)</p>
+            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              {aboutForm.values.map((v, i) => (
+                <div key={i} className="grid gap-1.5 rounded-md border border-border/60 p-3">
+                  <Label htmlFor={`about-value-title-${i}`}>Title {i + 1}</Label>
+                  <Input
+                    id={`about-value-title-${i}`}
+                    value={v.title}
+                    onChange={(e) => updateAboutValue(i, 'title', e.target.value)}
+                  />
+                  <Label htmlFor={`about-value-body-${i}`}>Body {i + 1}</Label>
+                  <Textarea
+                    id={`about-value-body-${i}`}
+                    rows={2}
+                    value={v.body}
+                    onChange={(e) => updateAboutValue(i, 'body', e.target.value)}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-2 border-t border-border/60 pt-4">
+            <p className="text-sm font-medium">
+              Process steps (4 steps — step numbers &amp; icons are fixed, only text is editable)
+            </p>
+            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              {aboutForm.process_steps.map((s, i) => (
+                <div key={i} className="grid gap-1.5 rounded-md border border-border/60 p-3">
+                  <Label htmlFor={`about-step-title-${i}`}>Step {i + 1} title</Label>
+                  <Input
+                    id={`about-step-title-${i}`}
+                    value={s.title}
+                    onChange={(e) => updateAboutStep(i, 'title', e.target.value)}
+                  />
+                  <Label htmlFor={`about-step-body-${i}`}>Step {i + 1} body</Label>
+                  <Textarea
+                    id={`about-step-body-${i}`}
+                    rows={2}
+                    value={s.body}
+                    onChange={(e) => updateAboutStep(i, 'body', e.target.value)}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <Button type="submit" disabled={savingAbout} className="w-fit bg-primary">
+              <Save className="mr-1.5 h-4 w-4" /> {savingAbout ? 'Saving…' : 'Save About Us Content'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setAboutForm(DEFAULT_ABOUT_CONTENT)}
+            >
+              Reset to default text
+            </Button>
+          </div>
+        </form>
+      )}
 
       <div className="mt-8">
         <h2 className="font-serif text-2xl font-bold text-primary">Social Media Links</h2>

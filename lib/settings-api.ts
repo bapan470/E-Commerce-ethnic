@@ -36,6 +36,106 @@ export async function saveStoreInfo(info: StoreInfo) {
 }
 
 // ---------------------------------------------------------------------
+// About Us page content — the story/values/process text on /about.
+// Business identity fields (address, GSTIN, email, phone) stay in
+// StoreInfo above and are reused on /about automatically; this only
+// covers the narrative copy so admins can edit it without touching code.
+// ---------------------------------------------------------------------
+export interface AboutContentBlock {
+  title: string;
+  body: string;
+}
+
+export interface AboutContent {
+  hero_heading: string;
+  hero_subtext: string;
+  story_paragraph_1: string;
+  story_paragraph_2: string;
+  values: AboutContentBlock[]; // exactly 4 — icons are fixed in code, matched by position
+  process_steps: AboutContentBlock[]; // exactly 4 — icons/step numbers fixed in code
+}
+
+export const DEFAULT_ABOUT_CONTENT: AboutContent = {
+  hero_heading:
+    "Handwoven ethnic wear, sold the way it's made — by hand, and by name.",
+  hero_subtext:
+    'AruhiHandlooms sources sarees, lehengas and bridal wear directly from handloom weaving clusters across India, and sells them online with the same care they were woven with.',
+  story_paragraph_1:
+    "Handloom weaving is slow, skilled work, and it rarely gets sold that way online — pieces pass through several hands before reaching a customer, with little said about who actually wove them. AruhiHandlooms was built to shorten that distance: we work with weavers directly, list what's actually in stock, and stand behind every order with a real support team and real policies.",
+  story_paragraph_2:
+    "We're not a print-on-demand storefront or a drop-shipped catalogue. What you see listed is what our team has checked, photographed and can ship — and if something isn't right, our refund policy and support team are there to fix it.",
+  values: [
+    {
+      title: 'Handwoven, not mass-produced',
+      body: 'Every saree and set is woven on a loom by hand. Small irregularities in weave and color are marks of handwork, not defects.',
+    },
+    {
+      title: 'Sourced directly from weavers',
+      body: 'We work with weaving clusters across India instead of routing through multiple middlemen, so quality and pricing stay traceable.',
+    },
+    {
+      title: 'Natural fibres first',
+      body: 'Silk, cotton, mulmul and cotton-silk blends are chosen for how they wear and drape, not just how they photograph.',
+    },
+    {
+      title: 'Accountable after the sale',
+      body: 'Real order, shipping and refund policies apply to every purchase — see our support details below if anything needs sorting out.',
+    },
+  ],
+  process_steps: [
+    {
+      title: 'Yarn & design',
+      body: 'Yarn is selected and a weave design is set before a single thread goes on the loom.',
+    },
+    {
+      title: 'Handloom weaving',
+      body: 'Artisans weave each piece by hand, which is why timelines vary and no two pieces are perfectly identical.',
+    },
+    {
+      title: 'Quality check',
+      body: 'Every piece is checked for weave, finish and stitching before it is listed as ready to ship.',
+    },
+    {
+      title: 'Packed & shipped',
+      body: 'Orders are packed and handed to our courier partners with tracking shared on your account.',
+    },
+  ],
+};
+
+export function mergeAboutContent(value: Partial<AboutContent> | null | undefined): AboutContent {
+  const v = value || {};
+  return {
+    ...DEFAULT_ABOUT_CONTENT,
+    ...v,
+    values:
+      Array.isArray(v.values) && v.values.length === 4
+        ? v.values
+        : DEFAULT_ABOUT_CONTENT.values,
+    process_steps:
+      Array.isArray(v.process_steps) && v.process_steps.length === 4
+        ? v.process_steps
+        : DEFAULT_ABOUT_CONTENT.process_steps,
+  };
+}
+
+export async function fetchAboutContent(): Promise<AboutContent> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'about_content')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_ABOUT_CONTENT;
+  return mergeAboutContent(data.value as Partial<AboutContent>);
+}
+
+export async function saveAboutContent(content: AboutContent) {
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ key: 'about_content', value: content }, { onConflict: 'key' });
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------
 // Social media links — shown as icons in the storefront footer.
 // Any field left blank is simply hidden on the footer, so admins don't
 // have to fill in every platform.
