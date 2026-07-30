@@ -55,8 +55,14 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 
-const DEFAULT_IMAGE =
-  'https://images.pexels.com/photos/1191349/pexels-photo-1191349.jpeg?auto=compress&cs=tinysrgb&w=800&h=1000&fit=crop';
+// Was previously a Pexels stock photo, which meant any product saved
+// without a real uploaded photo would silently show a stock image to
+// shoppers on the live storefront (looks like a real product photo, but
+// isn't). Switched to the same honest "No Image" placeholder already used
+// everywhere else on the site (product-card.tsx, cart-drawer.tsx, cart
+// and checkout pages) so an unphotographed product is clearly flagged as
+// missing an image instead of quietly passing off a stock photo as real.
+const DEFAULT_IMAGE = 'https://placehold.co/800x1000?text=No+Image';
 
 // ---------------------------------------------------------------------
 // Per-platform social share buttons (Facebook / Instagram / Threads).
