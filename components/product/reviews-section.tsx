@@ -498,13 +498,15 @@ export default function ReviewsSection({
                     )}
 
                     <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <span className="relative inline-flex animate-in fade-in zoom-in items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 duration-500 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-400">
-                        <span className="relative flex h-3 w-3 shrink-0 items-center justify-center">
-                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                          <CheckCircle2 className="relative h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+                      {r.verified_purchase && (
+                        <span className="relative inline-flex animate-in fade-in zoom-in items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 duration-500 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-400">
+                          <span className="relative flex h-3 w-3 shrink-0 items-center justify-center">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                            <CheckCircle2 className="relative h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+                          </span>
+                          Verified Purchase
                         </span>
-                        Verified Purchase
-                      </span>
+                      )}
                       <button
                         type="button"
                         onClick={() => toggleHelpful(r.id)}

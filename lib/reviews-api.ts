@@ -10,6 +10,11 @@ export interface Review {
   comment: string | null;
   photos: string[];
   is_approved: boolean;
+  /** True only when the reviewer had a matching delivered order at submit
+   *  time -- checked server-side (see submitReview), never trust this from
+   *  client input. Used to gate the "Verified Purchase" badge so it's never
+   *  shown for reviews that aren't actually from a purchaser. */
+  verified_purchase: boolean;
   created_at: string;
 }
 
@@ -217,6 +222,12 @@ export async function submitReview(input: {
     user.email?.split('@')[0] ||
     'Customer';
 
+  // Re-check purchase status here (not just trust the "eligible" UI state
+  // from the page) so verified_purchase always reflects a real order at the
+  // moment of submission -- this is what the "Verified Purchase" badge in
+  // reviews-section.tsx is gated on.
+  const verifiedPurchase = await hasPurchasedProduct(input.productId);
+
   const { data, error } = await supabase
     .from('reviews')
     .insert({
@@ -228,6 +239,7 @@ export async function submitReview(input: {
       comment: input.comment || null,
       photos: input.photos ?? [],
       is_approved: false,
+      verified_purchase: verifiedPurchase,
     })
     .select('*')
     .single();
