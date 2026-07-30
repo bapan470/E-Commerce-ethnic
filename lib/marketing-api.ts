@@ -168,7 +168,13 @@ export function applyFulfillmentTokens(
 // the Shipping Policy / Refund Policy fields drops this text in, already
 // wired up with the tokens above, so future timing changes flow through
 // without anyone touching this text again.
-export const SHIPPING_POLICY_TEMPLATE = `Order Processing
+export const SHIPPING_POLICY_TEMPLATE = `Where We Ship From
+All orders are packed and dispatched from our facility in Naihati, West Bengal, India.
+
+Our Courier Partners
+We ship using trusted logistics partners such as Delhivery and Shiprocket (and other reputed courier partners as needed), chosen based on serviceability to your pincode.
+
+Order Processing
 Orders are processed and dispatched within {{dispatch_days}} business days of order confirmation, excluding Sundays and public holidays. During sale periods, processing may take slightly longer.
 
 Delivery Timelines

@@ -25,6 +25,8 @@ import {
   ShippingSettings,
   DEFAULT_SHIPPING_SETTINGS,
   fetchShippingSettings,
+  checkPincodeServiceability,
+  PincodeResult,
 } from '@/lib/pincode-api';
 import { trackEvent, getSessionId } from '@/lib/track-api';
 import {
@@ -128,6 +130,7 @@ export default function CheckoutPage() {
   const [stateName, setStateName] = useState('');
   const [pincode, setPincode] = useState('');
   const [country, setCountry] = useState('India');
+  const [deliveryEstimate, setDeliveryEstimate] = useState<PincodeResult | null>(null);
 
   // Bug fix: clicking "Log In" / "Create Account" from the resell prompt used
   // to send the shopper to /login or /signup and back, which remounts this
@@ -357,6 +360,23 @@ export default function CheckoutPage() {
       // fall back to defaults already set above
     });
   }, []);
+
+  // Show the customer a real estimated delivery window for their own pincode
+  // right on the checkout page, so shipping timing isn't a surprise after
+  // they've already placed the order.
+  useEffect(() => {
+    if (!/^[1-9][0-9]{5}$/.test(pincode.trim())) {
+      setDeliveryEstimate(null);
+      return;
+    }
+    let cancelled = false;
+    checkPincodeServiceability(pincode).then((res) => {
+      if (!cancelled) setDeliveryEstimate(res);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [pincode]);
 
   useEffect(() => {
     fetchLoyaltySettings().then(setLoyaltySettings).catch(() => {
@@ -1597,6 +1617,12 @@ export default function CheckoutPage() {
               </AlertDialogContent>
             </AlertDialog>
 
+            {deliveryEstimate?.serviceable && (
+              <p className="mt-3 text-xs text-muted-foreground">
+                📦 Estimated delivery in {deliveryEstimate.etaDays}-{deliveryEstimate.etaDays + 2} business days
+                {deliveryEstimate.city ? ` to ${deliveryEstimate.city}, ${deliveryEstimate.state}` : ''}, dispatched from our Naihati, West Bengal facility.
+              </p>
+            )}
             <Separator className="my-4" />
             <div className="flex items-center justify-between">
               <span className="font-serif text-base font-semibold">Total</span>
