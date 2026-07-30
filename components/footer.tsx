@@ -60,6 +60,7 @@ export default function Footer() {
           <ul className="mt-3 space-y-2 text-sm text-primary-foreground/80">
             <li><Link href="/cart" className="hover:text-secondary">Cart</Link></li>
             <li><Link href="/checkout" onClick={() => { clearBuyNow(); markCheckoutEntry(); }} className="hover:text-secondary">Checkout</Link></li>
+            <li><Link href="/about" className="hover:text-secondary">About Us</Link></li>
             <li><Link href="/contact" className="hover:text-secondary">Contact Us</Link></li>
             {/* Admin link intentionally omitted for security */}
             <li><Link href="/legal/shipping-policy" className="hover:text-secondary">Shipping & Returns</Link></li>

@@ -27,6 +27,7 @@ const navLinks = [
   { href: '/category/cotton-blend', label: 'Cotton Blend' },
   { href: '/category/mulmul-cotton-saree', label: 'Mulmul Cotton' },
   { href: '/blog', label: 'Blog' },
+  { href: '/about', label: 'About Us' },
 ];
 
 export default function Header() {
@@ -90,6 +91,7 @@ export default function Header() {
       { href: '/shop', label: 'Shop All' },
       ...categoryLinks,
       { href: '/blog', label: 'Blog' },
+      { href: '/about', label: 'About Us' },
       { href: '/account', label: 'My Account' },
       { href: '/account/reseller', label: 'Reseller' },
       { href: '/contact', label: 'Contact Us' },
