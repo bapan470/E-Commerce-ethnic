@@ -188,7 +188,10 @@ export async function POST(req: Request) {
       highlights: {},
       stock_quantity: available_quantity,
       low_stock_threshold: 5,
-      rating: 4.5,
+      // Do NOT fabricate a 4.5 rating for a product with zero reviews --
+      // that's a fake trust signal and violates Google's Misrepresentation
+      // policy. Start at 0 until real reviews come in.
+      rating: 0,
       reviews: 0,
       featured: false,
       in_stock: available_quantity > 0,

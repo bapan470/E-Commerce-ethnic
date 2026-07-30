@@ -753,30 +753,40 @@ function ProductInfo({
             <ShareButton title={displayName} text={`Check out ${displayName} on Aruhi`} />
           </div>
         </div>
-        <button
-          type="button"
-          onClick={onReviewsClick}
-          className="mt-2 flex items-center gap-2 text-sm hover:underline"
-        >
-          <div className="flex items-center gap-0.5">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Star
-                key={i}
-                className={`h-4 w-4 ${
-                  i < Math.round(displayRating)
-                    ? 'fill-secondary text-secondary'
-                    : 'text-muted-foreground/40'
-                }`}
-              />
-            ))}
-          </div>
-          <span className="font-medium">{displayRating.toFixed(1)}</span>
-          <span className="text-muted-foreground">&middot;</span>
-          <span className="text-muted-foreground">
-            {displayRatingsCount} rating{displayRatingsCount === 1 ? '' : 's'}
-            {displayReviewsCount > 0 ? ` \u00b7 ${displayReviewsCount} review${displayReviewsCount === 1 ? '' : 's'}` : ''}
-          </span>
-        </button>
+        {displayRatingsCount > 0 ? (
+          <button
+            type="button"
+            onClick={onReviewsClick}
+            className="mt-2 flex items-center gap-2 text-sm hover:underline"
+          >
+            <div className="flex items-center gap-0.5">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Star
+                  key={i}
+                  className={`h-4 w-4 ${
+                    i < Math.round(displayRating)
+                      ? 'fill-secondary text-secondary'
+                      : 'text-muted-foreground/40'
+                  }`}
+                />
+              ))}
+            </div>
+            <span className="font-medium">{displayRating.toFixed(1)}</span>
+            <span className="text-muted-foreground">&middot;</span>
+            <span className="text-muted-foreground">
+              {displayRatingsCount} rating{displayRatingsCount === 1 ? '' : 's'}
+              {displayReviewsCount > 0 ? ` \u00b7 ${displayReviewsCount} review${displayReviewsCount === 1 ? '' : 's'}` : ''}
+            </span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onReviewsClick}
+            className="mt-2 flex items-center gap-2 text-sm text-muted-foreground hover:underline"
+          >
+            No reviews yet &middot; Be the first to review
+          </button>
+        )}
       </div>
 
       <div className="flex items-baseline gap-3">

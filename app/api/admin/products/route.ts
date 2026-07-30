@@ -60,7 +60,11 @@ export async function POST(req: Request) {
     highlights: input.highlights ?? {},
     stock_quantity: input.stock_quantity ?? 0,
     low_stock_threshold: input.low_stock_threshold ?? 5,
-    rating: input.rating ?? 4.5,
+    // Do NOT default this to 4.5 -- that fabricates a trust signal for a
+    // product that has zero real reviews, which is exactly what Google's
+    // Misrepresentation policy flags. Only store a rating if one was
+    // explicitly provided (e.g. migrating existing reviews); otherwise 0.
+    rating: input.rating ?? 0,
     reviews: input.reviews ?? 0,
     featured: input.featured ?? false,
     in_stock: input.in_stock ?? true,

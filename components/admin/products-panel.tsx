@@ -266,7 +266,8 @@ const emptyForm = (): FormState => ({
   highlights: emptyHighlights(),
   stock_quantity: '0',
   low_stock_threshold: '5',
-  rating: '4.5',
+  // Don't pre-fill a fake 4.5 -- a brand new product has zero real reviews.
+  rating: '0',
   reviews: '0',
   featured: false,
   in_stock: true,
@@ -1059,7 +1060,8 @@ export default function ProductsPanel() {
       highlights: form.highlights,
       stock_quantity: newStockQty,
       low_stock_threshold: Number(form.low_stock_threshold) || 5,
-      rating: Number(form.rating) || 4.5,
+      // Preserve an intentional 0 (no reviews) -- don't fabricate 4.5.
+      rating: form.rating.trim() === '' ? 0 : Number(form.rating),
       reviews: Number(form.reviews) || 0,
       featured: form.featured,
       in_stock: form.in_stock,

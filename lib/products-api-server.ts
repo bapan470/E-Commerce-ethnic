@@ -78,7 +78,9 @@ export function mapRowToProduct(row: ProductRow): Product {
     highlights: row.highlights ?? null,
     default_variant_slug: defaultVariant?.slug ?? null,
     default_variant_image: defaultVariant?.images?.[0] ?? null,
-    rating: Number(row.rating) || 4.5,
+    // Preserve a real 0 (no reviews yet) instead of falling back to a fake
+    // 4.5 -- `|| 4.5` was overriding a legit 0 because 0 is falsy in JS.
+    rating: row.rating != null ? Number(row.rating) : 0,
     reviews: row.reviews ?? 0,
     featured: row.featured,
     stock_quantity: row.stock_quantity,
