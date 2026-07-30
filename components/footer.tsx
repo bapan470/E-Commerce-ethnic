@@ -40,6 +40,16 @@ export default function Footer() {
             Handwoven ethnic wear from master artisans across India. Crafted with
             love, delivered with care.
           </p>
+          {store?.address && (
+            <p className="mt-3 text-xs text-primary-foreground/70">
+              {store.address}
+            </p>
+          )}
+          {store?.gstin && (
+            <p className="mt-1 text-xs text-primary-foreground/70">
+              GSTIN: {store.gstin}
+            </p>
+          )}
         </div>
         <div>
           <h4 className="text-sm font-semibold uppercase tracking-wider text-secondary">
