@@ -753,7 +753,7 @@ function ProductInfo({
             <ShareButton title={displayName} text={`Check out ${displayName} on Aruhi`} />
           </div>
         </div>
-        {displayRatingsCount > 0 ? (
+        {displayRatingsCount > 0 && (
           <button
             type="button"
             onClick={onReviewsClick}
@@ -777,14 +777,6 @@ function ProductInfo({
               {displayRatingsCount} rating{displayRatingsCount === 1 ? '' : 's'}
               {displayReviewsCount > 0 ? ` \u00b7 ${displayReviewsCount} review${displayReviewsCount === 1 ? '' : 's'}` : ''}
             </span>
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={onReviewsClick}
-            className="mt-2 flex items-center gap-2 text-sm text-muted-foreground hover:underline"
-          >
-            No reviews yet &middot; Be the first to review
           </button>
         )}
       </div>

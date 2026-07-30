@@ -30,12 +30,12 @@ FILES CHANGED (8)
    - Save handler no longer falls back to 4.5 when the field is empty.
 
 6. components/product-card.tsx
-   - Product cards (incl. "New Arrivals" on homepage) now show
-     "No reviews yet" instead of a star rating when reviews = 0.
+   - Product cards (incl. "New Arrivals" on homepage) now hide the
+     star-rating row entirely when reviews = 0 (no text shown at all).
 
 7. app/product/[slug]/product-detail.tsx
-   - Product page now shows "No reviews yet · Be the first to review"
-     instead of a fake star rating when there are 0 reviews.
+   - Product page now hides the rating/review row entirely when there
+     are 0 reviews (no text shown at all).
    (Note: the JSON-LD structured data in app/product/[slug]/page.tsx was
    already correctly guarded with `reviews > 0` -- no change needed there.)
 
