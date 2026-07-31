@@ -137,7 +137,10 @@ export default function CollectionsPanel() {
     setSlug('');
     setDescription('');
     setIsActive(true);
-    setShowOnHomepage(true); = async (c: AdminCollectionRow) => {
+    setShowOnHomepage(true);
+  };
+
+  const openEdit = async (c: AdminCollectionRow) => {
     setEditing(c);
     setName(c.name);
     setSlug(c.slug);
