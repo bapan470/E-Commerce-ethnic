@@ -437,15 +437,36 @@ export default function CollectionsPanel() {
                   filteredProducts.map((p) => (
                     <label
                       key={p.id}
-                      className="flex cursor-pointer items-center gap-2 border-b border-border/40 px-3 py-2 text-sm last:border-b-0 hover:bg-muted/40"
+                      className="flex cursor-pointer items-center gap-3 border-b border-border/40 px-3 py-2 text-sm last:border-b-0 hover:bg-muted/40"
                     >
                       <input
                         type="checkbox"
                         checked={selectedProductIds.includes(p.id)}
                         onChange={() => toggleProduct(p.id)}
-                        className="h-4 w-4 accent-primary"
+                        className="h-4 w-4 shrink-0 accent-primary"
                       />
-                      <span className="truncate">{p.name}</span>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={p.default_variant_image || p.images?.[0] || ''}
+                        alt=""
+                        className="h-10 w-10 shrink-0 rounded-md border border-border/60 bg-muted object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.visibility = 'hidden';
+                        }}
+                      />
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate">{p.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {p.mrp && p.mrp > p.price ? (
+                            <>
+                              <span className="font-medium text-secondary">₹{p.price}</span>{' '}
+                              <span className="line-through">₹{p.mrp}</span>
+                            </>
+                          ) : (
+                            <span className="font-medium">₹{p.price}</span>
+                          )}
+                        </span>
+                      </span>
                     </label>
                   ))
                 )}
