@@ -63,6 +63,7 @@ export default function CollectionsPanel() {
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [productSearch, setProductSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [maxPriceFilter, setMaxPriceFilter] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(false);
 
@@ -134,10 +135,12 @@ export default function CollectionsPanel() {
   const filteredProducts = useMemo(() => {
     let list = products;
     if (categoryFilter !== 'all') list = list.filter((p) => p.category === categoryFilter);
+    const maxPrice = parseFloat(maxPriceFilter);
+    if (!Number.isNaN(maxPrice)) list = list.filter((p) => p.price <= maxPrice);
     const q = productSearch.trim().toLowerCase();
     if (q) list = list.filter((p) => p.name.toLowerCase().includes(q));
     return list;
-  }, [products, productSearch, categoryFilter]);
+  }, [products, productSearch, categoryFilter, maxPriceFilter]);
 
   const allFilteredSelected =
     filteredProducts.length > 0 && filteredProducts.every((p) => selectedProductIds.includes(p.id));
@@ -163,6 +166,7 @@ export default function CollectionsPanel() {
     setShowOnHomepage(true);
     setProductSearch('');
     setCategoryFilter('all');
+    setMaxPriceFilter('');
     setOpen(true);
   };
 
@@ -175,6 +179,8 @@ export default function CollectionsPanel() {
     setShowOnHomepage(c.show_on_homepage);
     setSelectedProductIds([]);
     setProductSearch('');
+    setCategoryFilter('all');
+    setMaxPriceFilter('');
     setOpen(true);
     setLoadingProducts(true);
     try {
@@ -476,19 +482,41 @@ export default function CollectionsPanel() {
                   disabled={filteredProducts.length === 0}
                   className="text-xs font-medium text-primary hover:underline disabled:pointer-events-none disabled:opacity-40"
                 >
-                  {allFilteredSelected
-                    ? `Deselect all${categoryFilter !== 'all' ? ` in ${categoryFilter}` : ''} (${filteredProducts.length})`
-                    : `Select all${categoryFilter !== 'all' ? ` in ${categoryFilter}` : ''} (${filteredProducts.length})`}
+                  {(() => {
+                    const bits: string[] = [];
+                    if (categoryFilter !== 'all') bits.push(categoryFilter);
+                    if (maxPriceFilter && !Number.isNaN(parseFloat(maxPriceFilter)))
+                      bits.push(`under ₹${maxPriceFilter}`);
+                    const suffix = bits.length ? ` in ${bits.join(', ')}` : '';
+                    return allFilteredSelected
+                      ? `Deselect all${suffix} (${filteredProducts.length})`
+                      : `Select all${suffix} (${filteredProducts.length})`;
+                  })()}
                 </button>
               </div>
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={productSearch}
-                  onChange={(e) => setProductSearch(e.target.value)}
-                  placeholder="Search products to add…"
-                  className="pl-9"
-                />
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={productSearch}
+                    onChange={(e) => setProductSearch(e.target.value)}
+                    placeholder="Search products to add…"
+                    className="pl-9"
+                  />
+                </div>
+                <div className="relative w-36 shrink-0">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                    ≤ ₹
+                  </span>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={maxPriceFilter}
+                    onChange={(e) => setMaxPriceFilter(e.target.value)}
+                    placeholder="Max price"
+                    className="pl-8"
+                  />
+                </div>
               </div>
               {productCategories.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
