@@ -1,4 +1,5 @@
 import { getServerSupabase } from './supabase-server';
+import { getSupabaseAdmin } from './supabase-admin';
 import { fetchProductsServer, fetchCategoriesServer } from './products-api-server';
 import { fetchPublicCollectionsServer, PublicCollectionRow } from './collections-api-server';
 import { Product, CategoryRow } from './types';
@@ -81,7 +82,13 @@ async function fetchHomeTiles(): Promise<HomepageTile[]> {
 // without shipping the whole collections payload to the client.
 async function fetchCollectionSlugMap(): Promise<Record<string, string>> {
   try {
-    const supabase = getServerSupabase();
+    // collections has no anon/authenticated RLS policy (service-role only
+    // by design — see 20260814000000_admin_collections.sql), so this must
+    // use the admin client. Using the anon client here silently returns
+    // zero rows (RLS filters everything out, no error thrown), which was
+    // making every link_type='collection' and link_type='promotion'
+    // homepage tile permanently unresolvable/non-clickable.
+    const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from('collections')
       .select('id, slug')
