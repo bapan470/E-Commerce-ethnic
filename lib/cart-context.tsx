@@ -12,6 +12,7 @@ import React, {
 import { CartItem, Product, CategoryRow } from './types';
 import { fetchProducts, fetchCategories } from './products-api';
 import { validateCoupon, computeCouponDiscount, Coupon, CouponResult } from './coupons-api';
+import { ActivePromotion } from './promotions-api';
 import {
   fetchPaymentDiscountSettings,
   PaymentDiscountSettings,
@@ -51,6 +52,59 @@ const sameLine = (
   item.product.id === productId &&
   item.size === size &&
   (color === undefined || itemColor(item.product) === color);
+
+/* ---------------- BOGO promotions (Part 2a — pure logic, not wired yet) ---------------- */
+//
+// computeBogoDiscount() is intentionally a standalone, side-effect-free function (no hooks,
+// no context) so it can be unit-tested with plain arrays before Part 2b wires it into
+// CartContext state and cart-drawer.tsx. It mirrors how computeCouponDiscount() in
+// coupons-api.ts is also a pure function the reducer/useMemo just calls into.
+//
+// Algorithm: for each active promotion, take the qualifying cart units (all units of a
+// product if scope='all', or only units of products in promotion.product_ids if
+// scope='collection'), expand each line's quantity into individual priced units, sort them
+// cheapest-first, and walk them in chunks of (buy_qty + get_qty). Only a FULL chunk qualifies
+// (a partial trailing group doesn't get a free item) — the cheapest `get_qty` units in each
+// full chunk get `free_item_discount_percent`% off. The result across all promotions is
+// summed, same way couponDiscount and bogoDiscount will be summed against the subtotal.
+
+function isQualifyingItem(item: CartItem, promotion: ActivePromotion): boolean {
+  if (promotion.scope === 'all') return true;
+  if (promotion.scope === 'collection') {
+    return (promotion.product_ids ?? []).includes(item.product.id);
+  }
+  return false;
+}
+
+export function computeBogoDiscount(items: CartItem[], activePromotions: ActivePromotion[]): number {
+  if (items.length === 0 || activePromotions.length === 0) return 0;
+
+  let total = 0;
+
+  for (const promotion of activePromotions) {
+    const buyQty = Math.max(1, promotion.buy_qty || 1);
+    const getQty = Math.max(1, promotion.get_qty || 1);
+    const groupSize = buyQty + getQty;
+    const discountPct = Math.min(100, Math.max(0, promotion.free_item_discount_percent ?? 100));
+
+    // Expand qualifying lines into one entry per unit, cheapest first.
+    const units: number[] = [];
+    for (const item of items) {
+      if (!isQualifyingItem(item, promotion)) continue;
+      for (let i = 0; i < item.quantity; i++) units.push(item.product.price);
+    }
+    units.sort((a, b) => a - b);
+
+    for (let i = 0; i + groupSize <= units.length; i += groupSize) {
+      const group = units.slice(i, i + groupSize);
+      const freeUnits = group.slice(0, getQty); // cheapest `getQty` units in this full group
+      const groupDiscount = freeUnits.reduce((sum, price) => sum + (price * discountPct) / 100, 0);
+      total += groupDiscount;
+    }
+  }
+
+  return Math.round(total);
+}
 
 function cartReducer(state: CartState, action: CartAction): CartState {
   switch (action.type) {

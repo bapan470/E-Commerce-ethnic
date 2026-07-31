@@ -72,7 +72,29 @@ export async function setPromotionActive(id: string, is_active: boolean) {
   });
 }
 
-// NOTE: the storefront-facing fetchActivePromotions() (used by the cart
-// to auto-apply BOGO discounts) is added in Part 2, alongside the cart
-// engine that actually consumes it — kept out of this file for now so
-// Part 1 stays admin-only, same as instructed.
+// ---------------------------------------------------------------------
+// Storefront (public) — used by the cart to auto-apply BOGO discounts.
+// `collection_products` has no public RLS policy, so a scope='collection'
+// promotion's live product ids are resolved server-side and returned
+// alongside it, instead of the browser querying that table directly.
+// ---------------------------------------------------------------------
+
+export interface ActivePromotion extends Promotion {
+  /** Live product ids in `collection_id`, only present when scope='collection'. */
+  product_ids: string[] | null;
+}
+
+export async function fetchActivePromotions(): Promise<ActivePromotion[]> {
+  try {
+    const res = await fetch('/api/promotions/active');
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || 'Failed to load active promotions');
+    return (body.promotions ?? []) as ActivePromotion[];
+  } catch {
+    // A shopper's cart should never break because a promotion failed to
+    // load — same "fail quiet" approach as fetchHomeBanner in
+    // lib/home-data-server.ts.
+    return [];
+  }
+}
+
