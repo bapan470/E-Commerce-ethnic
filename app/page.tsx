@@ -100,6 +100,8 @@ export default async function Home() {
         banner={homeData.banner}
         freeShippingThreshold={homeData.freeShippingThreshold}
         collections={homeData.collections}
+        tiles={homeData.tiles}
+        collectionSlugById={homeData.collectionSlugById}
       />
     </>
   );

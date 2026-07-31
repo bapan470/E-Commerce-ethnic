@@ -1,0 +1,145 @@
+'use client';
+
+import Link from 'next/link';
+import Image from 'next/image';
+import { ArrowRight, ImageOff } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import type { HomepageTile } from '@/lib/homepage-tiles-api';
+
+interface HomepageGridProps {
+  tiles: HomepageTile[];
+  collectionSlugById: Record<string, string>;
+}
+
+/**
+ * Admin-curated "grid of offers" section — 2 columns on mobile widening to
+ * 4 on larger screens, image on the top half of each card and the
+ * title/subtitle/price/CTA on the bottom half, matching the visual language
+ * of PromoSlider and CouponStrip (rounded-2xl cards, same shadow/border
+ * tokens, primary/secondary theme colours) so it reads as part of the same
+ * page instead of a bolted-on block.
+ */
+export default function HomepageGrid({ tiles, collectionSlugById }: HomepageGridProps) {
+  if (tiles.length === 0) return null;
+
+  return (
+    <section className="container-boutique py-6">
+      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
+        Today&apos;s Picks
+      </p>
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        {tiles.map((tile) => {
+          if (tile.link_type === 'collection') {
+            const slug = collectionSlugById[tile.link_value ?? ''];
+            // A tile pointing at a collection that no longer exists (or has
+            // since been deactivated) shouldn't produce a dead link — skip
+            // it entirely rather than render a card that 404s.
+            if (!slug) return null;
+            return (
+              <TileCard key={tile.id} tile={tile} href={`/collection/${slug}`} />
+            );
+          }
+
+          if (tile.link_type === 'custom_url') {
+            return (
+              <TileCard
+                key={tile.id}
+                tile={tile}
+                href={tile.link_value ?? ''}
+                external={(tile.link_value ?? '').startsWith('http')}
+              />
+            );
+          }
+
+          // link_type === 'promotion' — resolving this to its collection
+          // page is Part 4b; for now the tile just displays, non-clickable.
+          return <TileCard key={tile.id} tile={tile} href={null} />;
+        })}
+      </div>
+    </section>
+  );
+}
+
+function TileCard({
+  tile,
+  href,
+  external = false,
+}: {
+  tile: HomepageTile;
+  href: string | null;
+  external?: boolean;
+}) {
+  const content = (
+    <>
+      <div className="relative aspect-square w-full overflow-hidden bg-muted">
+        {tile.image_url ? (
+          <Image
+            src={tile.image_url}
+            alt={tile.title}
+            fill
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+            className="object-cover transition-transform duration-500 group-hover:scale-105"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center">
+            <Skeleton className="absolute inset-0 rounded-none" />
+            <ImageOff className="relative h-6 w-6 text-muted-foreground/60" />
+          </div>
+        )}
+
+        {tile.badge_text && (
+          <span className="absolute left-2 top-2 rounded-full bg-secondary px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-secondary-foreground shadow-sm">
+            {tile.badge_text}
+          </span>
+        )}
+      </div>
+
+      <div className="flex flex-1 flex-col gap-1 px-3 py-3">
+        <h3 className="font-serif text-sm font-bold leading-tight text-primary sm:text-base">
+          {tile.title}
+        </h3>
+        {tile.subtitle && (
+          <p className="text-xs text-muted-foreground sm:text-sm">{tile.subtitle}</p>
+        )}
+        {tile.price_label && (
+          <p className="text-xs font-semibold text-secondary sm:text-sm">{tile.price_label}</p>
+        )}
+
+        {/* Styled as a button but rendered as a plain span — the whole
+            card is already a single Link/anchor (or a non-clickable div
+            for promotion tiles pending Part 4b), so an actual <button>
+            here would be invalid nested-interactive-content HTML. */}
+        <span
+          className={`mt-2 flex w-full items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold sm:text-sm ${
+            href
+              ? 'bg-primary text-primary-foreground transition-colors group-hover:bg-primary/90'
+              : 'cursor-not-allowed bg-muted text-muted-foreground'
+          }`}
+        >
+          {tile.cta_label} <ArrowRight className="h-3.5 w-3.5" />
+        </span>
+      </div>
+    </>
+  );
+
+  const cardClass =
+    'group flex flex-col overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm transition-shadow duration-300 hover:shadow-lg';
+
+  if (!href) {
+    return <div className={cardClass}>{content}</div>;
+  }
+
+  if (external) {
+    return (
+      <a href={href} className={cardClass}>
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    <Link href={href} className={cardClass}>
+      {content}
+    </Link>
+  );
+}

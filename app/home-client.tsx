@@ -7,9 +7,11 @@ import { ArrowRight, Sparkles, Truck, ShieldCheck } from 'lucide-react';
 import { Product, CategoryRow } from '@/lib/types';
 import type { HomeBanner } from '@/lib/home-data-server';
 import type { PublicCollectionRow } from '@/lib/collections-api-server';
+import type { HomepageTile } from '@/lib/homepage-tiles-api';
 import ProductCard from '@/components/product-card';
 import CouponStrip from '@/components/home/coupon-strip';
 import PromoSlider from '@/components/home/promo-slider';
+import HomepageGrid from '@/components/home/homepage-grid';
 import { Button } from '@/components/ui/button';
 
 interface HomeClientProps {
@@ -18,6 +20,8 @@ interface HomeClientProps {
   banner: HomeBanner | null;
   freeShippingThreshold: number | null;
   collections: PublicCollectionRow[];
+  tiles: HomepageTile[];
+  collectionSlugById: Record<string, string>;
 }
 
 export default function HomeClient({
@@ -26,6 +30,8 @@ export default function HomeClient({
   banner,
   freeShippingThreshold,
   collections,
+  tiles,
+  collectionSlugById,
 }: HomeClientProps) {
   const featured = products.filter((p) => p.featured).slice(0, 8);
   const newArrivals = products.slice(0, 4);
@@ -296,6 +302,8 @@ export default function HomeClient({
         </section>
       )}
 
+
+      <HomepageGrid tiles={tiles} collectionSlugById={collectionSlugById} />
 
       <PromoSlider />
 
