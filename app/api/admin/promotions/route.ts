@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { revalidatePath } from 'next/cache';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { syncHomepageTileForPromotion, fetchLinkedTilePromotionIds } from '@/lib/promotion-homepage-tile-sync';
@@ -119,6 +120,7 @@ export async function POST(req: Request) {
       }
     }
 
+    revalidatePath('/');
     return NextResponse.json({ success: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to create promotion';

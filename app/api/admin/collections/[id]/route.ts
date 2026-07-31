@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { revalidatePath } from 'next/cache';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
@@ -116,6 +117,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
       .select('product_id', { count: 'exact', head: true })
       .eq('collection_id', params.id);
 
+    revalidatePath('/');
     return NextResponse.json({ success: true, collection: { ...collection, product_count: count ?? 0 } });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to update collection';
@@ -134,6 +136,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   try {
     const { error } = await admin.from('collections').delete().eq('id', params.id);
     if (error) throw error;
+    revalidatePath('/');
     return NextResponse.json({ success: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to delete collection';

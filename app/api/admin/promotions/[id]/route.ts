@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { revalidatePath } from 'next/cache';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { syncHomepageTileForPromotion, promotionHasLinkedTile } from '@/lib/promotion-homepage-tile-sync';
@@ -73,6 +74,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       // Non-fatal — the promotion edit itself already succeeded.
     }
 
+    revalidatePath('/');
     return NextResponse.json({ success: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to update promotion';
@@ -90,6 +92,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   try {
     const { error } = await supabase.from('promotions').delete().eq('id', params.id);
     if (error) throw error;
+    revalidatePath('/');
     return NextResponse.json({ success: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to delete promotion';

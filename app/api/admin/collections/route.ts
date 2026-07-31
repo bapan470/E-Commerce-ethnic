@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { revalidatePath } from 'next/cache';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { generateUniqueCollectionSlug, slugifyName } from '@/lib/collection-slug';
@@ -96,6 +97,7 @@ export async function POST(req: Request) {
       if (linkErr) throw linkErr;
     }
 
+    revalidatePath('/');
     return NextResponse.json({ success: true, collection: { ...collection, product_count: productIds.length } });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to create collection';
