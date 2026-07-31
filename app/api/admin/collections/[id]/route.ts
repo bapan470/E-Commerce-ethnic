@@ -71,6 +71,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     if (typeof body?.description === 'string') updates.description = body.description.trim() || null;
     if (body?.description === null) updates.description = null;
     if (typeof body?.is_active === 'boolean') updates.is_active = body.is_active;
+    if (typeof body?.show_on_homepage === 'boolean') updates.show_on_homepage = body.show_on_homepage;
 
     if (typeof body?.slug === 'string' && body.slug.trim()) {
       const baseSlug = slugify(body.slug.trim());

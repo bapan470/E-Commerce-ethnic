@@ -169,6 +169,11 @@ export interface AdminCollectionRow {
   slug: string;
   description: string | null;
   is_active: boolean;
+  /** Independent of is_active — controls whether this collection appears
+   *  as a circle in the homepage "Shop by Collection" row. A collection
+   *  can be active (its page exists, Promotions/Homepage Tiles can link
+   *  to it) while being hidden from that row. */
+  show_on_homepage: boolean;
   product_count: number;
   created_at: string;
   updated_at: string;

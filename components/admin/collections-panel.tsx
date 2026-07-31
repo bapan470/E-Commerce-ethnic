@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, FormEvent } from 'react';
-import { Plus, Pencil, Trash2, Search, X, ExternalLink, Layers, Store } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, X, ExternalLink, Layers, Store, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { useProducts } from '@/lib/cart-context';
 import {
@@ -59,6 +59,7 @@ export default function CollectionsPanel() {
   const [slug, setSlug] = useState('');
   const [description, setDescription] = useState('');
   const [isActive, setIsActive] = useState(true);
+  const [showOnHomepage, setShowOnHomepage] = useState(true);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [productSearch, setProductSearch] = useState('');
   const [saving, setSaving] = useState(false);
@@ -136,17 +137,13 @@ export default function CollectionsPanel() {
     setSlug('');
     setDescription('');
     setIsActive(true);
-    setSelectedProductIds([]);
-    setProductSearch('');
-    setOpen(true);
-  };
-
-  const openEdit = async (c: AdminCollectionRow) => {
+    setShowOnHomepage(true); = async (c: AdminCollectionRow) => {
     setEditing(c);
     setName(c.name);
     setSlug(c.slug);
     setDescription(c.description ?? '');
     setIsActive(c.is_active);
+    setShowOnHomepage(c.show_on_homepage);
     setSelectedProductIds([]);
     setProductSearch('');
     setOpen(true);
@@ -178,6 +175,7 @@ export default function CollectionsPanel() {
         slug: slug.trim() || slugify(name),
         description: description.trim() || null,
         is_active: isActive,
+        show_on_homepage: showOnHomepage,
         product_ids: selectedProductIds,
       };
       if (editing) {
@@ -311,15 +309,26 @@ export default function CollectionsPanel() {
                     {r.source === 'vendor' ? (
                       <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">Vendor</Badge>
                     ) : (
-                      <Badge
-                        className={
-                          r.data.is_active
-                            ? 'bg-green-100 text-green-700 hover:bg-green-100'
-                            : 'bg-muted text-muted-foreground hover:bg-muted'
-                        }
-                      >
-                        {r.data.is_active ? 'Active' : 'Inactive'}
-                      </Badge>
+                      <div className="flex items-center gap-1.5">
+                        <Badge
+                          className={
+                            r.data.is_active
+                              ? 'bg-green-100 text-green-700 hover:bg-green-100'
+                              : 'bg-muted text-muted-foreground hover:bg-muted'
+                          }
+                        >
+                          {r.data.is_active ? 'Active' : 'Inactive'}
+                        </Badge>
+                        {!r.data.show_on_homepage && (
+                          <span
+                            title="Hidden from the homepage &ldquo;Shop by Collection&rdquo; row — still reachable via a Promotion or Homepage Tile link"
+                            className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground"
+                          >
+                            <EyeOff className="h-3 w-3" />
+                            Off homepage
+                          </span>
+                        )}
+                      </div>
                     )}
                   </td>
                   <td className="px-4 py-3 text-sm">
@@ -414,6 +423,18 @@ export default function CollectionsPanel() {
               <Switch id="coll-active" checked={isActive} onCheckedChange={setIsActive} />
               <Label htmlFor="coll-active" className="text-sm text-muted-foreground">
                 Active (visible at /collection/{slug.trim() || slugify(name) || '…'})
+              </Label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Switch
+                id="coll-show-on-homepage"
+                checked={showOnHomepage}
+                onCheckedChange={setShowOnHomepage}
+              />
+              <Label htmlFor="coll-show-on-homepage" className="text-sm text-muted-foreground">
+                Show on homepage (in the &ldquo;Shop by Collection&rdquo; row). Turn this off to
+                keep the collection reachable only via a Promotion or Homepage Tile link.
               </Label>
             </div>
 

@@ -31,6 +31,7 @@ export async function fetchPublicCollectionsServer(): Promise<PublicCollectionRo
     .from('collections')
     .select('id, name, slug, description, is_active, created_at')
     .eq('is_active', true)
+    .eq('show_on_homepage', true)
     .order('created_at', { ascending: false });
   if (error) throw error;
 
