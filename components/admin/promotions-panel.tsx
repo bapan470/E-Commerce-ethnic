@@ -80,7 +80,14 @@ export default function PromotionsPanel() {
     load();
     fetchAdminCollections()
       .then(setCollections)
-      .catch(() => setCollections([]));
+      .catch((err) => {
+        setCollections([]);
+        toast.error(
+          err instanceof Error
+            ? `Failed to load collections: ${err.message}`
+            : 'Failed to load collections'
+        );
+      });
   }, []);
 
   const openNew = () => {

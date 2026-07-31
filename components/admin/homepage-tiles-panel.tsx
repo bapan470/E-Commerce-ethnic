@@ -91,10 +91,24 @@ export default function HomepageTilesPanel() {
     load();
     fetchAdminCollections()
       .then(setCollections)
-      .catch(() => setCollections([]));
+      .catch((err) => {
+        setCollections([]);
+        toast.error(
+          err instanceof Error
+            ? `Failed to load collections: ${err.message}`
+            : 'Failed to load collections'
+        );
+      });
     fetchPromotions()
       .then(setPromotions)
-      .catch(() => setPromotions([]));
+      .catch((err) => {
+        setPromotions([]);
+        toast.error(
+          err instanceof Error
+            ? `Failed to load promotions: ${err.message}`
+            : 'Failed to load promotions'
+        );
+      });
   }, []);
 
   // Tiles are always shown ordered by position, ascending.
