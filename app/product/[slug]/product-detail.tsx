@@ -11,7 +11,7 @@ import {
   RefreshCw,
   Wallet,
 } from 'lucide-react';
-import { useProducts, usePaymentDiscount, useCart, getVisibleBogoPromotion, formatBogoLabel } from '@/lib/cart-context';
+import { useProducts, usePaymentDiscount, useCart, getVisibleBogoPromotion } from '@/lib/cart-context';
 import { fetchProductBySlug } from '@/lib/products-api';
 import { fetchVariantBySlug, fetchVariantsForProduct, ProductVariant, VariantWithSizes } from '@/lib/variants-api';
 import { Product } from '@/lib/types';
@@ -33,6 +33,7 @@ import { fetchApprovedReviews, summarizeReviews, RatingSummary } from '@/lib/rev
 import PincodeChecker from '@/components/product/pincode-checker';
 import VariantSwatches from '@/components/product/variant-swatches';
 import ProductHighlights from '@/components/product/product-highlights';
+import BogoOfferSheet from '@/components/product/bogo-offer-sheet';
 import SizeChart from '@/components/product/size-chart';
 import ProductGallery from '@/components/product/product-gallery';
 import ProductVideo from '@/components/product/product-video';
@@ -802,9 +803,7 @@ function ProductInfo({
         )}
       </div>
       {bogoPromotion && (
-        <Badge className="w-fit border-transparent bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary">
-          {formatBogoLabel(bogoPromotion)}
-        </Badge>
+        <BogoOfferSheet promotion={bogoPromotion} collectionName={product.collection?.name} />
       )}
 
       {product.sizes.length > 1 && (

@@ -122,6 +122,53 @@ function isQualifyingItem(item: CartItem, promotion: ActivePromotion): boolean {
   return isProductInPromotionScope(item.product.id, promotion);
 }
 
+/** Per-promotion snapshot of how close the current cart is to unlocking
+ *  (another) free/discounted item -- powers the "Add 1 more to get 1
+ *  FREE!" progress hint in the cart drawer. Only promotions with at least
+ *  one qualifying unit already in the cart are returned, so an empty/
+ *  unrelated cart shows nothing. */
+export interface BogoCartProgress {
+  promotion: ActivePromotion;
+  /** Qualifying units currently in the cart (summed across matching lines). */
+  qualifyingUnits: number;
+  /** How many more qualifying units get the *next* free/discounted item
+   *  unlocked. Always > 0 -- once a full group completes, this resets to
+   *  a fresh groupSize for the next cycle. */
+  unitsToNextFree: number;
+  /** Free/discounted units already earned by items currently in the cart
+   *  (i.e. how many full groups have already completed). */
+  freeUnitsUnlocked: number;
+}
+
+export function getBogoCartProgress(
+  items: CartItem[],
+  activePromotions: ActivePromotion[]
+): BogoCartProgress[] {
+  const results: BogoCartProgress[] = [];
+  for (const promotion of activePromotions) {
+    const buyQty = Math.max(1, promotion.buy_qty || 1);
+    const getQty = Math.max(1, promotion.get_qty || 1);
+    const groupSize = buyQty + getQty;
+
+    let qualifyingUnits = 0;
+    for (const item of items) {
+      if (isQualifyingItem(item, promotion)) qualifyingUnits += item.quantity;
+    }
+    if (qualifyingUnits === 0) continue;
+
+    const completedGroups = Math.floor(qualifyingUnits / groupSize);
+    const remainder = qualifyingUnits % groupSize;
+
+    results.push({
+      promotion,
+      qualifyingUnits,
+      unitsToNextFree: remainder === 0 ? groupSize : groupSize - remainder,
+      freeUnitsUnlocked: completedGroups * getQty,
+    });
+  }
+  return results;
+}
+
 export function computeBogoDiscount(items: CartItem[], activePromotions: ActivePromotion[]): number {
   if (items.length === 0 || activePromotions.length === 0) return 0;
 
