@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useState, FormEvent } from 'react';
-import { Plus, Pencil, Trash2, LayoutGrid, ArrowUp, ArrowDown, ImageOff } from 'lucide-react';
+import { useEffect, useState, FormEvent, ChangeEvent } from 'react';
+import { Plus, Pencil, Trash2, LayoutGrid, ArrowUp, ArrowDown, ImageOff, Upload, Loader2 } from 'lucide-react';
 import {
   HomepageTile,
   HomepageTileInput,
@@ -12,6 +12,7 @@ import {
   deleteHomepageTile,
   setHomepageTileActive,
   reorderHomepageTiles,
+  uploadHomepageTileImage,
 } from '@/lib/homepage-tiles-api';
 import { fetchAdminCollections } from '@/lib/admin-collections-api';
 import { fetchPromotions, Promotion } from '@/lib/promotions-api';
@@ -73,6 +74,7 @@ export default function HomepageTilesPanel() {
   const [editing, setEditing] = useState<HomepageTile | null>(null);
   const [form, setForm] = useState<HomepageTileInput>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<HomepageTile | null>(null);
   const [reordering, setReordering] = useState<string | null>(null);
 
@@ -167,6 +169,22 @@ export default function HomepageTilesPanel() {
       toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const onUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploading(true);
+    try {
+      const url = await uploadHomepageTileImage(file, form.title);
+      setForm((f) => ({ ...f, image_url: url }));
+      toast.success('Image uploaded');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Image upload failed');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -380,13 +398,31 @@ export default function HomepageTilesPanel() {
             </div>
 
             <div className="grid gap-1.5">
-              <Label htmlFor="tile-image">Image URL</Label>
-              <Input
-                id="tile-image"
-                value={form.image_url ?? ''}
-                onChange={(e) => setForm((f) => ({ ...f, image_url: e.target.value || null }))}
-                placeholder="https://…"
-              />
+              <Label htmlFor="tile-image">Image</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="tile-image"
+                  value={form.image_url ?? ''}
+                  onChange={(e) => setForm((f) => ({ ...f, image_url: e.target.value || null }))}
+                  placeholder="https://… or upload below"
+                  className="flex-1"
+                />
+                <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border/60 px-3 py-2 text-sm hover:bg-muted/40">
+                  {uploading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4" />
+                  )}
+                  <span>{uploading ? 'Uploading…' : 'Upload'}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={onUpload}
+                    disabled={uploading}
+                  />
+                </label>
+              </div>
               {form.image_url && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img

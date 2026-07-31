@@ -84,6 +84,27 @@ export async function reorderHomepageTiles(orderedIds: string[]) {
   });
 }
 
+// Uploads a homepage-tile image straight to Supabase Storage from the
+// browser, the same way product photos are uploaded (lib/products-api.ts
+// uploadProductImage) — reuses the existing public "product-images"
+// bucket so no new bucket/migration is needed just for tiles.
+export async function uploadHomepageTileImage(file: File, seoName?: string): Promise<string> {
+  const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+  const slug = (seoName || 'homepage-tile')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+  const path = `tiles/${slug ? `${slug}-` : ''}${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
+  const { error } = await supabase.storage
+    .from('product-images')
+    .upload(path, file, { cacheControl: '3600', upsert: false });
+  if (error) throw error;
+  const { data } = supabase.storage.from('product-images').getPublicUrl(path);
+  return data.publicUrl;
+}
+
 // ---------------------------------------------------------------------
 // Storefront (public) — used by the homepage grid (Part 3b).
 // ---------------------------------------------------------------------
