@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { RotateCcw, Zap, Truck, type LucideIcon } from 'lucide-react';
 import { fetchShippingSettings, DEFAULT_SHIPPING_SETTINGS } from '@/lib/pincode-api';
+import { fetchGrowthSettings, DEFAULT_GROWTH_SETTINGS, type GrowthSettings } from '@/lib/growth-api';
 
 interface Feature {
   icon: LucideIcon;
@@ -15,12 +16,16 @@ interface Feature {
  * Trust strip shown site-wide right below the header — the three
  * reassurances a shopper looks for before trusting a new boutique with
  * their money: easy returns, how fast it ships, and the free-shipping
- * cutoff. The free-shipping line reads the real threshold from Admin >
- * Settings > Shipping, so it can never drift out of sync with checkout.
+ * cutoff. Title/subtitle text and the on/off switch are editable from
+ * Admin > Marketing > Growth Tools. The free-shipping line reads the
+ * real threshold from Admin > Settings > Shipping whenever its subtitle
+ * is left blank in Growth Tools, so it can never drift out of sync with
+ * checkout.
  */
 export default function FeatureStrip() {
   const pathname = usePathname();
   const [threshold, setThreshold] = useState<number | null>(null);
+  const [growth, setGrowth] = useState<GrowthSettings | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -30,6 +35,13 @@ export default function FeatureStrip() {
       })
       .catch(() => {
         if (!cancelled) setThreshold(DEFAULT_SHIPPING_SETTINGS.free_shipping_threshold);
+      });
+    fetchGrowthSettings()
+      .then((s) => {
+        if (!cancelled) setGrowth(s);
+      })
+      .catch(() => {
+        if (!cancelled) setGrowth(DEFAULT_GROWTH_SETTINGS);
       });
     return () => {
       cancelled = true;
@@ -45,7 +57,12 @@ export default function FeatureStrip() {
     pathname?.startsWith('/checkout');
   if (hideOnThisPage) return null;
 
-  const shippingSubtitle =
+  // Admin can switch the whole strip off from Growth Tools.
+  if (growth && !growth.feature_strip_enabled) return null;
+
+  const g = growth ?? DEFAULT_GROWTH_SETTINGS;
+
+  const autoShippingSubtitle =
     threshold === null
       ? '\u00A0' // reserve the line's height while loading so nothing jumps
       : threshold > 0
@@ -53,9 +70,13 @@ export default function FeatureStrip() {
         : 'On every order';
 
   const features: Feature[] = [
-    { icon: RotateCcw, title: 'Easy returns', subtitle: 'Free pick up' },
-    { icon: Zap, title: 'Fast delivery', subtitle: '10000+ styles' },
-    { icon: Truck, title: 'Free shipping', subtitle: shippingSubtitle },
+    { icon: RotateCcw, title: g.feature_strip_returns_title, subtitle: g.feature_strip_returns_subtitle },
+    { icon: Zap, title: g.feature_strip_delivery_title, subtitle: g.feature_strip_delivery_subtitle },
+    {
+      icon: Truck,
+      title: g.feature_strip_shipping_title,
+      subtitle: g.feature_strip_shipping_subtitle.trim() || autoShippingSubtitle,
+    },
   ];
 
   return (

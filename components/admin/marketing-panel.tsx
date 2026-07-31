@@ -1112,6 +1112,76 @@ function GrowthTab() {
       <section className="space-y-3 border-t border-border pt-6">
         <div className="flex items-center justify-between">
           <div>
+            <p className="font-medium">Feature icons row</p>
+            <p className="text-sm text-muted-foreground">
+              The 3-column strip right below the header (Easy returns / Fast delivery / Free
+              shipping). Icons stay fixed; only the text below is editable.
+            </p>
+          </div>
+          <Switch
+            checked={settings.feature_strip_enabled}
+            onCheckedChange={(v) => setSettings({ ...settings, feature_strip_enabled: v })}
+          />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <div className="space-y-2">
+            <Label>Icon 1 — Returns title</Label>
+            <Input
+              value={settings.feature_strip_returns_title}
+              onChange={(e) => setSettings({ ...settings, feature_strip_returns_title: e.target.value })}
+              placeholder="Easy returns"
+            />
+            <Label>Icon 1 — Returns subtitle</Label>
+            <Input
+              value={settings.feature_strip_returns_subtitle}
+              onChange={(e) =>
+                setSettings({ ...settings, feature_strip_returns_subtitle: e.target.value })
+              }
+              placeholder="Free pick up"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Icon 2 — Delivery title</Label>
+            <Input
+              value={settings.feature_strip_delivery_title}
+              onChange={(e) => setSettings({ ...settings, feature_strip_delivery_title: e.target.value })}
+              placeholder="Fast delivery"
+            />
+            <Label>Icon 2 — Delivery subtitle</Label>
+            <Input
+              value={settings.feature_strip_delivery_subtitle}
+              onChange={(e) =>
+                setSettings({ ...settings, feature_strip_delivery_subtitle: e.target.value })
+              }
+              placeholder="10000+ styles"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Icon 3 — Shipping title</Label>
+            <Input
+              value={settings.feature_strip_shipping_title}
+              onChange={(e) => setSettings({ ...settings, feature_strip_shipping_title: e.target.value })}
+              placeholder="Free shipping"
+            />
+            <Label>Icon 3 — Shipping subtitle</Label>
+            <Input
+              value={settings.feature_strip_shipping_subtitle}
+              onChange={(e) =>
+                setSettings({ ...settings, feature_strip_shipping_subtitle: e.target.value })
+              }
+              placeholder="Leave blank to auto-fill from Settings > Shipping"
+            />
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Leave the shipping subtitle blank to keep it auto-synced with the free-shipping amount
+          set under Admin &gt; Settings &gt; Shipping.
+        </p>
+      </section>
+
+      <section className="space-y-3 border-t border-border pt-6">
+        <div className="flex items-center justify-between">
+          <div>
             <p className="font-medium">Low stock badge</p>
             <p className="text-sm text-muted-foreground">Shows "Only N left" on product pages.</p>
           </div>

@@ -28,6 +28,19 @@ export interface GrowthSettings {
   sale_countdown_enabled: boolean;
   sale_countdown_text: string;
   sale_countdown_end_at: string | null; // ISO timestamp
+
+  // Feature icons strip — the 3-column row right below the header
+  // (Easy returns / Fast delivery / Free shipping). Icons stay fixed in
+  // code, but the title/subtitle text and the on/off switch are editable
+  // from Admin > Marketing > Growth Tools. Leave the free-shipping
+  // subtitle blank to keep it auto-synced with Settings > Shipping.
+  feature_strip_enabled: boolean;
+  feature_strip_returns_title: string;
+  feature_strip_returns_subtitle: string;
+  feature_strip_delivery_title: string;
+  feature_strip_delivery_subtitle: string;
+  feature_strip_shipping_title: string;
+  feature_strip_shipping_subtitle: string; // blank => auto "For orders ₹X+" / "On every order"
 }
 
 export const DEFAULT_GROWTH_SETTINGS: GrowthSettings = {
@@ -44,6 +57,14 @@ export const DEFAULT_GROWTH_SETTINGS: GrowthSettings = {
   sale_countdown_enabled: false,
   sale_countdown_text: 'Festive Sale ends in',
   sale_countdown_end_at: null,
+
+  feature_strip_enabled: true,
+  feature_strip_returns_title: 'Easy returns',
+  feature_strip_returns_subtitle: 'Free pick up',
+  feature_strip_delivery_title: 'Fast delivery',
+  feature_strip_delivery_subtitle: '10000+ styles',
+  feature_strip_shipping_title: 'Free shipping',
+  feature_strip_shipping_subtitle: '',
 };
 
 export async function fetchGrowthSettings(): Promise<GrowthSettings> {
