@@ -11,6 +11,7 @@ import BlogPanel from '@/components/admin/blog-panel';
 import ReviewsPanel from '@/components/admin/reviews-panel';
 import CouponsPanel from '@/components/admin/coupons-panel';
 import PromotionsPanel from '@/components/admin/promotions-panel';
+import HomepageTilesPanel from '@/components/admin/homepage-tiles-panel';
 import SettingsPanel from '@/components/admin/settings-panel';
 import ReturnsPanel from '@/components/admin/returns-panel';
 import SupportTicketsPanel from '@/components/admin/support-tickets-panel';
@@ -48,6 +49,7 @@ const PANELS: Record<AdminSection, React.ComponentType> = {
   wholesale: WholesalePanel,
   coupons: CouponsPanel,
   promotions: PromotionsPanel,
+  'homepage-tiles': HomepageTilesPanel,
   marketing: MarketingPanel,
   loyalty: LoyaltyPanel,
   referrals: ReferralsPanel,

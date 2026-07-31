@@ -28,6 +28,7 @@ import {
   Menu,
   X,
   Store,
+  LayoutGrid,
   Truck,
   PackageCheck,
   Landmark,
@@ -55,6 +56,7 @@ export type AdminSection =
   | 'wholesale'
   | 'coupons'
   | 'promotions'
+  | 'homepage-tiles'
   | 'marketing'
   | 'loyalty'
   | 'referrals'
@@ -124,6 +126,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { value: 'coupons', label: 'Coupons', icon: Tag },
       { value: 'promotions', label: 'Promotions', icon: Percent },
+      { value: 'homepage-tiles', label: 'Homepage Tiles', icon: LayoutGrid },
       { value: 'marketing', label: 'Marketing', icon: Megaphone },
       { value: 'loyalty', label: 'Loyalty', icon: Gift },
       { value: 'referrals', label: 'Referrals', icon: Users2 },
