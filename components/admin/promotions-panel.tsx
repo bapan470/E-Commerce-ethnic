@@ -46,6 +46,7 @@ const emptyForm: PromotionInput = {
   is_active: true,
   starts_at: null,
   ends_at: null,
+  show_as_homepage_tile: false,
 };
 
 function offerLabel(p: Pick<Promotion, 'buy_qty' | 'get_qty' | 'free_item_discount_percent'>) {
@@ -102,6 +103,7 @@ export default function PromotionsPanel() {
       is_active: p.is_active,
       starts_at: p.starts_at ? p.starts_at.slice(0, 10) : null,
       ends_at: p.ends_at ? p.ends_at.slice(0, 10) : null,
+      show_as_homepage_tile: p.show_as_homepage_tile ?? false,
     });
     setDiscountMode(
       p.free_item_discount_percent === 100 ? '100' : p.free_item_discount_percent === 50 ? '50' : 'custom'
@@ -333,6 +335,7 @@ export default function PromotionsPanel() {
                     ...f,
                     scope: v as 'all' | 'collection',
                     collection_id: v === 'all' ? null : f.collection_id,
+                    show_as_homepage_tile: v === 'all' ? false : f.show_as_homepage_tile,
                   }))
                 }
               >
@@ -364,6 +367,25 @@ export default function PromotionsPanel() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            )}
+
+            {form.scope === 'collection' && (
+              <div className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2">
+                <div>
+                  <Label htmlFor="show-as-tile" className="cursor-pointer">
+                    Show as homepage tile
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Auto-adds this offer to the homepage grid — no need to build it manually in
+                    Homepage Tiles.
+                  </p>
+                </div>
+                <Switch
+                  id="show-as-tile"
+                  checked={!!form.show_as_homepage_tile}
+                  onCheckedChange={(v) => setForm((f) => ({ ...f, show_as_homepage_tile: v }))}
+                />
               </div>
             )}
 

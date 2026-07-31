@@ -11,6 +11,11 @@ export interface Promotion {
   starts_at: string | null;
   ends_at: string | null;
   created_at?: string;
+  /** Part 4a: true if this promotion currently owns an auto-linked
+   *  homepage_tiles row. Computed server-side in GET /api/admin/promotions
+   *  (not a column on `promotions` itself) — see
+   *  lib/promotion-homepage-tile-sync.ts. */
+  show_as_homepage_tile?: boolean;
 }
 
 export interface PromotionInput {
@@ -24,6 +29,9 @@ export interface PromotionInput {
   is_active: boolean;
   starts_at: string | null;
   ends_at: string | null;
+  /** Part 4a: "Show as homepage tile" checkbox. Only meaningful when
+   *  scope='collection' — the tile needs a collection to route to. */
+  show_as_homepage_tile?: boolean;
 }
 
 // ---------------------------------------------------------------------
