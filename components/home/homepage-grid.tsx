@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowRight, ImageOff } from 'lucide-react';
+import { ImageOff } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { HomepageTile } from '@/lib/homepage-tiles-api';
 
@@ -108,32 +108,6 @@ function TileCard({
             {tile.badge_text}
           </span>
         )}
-      </div>
-
-      <div className="flex flex-1 flex-col gap-1 px-3 py-3">
-        <h3 className="font-serif text-sm font-bold leading-tight text-primary sm:text-base">
-          {tile.title}
-        </h3>
-        {tile.subtitle && (
-          <p className="text-xs text-muted-foreground sm:text-sm">{tile.subtitle}</p>
-        )}
-        {tile.price_label && (
-          <p className="text-xs font-semibold text-secondary sm:text-sm">{tile.price_label}</p>
-        )}
-
-        {/* Styled as a button but rendered as a plain span — the whole
-            card is already a single Link/anchor (or a non-clickable div
-            for promotion tiles pending Part 4b), so an actual <button>
-            here would be invalid nested-interactive-content HTML. */}
-        <span
-          className={`mt-2 flex w-full items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold sm:text-sm ${
-            href
-              ? 'bg-primary text-primary-foreground transition-colors group-hover:bg-primary/90'
-              : 'cursor-not-allowed bg-muted text-muted-foreground'
-          }`}
-        >
-          {tile.cta_label} <ArrowRight className="h-3.5 w-3.5" />
-        </span>
       </div>
     </>
   );
