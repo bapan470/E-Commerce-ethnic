@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Lock, Loader2, CreditCard, Tag, X, Wallet, Sparkles, Gift, Store, Minus, Plus } from 'lucide-react';
-import { useCart, usePaymentDiscount } from '@/lib/cart-context';
+import { useCart, usePaymentDiscount, computeBogoDiscount } from '@/lib/cart-context';
 import { useAuth } from '@/lib/auth-context';
 import { formatINR } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
@@ -82,6 +82,8 @@ export default function CheckoutPage() {
     couponDiscount: cartCouponDiscount,
     applyCoupon,
     removeCoupon,
+    bogoDiscount: cartBogoDiscount,
+    activePromotions,
     buyNowItem,
     updateBuyNowQuantity,
     clearBuyNow,
@@ -102,6 +104,12 @@ export default function CheckoutPage() {
       ? computeCouponDiscount(appliedCoupon, subtotal, items.length)
       : 0
     : cartCouponDiscount;
+  // Buy Now checks out with just buyNowItem (+ any local extras), not the persistent cart,
+  // so — same as couponDiscount above — the BOGO discount has to be recomputed against that
+  // item set rather than reused from cart context, which only tracks the real cart.
+  const bogoDiscount = isBuyNow
+    ? computeBogoDiscount(items, activePromotions)
+    : cartBogoDiscount;
   const [placing, setPlacing] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('online');
@@ -495,7 +503,9 @@ export default function CheckoutPage() {
     subtotal >= shippingSettings.free_shipping_threshold
       ? 0
       : shippingSettings.flat_rate;
-  const afterCouponSubtotal = Math.max(0, subtotal - couponDiscount);
+  // Both a coupon and a BOGO promo can be active at once — same as the cart drawer, they're
+  // subtracted independently here rather than one feeding off the other.
+  const afterCouponSubtotal = Math.max(0, subtotal - couponDiscount - bogoDiscount);
   const clampedGiftCardDiscount = Math.min(giftCardDiscount, afterCouponSubtotal);
   const afterGiftCardSubtotal = Math.max(0, afterCouponSubtotal - clampedGiftCardDiscount);
 
@@ -1437,6 +1447,12 @@ export default function CheckoutPage() {
                 <div className="flex justify-between text-secondary-foreground">
                   <span>Coupon discount</span>
                   <span>-{formatINR(couponDiscount)}</span>
+                </div>
+              )}
+              {bogoDiscount > 0 && (
+                <div className="flex justify-between text-secondary-foreground">
+                  <span>BOGO offer applied</span>
+                  <span>-{formatINR(bogoDiscount)}</span>
                 </div>
               )}
               {clampedGiftCardDiscount > 0 && (

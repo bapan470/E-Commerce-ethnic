@@ -12,7 +12,7 @@ import React, {
 import { CartItem, Product, CategoryRow } from './types';
 import { fetchProducts, fetchCategories } from './products-api';
 import { validateCoupon, computeCouponDiscount, Coupon, CouponResult } from './coupons-api';
-import { ActivePromotion } from './promotions-api';
+import { fetchActivePromotions, ActivePromotion } from './promotions-api';
 import {
   fetchPaymentDiscountSettings,
   PaymentDiscountSettings,
@@ -53,12 +53,13 @@ const sameLine = (
   item.size === size &&
   (color === undefined || itemColor(item.product) === color);
 
-/* ---------------- BOGO promotions (Part 2a — pure logic, not wired yet) ---------------- */
+/* ---------------- BOGO promotions (Part 2a logic, wired into context state in Part 2b) --------- */
 //
 // computeBogoDiscount() is intentionally a standalone, side-effect-free function (no hooks,
-// no context) so it can be unit-tested with plain arrays before Part 2b wires it into
-// CartContext state and cart-drawer.tsx. It mirrors how computeCouponDiscount() in
-// coupons-api.ts is also a pure function the reducer/useMemo just calls into.
+// no context) so it can be unit-tested with plain arrays. It mirrors how
+// computeCouponDiscount() in coupons-api.ts is also a pure function the reducer/useMemo just
+// calls into. CartProvider below fetches the active promotions on mount and feeds them (plus
+// the live cart items) into this function via a useMemo, the same way couponDiscount works.
 //
 // Algorithm: for each active promotion, take the qualifying cart units (all units of a
 // product if scope='all', or only units of products in promotion.product_ids if
@@ -172,6 +173,13 @@ interface CartContextValue {
   couponDiscount: number;
   applyCoupon: (code: string, overrideSubtotal?: number, overrideItemCount?: number) => Promise<CouponResult>;
   removeCoupon: () => void;
+  /** Currently-active BOGO promotions, fetched once on mount — exposed so pages that need to
+   * recompute the discount against a different item set (e.g. checkout's Buy Now flow) can call
+   * computeBogoDiscount() themselves instead of refetching. */
+  activePromotions: ActivePromotion[];
+  /** Rupee amount saved by auto-applied BOGO promotions, recalculated live against the current
+   * cart items — same "always live, never a frozen number" approach as couponDiscount. */
+  bogoDiscount: number;
   /** Single-item "Buy Now" checkout — set when the customer taps Buy Now on
    * a product page, kept separate from the persistent cart so it doesn't
    * pull in whatever else is already sitting in the cart. Checkout reads
@@ -193,6 +201,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [buyNowItem, setBuyNowItem] = useState<CartItem | null>(null);
+  const [activePromotions, setActivePromotions] = useState<ActivePromotion[]>([]);
 
   useEffect(() => {
     try {
@@ -226,6 +235,13 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       // ignore
     }
   }, [state.items, hydrated]);
+
+  // Active BOGO promotions — fetched once on mount, same as the payment discount
+  // settings fetch in PaymentDiscountProvider below. fetchActivePromotions() already
+  // fails quiet (returns []) so a promotions outage never breaks the cart.
+  useEffect(() => {
+    fetchActivePromotions().then(setActivePromotions);
+  }, []);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -298,6 +314,15 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     if (subtotal < appliedCoupon.min_order_value) return 0;
     return computeCouponDiscount(appliedCoupon, subtotal, state.items.length);
   }, [appliedCoupon, subtotal, state.items.length]);
+
+  // BOGO discount, recomputed live off the current cart items and active promotions —
+  // same "always live, never a frozen number" reasoning as couponDiscount above. A coupon
+  // and a BOGO promo can both be active at once; they're summed independently wherever the
+  // total is calculated (cart drawer, checkout), never nested inside one another here.
+  const bogoDiscount = useMemo(
+    () => computeBogoDiscount(state.items, activePromotions),
+    [state.items, activePromotions]
+  );
 
   // A coupon that qualified when it was applied can stop qualifying later
   // purely because the cart changed — e.g. the item that met "orders above
@@ -390,6 +415,8 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     couponDiscount,
     applyCoupon,
     removeCoupon,
+    activePromotions,
+    bogoDiscount,
     buyNowItem,
     startBuyNow,
     updateBuyNowQuantity,

@@ -48,6 +48,7 @@ export default function CartDrawer() {
     couponDiscount,
     applyCoupon,
     removeCoupon,
+    bogoDiscount,
     clearBuyNow,
   } = useCart();
   const { user } = useAuth();
@@ -55,7 +56,9 @@ export default function CartDrawer() {
 
   const onlinePaymentSavings =
     paymentDiscount.enabled && paymentDiscount.percent > 0
-      ? Math.round((Math.max(0, subtotal - couponDiscount) * paymentDiscount.percent) / 100)
+      ? Math.round(
+          (Math.max(0, subtotal - couponDiscount - bogoDiscount) * paymentDiscount.percent) / 100
+        )
       : 0;
 
   const [couponInput, setCouponInput] = useState('');
@@ -211,7 +214,7 @@ export default function CartDrawer() {
     const mrp = i.product.mrp ?? i.product.price;
     return sum + Math.max(0, mrp - i.product.price) * i.quantity;
   }, 0);
-  const totalSavings = mrpSavings + couponDiscount;
+  const totalSavings = mrpSavings + couponDiscount + bogoDiscount;
 
   return (
     <Sheet
@@ -540,7 +543,7 @@ export default function CartDrawer() {
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="text-sm font-semibold">
-                      {formatINR(Math.max(0, subtotal - couponDiscount))}
+                      {formatINR(Math.max(0, subtotal - couponDiscount - bogoDiscount))}
                     </span>
                     {priceDetailsOpen ? (
                       <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -563,10 +566,18 @@ export default function CartDrawer() {
                         <span>-{formatINR(couponDiscount)}</span>
                       </div>
                     )}
+                    {bogoDiscount > 0 && (
+                      <div className="flex items-center justify-between text-secondary-foreground">
+                        <span className="flex items-center gap-1.5">
+                          <Tag className="h-3.5 w-3.5" /> BOGO offer applied
+                        </span>
+                        <span>-{formatINR(bogoDiscount)}</span>
+                      </div>
+                    )}
                     <Separator />
                     <div className="flex items-center justify-between font-serif text-base font-bold text-primary">
                       <span>Total</span>
-                      <span>{formatINR(Math.max(0, subtotal - couponDiscount))}</span>
+                      <span>{formatINR(Math.max(0, subtotal - couponDiscount - bogoDiscount))}</span>
                     </div>
                   </div>
                 )}
@@ -589,7 +600,7 @@ export default function CartDrawer() {
                   <span className="flex items-center gap-2">
                     <span className="text-muted-foreground line-through">{formatINR(subtotal)}</span>
                     <span className="font-serif text-base font-bold text-primary">
-                      {formatINR(Math.max(0, subtotal - couponDiscount))}
+                      {formatINR(Math.max(0, subtotal - couponDiscount - bogoDiscount))}
                     </span>
                   </span>
                 </div>
