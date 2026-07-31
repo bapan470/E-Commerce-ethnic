@@ -18,6 +18,7 @@ import {
   MessageSquare,
   Building2,
   Tag,
+  Percent,
   Megaphone,
   Gift,
   Users2,
@@ -53,6 +54,7 @@ export type AdminSection =
   | 'restock-alerts'
   | 'wholesale'
   | 'coupons'
+  | 'promotions'
   | 'marketing'
   | 'loyalty'
   | 'referrals'
@@ -121,6 +123,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Marketing',
     items: [
       { value: 'coupons', label: 'Coupons', icon: Tag },
+      { value: 'promotions', label: 'Promotions', icon: Percent },
       { value: 'marketing', label: 'Marketing', icon: Megaphone },
       { value: 'loyalty', label: 'Loyalty', icon: Gift },
       { value: 'referrals', label: 'Referrals', icon: Users2 },
