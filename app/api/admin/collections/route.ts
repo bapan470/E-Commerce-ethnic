@@ -61,6 +61,7 @@ export async function POST(req: Request) {
   const description = typeof body?.description === 'string' ? body.description.trim() || null : null;
   const is_active = typeof body?.is_active === 'boolean' ? body.is_active : true;
   const show_on_homepage = typeof body?.show_on_homepage === 'boolean' ? body.show_on_homepage : true;
+  const show_bogo_badge = typeof body?.show_bogo_badge === 'boolean' ? body.show_bogo_badge : true;
   const requestedSlug = typeof body?.slug === 'string' ? body.slug.trim() : '';
   const productIds: string[] = Array.isArray(body?.product_ids)
     ? body.product_ids.filter((id: unknown) => typeof id === 'string')
@@ -83,7 +84,7 @@ export async function POST(req: Request) {
 
     const { data: collection, error } = await admin
       .from('collections')
-      .insert({ name, slug, description, is_active, show_on_homepage })
+      .insert({ name, slug, description, is_active, show_on_homepage, show_bogo_badge })
       .select('*')
       .single();
     if (error) throw error;

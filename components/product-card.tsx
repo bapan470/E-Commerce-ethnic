@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ShoppingBag, Star } from 'lucide-react';
 import { Product } from '@/lib/types';
 import { formatINR, discountPct } from '@/lib/format';
-import { useCart, isProductInAnyActivePromotion } from '@/lib/cart-context';
+import { useCart, getVisibleBogoPromotion, formatBogoLabel } from '@/lib/cart-context';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import WishlistButton from '@/components/wishlist-button';
@@ -40,10 +40,11 @@ export default function ProductCard({
 
   // Part 4b: tag products currently inside an active BOGO promotion's
   // scope, same "is this product in scope" rule the cart itself uses to
-  // apply the discount (see isProductInAnyActivePromotion in
+  // apply the discount (see getVisibleBogoPromotion in
   // lib/cart-context.tsx) — so the badge and the actual discount never
-  // disagree about which products are on offer.
-  const hasBogo = isProductInAnyActivePromotion(product.id, activePromotions);
+  // disagree about which products are on offer. Also respects the
+  // per-collection "show BOGO badge" toggle (Admin > Collections).
+  const bogoPromotion = getVisibleBogoPromotion(product.id, activePromotions);
 
   const quickAdd = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -124,9 +125,9 @@ export default function ProductCard({
               {discount}% OFF
             </Badge>
           )}
-          {hasBogo && (
+          {bogoPromotion && (
             <Badge className="border-transparent bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary">
-              BOGO
+              {formatBogoLabel(bogoPromotion)}
             </Badge>
           )}
         </div>

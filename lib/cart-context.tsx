@@ -92,6 +92,32 @@ export function isProductInAnyActivePromotion(
   return activePromotions.some((promotion) => isProductInPromotionScope(productId, promotion));
 }
 
+/** Human label for a promotion's offer, e.g. "Buy 2 Get 1 Free" or
+ *  "Buy 1 Get 1 50% off" -- shared by the product-card badge and the
+ *  product-page badge so both always agree with what the cart applies. */
+export function formatBogoLabel(promotion: Pick<ActivePromotion, 'buy_qty' | 'get_qty' | 'free_item_discount_percent'>): string {
+  const discountLabel =
+    promotion.free_item_discount_percent === 100 ? 'Free' : `${promotion.free_item_discount_percent}% off`;
+  return `Buy ${promotion.buy_qty} Get ${promotion.get_qty} ${discountLabel}`;
+}
+
+/** The first active promotion `product` qualifies for whose target
+ *  collection (or, for scope='all', always) has the "show BOGO badge"
+ *  toggle on -- i.e. the one whose label the shop grid / product page
+ *  should actually display. Returns null when the product isn't in any
+ *  active promotion, or the only one(s) it qualifies for have their
+ *  badge hidden (Admin > Collections > "Show Buy X Get Y badge"). */
+export function getVisibleBogoPromotion(
+  productId: string,
+  activePromotions: ActivePromotion[]
+): ActivePromotion | null {
+  return (
+    activePromotions.find(
+      (promotion) => promotion.show_bogo_badge && isProductInPromotionScope(productId, promotion)
+    ) ?? null
+  );
+}
+
 function isQualifyingItem(item: CartItem, promotion: ActivePromotion): boolean {
   return isProductInPromotionScope(item.product.id, promotion);
 }

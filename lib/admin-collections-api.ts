@@ -70,6 +70,7 @@ export async function createAdminCollection(input: {
   description?: string | null;
   is_active?: boolean;
   show_on_homepage?: boolean;
+  show_bogo_badge?: boolean;
   product_ids?: string[];
 }): Promise<AdminCollectionRow> {
   const res = await fetch('/api/admin/collections', {
@@ -90,6 +91,7 @@ export async function updateAdminCollection(
     description: string | null;
     is_active: boolean;
     show_on_homepage: boolean;
+    show_bogo_badge: boolean;
     product_ids: string[];
   }>
 ): Promise<AdminCollectionRow> {

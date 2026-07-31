@@ -29,18 +29,23 @@ export async function GET() {
     const collectionScoped = active.filter((p) => p.scope === 'collection' && p.collection_id);
 
     let productIdsByCollection = new Map<string, string[]>();
+    let bogoBadgeByCollection = new Map<string, boolean>();
     if (collectionScoped.length > 0) {
       const collectionIds = Array.from(new Set(collectionScoped.map((p) => p.collection_id)));
-      const { data: links, error: linksErr } = await supabase
-        .from('collection_products')
-        .select('collection_id, product_id')
-        .in('collection_id', collectionIds);
+      const [{ data: links, error: linksErr }, { data: collectionRows, error: collectionsErr }] = await Promise.all([
+        supabase.from('collection_products').select('collection_id, product_id').in('collection_id', collectionIds),
+        supabase.from('collections').select('id, show_bogo_badge').in('id', collectionIds),
+      ]);
       if (linksErr) throw linksErr;
+      if (collectionsErr) throw collectionsErr;
 
       for (const link of links ?? []) {
         const list = productIdsByCollection.get(link.collection_id) ?? [];
         list.push(link.product_id);
         productIdsByCollection.set(link.collection_id, list);
+      }
+      for (const row of collectionRows ?? []) {
+        bogoBadgeByCollection.set(row.id, row.show_bogo_badge);
       }
     }
 
@@ -50,6 +55,12 @@ export async function GET() {
         promo.scope === 'collection' && promo.collection_id
           ? productIdsByCollection.get(promo.collection_id) ?? []
           : null,
+      // Defaults to true for scope='all' (no collection to toggle it off
+      // on) and for a collection row that's somehow missing.
+      show_bogo_badge:
+        promo.scope === 'collection' && promo.collection_id
+          ? bogoBadgeByCollection.get(promo.collection_id) ?? true
+          : true,
     }));
 
     return NextResponse.json({ promotions: result });

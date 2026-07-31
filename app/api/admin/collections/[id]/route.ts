@@ -72,6 +72,7 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
     if (body?.description === null) updates.description = null;
     if (typeof body?.is_active === 'boolean') updates.is_active = body.is_active;
     if (typeof body?.show_on_homepage === 'boolean') updates.show_on_homepage = body.show_on_homepage;
+    if (typeof body?.show_bogo_badge === 'boolean') updates.show_bogo_badge = body.show_bogo_badge;
 
     if (typeof body?.slug === 'string' && body.slug.trim()) {
       const baseSlug = slugify(body.slug.trim());

@@ -11,7 +11,7 @@ import {
   RefreshCw,
   Wallet,
 } from 'lucide-react';
-import { useProducts, usePaymentDiscount, useCart } from '@/lib/cart-context';
+import { useProducts, usePaymentDiscount, useCart, getVisibleBogoPromotion, formatBogoLabel } from '@/lib/cart-context';
 import { fetchProductBySlug } from '@/lib/products-api';
 import { fetchVariantBySlug, fetchVariantsForProduct, ProductVariant, VariantWithSizes } from '@/lib/variants-api';
 import { Product } from '@/lib/types';
@@ -717,6 +717,11 @@ function ProductInfo({
 }) {
   const discount = discountPct(selectedSizePrice, product.mrp);
   const { paymentDiscount } = usePaymentDiscount();
+  const { activePromotions } = useCart();
+  // Same rule the shop-grid product card and the cart use to decide
+  // whether/which "Buy X Get Y" badge applies -- see
+  // getVisibleBogoPromotion in lib/cart-context.tsx.
+  const bogoPromotion = getVisibleBogoPromotion(product.id, activePromotions);
   const priceAfterCoupon = appliedCoupon ? Math.max(0, selectedSizePrice - couponDiscount) : selectedSizePrice;
   const onlinePaymentSavings =
     paymentDiscount.enabled && paymentDiscount.percent > 0
@@ -796,6 +801,11 @@ function ProductInfo({
           </>
         )}
       </div>
+      {bogoPromotion && (
+        <Badge className="w-fit border-transparent bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary">
+          {formatBogoLabel(bogoPromotion)}
+        </Badge>
+      )}
 
       {product.sizes.length > 1 && (
         <div>

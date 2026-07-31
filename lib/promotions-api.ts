@@ -90,6 +90,12 @@ export async function setPromotionActive(id: string, is_active: boolean) {
 export interface ActivePromotion extends Promotion {
   /** Live product ids in `collection_id`, only present when scope='collection'. */
   product_ids: string[] | null;
+  /** Whether the "Buy X Get Y" badge should render for products in scope --
+   *  mirrors the target collection's `show_bogo_badge` toggle (Admin >
+   *  Collections) when scope='collection'; always true for scope='all',
+   *  since there's no collection to hang the toggle off of. Resolved
+   *  server-side in /api/promotions/active. */
+  show_bogo_badge: boolean;
 }
 
 export async function fetchActivePromotions(): Promise<ActivePromotion[]> {

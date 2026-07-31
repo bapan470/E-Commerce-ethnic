@@ -60,6 +60,7 @@ export default function CollectionsPanel() {
   const [description, setDescription] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [showOnHomepage, setShowOnHomepage] = useState(true);
+  const [showBogoBadge, setShowBogoBadge] = useState(true);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [productSearch, setProductSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
@@ -164,6 +165,7 @@ export default function CollectionsPanel() {
     setDescription('');
     setIsActive(true);
     setShowOnHomepage(true);
+    setShowBogoBadge(true);
     setProductSearch('');
     setCategoryFilter('all');
     setMaxPriceFilter('');
@@ -177,6 +179,7 @@ export default function CollectionsPanel() {
     setDescription(c.description ?? '');
     setIsActive(c.is_active);
     setShowOnHomepage(c.show_on_homepage);
+    setShowBogoBadge(c.show_bogo_badge);
     setSelectedProductIds([]);
     setProductSearch('');
     setCategoryFilter('all');
@@ -211,6 +214,7 @@ export default function CollectionsPanel() {
         description: description.trim() || null,
         is_active: isActive,
         show_on_homepage: showOnHomepage,
+        show_bogo_badge: showBogoBadge,
         product_ids: selectedProductIds,
       };
       if (editing) {
@@ -470,6 +474,19 @@ export default function CollectionsPanel() {
               <Label htmlFor="coll-show-on-homepage" className="text-sm text-muted-foreground">
                 Show on homepage (in the &ldquo;Shop by Collection&rdquo; row). Turn this off to
                 keep the collection reachable only via a Promotion or Homepage Tile link.
+              </Label>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Switch
+                id="coll-show-bogo-badge"
+                checked={showBogoBadge}
+                onCheckedChange={setShowBogoBadge}
+              />
+              <Label htmlFor="coll-show-bogo-badge" className="text-sm text-muted-foreground">
+                Show &ldquo;Buy X Get Y&rdquo; badge on the shop grid and product page when a
+                Promotion targets this collection. Turn this off to keep the discount live
+                without advertising it on every product card.
               </Label>
             </div>
 

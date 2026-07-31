@@ -174,6 +174,13 @@ export interface AdminCollectionRow {
    *  can be active (its page exists, Promotions/Homepage Tiles can link
    *  to it) while being hidden from that row. */
   show_on_homepage: boolean;
+  /** Controls whether products in this collection show the dynamic
+   *  "Buy X Get Y Free" badge on the shop grid and product page, when
+   *  this collection is the scope of an active Promotion. Independent
+   *  of is_active/show_on_homepage -- lets an admin run the discount
+   *  quietly (e.g. only reachable via a direct link) without the badge
+   *  advertising it everywhere the product appears. */
+  show_bogo_badge: boolean;
   product_count: number;
   created_at: string;
   updated_at: string;
