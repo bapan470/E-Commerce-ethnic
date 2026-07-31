@@ -62,6 +62,7 @@ export default function CollectionsPanel() {
   const [showOnHomepage, setShowOnHomepage] = useState(true);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [productSearch, setProductSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [saving, setSaving] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(false);
 
@@ -125,11 +126,33 @@ export default function CollectionsPanel() {
     return list;
   }, [allRows, statusFilter, searchQuery]);
 
+  const productCategories = useMemo(
+    () => Array.from(new Set(products.map((p) => p.category))).sort((a, b) => a.localeCompare(b)),
+    [products]
+  );
+
   const filteredProducts = useMemo(() => {
+    let list = products;
+    if (categoryFilter !== 'all') list = list.filter((p) => p.category === categoryFilter);
     const q = productSearch.trim().toLowerCase();
-    if (!q) return products;
-    return products.filter((p) => p.name.toLowerCase().includes(q));
-  }, [products, productSearch]);
+    if (q) list = list.filter((p) => p.name.toLowerCase().includes(q));
+    return list;
+  }, [products, productSearch, categoryFilter]);
+
+  const allFilteredSelected =
+    filteredProducts.length > 0 && filteredProducts.every((p) => selectedProductIds.includes(p.id));
+
+  const toggleSelectAllFiltered = () => {
+    setSelectedProductIds((prev) => {
+      if (allFilteredSelected) {
+        const filteredIds = new Set(filteredProducts.map((p) => p.id));
+        return prev.filter((id) => !filteredIds.has(id));
+      }
+      const merged = new Set(prev);
+      filteredProducts.forEach((p) => merged.add(p.id));
+      return Array.from(merged);
+    });
+  };
 
   const openNew = () => {
     setEditing(null);
@@ -138,6 +161,9 @@ export default function CollectionsPanel() {
     setDescription('');
     setIsActive(true);
     setShowOnHomepage(true);
+    setProductSearch('');
+    setCategoryFilter('all');
+    setOpen(true);
   };
 
   const openEdit = async (c: AdminCollectionRow) => {
@@ -442,7 +468,19 @@ export default function CollectionsPanel() {
             </div>
 
             <div className="grid gap-1.5">
-              <Label>Products ({selectedProductIds.length} selected)</Label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label>Products ({selectedProductIds.length} selected)</Label>
+                <button
+                  type="button"
+                  onClick={toggleSelectAllFiltered}
+                  disabled={filteredProducts.length === 0}
+                  className="text-xs font-medium text-primary hover:underline disabled:pointer-events-none disabled:opacity-40"
+                >
+                  {allFilteredSelected
+                    ? `Deselect all${categoryFilter !== 'all' ? ` in ${categoryFilter}` : ''} (${filteredProducts.length})`
+                    : `Select all${categoryFilter !== 'all' ? ` in ${categoryFilter}` : ''} (${filteredProducts.length})`}
+                </button>
+              </div>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -452,6 +490,35 @@ export default function CollectionsPanel() {
                   className="pl-9"
                 />
               </div>
+              {productCategories.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setCategoryFilter('all')}
+                    className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                      categoryFilter === 'all'
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-border/60 text-muted-foreground hover:bg-muted/60'
+                    }`}
+                  >
+                    All categories
+                  </button>
+                  {productCategories.map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setCategoryFilter(cat)}
+                      className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
+                        categoryFilter === cat
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-border/60 text-muted-foreground hover:bg-muted/60'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="max-h-56 overflow-y-auto rounded-md border border-border/60">
                 {loadingProducts ? (
                   <p className="px-3 py-4 text-center text-sm text-muted-foreground">Loading products…</p>
