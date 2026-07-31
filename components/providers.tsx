@@ -7,6 +7,7 @@ import { AuthProvider } from '@/lib/auth-context';
 import { Toaster } from 'sonner';
 import CartDrawer from './cart-drawer';
 import Header from './header';
+import FeatureStrip from './feature-strip';
 import Footer from './footer';
 import MobileBottomNav from './mobile-bottom-nav';
 import SiteBanner from './site-banner';
@@ -39,6 +40,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
               <UrgencyBanner />
               <SaleCountdownBar />
               <Header />
+              <FeatureStrip />
               <SiteBanner />
               <main className={`flex-1 ${isHome ? 'pb-16 md:pb-0' : ''}`}>{children}</main>
               <Footer />
