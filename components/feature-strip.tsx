@@ -36,7 +36,14 @@ export default function FeatureStrip() {
     };
   }, []);
 
-  if (pathname?.startsWith('/admin')) return null;
+  // Hidden on admin (own dashboard chrome), product pages, and checkout —
+  // keeps focus on the product / on completing the order, same reasoning
+  // SiteBanner already uses for checkout.
+  const hideOnThisPage =
+    pathname?.startsWith('/admin') ||
+    pathname?.startsWith('/product/') ||
+    pathname?.startsWith('/checkout');
+  if (hideOnThisPage) return null;
 
   const shippingSubtitle =
     threshold === null
