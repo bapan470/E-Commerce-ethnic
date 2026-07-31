@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ShoppingBag, Star } from 'lucide-react';
 import { Product } from '@/lib/types';
 import { formatINR, discountPct } from '@/lib/format';
-import { useCart } from '@/lib/cart-context';
+import { useCart, isProductInAnyActivePromotion } from '@/lib/cart-context';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import WishlistButton from '@/components/wishlist-button';
@@ -35,8 +35,15 @@ export default function ProductCard({
    */
   imageOverride?: string;
 }) {
-  const { addItem } = useCart();
+  const { addItem, activePromotions } = useCart();
   const router = useRouter();
+
+  // Part 4b: tag products currently inside an active BOGO promotion's
+  // scope, same "is this product in scope" rule the cart itself uses to
+  // apply the discount (see isProductInAnyActivePromotion in
+  // lib/cart-context.tsx) — so the badge and the actual discount never
+  // disagree about which products are on offer.
+  const hasBogo = isProductInAnyActivePromotion(product.id, activePromotions);
 
   const quickAdd = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -115,6 +122,11 @@ export default function ProductCard({
           {discount > 0 && (
             <Badge className="border-transparent bg-rose-500 text-white shadow-sm hover:bg-rose-500">
               {discount}% OFF
+            </Badge>
+          )}
+          {hasBogo && (
+            <Badge className="border-transparent bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary">
+              BOGO
             </Badge>
           )}
         </div>

@@ -69,12 +69,31 @@ const sameLine = (
 // full chunk get `free_item_discount_percent`% off. The result across all promotions is
 // summed, same way couponDiscount and bogoDiscount will be summed against the subtotal.
 
-function isQualifyingItem(item: CartItem, promotion: ActivePromotion): boolean {
+// Whether `product` falls inside a promotion's scope — scope='all' means
+// every product qualifies, scope='collection' means only products in that
+// promotion's collection (promotion.product_ids, resolved server-side in
+// fetchActivePromotions) do. Exported so Part 4b's product-card BOGO badge
+// can reuse the exact same "is this product in scope" rule the cart uses
+// to apply the discount, instead of a second, possibly-drifting copy of it.
+export function isProductInPromotionScope(productId: string, promotion: ActivePromotion): boolean {
   if (promotion.scope === 'all') return true;
   if (promotion.scope === 'collection') {
-    return (promotion.product_ids ?? []).includes(item.product.id);
+    return (promotion.product_ids ?? []).includes(productId);
   }
   return false;
+}
+
+/** True if `product` currently qualifies for any active BOGO promotion —
+ *  drives the "BOGO" badge on components/product-card.tsx (Part 4b). */
+export function isProductInAnyActivePromotion(
+  productId: string,
+  activePromotions: ActivePromotion[]
+): boolean {
+  return activePromotions.some((promotion) => isProductInPromotionScope(productId, promotion));
+}
+
+function isQualifyingItem(item: CartItem, promotion: ActivePromotion): boolean {
+  return isProductInPromotionScope(item.product.id, promotion);
 }
 
 export function computeBogoDiscount(items: CartItem[], activePromotions: ActivePromotion[]): number {

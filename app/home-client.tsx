@@ -22,6 +22,7 @@ interface HomeClientProps {
   collections: PublicCollectionRow[];
   tiles: HomepageTile[];
   collectionSlugById: Record<string, string>;
+  promotionCollectionSlugById: Record<string, string>;
 }
 
 export default function HomeClient({
@@ -32,6 +33,7 @@ export default function HomeClient({
   collections,
   tiles,
   collectionSlugById,
+  promotionCollectionSlugById,
 }: HomeClientProps) {
   const featured = products.filter((p) => p.featured).slice(0, 8);
   const newArrivals = products.slice(0, 4);
@@ -303,7 +305,11 @@ export default function HomeClient({
       )}
 
 
-      <HomepageGrid tiles={tiles} collectionSlugById={collectionSlugById} />
+      <HomepageGrid
+        tiles={tiles}
+        collectionSlugById={collectionSlugById}
+        promotionCollectionSlugById={promotionCollectionSlugById}
+      />
 
       <PromoSlider />
 

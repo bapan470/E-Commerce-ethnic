@@ -9,6 +9,10 @@ import type { HomepageTile } from '@/lib/homepage-tiles-api';
 interface HomepageGridProps {
   tiles: HomepageTile[];
   collectionSlugById: Record<string, string>;
+  /** Part 4b: promotion id -> collection slug, so a tile with
+   *  link_type='promotion' (auto-linked in Part 4a) routes "Shop Now" to
+   *  that promotion's own collection instead of rendering non-clickable. */
+  promotionCollectionSlugById: Record<string, string>;
 }
 
 /**
@@ -19,7 +23,11 @@ interface HomepageGridProps {
  * tokens, primary/secondary theme colours) so it reads as part of the same
  * page instead of a bolted-on block.
  */
-export default function HomepageGrid({ tiles, collectionSlugById }: HomepageGridProps) {
+export default function HomepageGrid({
+  tiles,
+  collectionSlugById,
+  promotionCollectionSlugById,
+}: HomepageGridProps) {
   if (tiles.length === 0) return null;
 
   return (
@@ -51,9 +59,17 @@ export default function HomepageGrid({ tiles, collectionSlugById }: HomepageGrid
             );
           }
 
-          // link_type === 'promotion' — resolving this to its collection
-          // page is Part 4b; for now the tile just displays, non-clickable.
-          return <TileCard key={tile.id} tile={tile} href={null} />;
+          // link_type === 'promotion' — auto-linked in Part 4a via
+          // source_promotion_id, with link_value holding the promotion's
+          // id. Resolve it to that promotion's collection slug so "Shop
+          // Now" lands shoppers on the exact products the BOGO applies
+          // to. Same dead-link guard as the collection case above: if the
+          // promotion was deleted/deactivated since, skip rendering it.
+          const promoSlug = promotionCollectionSlugById[tile.link_value ?? ''];
+          if (!promoSlug) return <TileCard key={tile.id} tile={tile} href={null} />;
+          return (
+            <TileCard key={tile.id} tile={tile} href={`/collection/${promoSlug}`} />
+          );
         })}
       </div>
     </section>

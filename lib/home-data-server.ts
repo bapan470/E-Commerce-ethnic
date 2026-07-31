@@ -17,6 +17,10 @@ export interface HomeData {
   collections: PublicCollectionRow[];
   tiles: HomepageTile[];
   collectionSlugById: Record<string, string>;
+  /** Part 4b: promotion id -> collection slug, for tiles with
+   *  link_type='promotion' to route "Shop Now" straight to the
+   *  promotion's collection page. */
+  promotionCollectionSlugById: Record<string, string>;
 }
 
 async function fetchHomeBanner(): Promise<HomeBanner | null> {
@@ -93,11 +97,44 @@ async function fetchCollectionSlugMap(): Promise<Record<string, string>> {
   }
 }
 
+// Part 4b: promotion id -> collection slug, so a homepage_tiles row with
+// link_type='promotion' (auto-linked in Part 4a via source_promotion_id)
+// can route "Shop Now" to the promotion's own collection page instead of
+// rendering as a dead/non-clickable card. Only scope='collection'
+// promotions ever get shown as a tile (see
+// lib/promotion-homepage-tile-sync.ts), so every row read here has a
+// collection_id to resolve. Reuses fetchCollectionSlugMap's id->slug map
+// rather than joining in SQL, since that map is already being fetched for
+// link_type='collection' tiles in the same Promise.all below.
+async function fetchPromotionCollectionSlugMap(
+  collectionSlugById: Record<string, string>
+): Promise<Record<string, string>> {
+  try {
+    const supabase = getServerSupabase();
+    const { data, error } = await supabase
+      .from('promotions')
+      .select('id, collection_id')
+      .eq('scope', 'collection')
+      .eq('is_active', true);
+    if (error) throw error;
+    const map: Record<string, string> = {};
+    for (const row of data ?? []) {
+      const collectionId = row.collection_id as string | null;
+      const slug = collectionId ? collectionSlugById[collectionId] : undefined;
+      if (slug) map[row.id as string] = slug;
+    }
+    return map;
+  } catch {
+    return {};
+  }
+}
+
 /**
  * Everything the homepage needs — products, categories, the store banner,
  * the free-shipping threshold, curated collections, and the homepage grid
- * tiles (plus the collection id->slug map those tiles link through) —
- * fetched together server-side in one Promise.all, instead of
+ * tiles (plus the collection id->slug map those tiles link through, and
+ * the promotion id->collection-slug map promotion-linked tiles link
+ * through) — fetched together server-side in one Promise.all, instead of
  * home-client.tsx firing independent client-side useEffect fetches after
  * hydration (which made the page visibly load in pieces: banner, then
  * collections, then products, each popping in at a different moment). The
@@ -115,6 +152,8 @@ export async function fetchHomeData(): Promise<HomeData> {
       fetchCollectionSlugMap(),
     ]);
 
+  const promotionCollectionSlugById = await fetchPromotionCollectionSlugMap(collectionSlugById);
+
   return {
     products,
     categories,
@@ -123,5 +162,6 @@ export async function fetchHomeData(): Promise<HomeData> {
     collections,
     tiles,
     collectionSlugById,
+    promotionCollectionSlugById,
   };
 }

@@ -102,6 +102,7 @@ export default async function Home() {
         collections={homeData.collections}
         tiles={homeData.tiles}
         collectionSlugById={homeData.collectionSlugById}
+        promotionCollectionSlugById={homeData.promotionCollectionSlugById}
       />
     </>
   );
