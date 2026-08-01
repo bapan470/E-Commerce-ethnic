@@ -1,31 +1,20 @@
-# Mobile /categories page — colour variations bhi count me
+# Product Highlights — labels + text size
 
-## Kya badla
+## Kya badla (`components/product/product-highlights.tsx`)
 
-`app/categories/page.tsx` me har category ka product count ab har colour
-variation ko alag product maan ke count karta hai — jaise aapne bola,
-"sab color 1 product count" (matlab 1 product jiske 3 colours hain, wo
-count me 3 products ki tarah judega — base colour + 2 extra colours = 3).
+1. **"Border" → "Saree Fabric"** — ab is jagah `highlights.saree_fabric`
+   (ya fallback me product ka `fabric`) dikhega.
+2. **"Border Width" → "Transparency"** — ab is jagah `highlights.transparency`
+   dikhega.
+3. Duplicate na ho isliye ye dono fields "Additional Details" (expanded)
+   section se hata di gayi hain — pehle wahan bhi the.
+4. **Text size chota kiya** — label `text-xs` → `text-[11px]`, value
+   `text-sm` → `text-xs`. Ye poore Product Highlights box (Occasion, Saree
+   Fabric, Transparency, Blouse + Additional Details ke saare fields) pe
+   apply hota hai, kyunki sab same `Cell` component use karte hain.
 
-Pehle: `count: inCat.length` — sirf base product rows count hote the.
-Ab: `sum + 1 + (p.variant_list?.length ?? 0)` — har product ki apni base
-colour (1) + uske upar add ki hui har extra colour (variant_list) jud ke
-count banta hai.
+Agar kisi product ka `saree_fabric` ya `transparency` value khaali hai (blank),
+to us product par wo field bilkul nahi dikhegi (jaisa pehle bhi tha — 
+empty fields hide ho jaati hain).
 
-## ⚠️ Dependency — pehle wala patch zaroori hai
-
-Ye change `Product.variant_list` field use karta hai, jo maine pichle
-zip (`collections-picker-changes.zip`) me `lib/types.ts` aur
-`lib/products-api.ts` me add kiya tha. **Agar wo files abhi tak apply
-nahi ki hain**, to ye naya code crash nahi karega (TypeScript optional
-field hai, `?? 0` fallback hai), lekin count purane jaisa hi (sirf base
-products) rahega — colour variations count nahi honge.
-
-To poora effect chahiye to ye do files bhi zaroor lagi honi chahiye:
-- `lib/types.ts` (Product interface me `variant_list` field)
-- `lib/products-api.ts` (`mapRowToProduct()` me `variant_list` populate)
-
-Agar wo pehle se apply kar chuke ho, to sirf ye ek file (`app/categories/page.tsx`)
-replace karne se kaam ho jayega.
-
-`tsc --noEmit` aur `eslint` dono clean pass ho gaye is file ke saath.
+`tsc --noEmit` aur `eslint` dono clean pass ho gaye.

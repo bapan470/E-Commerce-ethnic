@@ -13,17 +13,17 @@ function Cell({ label, value }: Row) {
   if (!value) return null;
   return (
     <div>
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-sm font-medium text-foreground">{value}</p>
+      <p className="text-[11px] text-muted-foreground">{label}</p>
+      <p className="text-xs font-medium text-foreground">{value}</p>
     </div>
   );
 }
 
 /**
  * "Product Highlights" spec block, styled after the familiar marketplace
- * layout (Meesho/Flipkart-style): Occasion, Border, Border Width and Blouse
- * always visible, with an "Additional Details" chevron that expands the
- * rest (fabric, pattern, ornamentation, blouse specifics, brand, loom type,
+ * layout (Meesho/Flipkart-style): Occasion, Saree Fabric, Transparency and
+ * Blouse always visible, with an "Additional Details" chevron that expands
+ * the rest (pattern, ornamentation, blouse specifics, brand, loom type,
  * etc). A "Copy" button lets the admin/store owner quickly copy the whole
  * spec sheet as text — handy for pasting into Meesho/Flipkart/Amazon
  * listings. Fields are populated by the AI listing generator in admin, with
@@ -39,13 +39,12 @@ export default function ProductHighlights({ product, activeColor }: { product: P
 
   const primaryRows: Row[] = [
     { label: 'Occasion', value: product.occasion?.join(', ') },
-    { label: 'Border', value: h.border },
-    { label: 'Border Width', value: h.border_width },
+    { label: 'Saree Fabric', value: h.saree_fabric || product.fabric },
+    { label: 'Transparency', value: h.transparency },
     { label: 'Blouse', value: h.blouse },
   ].filter((r) => r.value);
 
   const detailRows: Row[] = [
-    { label: 'Saree Fabric', value: h.saree_fabric || product.fabric },
     { label: 'Color', value: color },
     { label: 'Generic Name', value: h.generic_name },
     { label: 'Pattern', value: h.saree_pattern || product.pattern },
@@ -56,7 +55,6 @@ export default function ProductHighlights({ product, activeColor }: { product: P
     { label: 'Blouse Fabric', value: h.blouse_fabric },
     { label: 'Pallu Details', value: h.pallu_details },
     { label: 'Blouse Pattern', value: h.blouse_pattern },
-    { label: 'Transparency', value: h.transparency },
     { label: 'Blouse Color', value: h.blouse_color },
     { label: 'Brand', value: h.brand },
     { label: 'Loom Type', value: h.loom_type },
