@@ -28,6 +28,9 @@ import {
   PaymentDiscountSettings,
   fetchPaymentDiscountSettings,
   savePaymentDiscountSettings,
+  RefundAutomationSettings,
+  fetchRefundAutomationSettings,
+  saveRefundAutomationSettings,
 } from '@/lib/settings-api';
 import { uploadProductImage } from '@/lib/products-api';
 import {
@@ -92,6 +95,8 @@ export default function SettingsPanel() {
 
   const [paymentDiscountForm, setPaymentDiscountForm] = useState<PaymentDiscountSettings | null>(null);
   const [savingPaymentDiscount, setSavingPaymentDiscount] = useState(false);
+  const [refundAutomationForm, setRefundAutomationForm] = useState<RefundAutomationSettings | null>(null);
+  const [savingRefundAutomation, setSavingRefundAutomation] = useState(false);
 
   useEffect(() => {
     fetchStoreInfo()
@@ -138,6 +143,10 @@ export default function SettingsPanel() {
     fetchPaymentDiscountSettings()
       .then(setPaymentDiscountForm)
       .catch(() => toast.error('Failed to load online payment discount settings'));
+
+    fetchRefundAutomationSettings()
+      .then(setRefundAutomationForm)
+      .catch(() => toast.error('Failed to load refund automation settings'));
   }, []);
 
   const onSubmit = async (e: FormEvent) => {
@@ -267,6 +276,22 @@ export default function SettingsPanel() {
       toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSavingPaymentDiscount(false);
+    }
+  };
+
+  const onToggleRefundAutomation = async (checked: boolean) => {
+    if (!refundAutomationForm) return;
+    const next = { ...refundAutomationForm, auto_refund_enabled: checked };
+    setRefundAutomationForm(next); // update immediately so the switch feels responsive
+    setSavingRefundAutomation(true);
+    try {
+      await saveRefundAutomationSettings(next);
+      toast.success(checked ? 'Automatic refunds turned on' : 'Switched to manual refunds');
+    } catch (err) {
+      setRefundAutomationForm(refundAutomationForm); // revert the switch on failure
+      toast.error(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSavingRefundAutomation(false);
     }
   };
 
@@ -895,6 +920,37 @@ export default function SettingsPanel() {
             {savingPaymentDiscount ? 'Saving…' : 'Save Payment Discount'}
           </Button>
         </form>
+      )}
+
+      <div className="mt-8">
+        <h2 className="font-serif text-2xl font-bold text-primary">Order Cancellation Refunds</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          When a customer cancels an order they paid for online, this controls whether the refund
+          is issued automatically via Razorpay, or left for you to process by hand.
+        </p>
+      </div>
+
+      {!refundAutomationForm ? (
+        <p className="py-4 text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <div className="mt-4 flex max-w-xl items-center justify-between gap-4 rounded-lg border border-border/60 bg-card p-5">
+          <div>
+            <Label htmlFor="refund-automation-enabled">
+              {refundAutomationForm.auto_refund_enabled ? 'Automatic' : 'Manual'} refunds
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              {refundAutomationForm.auto_refund_enabled
+                ? 'On: refunds are issued to the customer via Razorpay the moment they cancel — nothing for you to do.'
+                : 'Off: the order is still cancelled instantly, but no refund is sent. You\u2019ll need to refund the customer yourself from the Razorpay dashboard or the Orders panel.'}
+            </p>
+          </div>
+          <Switch
+            id="refund-automation-enabled"
+            checked={refundAutomationForm.auto_refund_enabled}
+            disabled={savingRefundAutomation}
+            onCheckedChange={onToggleRefundAutomation}
+          />
+        </div>
       )}
 
       <div className="mt-8">

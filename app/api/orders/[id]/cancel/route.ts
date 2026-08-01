@@ -73,6 +73,23 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ success: true, refunded: false });
   }
 
+  const { data: refundSettingRow } = await admin
+    .from('settings')
+    .select('value')
+    .eq('key', 'refund_automation')
+    .maybeSingle();
+  const autoRefundEnabled = (refundSettingRow?.value as { auto_refund_enabled?: boolean } | null)
+    ?.auto_refund_enabled ?? true; // default on, matches DEFAULT_REFUND_AUTOMATION_SETTINGS
+
+  if (!autoRefundEnabled) {
+    await admin.from('orders').update({ refund_status: 'pending_manual' }).eq('id', order.id);
+    return NextResponse.json({
+      success: true,
+      refunded: false,
+      refundError: 'Your order was cancelled. Our team will process your refund manually within 1-2 business days.',
+    });
+  }
+
   const refundResult = await refundRazorpayPayment(order.razorpay_payment_id, order.total_amount);
 
   if (refundResult.success) {

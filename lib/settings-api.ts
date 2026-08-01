@@ -220,6 +220,37 @@ export async function savePaymentDiscountSettings(settings: PaymentDiscountSetti
   if (error) throw error;
 }
 
+// ---------------------------------------------------------------------
+// Refund automation — controls whether a customer self-cancelling a
+// paid-online order gets an automatic Razorpay refund (see
+// app/api/orders/[id]/cancel/route.ts), or whether it's left for the
+// admin to process by hand from the Razorpay dashboard/orders panel.
+// ---------------------------------------------------------------------
+export interface RefundAutomationSettings {
+  auto_refund_enabled: boolean;
+}
+
+export const DEFAULT_REFUND_AUTOMATION_SETTINGS: RefundAutomationSettings = {
+  auto_refund_enabled: true,
+};
+
+export async function fetchRefundAutomationSettings(): Promise<RefundAutomationSettings> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'refund_automation')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_REFUND_AUTOMATION_SETTINGS;
+  return { ...DEFAULT_REFUND_AUTOMATION_SETTINGS, ...(data.value as Partial<RefundAutomationSettings>) };
+}
+
+export async function saveRefundAutomationSettings(settings: RefundAutomationSettings) {
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ key: 'refund_automation', value: settings }, { onConflict: 'key' });
+  if (error) throw error;
+}
+
 export interface SiteBanner {
   image_url: string;
   link_url?: string;
