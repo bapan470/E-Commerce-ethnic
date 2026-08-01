@@ -1,13 +1,61 @@
-diff --git a/components/header.tsx b/components/header.tsx
-index fcb08d6..df11642 100644
---- a/components/header.tsx
-+++ b/components/header.tsx
-@@ -577,7 +577,7 @@ export default function Header() {
-             <Search className="h-5 w-5" />
-           </Button>
+diff --git a/app/api/collection/[slug]/route.ts b/app/api/collection/[slug]/route.ts
+index cd5bcb5..370b8ec 100644
+--- a/app/api/collection/[slug]/route.ts
++++ b/app/api/collection/[slug]/route.ts
+@@ -3,6 +3,13 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
+ import { mapRowToProduct, CUSTOMER_SAFE_PRODUCT_COLUMNS } from '@/lib/products-api-server';
+ import { ProductRow } from '@/lib/types';
  
--          <Button variant="ghost" size="icon" asChild className="hidden sm:inline-flex" aria-label="Wishlist">
-+          <Button variant="ghost" size="icon" asChild aria-label="Wishlist">
-             <Link href="/account/wishlist">
-               <Heart className="h-5 w-5" />
-             </Link>
++// No cookies()/headers()/searchParams here, so without this Next's App
++// Router would cache this route's response indefinitely after the first
++// hit post-deploy — an admin adding/removing a product from a collection
++// (or flipping is_active) wouldn't show up here until the next deploy.
++// Same reasoning as /api/promotions/active.
++export const dynamic = 'force-dynamic';
++
+ /** Weighted rating/review total across a set of products, computed from the
+  *  live `reviews` table (approved only) -- the same source the single-
+  *  product page uses. A product with no live approved reviews yet falls
+diff --git a/app/api/collections/route.ts b/app/api/collections/route.ts
+index 6492a38..acbd139 100644
+--- a/app/api/collections/route.ts
++++ b/app/api/collections/route.ts
+@@ -1,6 +1,13 @@
+ import { NextResponse } from 'next/server';
+ import { fetchPublicCollectionsServer } from '@/lib/collections-api-server';
+ 
++// No cookies()/headers()/searchParams here, so without this Next's App
++// Router would cache this route's response indefinitely after the first
++// hit post-deploy — a newly-activated or newly-emptied collection
++// wouldn't show up/disappear from the homepage until the next deploy.
++// Same reasoning as /api/promotions/active.
++export const dynamic = 'force-dynamic';
++
+ /**
+  * GET /api/collections
+  *
+diff --git a/app/api/promotions/active/route.ts b/app/api/promotions/active/route.ts
+index c1c76e2..47d61d7 100644
+--- a/app/api/promotions/active/route.ts
++++ b/app/api/promotions/active/route.ts
+@@ -1,6 +1,20 @@
+ import { NextResponse } from 'next/server';
+ import { getSupabaseAdmin } from '@/lib/supabase-admin';
+ 
++// This route has no cookies()/headers()/searchParams usage, so Next's App
++// Router would otherwise treat it as a static route and cache its response
++// in the full Route Cache (served from that cache indefinitely, not just
++// briefly) -- meaning a shopper's browser keeps getting whatever the
++// response was the first time this route was ever hit after a deploy,
++// even after an admin removes a product from a promotion's collection or
++// flips a promotion off. That's exactly backwards for something that (a)
++// gates a live discount and (b) already has its own starts_at/ends_at
++// time window logic below, which requires "now" to be genuinely live on
++// every request. force-dynamic bypasses that cache so every request re-
++// queries Supabase, same as the admin routes get automatically from their
++// cookies() call in requireAdmin().
++export const dynamic = 'force-dynamic';
++
+ // GET — public, unauthenticated. Returns every currently-active BOGO
+ // promotion (is_active = true and within its start/end window), each with
+ // a resolved `product_ids` array when scope = 'collection'.

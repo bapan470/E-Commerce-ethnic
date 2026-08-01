@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import { fetchPublicCollectionsServer } from '@/lib/collections-api-server';
 
+// No cookies()/headers()/searchParams here, so without this Next's App
+// Router would cache this route's response indefinitely after the first
+// hit post-deploy — a newly-activated or newly-emptied collection
+// wouldn't show up/disappear from the homepage until the next deploy.
+// Same reasoning as /api/promotions/active.
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/collections
  *

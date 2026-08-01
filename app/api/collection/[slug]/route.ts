@@ -3,6 +3,13 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { mapRowToProduct, CUSTOMER_SAFE_PRODUCT_COLUMNS } from '@/lib/products-api-server';
 import { ProductRow } from '@/lib/types';
 
+// No cookies()/headers()/searchParams here, so without this Next's App
+// Router would cache this route's response indefinitely after the first
+// hit post-deploy — an admin adding/removing a product from a collection
+// (or flipping is_active) wouldn't show up here until the next deploy.
+// Same reasoning as /api/promotions/active.
+export const dynamic = 'force-dynamic';
+
 /** Weighted rating/review total across a set of products, computed from the
  *  live `reviews` table (approved only) -- the same source the single-
  *  product page uses. A product with no live approved reviews yet falls

@@ -1,6 +1,20 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
+// This route has no cookies()/headers()/searchParams usage, so Next's App
+// Router would otherwise treat it as a static route and cache its response
+// in the full Route Cache (served from that cache indefinitely, not just
+// briefly) -- meaning a shopper's browser keeps getting whatever the
+// response was the first time this route was ever hit after a deploy,
+// even after an admin removes a product from a promotion's collection or
+// flips a promotion off. That's exactly backwards for something that (a)
+// gates a live discount and (b) already has its own starts_at/ends_at
+// time window logic below, which requires "now" to be genuinely live on
+// every request. force-dynamic bypasses that cache so every request re-
+// queries Supabase, same as the admin routes get automatically from their
+// cookies() call in requireAdmin().
+export const dynamic = 'force-dynamic';
+
 // GET — public, unauthenticated. Returns every currently-active BOGO
 // promotion (is_active = true and within its start/end window), each with
 // a resolved `product_ids` array when scope = 'collection'.
