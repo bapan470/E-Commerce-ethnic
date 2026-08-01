@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser, getSupabaseServer } from '@/lib/supabase-server-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { fetchFulfillmentSettings } from '@/lib/marketing-api';
+import { refundRazorpayPayment } from '@/lib/razorpay-refund';
 
 // Statuses a customer is still allowed to self-cancel from. Once an order
 // has moved past this (shipped/delivered/etc.) it must go through the
@@ -20,7 +21,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   const supabase = await getSupabaseServer();
   const { data: order, error: fetchError } = await supabase
     .from('orders')
-    .select('id, user_id, customer_email, status, created_at')
+    .select('id, user_id, customer_email, status, created_at, payment_method, razorpay_payment_id, total_amount')
     .eq('id', params.id)
     .single();
 
@@ -62,5 +63,34 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ error: 'Failed to cancel order. Please try again or contact us.' }, { status: 500 });
   }
 
-  return NextResponse.json({ success: true });
+  // Only orders that actually had money captured need a refund. A COD
+  // order, or an "online" order where Razorpay's verify-payment step never
+  // ran (no razorpay_payment_id / not actually 'paid'), never took money
+  // in the first place — nothing to refund.
+  const needsRefund = order.payment_method === 'online' && order.status === 'paid' && !!order.razorpay_payment_id;
+
+  if (!needsRefund) {
+    return NextResponse.json({ success: true, refunded: false });
+  }
+
+  const refundResult = await refundRazorpayPayment(order.razorpay_payment_id, order.total_amount);
+
+  if (refundResult.success) {
+    await admin
+      .from('orders')
+      .update({ refund_status: 'refunded', razorpay_refund_id: refundResult.refundId })
+      .eq('id', order.id);
+    return NextResponse.json({ success: true, refunded: true });
+  }
+
+  // The order is still cancelled even if the refund call failed — we
+  // don't want to block cancellation on Razorpay being reachable. We just
+  // flag it so the admin can see it needs a manual refund instead of it
+  // silently getting missed.
+  await admin.from('orders').update({ refund_status: 'failed' }).eq('id', order.id);
+  return NextResponse.json({
+    success: true,
+    refunded: false,
+    refundError: 'Your order was cancelled, but the automatic refund failed. Our team will process your refund manually within 1-2 business days.',
+  });
 }

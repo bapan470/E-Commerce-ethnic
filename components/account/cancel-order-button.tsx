@@ -30,7 +30,13 @@ export default function CancelOrderButton({ orderId }: { orderId: string }) {
         toast.error(data.error || 'Failed to cancel order.');
         return;
       }
-      toast.success('Order cancelled.');
+      if (data.refundError) {
+        toast.error(data.refundError);
+      } else if (data.refunded) {
+        toast.success('Order cancelled. Your refund has been initiated and should reflect in 5-7 business days.');
+      } else {
+        toast.success('Order cancelled.');
+      }
       setOpen(false);
       router.refresh();
     } catch {
