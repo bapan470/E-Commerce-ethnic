@@ -577,7 +577,7 @@ export default function Header() {
             <Search className="h-5 w-5" />
           </Button>
 
-          <Button variant="ghost" size="icon" asChild className="hidden sm:inline-flex" aria-label="Wishlist">
+          <Button variant="ghost" size="icon" asChild aria-label="Wishlist">
             <Link href="/account/wishlist">
               <Heart className="h-5 w-5" />
             </Link>
