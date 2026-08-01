@@ -64,7 +64,9 @@ export default function CollectionsPanel() {
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [productSearch, setProductSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [minPriceFilter, setMinPriceFilter] = useState<string>('');
   const [maxPriceFilter, setMaxPriceFilter] = useState<string>('');
+  const [percentOffFilter, setPercentOffFilter] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(false);
 
@@ -136,12 +138,22 @@ export default function CollectionsPanel() {
   const filteredProducts = useMemo(() => {
     let list = products;
     if (categoryFilter !== 'all') list = list.filter((p) => p.category === categoryFilter);
+    const minPrice = parseFloat(minPriceFilter);
+    if (!Number.isNaN(minPrice)) list = list.filter((p) => p.price >= minPrice);
     const maxPrice = parseFloat(maxPriceFilter);
     if (!Number.isNaN(maxPrice)) list = list.filter((p) => p.price <= maxPrice);
+    const minPercentOff = parseFloat(percentOffFilter);
+    if (!Number.isNaN(minPercentOff)) {
+      list = list.filter((p) => {
+        if (!p.mrp || p.mrp <= p.price) return false;
+        const off = ((p.mrp - p.price) / p.mrp) * 100;
+        return off >= minPercentOff;
+      });
+    }
     const q = productSearch.trim().toLowerCase();
     if (q) list = list.filter((p) => p.name.toLowerCase().includes(q));
     return list;
-  }, [products, productSearch, categoryFilter, maxPriceFilter]);
+  }, [products, productSearch, categoryFilter, minPriceFilter, maxPriceFilter, percentOffFilter]);
 
   const allFilteredSelected =
     filteredProducts.length > 0 && filteredProducts.every((p) => selectedProductIds.includes(p.id));
@@ -168,7 +180,9 @@ export default function CollectionsPanel() {
     setShowBogoBadge(true);
     setProductSearch('');
     setCategoryFilter('all');
+    setMinPriceFilter('');
     setMaxPriceFilter('');
+    setPercentOffFilter('');
     setOpen(true);
   };
 
@@ -183,7 +197,9 @@ export default function CollectionsPanel() {
     setSelectedProductIds([]);
     setProductSearch('');
     setCategoryFilter('all');
+    setMinPriceFilter('');
     setMaxPriceFilter('');
+    setPercentOffFilter('');
     setOpen(true);
     setLoadingProducts(true);
     try {
@@ -502,8 +518,12 @@ export default function CollectionsPanel() {
                   {(() => {
                     const bits: string[] = [];
                     if (categoryFilter !== 'all') bits.push(categoryFilter);
+                    if (minPriceFilter && !Number.isNaN(parseFloat(minPriceFilter)))
+                      bits.push(`over ₹${minPriceFilter}`);
                     if (maxPriceFilter && !Number.isNaN(parseFloat(maxPriceFilter)))
                       bits.push(`under ₹${maxPriceFilter}`);
+                    if (percentOffFilter && !Number.isNaN(parseFloat(percentOffFilter)))
+                      bits.push(`${percentOffFilter}%+ off`);
                     const suffix = bits.length ? ` in ${bits.join(', ')}` : '';
                     return allFilteredSelected
                       ? `Deselect all${suffix} (${filteredProducts.length})`
@@ -511,8 +531,8 @@ export default function CollectionsPanel() {
                   })()}
                 </button>
               </div>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
+              <div className="flex flex-wrap gap-2">
+                <div className="relative min-w-[10rem] flex-1">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     value={productSearch}
@@ -521,7 +541,20 @@ export default function CollectionsPanel() {
                     className="pl-9"
                   />
                 </div>
-                <div className="relative w-36 shrink-0">
+                <div className="relative w-32 shrink-0">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                    ≥ ₹
+                  </span>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={minPriceFilter}
+                    onChange={(e) => setMinPriceFilter(e.target.value)}
+                    placeholder="Min price"
+                    className="pl-8"
+                  />
+                </div>
+                <div className="relative w-32 shrink-0">
                   <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                     ≤ ₹
                   </span>
@@ -534,7 +567,26 @@ export default function CollectionsPanel() {
                     className="pl-8"
                   />
                 </div>
+                <div className="relative w-32 shrink-0">
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={percentOffFilter}
+                    onChange={(e) => setPercentOffFilter(e.target.value)}
+                    placeholder="Min % off"
+                    className="pr-7"
+                  />
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                    %
+                  </span>
+                </div>
               </div>
+              <p className="-mt-1 text-xs text-muted-foreground">
+                Price and % off filters only help you find products to add — they filter this picker
+                list, not the live collection (products aren&apos;t auto-added/removed later if their
+                price changes).
+              </p>
               {productCategories.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   <button
