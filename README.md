@@ -1,32 +1,32 @@
-# BOGO Offer Badge — Cart, Bag Drawer & Checkout
+# BOGO Offer Badge + Unlocked Celebration + Cart Page Discount
 
-## Kya change hua
+## Update 2 — is round me kya fix hua
 
-Pehle "Buy X Get Y" (BOGO) offer badge sirf **product page** aur **catalog/shop grid**
-(`components/product-card.tsx`) pe dikhta tha. Ab wahi badge in jagah bhi dikhega,
-**agar us specific product pe offer active hai** — nahi to badge simply nahi dikhega
-(koi hardcoded/fake badge nahi, same logic jo product card use karta hai):
+1. **"Already unlocked" par same message repeat hone ka fix (Bag drawer + Cart page)**
+   Pehle jab shopper already 1 (ya zyada) free/discounted item unlock kar chuka hota
+   tha, tab bhi top par wahi purana "Add X more qualifying items to unlock..." message
+   dikhta rehta tha — jaise kuch unlock hi nahi hua. Ab:
+   - Agar cart me **already koi free/discount item unlock ho chuka hai** → top par
+     ek green celebration banner: **"🎉 Wow! You got N item(s) discount FREE — BOGO
+     applied!"** + kitna ₹ discount already add ho gaya, dikhega.
+   - Agar next free item ke liye aur items chahiye, to usi banner ke andar chhoti si
+     extra line: "Add X more to unlock another FREE item!" bhi dikhegi — dono baatein
+     ek sath, confusing nahi.
+   - Agar **abhi tak kuch unlock nahi hua** (sirf progress hai) → wahi purana
+     "Add X more to unlock" message dikhega (jaisa pehle tha).
 
-1. `components/cart-drawer.tsx` — side "Bag" panel (jo aapke screenshots me tha)
-   → har item ke Size/Colour line ke neeche badge.
-2. `app/cart/page.tsx` — full `/cart` page → har item ke Category/Size line ke neeche badge.
-3. `app/checkout/page.tsx` — Order Summary list on checkout page → har item ke Size
-   line ke neeche chhota badge.
+2. **Cart page (`/cart`) par BOGO discount ab show hota hai**
+   Pehle `/cart` full page ke Order Summary me sirf Coupon discount dikhta tha, BOGO
+   discount kahin nahi dikhta tha (sirf Bag drawer aur Checkout me tha). Ab:
+   - Total ke calculation me bogoDiscount bhi minus hota hai (pehle miss tha).
+   - "X item(s) discounted (BOGO)" line Order Summary me Coupon discount ke sath dikhti hai.
+   - Upar wahi celebration/progress banner bhi cart page par dikhta hai (Bag drawer jaisa).
 
-## Kaise kaam karta hai
+## Pehle round me kya hua tha (still included)
 
-Sabhi 3 jagah pe same helper functions use kiye hain jo already
-`lib/cart-context.tsx` me maujood the aur product-card.tsx use karta hai:
-
-- `getVisibleBogoPromotion(productId, activePromotions)` → check karta hai ki
-  ye product kisi active, "show badge" wali BOGO promotion me qualify karta hai ya nahi.
-- `formatBogoLabel(promotion)` → "Buy 2 Get 1 Free" jaisa label banata hai.
-
-Isliye:
-- Agar product pe offer hai → badge dikhega (exactly wahi text jo product page/catalog pe hai).
-- Agar product pe offer nahi hai → badge bilkul nahi dikhega.
-- Admin panel se agar kisi collection ka "Show Buy X Get Y badge" toggle off hai,
-  to wahan bhi badge nahi dikhega (same rule product card follow karta hai).
+- BOGO offer badge (jo product page/catalog pe "Buy X Get Y" dikhta hai) ab
+  Bag drawer, `/cart` page, aur checkout order summary — teeno jagah har item
+  pe dikhta hai **agar us product pe offer active hai**, warna nahi dikhta.
 
 ## Files is zip me
 
@@ -48,8 +48,9 @@ Apne local clone (`C:\Users\bapan\E-Commerce-ethnic`) me:
 4. Sab sahi lage to:
    ```
    git add app/cart/page.tsx app/checkout/page.tsx components/cart-drawer.tsx
-   git commit -m "Show BOGO offer badge on cart, bag drawer and checkout"
+   git commit -m "Celebrate unlocked BOGO offer + show BOGO discount on cart page"
    git push
    ```
 
 Koi database/schema change nahi hai — sirf UI files.
+

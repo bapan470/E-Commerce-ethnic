@@ -1,10 +1,15 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Tag, X, Loader2 } from 'lucide-react';
-import { useCart, getVisibleBogoPromotion, formatBogoLabel } from '@/lib/cart-context';
+import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Tag, X, Loader2, PartyPopper } from 'lucide-react';
+import {
+  useCart,
+  getVisibleBogoPromotion,
+  formatBogoLabel,
+  getBogoCartProgress,
+} from '@/lib/cart-context';
 import { markCheckoutEntry } from '@/lib/checkout-return';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -32,6 +37,7 @@ export default function CartPage() {
     removeCoupon,
     clearBuyNow,
     activePromotions,
+    bogoDiscount,
   } = useCart();
   const [shippingSettings, setShippingSettings] = useState<ShippingSettings>(
     DEFAULT_SHIPPING_SETTINGS
@@ -57,6 +63,22 @@ export default function CartPage() {
     setCouponInput('');
     setCouponError(null);
   };
+
+  // Same "Add N more to get M FREE!" progress + "already unlocked" math the
+  // cart drawer uses (getBogoCartProgress mirrors computeBogoDiscount), so
+  // this page never disagrees with the drawer or the actual discount applied.
+  const bogoProgress = useMemo(
+    () => getBogoCartProgress(items, activePromotions),
+    [items, activePromotions]
+  );
+  const nextBogoHint = useMemo(
+    () =>
+      bogoProgress.length === 0
+        ? null
+        : [...bogoProgress].sort((a, b) => a.unitsToNextFree - b.unitsToNextFree)[0],
+    [bogoProgress]
+  );
+  const totalFreeUnitsUnlocked = bogoProgress.reduce((sum, p) => sum + p.freeUnitsUnlocked, 0);
 
   useEffect(() => {
     fetchShippingSettings().then(setShippingSettings).catch(() => {
@@ -88,7 +110,7 @@ export default function CartPage() {
     subtotal >= shippingSettings.free_shipping_threshold
       ? 0
       : shippingSettings.flat_rate;
-  const discountedSubtotal = Math.max(0, subtotal - couponDiscount);
+  const discountedSubtotal = Math.max(0, subtotal - couponDiscount - bogoDiscount);
   const total = discountedSubtotal + shipping;
 
   return (
@@ -99,6 +121,57 @@ export default function CartPage() {
 
       <div className="grid gap-8 lg:grid-cols-3">
         <div className="lg:col-span-2">
+          {totalFreeUnitsUnlocked > 0 && (
+            <div className="mb-4 rounded-lg border border-emerald-300 bg-emerald-50 p-3">
+              <p className="flex items-center gap-1.5 text-sm font-semibold text-emerald-700">
+                <PartyPopper className="h-4 w-4 shrink-0" />
+                Wow! You got {totalFreeUnitsUnlocked}{' '}
+                {totalFreeUnitsUnlocked > 1 ? 'items' : 'item'} discount FREE — BOGO applied!
+              </p>
+              <p className="mt-0.5 text-xs text-emerald-700/80">
+                {formatINR(bogoDiscount)} off already added to your cart.
+              </p>
+              {nextBogoHint && (
+                <p className="mt-1.5 flex items-center gap-1.5 border-t border-emerald-200 pt-1.5 text-xs font-medium text-emerald-700">
+                  <Tag className="h-3.5 w-3.5 shrink-0" />
+                  {nextBogoHint.unitsToNextFree === 1
+                    ? `Add 1 more to unlock another ${
+                        nextBogoHint.promotion.free_item_discount_percent === 100
+                          ? 'FREE item'
+                          : `${nextBogoHint.promotion.free_item_discount_percent}% off item`
+                      }!`
+                    : `Add ${nextBogoHint.unitsToNextFree} more to unlock another ${
+                        nextBogoHint.promotion.free_item_discount_percent === 100
+                          ? 'FREE item'
+                          : `${nextBogoHint.promotion.free_item_discount_percent}% off item`
+                      }!`}
+                </p>
+              )}
+            </div>
+          )}
+          {totalFreeUnitsUnlocked === 0 && nextBogoHint && (
+            <div className="mb-4 rounded-lg border border-secondary/40 bg-secondary/10 p-3">
+              <p className="flex items-center gap-1.5 text-sm font-semibold text-secondary-foreground">
+                <Tag className="h-3.5 w-3.5 shrink-0 text-secondary" />
+                {nextBogoHint.unitsToNextFree === 1
+                  ? `Add 1 more qualifying item to get ${nextBogoHint.promotion.get_qty} ${
+                      nextBogoHint.promotion.free_item_discount_percent === 100
+                        ? 'FREE'
+                        : `at ${nextBogoHint.promotion.free_item_discount_percent}% off`
+                    }!`
+                  : `Add ${nextBogoHint.unitsToNextFree} more qualifying items to unlock ${
+                      nextBogoHint.promotion.get_qty
+                    } ${
+                      nextBogoHint.promotion.free_item_discount_percent === 100 ? 'FREE' : 'discounted'
+                    } item${nextBogoHint.promotion.get_qty > 1 ? 's' : ''}!`}
+              </p>
+              <p className="mt-0.5 text-xs text-secondary-foreground/70">
+                {nextBogoHint.promotion.buy_qty} + {nextBogoHint.promotion.get_qty} deal — the cheapest
+                item{nextBogoHint.promotion.get_qty > 1 ? 's' : ''} in every full set get
+                {nextBogoHint.promotion.get_qty > 1 ? '' : 's'} discounted automatically.
+              </p>
+            </div>
+          )}
           <ul className="flex flex-col gap-4">
             {items.map((item) => {
               // Same "is this product currently on an active, badge-eligible
@@ -255,6 +328,16 @@ export default function CartPage() {
                 <div className="flex justify-between text-secondary-foreground">
                   <span>Coupon discount</span>
                   <span>-{formatINR(couponDiscount)}</span>
+                </div>
+              )}
+              {bogoDiscount > 0 && (
+                <div className="flex justify-between text-secondary-foreground">
+                  <span>
+                    {totalFreeUnitsUnlocked > 0
+                      ? `${totalFreeUnitsUnlocked} item${totalFreeUnitsUnlocked > 1 ? 's' : ''} discounted (BOGO)`
+                      : 'BOGO offer applied'}
+                  </span>
+                  <span>-{formatINR(bogoDiscount)}</span>
                 </div>
               )}
               <div className="flex justify-between">

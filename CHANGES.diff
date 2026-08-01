@@ -1,13 +1,23 @@
 diff --git a/app/cart/page.tsx b/app/cart/page.tsx
-index 9177cdd..02d61ba 100644
+index 9177cdd..6b972e4 100644
 --- a/app/cart/page.tsx
 +++ b/app/cart/page.tsx
-@@ -4,10 +4,11 @@ import { useEffect, useState } from 'react';
+@@ -1,13 +1,19 @@
+ 'use client';
+ 
+-import { useEffect, useState } from 'react';
++import { useEffect, useMemo, useState } from 'react';
  import Link from 'next/link';
  import Image from 'next/image';
- import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Tag, X, Loader2 } from 'lucide-react';
+-import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Tag, X, Loader2 } from 'lucide-react';
 -import { useCart } from '@/lib/cart-context';
-+import { useCart, getVisibleBogoPromotion, formatBogoLabel } from '@/lib/cart-context';
++import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Tag, X, Loader2, PartyPopper } from 'lucide-react';
++import {
++  useCart,
++  getVisibleBogoPromotion,
++  formatBogoLabel,
++  getBogoCartProgress,
++} from '@/lib/cart-context';
  import { markCheckoutEntry } from '@/lib/checkout-return';
  import { formatINR } from '@/lib/format';
  import { Button } from '@/components/ui/button';
@@ -15,17 +25,102 @@ index 9177cdd..02d61ba 100644
  import { Input } from '@/components/ui/input';
  import { Separator } from '@/components/ui/separator';
  import CartBump from '@/components/cart/cart-bump';
-@@ -30,6 +31,7 @@ export default function CartPage() {
+@@ -30,6 +36,8 @@ export default function CartPage() {
      applyCoupon,
      removeCoupon,
      clearBuyNow,
 +    activePromotions,
++    bogoDiscount,
    } = useCart();
    const [shippingSettings, setShippingSettings] = useState<ShippingSettings>(
      DEFAULT_SHIPPING_SETTINGS
-@@ -98,7 +100,12 @@ export default function CartPage() {
+@@ -56,6 +64,22 @@ export default function CartPage() {
+     setCouponError(null);
+   };
+ 
++  // Same "Add N more to get M FREE!" progress + "already unlocked" math the
++  // cart drawer uses (getBogoCartProgress mirrors computeBogoDiscount), so
++  // this page never disagrees with the drawer or the actual discount applied.
++  const bogoProgress = useMemo(
++    () => getBogoCartProgress(items, activePromotions),
++    [items, activePromotions]
++  );
++  const nextBogoHint = useMemo(
++    () =>
++      bogoProgress.length === 0
++        ? null
++        : [...bogoProgress].sort((a, b) => a.unitsToNextFree - b.unitsToNextFree)[0],
++    [bogoProgress]
++  );
++  const totalFreeUnitsUnlocked = bogoProgress.reduce((sum, p) => sum + p.freeUnitsUnlocked, 0);
++
+   useEffect(() => {
+     fetchShippingSettings().then(setShippingSettings).catch(() => {
+       // fall back to defaults already set above
+@@ -86,7 +110,7 @@ export default function CartPage() {
+     subtotal >= shippingSettings.free_shipping_threshold
+       ? 0
+       : shippingSettings.flat_rate;
+-  const discountedSubtotal = Math.max(0, subtotal - couponDiscount);
++  const discountedSubtotal = Math.max(0, subtotal - couponDiscount - bogoDiscount);
+   const total = discountedSubtotal + shipping;
+ 
+   return (
+@@ -97,8 +121,64 @@ export default function CartPage() {
+ 
        <div className="grid gap-8 lg:grid-cols-3">
          <div className="lg:col-span-2">
++          {totalFreeUnitsUnlocked > 0 && (
++            <div className="mb-4 rounded-lg border border-emerald-300 bg-emerald-50 p-3">
++              <p className="flex items-center gap-1.5 text-sm font-semibold text-emerald-700">
++                <PartyPopper className="h-4 w-4 shrink-0" />
++                Wow! You got {totalFreeUnitsUnlocked}{' '}
++                {totalFreeUnitsUnlocked > 1 ? 'items' : 'item'} discount FREE — BOGO applied!
++              </p>
++              <p className="mt-0.5 text-xs text-emerald-700/80">
++                {formatINR(bogoDiscount)} off already added to your cart.
++              </p>
++              {nextBogoHint && (
++                <p className="mt-1.5 flex items-center gap-1.5 border-t border-emerald-200 pt-1.5 text-xs font-medium text-emerald-700">
++                  <Tag className="h-3.5 w-3.5 shrink-0" />
++                  {nextBogoHint.unitsToNextFree === 1
++                    ? `Add 1 more to unlock another ${
++                        nextBogoHint.promotion.free_item_discount_percent === 100
++                          ? 'FREE item'
++                          : `${nextBogoHint.promotion.free_item_discount_percent}% off item`
++                      }!`
++                    : `Add ${nextBogoHint.unitsToNextFree} more to unlock another ${
++                        nextBogoHint.promotion.free_item_discount_percent === 100
++                          ? 'FREE item'
++                          : `${nextBogoHint.promotion.free_item_discount_percent}% off item`
++                      }!`}
++                </p>
++              )}
++            </div>
++          )}
++          {totalFreeUnitsUnlocked === 0 && nextBogoHint && (
++            <div className="mb-4 rounded-lg border border-secondary/40 bg-secondary/10 p-3">
++              <p className="flex items-center gap-1.5 text-sm font-semibold text-secondary-foreground">
++                <Tag className="h-3.5 w-3.5 shrink-0 text-secondary" />
++                {nextBogoHint.unitsToNextFree === 1
++                  ? `Add 1 more qualifying item to get ${nextBogoHint.promotion.get_qty} ${
++                      nextBogoHint.promotion.free_item_discount_percent === 100
++                        ? 'FREE'
++                        : `at ${nextBogoHint.promotion.free_item_discount_percent}% off`
++                    }!`
++                  : `Add ${nextBogoHint.unitsToNextFree} more qualifying items to unlock ${
++                      nextBogoHint.promotion.get_qty
++                    } ${
++                      nextBogoHint.promotion.free_item_discount_percent === 100 ? 'FREE' : 'discounted'
++                    } item${nextBogoHint.promotion.get_qty > 1 ? 's' : ''}!`}
++              </p>
++              <p className="mt-0.5 text-xs text-secondary-foreground/70">
++                {nextBogoHint.promotion.buy_qty} + {nextBogoHint.promotion.get_qty} deal — the cheapest
++                item{nextBogoHint.promotion.get_qty > 1 ? 's' : ''} in every full set get
++                {nextBogoHint.promotion.get_qty > 1 ? '' : 's'} discounted automatically.
++              </p>
++            </div>
++          )}
            <ul className="flex flex-col gap-4">
 -            {items.map((item) => (
 +            {items.map((item) => {
@@ -37,7 +132,7 @@ index 9177cdd..02d61ba 100644
                <li
                  key={`${item.product.id}-${item.size}`}
                  className="flex gap-4 rounded-lg border border-border/60 bg-card p-4"
-@@ -127,8 +134,13 @@ export default function CartPage() {
+@@ -127,8 +207,13 @@ export default function CartPage() {
                        <p className="mt-0.5 text-xs text-muted-foreground">
                          {item.product.category} · Size: {item.size}
                        </p>
@@ -52,7 +147,7 @@ index 9177cdd..02d61ba 100644
                        </div>
                      </div>
                      <button
-@@ -172,7 +184,8 @@ export default function CartPage() {
+@@ -172,7 +257,8 @@ export default function CartPage() {
                    </div>
                  </div>
                </li>
@@ -62,6 +157,23 @@ index 9177cdd..02d61ba 100644
            </ul>
  
            <div className="mt-4 flex justify-between">
+@@ -244,6 +330,16 @@ export default function CartPage() {
+                   <span>-{formatINR(couponDiscount)}</span>
+                 </div>
+               )}
++              {bogoDiscount > 0 && (
++                <div className="flex justify-between text-secondary-foreground">
++                  <span>
++                    {totalFreeUnitsUnlocked > 0
++                      ? `${totalFreeUnitsUnlocked} item${totalFreeUnitsUnlocked > 1 ? 's' : ''} discounted (BOGO)`
++                      : 'BOGO offer applied'}
++                  </span>
++                  <span>-{formatINR(bogoDiscount)}</span>
++                </div>
++              )}
+               <div className="flex justify-between">
+                 <span className="text-muted-foreground">Shipping</span>
+                 <span className="font-medium">
 diff --git a/app/checkout/page.tsx b/app/checkout/page.tsx
 index e75a81b..3f5b56e 100644
 --- a/app/checkout/page.tsx
@@ -114,12 +226,14 @@ index e75a81b..3f5b56e 100644
                          <div className="mt-0.5 flex items-center gap-2">
                            <button
 diff --git a/components/cart-drawer.tsx b/components/cart-drawer.tsx
-index fe9473c..936b31e 100644
+index fe9473c..5c7d94e 100644
 --- a/components/cart-drawer.tsx
 +++ b/components/cart-drawer.tsx
-@@ -17,12 +17,19 @@ import {
+@@ -16,13 +16,21 @@ import {
+   ChevronRight,
    Info,
    Wallet,
++  PartyPopper,
  } from 'lucide-react';
 -import { useCart, usePaymentDiscount, getBogoCartProgress } from '@/lib/cart-context';
 +import {
@@ -138,7 +252,44 @@ index fe9473c..936b31e 100644
  import { Input } from '@/components/ui/input';
  import {
    Sheet,
-@@ -342,6 +349,12 @@ export default function CartDrawer() {
+@@ -294,7 +302,35 @@ export default function CartDrawer() {
+         ) : (
+           <>
+             <div className="flex flex-1 flex-col gap-3 overflow-y-auto bg-muted/40 p-4">
+-              {nextBogoHint && (
++              {totalFreeUnitsUnlocked > 0 && (
++                <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-3">
++                  <p className="flex items-center gap-1.5 text-sm font-semibold text-emerald-700">
++                    <PartyPopper className="h-4 w-4 shrink-0" />
++                    Wow! You got {totalFreeUnitsUnlocked}{' '}
++                    {totalFreeUnitsUnlocked > 1 ? 'items' : 'item'} discount FREE — BOGO applied!
++                  </p>
++                  <p className="mt-0.5 text-xs text-emerald-700/80">
++                    {formatINR(bogoDiscount)} off already added to your bag.
++                  </p>
++                  {nextBogoHint && (
++                    <p className="mt-1.5 flex items-center gap-1.5 border-t border-emerald-200 pt-1.5 text-xs font-medium text-emerald-700">
++                      <Tag className="h-3.5 w-3.5 shrink-0" />
++                      {nextBogoHint.unitsToNextFree === 1
++                        ? `Add 1 more to unlock another ${
++                            nextBogoHint.promotion.free_item_discount_percent === 100
++                              ? 'FREE item'
++                              : `${nextBogoHint.promotion.free_item_discount_percent}% off item`
++                          }!`
++                        : `Add ${nextBogoHint.unitsToNextFree} more to unlock another ${
++                            nextBogoHint.promotion.free_item_discount_percent === 100
++                              ? 'FREE item'
++                              : `${nextBogoHint.promotion.free_item_discount_percent}% off item`
++                          }!`}
++                    </p>
++                  )}
++                </div>
++              )}
++              {totalFreeUnitsUnlocked === 0 && nextBogoHint && (
+                 <div className="rounded-lg border border-secondary/40 bg-secondary/10 p-3">
+                   <p className="flex items-center gap-1.5 text-sm font-semibold text-secondary-foreground">
+                     <Tag className="h-3.5 w-3.5 shrink-0 text-secondary" />
+@@ -342,6 +378,12 @@ export default function CartDrawer() {
                        ? computeItemCouponDiscount(appliedCoupon, lineTotal)
                        : 0;
                    const linePriceAfterCoupon = Math.max(0, lineTotal - itemCouponDiscount);
@@ -151,7 +302,7 @@ index fe9473c..936b31e 100644
                    return (
                      <div
                        key={`${item.product.id}-${item.size}-${item.product.colors?.[0] ?? ''}`}
-@@ -384,8 +397,13 @@ export default function CartDrawer() {
+@@ -384,8 +426,13 @@ export default function CartDrawer() {
                              Size: {item.size}
                              {item.product.colors?.[0] ? ` · ${item.product.colors[0]}` : ''}
                            </p>

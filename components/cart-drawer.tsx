@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Info,
   Wallet,
+  PartyPopper,
 } from 'lucide-react';
 import {
   useCart,
@@ -301,7 +302,35 @@ export default function CartDrawer() {
         ) : (
           <>
             <div className="flex flex-1 flex-col gap-3 overflow-y-auto bg-muted/40 p-4">
-              {nextBogoHint && (
+              {totalFreeUnitsUnlocked > 0 && (
+                <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-3">
+                  <p className="flex items-center gap-1.5 text-sm font-semibold text-emerald-700">
+                    <PartyPopper className="h-4 w-4 shrink-0" />
+                    Wow! You got {totalFreeUnitsUnlocked}{' '}
+                    {totalFreeUnitsUnlocked > 1 ? 'items' : 'item'} discount FREE — BOGO applied!
+                  </p>
+                  <p className="mt-0.5 text-xs text-emerald-700/80">
+                    {formatINR(bogoDiscount)} off already added to your bag.
+                  </p>
+                  {nextBogoHint && (
+                    <p className="mt-1.5 flex items-center gap-1.5 border-t border-emerald-200 pt-1.5 text-xs font-medium text-emerald-700">
+                      <Tag className="h-3.5 w-3.5 shrink-0" />
+                      {nextBogoHint.unitsToNextFree === 1
+                        ? `Add 1 more to unlock another ${
+                            nextBogoHint.promotion.free_item_discount_percent === 100
+                              ? 'FREE item'
+                              : `${nextBogoHint.promotion.free_item_discount_percent}% off item`
+                          }!`
+                        : `Add ${nextBogoHint.unitsToNextFree} more to unlock another ${
+                            nextBogoHint.promotion.free_item_discount_percent === 100
+                              ? 'FREE item'
+                              : `${nextBogoHint.promotion.free_item_discount_percent}% off item`
+                          }!`}
+                    </p>
+                  )}
+                </div>
+              )}
+              {totalFreeUnitsUnlocked === 0 && nextBogoHint && (
                 <div className="rounded-lg border border-secondary/40 bg-secondary/10 p-3">
                   <p className="flex items-center gap-1.5 text-sm font-semibold text-secondary-foreground">
                     <Tag className="h-3.5 w-3.5 shrink-0 text-secondary" />
