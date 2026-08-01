@@ -679,6 +679,16 @@ export default function ProductDetail() {
         title={bogoCollectionProducts.length > 0 ? `Complete your ${formatBogoLabel(bogoPromotion!)} offer` : undefined}
       />
 
+      {/* When the BOGO carousel above is showing (overrideProducts in use),
+          RelatedProducts swaps out the scored same-category matches for the
+          BOGO collection, so the generic "You may also like" picks never
+          render on those pages. Rendering a second, plain RelatedProducts
+          here (no overrideProducts) restores it -- BOGO offer first, then
+          "You may also like", then Recently Viewed below. */}
+      {bogoCollectionProducts.length > 0 && (
+        <RelatedProducts current={product} allProducts={products} />
+      )}
+
       <VendorCollection productId={baseProduct.id} />
 
       <RecentlyViewedSection excludeId={product.id} />
