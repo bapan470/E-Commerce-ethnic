@@ -4,10 +4,11 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Tag, X, Loader2 } from 'lucide-react';
-import { useCart } from '@/lib/cart-context';
+import { useCart, getVisibleBogoPromotion, formatBogoLabel } from '@/lib/cart-context';
 import { markCheckoutEntry } from '@/lib/checkout-return';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
 import CartBump from '@/components/cart/cart-bump';
@@ -30,6 +31,7 @@ export default function CartPage() {
     applyCoupon,
     removeCoupon,
     clearBuyNow,
+    activePromotions,
   } = useCart();
   const [shippingSettings, setShippingSettings] = useState<ShippingSettings>(
     DEFAULT_SHIPPING_SETTINGS
@@ -98,7 +100,12 @@ export default function CartPage() {
       <div className="grid gap-8 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <ul className="flex flex-col gap-4">
-            {items.map((item) => (
+            {items.map((item) => {
+              // Same "is this product currently on an active, badge-eligible
+              // BOGO promotion" check the product card / product page use —
+              // keeps the offer badge consistent everywhere it can appear.
+              const itemBogoPromotion = getVisibleBogoPromotion(item.product.id, activePromotions);
+              return (
               <li
                 key={`${item.product.id}-${item.size}`}
                 className="flex gap-4 rounded-lg border border-border/60 bg-card p-4"
@@ -127,8 +134,13 @@ export default function CartPage() {
                       <p className="mt-0.5 text-xs text-muted-foreground">
                         {item.product.category} · Size: {item.size}
                       </p>
-                      <div className="mt-1">
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         <LowStockBadge stockQuantity={item.product.stock_quantity} />
+                        {itemBogoPromotion && (
+                          <Badge className="border-transparent bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary">
+                            {formatBogoLabel(itemBogoPromotion)}
+                          </Badge>
+                        )}
                       </div>
                     </div>
                     <button
@@ -172,7 +184,8 @@ export default function CartPage() {
                   </div>
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
 
           <div className="mt-4 flex justify-between">

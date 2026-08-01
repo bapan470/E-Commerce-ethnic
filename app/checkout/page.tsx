@@ -5,7 +5,13 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { Lock, Loader2, CreditCard, Tag, X, Wallet, Sparkles, Gift, Store, Minus, Plus } from 'lucide-react';
-import { useCart, usePaymentDiscount, computeBogoDiscount } from '@/lib/cart-context';
+import {
+  useCart,
+  usePaymentDiscount,
+  computeBogoDiscount,
+  getVisibleBogoPromotion,
+  formatBogoLabel,
+} from '@/lib/cart-context';
 import { useAuth } from '@/lib/auth-context';
 import { formatINR } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
@@ -38,6 +44,7 @@ import { fetchProductById } from '@/lib/products-api';
 import { decrementStockForOrder } from '@/lib/stock-api';
 import { Product, CartItem } from '@/lib/types';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
@@ -1248,6 +1255,11 @@ export default function CheckoutPage() {
             <ul className="flex max-h-72 flex-col gap-3 overflow-y-auto">
               {items.map((item) => {
                 const isBumpItem = !!item.isBump;
+                // Same "is this product currently on an active, badge-eligible
+                // BOGO promotion" check the product card / product page / cart
+                // use — so the offer badge stays consistent all the way
+                // through to checkout for any item that actually qualifies.
+                const itemBogoPromotion = getVisibleBogoPromotion(item.product.id, activePromotions);
                 return (
                   <li
                     key={`${item.product.id}-${item.size}`}
@@ -1274,6 +1286,11 @@ export default function CheckoutPage() {
                       <p className="text-[11px] text-muted-foreground">
                         Size: {item.size}
                       </p>
+                      {itemBogoPromotion && (
+                        <Badge className="mt-0.5 w-fit border-transparent bg-secondary text-[10px] text-secondary-foreground shadow-sm hover:bg-secondary">
+                          {formatBogoLabel(itemBogoPromotion)}
+                        </Badge>
+                      )}
                       {!isBumpItem && (
                         <div className="mt-0.5 flex items-center gap-2">
                           <button

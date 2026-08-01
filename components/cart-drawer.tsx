@@ -17,12 +17,19 @@ import {
   Info,
   Wallet,
 } from 'lucide-react';
-import { useCart, usePaymentDiscount, getBogoCartProgress } from '@/lib/cart-context';
+import {
+  useCart,
+  usePaymentDiscount,
+  getBogoCartProgress,
+  getVisibleBogoPromotion,
+  formatBogoLabel,
+} from '@/lib/cart-context';
 import { useAuth } from '@/lib/auth-context';
 import { markCheckoutEntry } from '@/lib/checkout-return';
 import { formatINR, discountPct } from '@/lib/format';
 import { fetchProductPageCoupons, computeItemCouponDiscount, Coupon } from '@/lib/coupons-api';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
   Sheet,
@@ -342,6 +349,12 @@ export default function CartDrawer() {
                       ? computeItemCouponDiscount(appliedCoupon, lineTotal)
                       : 0;
                   const linePriceAfterCoupon = Math.max(0, lineTotal - itemCouponDiscount);
+                  // Same "is this product currently on an active, badge-eligible
+                  // BOGO promotion" check the product card / product page use —
+                  // so a shopper who adds a BOGO item to the bag keeps seeing the
+                  // exact same offer badge here, and it's simply absent for any
+                  // item that isn't part of a live offer.
+                  const itemBogoPromotion = getVisibleBogoPromotion(item.product.id, activePromotions);
                   return (
                     <div
                       key={`${item.product.id}-${item.size}-${item.product.colors?.[0] ?? ''}`}
@@ -384,8 +397,13 @@ export default function CartDrawer() {
                             Size: {item.size}
                             {item.product.colors?.[0] ? ` · ${item.product.colors[0]}` : ''}
                           </p>
-                          <div className="mt-1">
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
                             <LowStockBadge stockQuantity={item.product.stock_quantity} />
+                            {itemBogoPromotion && (
+                              <Badge className="border-transparent bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary">
+                                {formatBogoLabel(itemBogoPromotion)}
+                              </Badge>
+                            )}
                           </div>
                         </div>
                       </div>

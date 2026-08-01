@@ -1,292 +1,168 @@
-diff --git a/app/shop/shop-content.tsx b/app/shop/shop-content.tsx
-index 8152b1c..e21aa4e 100644
---- a/app/shop/shop-content.tsx
-+++ b/app/shop/shop-content.tsx
-@@ -57,6 +57,13 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
-   // hands us the ranked product ids via sessionStorage, since an uploaded
-   // photo can't be put in a URL the way a text query can.
-   const [imageSearchIds, setImageSearchIds] = useState<string[] | null>(null);
-+  // Per-product id, the exact photo (default OR a colour variant's) that
-+  // matched the shopper's uploaded photo best — lets each card show that
-+  // specific photo instead of always falling back to its default image.
-+  const [imageSearchMatches, setImageSearchMatches] = useState<Record<string, string>>({});
-+  // Small preview of the photo the shopper searched with, shown in the
-+  // banner below so it's obvious the results are tied to that photo.
-+  const [imageSearchThumbnail, setImageSearchThumbnail] = useState<string | null>(null);
- 
-   const initialCategory = params.get('category') || '';
-   const initialQuery = params.get('q') || '';
-@@ -106,14 +113,27 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
-       } catch {
-         setImageSearchIds(null);
-       }
-+      try {
-+        const rawMatches = sessionStorage.getItem('imageSearchMatchedImages');
-+        setImageSearchMatches(rawMatches ? JSON.parse(rawMatches) : {});
-+      } catch {
-+        setImageSearchMatches({});
-+      }
-+      setImageSearchThumbnail(sessionStorage.getItem('imageSearchThumbnail'));
-     } else {
-       setImageSearchIds(null);
-+      setImageSearchMatches({});
-+      setImageSearchThumbnail(null);
-     }
-   }, [params]);
- 
-   const clearImageSearch = () => {
-     sessionStorage.removeItem('imageSearchResults');
-+    sessionStorage.removeItem('imageSearchMatchedImages');
-+    sessionStorage.removeItem('imageSearchThumbnail');
-     setImageSearchIds(null);
-+    setImageSearchMatches({});
-+    setImageSearchThumbnail(null);
-     router.replace('/shop');
-   };
- 
-@@ -352,7 +372,16 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
- 
-         {imageSearchIds && (
-           <div className="mt-3 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
--            <Camera className="h-4 w-4 shrink-0 text-primary" />
-+            {imageSearchThumbnail ? (
-+              // eslint-disable-next-line @next/next/no-img-element
-+              <img
-+                src={imageSearchThumbnail}
-+                alt="Your uploaded search photo"
-+                className="h-8 w-8 shrink-0 rounded-md object-cover ring-1 ring-primary/30"
-+              />
-+            ) : (
-+              <Camera className="h-4 w-4 shrink-0 text-primary" />
-+            )}
-             <span>Showing pieces visually similar to your uploaded photo.</span>
-             <button
-               onClick={clearImageSearch}
-@@ -445,7 +474,12 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
-           ) : (
-             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
-               {filtered.map((p: Product, idx: number) => (
--                <ProductCard key={p.id} product={p} priority={idx < 4} />
-+                <ProductCard
-+                  key={p.id}
-+                  product={p}
-+                  priority={idx < 4}
-+                  imageOverride={imageSearchIds ? imageSearchMatches[p.id] : undefined}
-+                />
-               ))}
-             </div>
-           )}
-diff --git a/components/header.tsx b/components/header.tsx
-index 3fdc1a0..12346b9 100644
---- a/components/header.tsx
-+++ b/components/header.tsx
-@@ -8,7 +8,7 @@ import { Search, ShoppingBag, Menu, User, Heart, ArrowLeft, Camera, Loader2 } fr
- import { useCart, useCategories } from '@/lib/cart-context';
- import { useAuth } from '@/lib/auth-context';
- import { getCheckoutReturnPath, isCheckoutReturnFromBuyNow, clearCheckoutReturnBuyNowFlag } from '@/lib/checkout-return';
--import { rankProductIdsByImage } from '@/lib/image-search';
-+import { rankProductIdsByImage, createSearchThumbnail } from '@/lib/image-search';
- import { fetchProducts } from '@/lib/products-api';
- import { Product } from '@/lib/types';
+diff --git a/app/cart/page.tsx b/app/cart/page.tsx
+index 9177cdd..02d61ba 100644
+--- a/app/cart/page.tsx
++++ b/app/cart/page.tsx
+@@ -4,10 +4,11 @@ import { useEffect, useState } from 'react';
+ import Link from 'next/link';
+ import Image from 'next/image';
+ import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Tag, X, Loader2 } from 'lucide-react';
+-import { useCart } from '@/lib/cart-context';
++import { useCart, getVisibleBogoPromotion, formatBogoLabel } from '@/lib/cart-context';
+ import { markCheckoutEntry } from '@/lib/checkout-return';
  import { formatINR } from '@/lib/format';
-@@ -317,19 +317,27 @@ export default function Header() {
-         return;
-       }
+ import { Button } from '@/components/ui/button';
++import { Badge } from '@/components/ui/badge';
+ import { Input } from '@/components/ui/input';
+ import { Separator } from '@/components/ui/separator';
+ import CartBump from '@/components/cart/cart-bump';
+@@ -30,6 +31,7 @@ export default function CartPage() {
+     applyCoupon,
+     removeCoupon,
+     clearBuyNow,
++    activePromotions,
+   } = useCart();
+   const [shippingSettings, setShippingSettings] = useState<ShippingSettings>(
+     DEFAULT_SHIPPING_SETTINGS
+@@ -98,7 +100,12 @@ export default function CartPage() {
+       <div className="grid gap-8 lg:grid-cols-3">
+         <div className="lg:col-span-2">
+           <ul className="flex flex-col gap-4">
+-            {items.map((item) => (
++            {items.map((item) => {
++              // Same "is this product currently on an active, badge-eligible
++              // BOGO promotion" check the product card / product page use —
++              // keeps the offer badge consistent everywhere it can appear.
++              const itemBogoPromotion = getVisibleBogoPromotion(item.product.id, activePromotions);
++              return (
+               <li
+                 key={`${item.product.id}-${item.size}`}
+                 className="flex gap-4 rounded-lg border border-border/60 bg-card p-4"
+@@ -127,8 +134,13 @@ export default function CartPage() {
+                       <p className="mt-0.5 text-xs text-muted-foreground">
+                         {item.product.category} · Size: {item.size}
+                       </p>
+-                      <div className="mt-1">
++                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                         <LowStockBadge stockQuantity={item.product.stock_quantity} />
++                        {itemBogoPromotion && (
++                          <Badge className="border-transparent bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary">
++                            {formatBogoLabel(itemBogoPromotion)}
++                          </Badge>
++                        )}
+                       </div>
+                     </div>
+                     <button
+@@ -172,7 +184,8 @@ export default function CartPage() {
+                   </div>
+                 </div>
+               </li>
+-            ))}
++              );
++            })}
+           </ul>
  
--      let rankedIds = await tryAiImageSearch(currentProducts, dataUrl);
--      let systemicFailure = false;
--      // Fall back to the client-side colour match whenever AI didn't give
--      // us a usable, non-empty result — not just when it returned null.
-+      const aiRankedIds = await tryAiImageSearch(currentProducts, dataUrl);
-+
-+      // Always run the colour fingerprint pass too — even when the AI call
-+      // succeeds — because it's the only thing that tells us WHICH photo of
-+      // a product (its default shot, or a specific colour variant's shot)
-+      // actually looks like what the shopper uploaded. The AI path only
-+      // ranks products, it doesn't say which of a product's several photos
-+      // matched, so without this every card would keep showing its default
-+      // image even when the shopper's photo was clearly the "blue" variant.
-+      const colourMatch = await rankProductIdsByImage(currentProducts, dataUrl);
-+
-+      // Prefer the AI's ordering when it gave us a usable, non-empty
-+      // result; otherwise fall back to the colour match's own ordering.
-       // Previously an AI response of `rankedIds: []` (photo understood,
-       // but nothing scored) was treated as final and skipped the fallback
-       // entirely, so the shopper saw "couldn't match" even though the
-       // colour-fingerprint method might have found something.
--      if (!rankedIds || rankedIds.length === 0) {
--        const fallback = await rankProductIdsByImage(currentProducts, dataUrl);
--        rankedIds = fallback.ids;
--        systemicFailure = fallback.systemicFailure;
--      }
-+      const rankedIds =
-+        aiRankedIds && aiRankedIds.length > 0 ? aiRankedIds : colourMatch.ids;
-+      const systemicFailure =
-+        !(aiRankedIds && aiRankedIds.length > 0) && colourMatch.systemicFailure;
- 
-       if (!rankedIds || rankedIds.length === 0) {
-         // A systemic failure means we couldn't read the photo or any
-@@ -342,7 +350,22 @@ export default function Header() {
-         );
-         return;
-       }
-+
-+      // Small preview of the shopper's own uploaded photo, shown back to
-+      // them in the "showing pieces similar to..." banner as confirmation
-+      // of what they searched with.
-+      const thumbnail = await createSearchThumbnail(dataUrl);
-+
-       sessionStorage.setItem('imageSearchResults', JSON.stringify(rankedIds));
-+      sessionStorage.setItem(
-+        'imageSearchMatchedImages',
-+        JSON.stringify(colourMatch.bestImageByProductId)
-+      );
-+      if (thumbnail) {
-+        sessionStorage.setItem('imageSearchThumbnail', thumbnail);
-+      } else {
-+        sessionStorage.removeItem('imageSearchThumbnail');
-+      }
-       setMobileOpen(false);
-       setMobileSearchOpen(false);
-       router.push('/shop?imgsearch=1');
-diff --git a/components/product-card.tsx b/components/product-card.tsx
-index 3ca8e73..fd68f5f 100644
---- a/components/product-card.tsx
-+++ b/components/product-card.tsx
-@@ -16,6 +16,7 @@ export default function ProductCard({
-   product,
-   priority = false,
-   compact = false,
-+  imageOverride,
- }: {
-   product: Product;
-   /** Set true for cards in the first visible row so their image gets
-@@ -24,6 +25,15 @@ export default function ProductCard({
-   /** Smaller padding/type for horizontal carousels (Similar Products,
-    *  Recently Viewed) where cards sit in a narrower, scrollable strip. */
-   compact?: boolean;
-+  /**
-+   * Used by "search by photo" results: the exact photo (which may be a
-+   * colour variant's photo, not the product's default image) that actually
-+   * matched the shopper's uploaded photo. When present it takes priority
-+   * over the product's own default/first image, so a shopper who searched
-+   * with a photo of the "blue" variant sees that blue photo on the card
-+   * instead of whatever colour happens to be the product's default.
-+   */
-+  imageOverride?: string;
- }) {
-   const { addItem } = useCart();
-   const router = useRouter();
-@@ -54,7 +64,8 @@ export default function ProductCard({
-   // the default one -- shoppers land straight on that colour, and clicking
-   // through from shop/category always opens that exact variant.
-   const href = `/product/${product.default_variant_slug || product.slug}`;
--  const img = product.default_variant_image || product.images[0] || 'https://placehold.co/800x1000?text=No+Image';
-+  const img =
-+    imageOverride || product.default_variant_image || product.images[0] || 'https://placehold.co/800x1000?text=No+Image';
-   const hoverImg = product.images[1];
-   const altText = `${product.name} - ${product.fabric} ${product.category} from ${product.origin}`;
- 
-diff --git a/lib/image-search.ts b/lib/image-search.ts
-index 1a133a8..539d3a3 100644
---- a/lib/image-search.ts
-+++ b/lib/image-search.ts
-@@ -38,6 +38,39 @@ function loadImage(src: string): Promise<HTMLImageElement> {
-   });
- }
- 
-+/**
-+ * Shrinks the shopper's uploaded photo down to a small JPEG data URL, purely
-+ * so we have something cheap to stash in sessionStorage and show back to
-+ * them (in the search bar and the "showing pieces similar to..." banner) as
-+ * confirmation of what they searched with. The original photo can be
-+ * several MB as a base64 data URL — way too big to comfortably round-trip
-+ * through sessionStorage alongside the ranked ids — so this is capped to a
-+ * small square thumbnail instead.
-+ */
-+export function createSearchThumbnail(src: string, maxDim = 96): Promise<string | null> {
-+  return new Promise((resolve) => {
-+    const img = new Image();
-+    img.onload = () => {
-+      try {
-+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-+        const w = Math.max(1, Math.round(img.width * scale));
-+        const h = Math.max(1, Math.round(img.height * scale));
-+        const canvas = document.createElement('canvas');
-+        canvas.width = w;
-+        canvas.height = h;
-+        const ctx = canvas.getContext('2d');
-+        if (!ctx) return resolve(null);
-+        ctx.drawImage(img, 0, 0, w, h);
-+        resolve(canvas.toDataURL('image/jpeg', 0.72));
-+      } catch {
-+        resolve(null);
-+      }
-+    };
-+    img.onerror = () => resolve(null);
-+    img.src = src;
-+  });
-+}
-+
- /** Returns a 192-number colour/layout fingerprint, or null if it couldn't be read. */
- export async function getImageSignature(src: string): Promise<number[] | null> {
-   if (!src) return null;
-@@ -78,6 +111,15 @@ export function signatureDistance(a: number[], b: number[]): number {
-  */
- export interface ImageSearchResult {
-   ids: string[];
-+  /**
-+   * Per-product id, the single photo (base product photo OR a colour
-+   * variant's photo — see the `work` array below) that was closest to the
-+   * shopper's uploaded photo. Lets the caller show that exact matched photo
-+   * (e.g. the "blue" variant shot) instead of always falling back to the
-+   * product's default/first image, which may be a totally different
-+   * colour/angle than what the shopper searched with.
-+   */
-+  bestImageByProductId: Record<string, string>;
-   /**
-    * True when we couldn't fingerprint ANY product photo at all (e.g. the
-    * proxy/network is down), as opposed to fingerprinting them fine and
-@@ -93,7 +135,7 @@ export async function rankProductIdsByImage<
-   T extends { id: string; images: string[] | null | undefined; all_images?: string[] | null }
- >(products: T[], queryImageSrc: string): Promise<ImageSearchResult> {
-   const querySigResult = await getImageSignature(queryImageSrc);
--  if (!querySigResult) return { ids: [], systemicFailure: true };
-+  if (!querySigResult) return { ids: [], bestImageByProductId: {}, systemicFailure: true };
-   // Re-bind to a variable whose type TS keeps narrowed to `number[]` inside
-   // the nested async worker below (closures over a reassignable outer
-   // binding don't retain the null-check narrowing across function bounds).
-@@ -121,6 +163,7 @@ export async function rankProductIdsByImage<
-   }
- 
-   const bestDist = new Map<string, number>();
-+  const bestImage = new Map<string, string>();
-   const fingerprintedProductIds = new Set<string>();
-   const CONCURRENCY = 6;
-   let cursor = 0;
-@@ -133,7 +176,13 @@ export async function rankProductIdsByImage<
-       fingerprintedProductIds.add(item.id);
-       const dist = signatureDistance(querySig, sig);
-       const prev = bestDist.get(item.id);
--      if (prev === undefined || dist < prev) bestDist.set(item.id, dist);
-+      // Whichever single photo (default OR any colour variant's) comes out
-+      // closest for this product is the one we'll want to show back to the
-+      // shopper — so bestImage is updated in lockstep with bestDist.
-+      if (prev === undefined || dist < prev) {
-+        bestDist.set(item.id, dist);
-+        bestImage.set(item.id, item.src);
-+      }
-     }
-   }
- 
-@@ -154,5 +203,9 @@ export async function rankProductIdsByImage<
-     );
-   }
- 
--  return { ids: scored.map((s) => s.id), systemicFailure };
-+  return {
-+    ids: scored.map((s) => s.id),
-+    bestImageByProductId: Object.fromEntries(bestImage),
-+    systemicFailure,
-+  };
- }
+           <div className="mt-4 flex justify-between">
+diff --git a/app/checkout/page.tsx b/app/checkout/page.tsx
+index e75a81b..3f5b56e 100644
+--- a/app/checkout/page.tsx
++++ b/app/checkout/page.tsx
+@@ -5,7 +5,13 @@ import Link from 'next/link';
+ import Image from 'next/image';
+ import { useRouter } from 'next/navigation';
+ import { Lock, Loader2, CreditCard, Tag, X, Wallet, Sparkles, Gift, Store, Minus, Plus } from 'lucide-react';
+-import { useCart, usePaymentDiscount, computeBogoDiscount } from '@/lib/cart-context';
++import {
++  useCart,
++  usePaymentDiscount,
++  computeBogoDiscount,
++  getVisibleBogoPromotion,
++  formatBogoLabel,
++} from '@/lib/cart-context';
+ import { useAuth } from '@/lib/auth-context';
+ import { formatINR } from '@/lib/format';
+ import { supabase } from '@/lib/supabase';
+@@ -38,6 +44,7 @@ import { fetchProductById } from '@/lib/products-api';
+ import { decrementStockForOrder } from '@/lib/stock-api';
+ import { Product, CartItem } from '@/lib/types';
+ import { Button } from '@/components/ui/button';
++import { Badge } from '@/components/ui/badge';
+ import { Input } from '@/components/ui/input';
+ import { Label } from '@/components/ui/label';
+ import { Separator } from '@/components/ui/separator';
+@@ -1248,6 +1255,11 @@ export default function CheckoutPage() {
+             <ul className="flex max-h-72 flex-col gap-3 overflow-y-auto">
+               {items.map((item) => {
+                 const isBumpItem = !!item.isBump;
++                // Same "is this product currently on an active, badge-eligible
++                // BOGO promotion" check the product card / product page / cart
++                // use — so the offer badge stays consistent all the way
++                // through to checkout for any item that actually qualifies.
++                const itemBogoPromotion = getVisibleBogoPromotion(item.product.id, activePromotions);
+                 return (
+                   <li
+                     key={`${item.product.id}-${item.size}`}
+@@ -1274,6 +1286,11 @@ export default function CheckoutPage() {
+                       <p className="text-[11px] text-muted-foreground">
+                         Size: {item.size}
+                       </p>
++                      {itemBogoPromotion && (
++                        <Badge className="mt-0.5 w-fit border-transparent bg-secondary text-[10px] text-secondary-foreground shadow-sm hover:bg-secondary">
++                          {formatBogoLabel(itemBogoPromotion)}
++                        </Badge>
++                      )}
+                       {!isBumpItem && (
+                         <div className="mt-0.5 flex items-center gap-2">
+                           <button
+diff --git a/components/cart-drawer.tsx b/components/cart-drawer.tsx
+index fe9473c..936b31e 100644
+--- a/components/cart-drawer.tsx
++++ b/components/cart-drawer.tsx
+@@ -17,12 +17,19 @@ import {
+   Info,
+   Wallet,
+ } from 'lucide-react';
+-import { useCart, usePaymentDiscount, getBogoCartProgress } from '@/lib/cart-context';
++import {
++  useCart,
++  usePaymentDiscount,
++  getBogoCartProgress,
++  getVisibleBogoPromotion,
++  formatBogoLabel,
++} from '@/lib/cart-context';
+ import { useAuth } from '@/lib/auth-context';
+ import { markCheckoutEntry } from '@/lib/checkout-return';
+ import { formatINR, discountPct } from '@/lib/format';
+ import { fetchProductPageCoupons, computeItemCouponDiscount, Coupon } from '@/lib/coupons-api';
+ import { Button } from '@/components/ui/button';
++import { Badge } from '@/components/ui/badge';
+ import { Input } from '@/components/ui/input';
+ import {
+   Sheet,
+@@ -342,6 +349,12 @@ export default function CartDrawer() {
+                       ? computeItemCouponDiscount(appliedCoupon, lineTotal)
+                       : 0;
+                   const linePriceAfterCoupon = Math.max(0, lineTotal - itemCouponDiscount);
++                  // Same "is this product currently on an active, badge-eligible
++                  // BOGO promotion" check the product card / product page use —
++                  // so a shopper who adds a BOGO item to the bag keeps seeing the
++                  // exact same offer badge here, and it's simply absent for any
++                  // item that isn't part of a live offer.
++                  const itemBogoPromotion = getVisibleBogoPromotion(item.product.id, activePromotions);
+                   return (
+                     <div
+                       key={`${item.product.id}-${item.size}-${item.product.colors?.[0] ?? ''}`}
+@@ -384,8 +397,13 @@ export default function CartDrawer() {
+                             Size: {item.size}
+                             {item.product.colors?.[0] ? ` · ${item.product.colors[0]}` : ''}
+                           </p>
+-                          <div className="mt-1">
++                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                             <LowStockBadge stockQuantity={item.product.stock_quantity} />
++                            {itemBogoPromotion && (
++                              <Badge className="border-transparent bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary">
++                                {formatBogoLabel(itemBogoPromotion)}
++                              </Badge>
++                            )}
+                           </div>
+                         </div>
+                       </div>
