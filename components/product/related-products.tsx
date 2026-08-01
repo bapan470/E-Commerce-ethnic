@@ -27,13 +27,24 @@ export default function RelatedProducts({
   allProducts,
   limit = 10,
   title = 'You may also like',
+  overrideProducts,
+  viewAllHref,
 }: {
   current: Product;
   allProducts: Product[];
   limit?: number;
   title?: string;
+  /** When provided and non-empty, shown instead of the scored same-category
+   *  matches below — e.g. the rest of a live "Buy X Get Y" promotion's
+   *  collection, so a shopper on that product's page can immediately find
+   *  something to pair it with instead of generic related items. */
+  overrideProducts?: Product[];
+  /** "View All" target when `overrideProducts` is in use (e.g. the BOGO
+   *  collection's own page). Falls back to the category shop link below
+   *  when not provided. */
+  viewAllHref?: string;
 }) {
-  const related = useMemo(() => {
+  const scored = useMemo(() => {
     return allProducts
       .filter((p) => p.id !== current.id)
       .map((p) => ({ product: p, score: scoreCandidate(current, p) }))
@@ -43,11 +54,13 @@ export default function RelatedProducts({
       .map((entry) => entry.product);
   }, [current, allProducts, limit]);
 
+  const related = overrideProducts && overrideProducts.length > 0 ? overrideProducts.slice(0, limit) : scored;
+
   return (
     <ProductCarousel
       title={title}
       products={related}
-      viewAllHref={`/shop?category=${encodeURIComponent(current.category)}`}
+      viewAllHref={viewAllHref ?? `/shop?category=${encodeURIComponent(current.category)}`}
     />
   );
 }

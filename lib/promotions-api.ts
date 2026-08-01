@@ -90,6 +90,11 @@ export async function setPromotionActive(id: string, is_active: boolean) {
 export interface ActivePromotion extends Promotion {
   /** Live product ids in `collection_id`, only present when scope='collection'. */
   product_ids: string[] | null;
+  /** Slug of `collection_id`'s public page (`/collection/[slug]`), only
+   *  present when scope='collection'. Lets the storefront link straight to
+   *  the rest of this promotion's collection (e.g. the product page's
+   *  "You may also like" section) without a second round-trip. */
+  collection_slug: string | null;
   /** Whether the "Buy X Get Y" badge should render for products in scope --
    *  mirrors the target collection's `show_bogo_badge` toggle (Admin >
    *  Collections) when scope='collection'; always true for scope='all',

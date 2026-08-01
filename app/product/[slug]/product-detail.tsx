@@ -11,7 +11,7 @@ import {
   RefreshCw,
   Wallet,
 } from 'lucide-react';
-import { useProducts, usePaymentDiscount, useCart, getVisibleBogoPromotion } from '@/lib/cart-context';
+import { useProducts, usePaymentDiscount, useCart, getVisibleBogoPromotion, formatBogoLabel } from '@/lib/cart-context';
 import { fetchProductBySlug } from '@/lib/products-api';
 import { fetchVariantBySlug, fetchVariantsForProduct, ProductVariant, VariantWithSizes } from '@/lib/variants-api';
 import { Product } from '@/lib/types';
@@ -64,7 +64,7 @@ export default function ProductDetail() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
   const { getBySlug, products, loading } = useProducts();
-  const { addItem, startBuyNow, subtotal: cartSubtotal, applyCoupon: applyCartCoupon } = useCart();
+  const { addItem, startBuyNow, subtotal: cartSubtotal, applyCoupon: applyCartCoupon, activePromotions } = useCart();
   const { user } = useAuth();
 
   const fromContext = useMemo(
@@ -288,6 +288,23 @@ export default function ProductDetail() {
       inStock: hasSizeData ? variantStockQty > 0 : baseProduct.inStock,
     };
   }, [baseProduct, variant]);
+
+  // Same rule the shop-grid product card uses to decide whether/which
+  // "Buy X Get Y" badge applies -- see getVisibleBogoPromotion in
+  // lib/cart-context.tsx. When this product is part of a live
+  // scope='collection' promotion, "You may also like" below shows the
+  // rest of that collection instead of generic same-category matches, so
+  // a shopper on a BOGO page can actually find something to pair it with
+  // and hit the offer, instead of having to go hunting for it themselves.
+  const bogoPromotion = useMemo(
+    () => (product ? getVisibleBogoPromotion(product.id, activePromotions) : null),
+    [product, activePromotions]
+  );
+  const bogoCollectionProducts = useMemo(() => {
+    if (!product || !bogoPromotion?.product_ids || bogoPromotion.product_ids.length === 0) return [];
+    const ids = new Set(bogoPromotion.product_ids);
+    return products.filter((p) => ids.has(p.id) && p.id !== product.id);
+  }, [product, bogoPromotion, products]);
 
   // Defaults to the first size, UNLESS the URL carries a `?size=` param --
   // that's how each Google Merchant Center feed item links back here (see
@@ -654,7 +671,13 @@ export default function ProductDetail() {
 
       <FrequentlyBoughtTogether productId={baseProduct.id} />
 
-      <RelatedProducts current={product} allProducts={products} />
+      <RelatedProducts
+        current={product}
+        allProducts={products}
+        overrideProducts={bogoCollectionProducts}
+        viewAllHref={bogoPromotion?.collection_slug ? `/collection/${bogoPromotion.collection_slug}` : undefined}
+        title={bogoCollectionProducts.length > 0 ? `Complete your ${formatBogoLabel(bogoPromotion!)} offer` : undefined}
+      />
 
       <VendorCollection productId={baseProduct.id} />
 

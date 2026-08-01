@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic';
 
 // GET — public, unauthenticated. Returns every currently-active BOGO
 // promotion (is_active = true and within its start/end window), each with
-// a resolved `product_ids` array when scope = 'collection'.
+// a resolved `product_ids` array and `collection_slug` when scope = 'collection'.
 //
 // This has to go through the service-role client (not a direct client-side
 // supabase.from() call) because `collection_products` has no RLS policy for
@@ -44,11 +44,12 @@ export async function GET() {
 
     let productIdsByCollection = new Map<string, string[]>();
     let bogoBadgeByCollection = new Map<string, boolean>();
+    let slugByCollection = new Map<string, string>();
     if (collectionScoped.length > 0) {
       const collectionIds = Array.from(new Set(collectionScoped.map((p) => p.collection_id)));
       const [{ data: links, error: linksErr }, { data: collectionRows, error: collectionsErr }] = await Promise.all([
         supabase.from('collection_products').select('collection_id, product_id').in('collection_id', collectionIds),
-        supabase.from('collections').select('id, show_bogo_badge').in('id', collectionIds),
+        supabase.from('collections').select('id, slug, show_bogo_badge').in('id', collectionIds),
       ]);
       if (linksErr) throw linksErr;
       if (collectionsErr) throw collectionsErr;
@@ -60,6 +61,7 @@ export async function GET() {
       }
       for (const row of collectionRows ?? []) {
         bogoBadgeByCollection.set(row.id, row.show_bogo_badge);
+        slugByCollection.set(row.id, row.slug);
       }
     }
 
@@ -68,6 +70,10 @@ export async function GET() {
       product_ids:
         promo.scope === 'collection' && promo.collection_id
           ? productIdsByCollection.get(promo.collection_id) ?? []
+          : null,
+      collection_slug:
+        promo.scope === 'collection' && promo.collection_id
+          ? slugByCollection.get(promo.collection_id) ?? null
           : null,
       // Defaults to true for scope='all' (no collection to toggle it off
       // on) and for a collection row that's somehow missing.
