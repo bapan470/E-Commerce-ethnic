@@ -251,6 +251,43 @@ export async function saveRefundAutomationSettings(settings: RefundAutomationSet
   if (error) throw error;
 }
 
+// ---------------------------------------------------------------------
+// Return automation — single master toggle for the whole return flow:
+// 'automatic' auto-schedules the Delhivery reverse pickup as soon as an
+// admin approves a return, and auto-fires the Razorpay refund once
+// Delhivery shows the item back at the warehouse. 'manual' leaves both
+// steps to be triggered by hand from Admin -> Returns.
+// ---------------------------------------------------------------------
+export interface ReturnAutomationSettings {
+  mode: 'automatic' | 'manual';
+}
+
+export const DEFAULT_RETURN_AUTOMATION_SETTINGS: ReturnAutomationSettings = {
+  mode: 'automatic',
+};
+
+export async function fetchReturnAutomationSettings(): Promise<ReturnAutomationSettings> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'return_automation')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_RETURN_AUTOMATION_SETTINGS;
+  const value = (data.value as Partial<ReturnAutomationSettings>) || {};
+  return {
+    ...DEFAULT_RETURN_AUTOMATION_SETTINGS,
+    ...value,
+    mode: value.mode === 'manual' ? 'manual' : 'automatic',
+  };
+}
+
+export async function saveReturnAutomationSettings(settings: ReturnAutomationSettings) {
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ key: 'return_automation', value: settings }, { onConflict: 'key' });
+  if (error) throw error;
+}
+
 export interface SiteBanner {
   image_url: string;
   link_url?: string;

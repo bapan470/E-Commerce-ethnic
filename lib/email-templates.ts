@@ -271,6 +271,112 @@ export function returnStatusEmail(ret: {
   return { subject, html };
 }
 
+export function returnRequestedCustomerEmail(ret: {
+  id: string;
+  order_id: string;
+  type: string;
+  reason: string;
+}) {
+  const subject = `We've received your ${ret.type} request — Order #${ret.order_id.slice(0, 8)}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Your ${ret.type} request is in</h2>
+    <p>We've received your ${ret.type} request for order <strong>#${ret.order_id.slice(0, 8)}</strong> and our team is reviewing it.</p>
+    <p style="font-size:14px; color:#6b5f57;"><strong>Reason:</strong> ${ret.reason}</p>
+    <p>You'll get an email the moment it's approved, when pickup is arranged, and again once your refund/exchange is processed — no need to follow up.</p>
+  `);
+  return { subject, html };
+}
+
+export function returnRequestedAdminNotification(ret: {
+  id: string;
+  order_id: string;
+  type: string;
+  reason: string;
+  customer_name?: string | null;
+  customer_email?: string | null;
+}) {
+  const shortId = `#${ret.id.slice(0, 8).toUpperCase()}`;
+  const subject = `New ${ret.type} request ${shortId} — Order #${ret.order_id.slice(0, 8)}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">New ${ret.type} request</h2>
+    <div style="margin:16px 0; padding:14px 16px; background:#fff; border-left:3px solid ${BRAND_COLOR}; border-radius:4px;">
+      <p style="margin:0 0 6px;"><strong>Order:</strong> #${ret.order_id.slice(0, 8)}</p>
+      <p style="margin:0 0 6px;"><strong>Customer:</strong> ${ret.customer_name || 'Guest'} (${ret.customer_email || '—'})</p>
+      <p style="margin:0; color:#6b5f57; font-size:14px; white-space:pre-wrap;"><strong>Reason:</strong> ${ret.reason}</p>
+    </div>
+    <p style="font-size:13px; color:#6b5f57;">Review and approve/reject from Admin &gt; Returns.</p>
+  `);
+  return { subject, html };
+}
+
+export function returnPickupScheduledEmail(ret: {
+  order_id: string;
+  type: string;
+  waybill: string;
+}) {
+  const subject = `Pickup arranged for your ${ret.type} — Order #${ret.order_id.slice(0, 8)}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Your pickup is scheduled</h2>
+    <p>Your ${ret.type} request for order <strong>#${ret.order_id.slice(0, 8)}</strong> has been approved and a reverse pickup has been arranged with Delhivery.</p>
+    <p style="font-size:16px;"><strong>Pickup tracking ID (AWB):</strong> ${ret.waybill}</p>
+    <p>A Delhivery agent will visit your delivery address to collect the item. Please keep it packed and ready.</p>
+  `);
+  return { subject, html };
+}
+
+export function returnPickupReceivedEmail(ret: {
+  order_id: string;
+  type: string;
+  online_payment: boolean;
+}) {
+  const subject = `We've received your return — Order #${ret.order_id.slice(0, 8)}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Your item is back with us</h2>
+    <p>The item from order <strong>#${ret.order_id.slice(0, 8)}</strong> has reached our warehouse.</p>
+    <p>${
+      ret.online_payment
+        ? "We're now processing your refund — you'll get a confirmation email as soon as it's issued."
+        : "Our team is now processing your " + ret.type + " and will update you shortly."
+    }</p>
+  `);
+  return { subject, html };
+}
+
+export function returnRefundProcessedEmail(ret: {
+  order_id: string;
+  refund_amount: number;
+  razorpay_refund_id?: string | null;
+}) {
+  const subject = `Refund processed — Order #${ret.order_id.slice(0, 8)}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Your refund is on its way</h2>
+    <p>We've processed a refund of <strong>${formatINR(ret.refund_amount)}</strong> for order <strong>#${ret.order_id.slice(0, 8)}</strong> to your original payment method via Razorpay.</p>
+    ${ret.razorpay_refund_id ? `<p style="font-size:12px; color:#9a8f87;">Refund reference: ${ret.razorpay_refund_id}</p>` : ''}
+    <p>It usually reflects in your account within 5-7 business days, depending on your bank.</p>
+  `);
+  return { subject, html };
+}
+
+export function returnAutomationAdminAlert(alert: {
+  returnId: string;
+  orderId: string;
+  stage: 'pickup' | 'refund';
+  error: string;
+}) {
+  const shortId = `#${alert.returnId.slice(0, 8).toUpperCase()}`;
+  const subject = `Action needed — ${alert.stage === 'pickup' ? 'reverse pickup' : 'refund'} failed for return ${shortId}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Automation needs your attention</h2>
+    <div style="margin:16px 0; padding:14px 16px; background:#fff; border-left:3px solid #b9481f; border-radius:4px;">
+      <p style="margin:0 0 6px;"><strong>Return:</strong> ${shortId} (Order #${alert.orderId.slice(0, 8)})</p>
+      <p style="margin:0 0 6px;"><strong>Step:</strong> ${alert.stage === 'pickup' ? 'Reverse pickup scheduling' : 'Razorpay refund'}</p>
+      <p style="margin:0; color:#6b5f57; font-size:14px;"><strong>Error:</strong> ${alert.error}</p>
+    </div>
+    <p style="font-size:13px; color:#6b5f57;">Please handle this from Admin &gt; Returns — retry the automated step or complete it manually.</p>
+  `);
+  return { subject, html };
+}
+
 export function restockEmail(product: { name: string; slug: string; price: number; images?: string[] }) {
   const subject = `Back in stock — ${product.name}`;
   const url = `${process.env.NEXT_PUBLIC_SITE_URL || ''}/product/${product.slug}`;

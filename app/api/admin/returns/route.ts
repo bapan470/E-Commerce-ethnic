@@ -26,7 +26,7 @@ export async function GET() {
     if (orderIds.length > 0) {
       const { data: orders } = await supabase
         .from('orders')
-        .select('id, customer_name, customer_email, total_amount, items')
+        .select('id, customer_name, customer_email, total_amount, items, payment_method')
         .in('id', orderIds);
       ordersById = Object.fromEntries((orders || []).map((o) => [o.id, o]));
     }

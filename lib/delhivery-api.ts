@@ -283,6 +283,135 @@ export async function createDelhiveryShipment(
   return { success: true, waybill, raw: data };
 }
 
+export interface OrderForPickup {
+  id: string;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  shipping_address?: {
+    address?: string;
+    address2?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+    country?: string;
+  } | null;
+  items: Array<{ product_name?: string; quantity?: number }>;
+}
+
+// Sensible defaults for a returned clothing parcel so a return can be
+// auto-scheduled without waiting on an admin to weigh/measure it first.
+// Delhivery re-measures at pickup anyway; these are just the numbers
+// the RVP manifest needs to be created.
+const DEFAULT_RETURN_PACKAGE: PackageDetails = {
+  weight_grams: 500,
+  length_cm: 25,
+  width_cm: 20,
+  height_cm: 6,
+  shipping_mode: 'S',
+};
+
+/**
+ * Creates a Delhivery Reverse Pickup (RVP) — an agent collects the
+ * parcel from the CUSTOMER's address and delivers it back to our
+ * registered warehouse. Same `/api/cmu/create.json` endpoint as a
+ * forward shipment, but payment_mode is "Pickup" and the roles of the
+ * main shipment fields vs the `return_*` fields are swapped: the main
+ * `name/add/city/state/pin/phone` block is where the parcel is picked
+ * UP FROM (the customer), and `return_*` is where it's delivered TO
+ * (our warehouse) — per Delhivery's RVP order-creation spec. No
+ * separate "pickup request" call is needed; Delhivery auto-schedules
+ * the field-executive visit once this manifest is created.
+ */
+export async function createDelhiveryReversePickup(
+  returnId: string,
+  order: OrderForPickup,
+  packageDetails?: PackageDetails
+): Promise<CreateShipmentResult> {
+  const settings = await fetchDelhiverySettingsServer();
+  if (!settings.enabled) {
+    throw new Error('Delhivery integration is disabled. Enable it in Admin → Settings first.');
+  }
+  if (!settings.pickup_location_name || !settings.pickup_pincode) {
+    throw new Error('Delhivery pickup/warehouse location is not configured in Admin → Settings.');
+  }
+
+  const token = getApiToken();
+  const addr = order.shipping_address;
+  const pkg = packageDetails || DEFAULT_RETURN_PACKAGE;
+  const productDesc = order.items.map((i) => `${i.product_name} x${i.quantity}`).join(', ') || 'Ethnic wear return';
+
+  const payload = {
+    pickup_location: {
+      name: settings.pickup_location_name,
+      pin: settings.pickup_pincode,
+      add: settings.pickup_address,
+      city: settings.pickup_city,
+      state: settings.pickup_state,
+      phone: settings.pickup_phone,
+      country: 'India',
+    },
+    shipments: [
+      {
+        // Where the parcel is picked up FROM — the customer.
+        name: order.customer_name || 'Customer',
+        add: [addr?.address, addr?.address2].filter(Boolean).join(', '),
+        city: addr?.city || '',
+        state: addr?.state || '',
+        country: addr?.country || 'India',
+        pin: addr?.pincode || '',
+        phone: order.customer_phone || '',
+        order: `RET-${returnId}`,
+        payment_mode: 'Pickup',
+        cod_amount: 0,
+        total_amount: 0,
+        products_desc: productDesc,
+        quantity: String(order.items.reduce((s, i) => s + (i.quantity || 1), 0)),
+        seller_gst_tin: settings.seller_gst_tin || undefined,
+        hsn_code: '6204',
+        weight: String(pkg.weight_grams),
+        shipment_length: String(pkg.length_cm),
+        shipment_width: String(pkg.width_cm),
+        shipment_height: String(pkg.height_cm),
+        // Where the parcel is delivered TO — our warehouse.
+        return_name: settings.pickup_location_name,
+        return_add: settings.pickup_address,
+        return_city: settings.pickup_city,
+        return_state: settings.pickup_state,
+        return_pin: settings.pickup_pincode,
+        return_phone: settings.pickup_phone,
+        return_country: 'India',
+      },
+    ],
+  };
+
+  const res = await fetch(`${getBaseUrl()}/api/cmu/create.json`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Authorization: `Token ${token}`,
+    },
+    body: `format=json&data=${encodeURIComponent(JSON.stringify(payload))}`,
+  });
+
+  const data = await res.json().catch(() => null);
+
+  if (!res.ok || !data) {
+    throw new Error(
+      `Delhivery reverse pickup creation failed (HTTP ${res.status}). ${data ? JSON.stringify(data) : ''}`
+    );
+  }
+
+  const pkgResult = Array.isArray(data.packages) ? data.packages[0] : null;
+  const waybill = pkgResult?.waybill;
+
+  if (!data.success || !waybill) {
+    const remark = pkgResult?.remarks?.join?.(', ') || data.rmk || 'Unknown error from Delhivery';
+    return { success: false, remark, raw: data };
+  }
+
+  return { success: true, waybill, raw: data };
+}
+
 export interface TrackingScan {
   status: string;
   location?: string;

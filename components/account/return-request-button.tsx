@@ -3,7 +3,6 @@
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
-import { getSupabaseBrowser } from '@/lib/supabase-browser';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -36,26 +35,25 @@ export default function ReturnRequestButton({ orderId }: { orderId: string }) {
     const reason = fd.get('reason') as string;
 
     setSubmitting(true);
-    const supabase = getSupabaseBrowser();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    const { error } = await supabase.from('returns').insert({
-      order_id: orderId,
-      user_id: user?.id ?? null,
-      type,
-      reason,
-    });
-    setSubmitting(false);
-
-    if (error) {
-      toast.error(error.message);
-      return;
+    try {
+      const res = await fetch('/api/returns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_id: orderId, type, reason }),
+      });
+      const resBody = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(resBody.error || 'Failed to submit request');
+        return;
+      }
+      toast.success("Request submitted — check your email for confirmation.");
+      setOpen(false);
+      router.refresh();
+    } catch {
+      toast.error('Failed to submit request');
+    } finally {
+      setSubmitting(false);
     }
-    toast.success('Request submitted. Our team will review it shortly.');
-    setOpen(false);
-    router.refresh();
   };
 
   return (

@@ -31,6 +31,7 @@ import {
   vendorProductEditLiveEmail,
 } from '@/lib/email-templates';
 import { publishVendorProductWithAI } from '@/lib/vendor-ai-listing';
+import { checkPickupStatusForReturn, getReturnAutomationMode } from '@/lib/return-automation';
 
 // ----------------------------- Abandoned carts -----------------------------
 export async function runAbandonedCartsJob() {
@@ -441,4 +442,56 @@ export async function runVendorSettlementJob() {
     settlements_created: data?.length ?? 0,
     settlements: data ?? [],
   };
+}
+
+// ----------------------------- Return pickup tracking -----------------------------
+// Polls Delhivery for every return with a reverse-pickup in flight
+// (scheduled/picked_up/in_transit) and, once it shows delivered back
+// to the warehouse, marks it received and — in automatic mode — fires
+// the Razorpay refund. See lib/return-automation.ts for the per-return
+// logic; this job just fans it out across all in-flight returns.
+export async function runReturnPickupTrackingJob() {
+  const supabase = getSupabaseAdmin();
+
+  const { data: returns, error } = await supabase
+    .from('returns')
+    .select('*')
+    .in('pickup_status', ['scheduled', 'picked_up', 'in_transit'])
+    .not('pickup_waybill', 'is', null);
+  if (error) throw error;
+
+  if (!returns || returns.length === 0) {
+    return { checked: 0, received: 0, refunded: 0, errors: [] as string[] };
+  }
+
+  const mode = await getReturnAutomationMode(supabase);
+  const orderIds = Array.from(new Set(returns.map((r) => r.order_id)));
+  const { data: orders } = await supabase
+    .from('orders')
+    .select(
+      'id, customer_name, customer_email, customer_phone, shipping_address, items, total_amount, payment_method, razorpay_payment_id'
+    )
+    .in('id', orderIds);
+  const ordersById = new Map((orders || []).map((o) => [o.id, o]));
+
+  let received = 0;
+  let refunded = 0;
+  const errors: string[] = [];
+
+  for (const ret of returns) {
+    const order = ordersById.get(ret.order_id);
+    if (!order) {
+      errors.push(`return ${ret.id}: order ${ret.order_id} not found`);
+      continue;
+    }
+    try {
+      const result = await checkPickupStatusForReturn(supabase, ret, order, mode);
+      if (result.pickup_status === 'received') received++;
+      if (result.refund_triggered) refunded++;
+    } catch (err: any) {
+      errors.push(`return ${ret.id}: ${err?.message || err}`);
+    }
+  }
+
+  return { checked: returns.length, received, refunded, errors };
 }
