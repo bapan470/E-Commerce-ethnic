@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef, FormEvent, Dispatch, SetStateAction } from 'react';
+import { useEffect, useState, FormEvent, Dispatch, SetStateAction } from 'react';
 import Image from 'next/image';
 import { Plus, Pencil, Trash2, Upload, Loader2, Star, Link2, Wand2, Video, Check, Sparkles } from 'lucide-react';
 import {
@@ -262,69 +262,12 @@ export default function ProductVariantsManager({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoOpenAdd, productId]);
 
-  // Single-size products (the common "Free Size only" case) have no
-  // per-size price grid worth filling in, so instead of making the admin
-  // click "Add ... as variant" themselves, automatically turn the base
-  // colour into a proper variant (its own SKU/stock) the moment there's a
-  // colour name and at least one photo. Multi-size products keep the
-  // manual button, since price/stock genuinely differs per size and needs
-  // the admin's own input first.
-  const autoAddingRef = useRef(false);
-  useEffect(() => {
-    if (hasMultipleSizes) return;
-    if (!baseColorName || !baseImage) return;
-    if (baseColorAlreadyVariant) return;
-    if (autoAddingRef.current) return;
-
-    const isFirstVariant = productId ? variants.length === 0 : pendingVariants.length === 0;
-    const sizeRows = defaultSizeRows(productSizes);
-
-    if (productId) {
-      autoAddingRef.current = true;
-      const vSku = productSku.trim() ? generateVariantSku(productSku.trim(), baseColorName) : null;
-      createVariant({
-        productId,
-        color: baseColorName,
-        colorHex: findPresetByName(baseColorName)?.hex ?? null,
-        slug: slugify(`${productName}-${baseColorName}`),
-        images: [baseImage],
-        isDefault: isFirstVariant,
-        sku: vSku,
-        sizes: sizeRows.map((s) => ({
-          size: s.size,
-          stockQuantity: Number(s.stockQuantity) || 0,
-          priceOverride: null,
-          sku: vSku ? generateSizeSku(vSku, s.size) : null,
-        })),
-      })
-        .then(() => {
-          toast.success(`"${baseColorName}" added automatically as this product's colour variant`);
-          return loadVariants(productId);
-        })
-        .catch(() => {
-          // Silent -- the admin can still add it manually via "Add colour"
-          // if this ever fails (e.g. a transient network error).
-        })
-        .finally(() => {
-          autoAddingRef.current = false;
-        });
-    } else {
-      const localId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      setPendingVariants((prev) => [
-        ...(isFirstVariant ? prev : prev.map((p) => ({ ...p, isDefault: false }))),
-        {
-          ...emptyVariantForm(productSizes),
-          color: baseColorName,
-          colorHex: findPresetByName(baseColorName)?.hex ?? '',
-          images: [baseImage],
-          isDefault: isFirstVariant,
-          sizes: sizeRows,
-          localId,
-        },
-      ]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasMultipleSizes, baseColorName, baseImage, baseColorAlreadyVariant, productId]);
+  // Single-size products (the common "Free Size only" case) still use the
+  // same manual "Add ... as variant" button as multi-size products -- see
+  // showConvertBaseColorButton below (an earlier version of this made the
+  // base colour auto-become a variant for single-size products, but that
+  // surprised admins who hadn't asked for the colour to become its own
+  // priced/stocked variant yet, so it was reverted).
 
   // Opens the same form dialog pre-filled with a staged (not-yet-saved)
   // variant's data, so it can be edited/removed before the product itself
