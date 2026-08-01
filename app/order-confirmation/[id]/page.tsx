@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import OrderTracking from '@/components/order/order-tracking';
 import PurchaseTracker from '@/components/analytics/purchase-tracker';
+import TrustpilotInvitation from '@/components/analytics/trustpilot-invitation';
 
 export default async function OrderConfirmationPage({ params }: { params: { id: string } }) {
   const supabase = getSupabaseAdmin();
@@ -37,6 +38,11 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
           price: item.price,
           quantity: item.quantity,
         }))}
+      />
+      <TrustpilotInvitation
+        orderId={order.id}
+        recipientEmail={order.customer_email}
+        recipientName={order.customer_name}
       />
       <div className="flex flex-col items-center gap-3 text-center">
         <div className="rounded-full bg-secondary/20 p-4">

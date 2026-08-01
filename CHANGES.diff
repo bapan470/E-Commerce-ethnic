@@ -1,184 +1,63 @@
-diff --git a/app/api/promotions/active/route.ts b/app/api/promotions/active/route.ts
-index c1c76e2..ed0d66f 100644
---- a/app/api/promotions/active/route.ts
-+++ b/app/api/promotions/active/route.ts
-@@ -1,9 +1,23 @@
- import { NextResponse } from 'next/server';
- import { getSupabaseAdmin } from '@/lib/supabase-admin';
+diff --git a/app/layout.tsx b/app/layout.tsx
+index dca57b0..3661f17 100644
+--- a/app/layout.tsx
++++ b/app/layout.tsx
+@@ -20,6 +20,15 @@ const playfair = Playfair_Display({
  
-+// This route has no cookies()/headers()/searchParams usage, so Next's App
-+// Router would otherwise treat it as a static route and cache its response
-+// in the full Route Cache (served from that cache indefinitely, not just
-+// briefly) -- meaning a shopper's browser keeps getting whatever the
-+// response was the first time this route was ever hit after a deploy,
-+// even after an admin removes a product from a promotion's collection or
-+// flips a promotion off. That's exactly backwards for something that (a)
-+// gates a live discount and (b) already has its own starts_at/ends_at
-+// time window logic below, which requires "now" to be genuinely live on
-+// every request. force-dynamic bypasses that cache so every request re-
-+// queries Supabase, same as the admin routes get automatically from their
-+// cookies() call in requireAdmin().
-+export const dynamic = 'force-dynamic';
+ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
+ 
++// Trustpilot > Integrations > Ecommerce > JavaScript Integration. This key
++// isn't a secret -- it's meant to sit in public page HTML (same as a GA
++// measurement id) -- so it's fine hardcoded here rather than behind an
++// admin toggle. It only registers the `tp()` queue on every page; it does
++// NOT show any widget or send anything by itself. The actual review-
++// request email is triggered per-order by <TrustpilotInvitation> on the
++// order confirmation page (components/analytics/trustpilot-invitation.tsx).
++const TRUSTPILOT_INTEGRATION_KEY = 'En3UPwL5Q09ZQO2G';
 +
- // GET — public, unauthenticated. Returns every currently-active BOGO
- // promotion (is_active = true and within its start/end window), each with
--// a resolved `product_ids` array when scope = 'collection'.
-+// a resolved `product_ids` array and `collection_slug` when scope = 'collection'.
- //
- // This has to go through the service-role client (not a direct client-side
- // supabase.from() call) because `collection_products` has no RLS policy for
-@@ -30,11 +44,12 @@ export async function GET() {
+ const DEFAULT_SEO: SeoSettings = {
+   site_title: 'AruhiHandlooms — Handwoven Indian Ethnic Wear & Sarees',
+   meta_description:
+@@ -131,6 +140,18 @@ export default async function RootLayout({
+       <head>
+         <script src="https://checkout.razorpay.com/v1/checkout.js" async />
  
-     let productIdsByCollection = new Map<string, string[]>();
-     let bogoBadgeByCollection = new Map<string, boolean>();
-+    let slugByCollection = new Map<string, string>();
-     if (collectionScoped.length > 0) {
-       const collectionIds = Array.from(new Set(collectionScoped.map((p) => p.collection_id)));
-       const [{ data: links, error: linksErr }, { data: collectionRows, error: collectionsErr }] = await Promise.all([
-         supabase.from('collection_products').select('collection_id, product_id').in('collection_id', collectionIds),
--        supabase.from('collections').select('id, show_bogo_badge').in('id', collectionIds),
-+        supabase.from('collections').select('id, slug, show_bogo_badge').in('id', collectionIds),
-       ]);
-       if (linksErr) throw linksErr;
-       if (collectionsErr) throw collectionsErr;
-@@ -46,6 +61,7 @@ export async function GET() {
-       }
-       for (const row of collectionRows ?? []) {
-         bogoBadgeByCollection.set(row.id, row.show_bogo_badge);
-+        slugByCollection.set(row.id, row.slug);
-       }
-     }
- 
-@@ -55,6 +71,10 @@ export async function GET() {
-         promo.scope === 'collection' && promo.collection_id
-           ? productIdsByCollection.get(promo.collection_id) ?? []
-           : null,
-+      collection_slug:
-+        promo.scope === 'collection' && promo.collection_id
-+          ? slugByCollection.get(promo.collection_id) ?? null
-+          : null,
-       // Defaults to true for scope='all' (no collection to toggle it off
-       // on) and for a collection row that's somehow missing.
-       show_bogo_badge:
-diff --git a/app/product/[slug]/product-detail.tsx b/app/product/[slug]/product-detail.tsx
-index f3a6467..41c57f7 100644
---- a/app/product/[slug]/product-detail.tsx
-+++ b/app/product/[slug]/product-detail.tsx
-@@ -11,7 +11,7 @@ import {
-   RefreshCw,
-   Wallet,
- } from 'lucide-react';
--import { useProducts, usePaymentDiscount, useCart, getVisibleBogoPromotion } from '@/lib/cart-context';
-+import { useProducts, usePaymentDiscount, useCart, getVisibleBogoPromotion, formatBogoLabel } from '@/lib/cart-context';
- import { fetchProductBySlug } from '@/lib/products-api';
- import { fetchVariantBySlug, fetchVariantsForProduct, ProductVariant, VariantWithSizes } from '@/lib/variants-api';
- import { Product } from '@/lib/types';
-@@ -64,7 +64,7 @@ export default function ProductDetail() {
-   const params = useParams<{ slug: string }>();
-   const router = useRouter();
-   const { getBySlug, products, loading } = useProducts();
--  const { addItem, startBuyNow, subtotal: cartSubtotal, applyCoupon: applyCartCoupon } = useCart();
-+  const { addItem, startBuyNow, subtotal: cartSubtotal, applyCoupon: applyCartCoupon, activePromotions } = useCart();
-   const { user } = useAuth();
- 
-   const fromContext = useMemo(
-@@ -289,6 +289,23 @@ export default function ProductDetail() {
-     };
-   }, [baseProduct, variant]);
- 
-+  // Same rule the shop-grid product card uses to decide whether/which
-+  // "Buy X Get Y" badge applies -- see getVisibleBogoPromotion in
-+  // lib/cart-context.tsx. When this product is part of a live
-+  // scope='collection' promotion, "You may also like" below shows the
-+  // rest of that collection instead of generic same-category matches, so
-+  // a shopper on a BOGO page can actually find something to pair it with
-+  // and hit the offer, instead of having to go hunting for it themselves.
-+  const bogoPromotion = useMemo(
-+    () => (product ? getVisibleBogoPromotion(product.id, activePromotions) : null),
-+    [product, activePromotions]
-+  );
-+  const bogoCollectionProducts = useMemo(() => {
-+    if (!product || !bogoPromotion?.product_ids || bogoPromotion.product_ids.length === 0) return [];
-+    const ids = new Set(bogoPromotion.product_ids);
-+    return products.filter((p) => ids.has(p.id) && p.id !== product.id);
-+  }, [product, bogoPromotion, products]);
++        {/* Trustpilot base script — registers window.tp() so
++           <TrustpilotInvitation> (order confirmation page) can create
++           review-invitation emails after a purchase. */}
++        <Script id="trustpilot-init" strategy="afterInteractive">
++          {`
++            (function(w,d,s,r,n){w.TrustpilotObject=n;w[n]=w[n]||function(){(w[n].q=w[n].q||[]).push(arguments)};
++            a=d.createElement(s);a.async=1;a.src=r;a.type='text/java'+s;f=d.getElementsByTagName(s)[0];
++            f.parentNode.insertBefore(a,f)})(window,document,'script','https://invitejs.trustpilot.com/tp.min.js','tp');
++            tp('register', '${TRUSTPILOT_INTEGRATION_KEY}');
++          `}
++        </Script>
 +
-   // Defaults to the first size, UNLESS the URL carries a `?size=` param --
-   // that's how each Google Merchant Center feed item links back here (see
-   // app/api/merchant-feed/route.ts), so the page must land on that exact
-@@ -654,7 +671,13 @@ export default function ProductDetail() {
+         {gaId && (
+           <>
+             <Script src={`https://www.googletagmanager.com/gtag/js?id=${gaId}`} strategy="afterInteractive" />
+diff --git a/app/order-confirmation/[id]/page.tsx b/app/order-confirmation/[id]/page.tsx
+index fa3a2af..35d3628 100644
+--- a/app/order-confirmation/[id]/page.tsx
++++ b/app/order-confirmation/[id]/page.tsx
+@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
+ import { Separator } from '@/components/ui/separator';
+ import OrderTracking from '@/components/order/order-tracking';
+ import PurchaseTracker from '@/components/analytics/purchase-tracker';
++import TrustpilotInvitation from '@/components/analytics/trustpilot-invitation';
  
-       <FrequentlyBoughtTogether productId={baseProduct.id} />
- 
--      <RelatedProducts current={product} allProducts={products} />
-+      <RelatedProducts
-+        current={product}
-+        allProducts={products}
-+        overrideProducts={bogoCollectionProducts}
-+        viewAllHref={bogoPromotion?.collection_slug ? `/collection/${bogoPromotion.collection_slug}` : undefined}
-+        title={bogoCollectionProducts.length > 0 ? `Complete your ${formatBogoLabel(bogoPromotion!)} offer` : undefined}
+ export default async function OrderConfirmationPage({ params }: { params: { id: string } }) {
+   const supabase = getSupabaseAdmin();
+@@ -38,6 +39,11 @@ export default async function OrderConfirmationPage({ params }: { params: { id:
+           quantity: item.quantity,
+         }))}
+       />
++      <TrustpilotInvitation
++        orderId={order.id}
++        recipientEmail={order.customer_email}
++        recipientName={order.customer_name}
 +      />
- 
-       <VendorCollection productId={baseProduct.id} />
- 
-diff --git a/components/product/related-products.tsx b/components/product/related-products.tsx
-index 836eb74..d6e8914 100644
---- a/components/product/related-products.tsx
-+++ b/components/product/related-products.tsx
-@@ -27,13 +27,24 @@ export default function RelatedProducts({
-   allProducts,
-   limit = 10,
-   title = 'You may also like',
-+  overrideProducts,
-+  viewAllHref,
- }: {
-   current: Product;
-   allProducts: Product[];
-   limit?: number;
-   title?: string;
-+  /** When provided and non-empty, shown instead of the scored same-category
-+   *  matches below — e.g. the rest of a live "Buy X Get Y" promotion's
-+   *  collection, so a shopper on that product's page can immediately find
-+   *  something to pair it with instead of generic related items. */
-+  overrideProducts?: Product[];
-+  /** "View All" target when `overrideProducts` is in use (e.g. the BOGO
-+   *  collection's own page). Falls back to the category shop link below
-+   *  when not provided. */
-+  viewAllHref?: string;
- }) {
--  const related = useMemo(() => {
-+  const scored = useMemo(() => {
-     return allProducts
-       .filter((p) => p.id !== current.id)
-       .map((p) => ({ product: p, score: scoreCandidate(current, p) }))
-@@ -43,11 +54,13 @@ export default function RelatedProducts({
-       .map((entry) => entry.product);
-   }, [current, allProducts, limit]);
- 
-+  const related = overrideProducts && overrideProducts.length > 0 ? overrideProducts.slice(0, limit) : scored;
-+
-   return (
-     <ProductCarousel
-       title={title}
-       products={related}
--      viewAllHref={`/shop?category=${encodeURIComponent(current.category)}`}
-+      viewAllHref={viewAllHref ?? `/shop?category=${encodeURIComponent(current.category)}`}
-     />
-   );
- }
-diff --git a/lib/promotions-api.ts b/lib/promotions-api.ts
-index 70f090b..42b6124 100644
---- a/lib/promotions-api.ts
-+++ b/lib/promotions-api.ts
-@@ -90,6 +90,11 @@ export async function setPromotionActive(id: string, is_active: boolean) {
- export interface ActivePromotion extends Promotion {
-   /** Live product ids in `collection_id`, only present when scope='collection'. */
-   product_ids: string[] | null;
-+  /** Slug of `collection_id`'s public page (`/collection/[slug]`), only
-+   *  present when scope='collection'. Lets the storefront link straight to
-+   *  the rest of this promotion's collection (e.g. the product page's
-+   *  "You may also like" section) without a second round-trip. */
-+  collection_slug: string | null;
-   /** Whether the "Buy X Get Y" badge should render for products in scope --
-    *  mirrors the target collection's `show_bogo_badge` toggle (Admin >
-    *  Collections) when scope='collection'; always true for scope='all',
+       <div className="flex flex-col items-center gap-3 text-center">
+         <div className="rounded-full bg-secondary/20 p-4">
+           <CheckCircle2 className="h-10 w-10 text-secondary" />
