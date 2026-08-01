@@ -8,16 +8,19 @@ import { Product, CategoryRow } from '@/lib/types';
 import type { HomeBanner } from '@/lib/home-data-server';
 import type { PublicCollectionRow } from '@/lib/collections-api-server';
 import type { HomepageTile } from '@/lib/homepage-tiles-api';
+import type { HeroBanner } from '@/lib/hero-banners-api';
 import ProductCard from '@/components/product-card';
 import CouponStrip from '@/components/home/coupon-strip';
 import PromoSlider from '@/components/home/promo-slider';
 import HomepageGrid from '@/components/home/homepage-grid';
+import HeroBannerCarousel from '@/components/home/hero-banner-carousel';
 import { Button } from '@/components/ui/button';
 
 interface HomeClientProps {
   products: Product[];
   categories: CategoryRow[];
   banner: HomeBanner | null;
+  heroBanners: HeroBanner[];
   freeShippingThreshold: number | null;
   collections: PublicCollectionRow[];
   tiles: HomepageTile[];
@@ -29,6 +32,7 @@ export default function HomeClient({
   products,
   categories,
   banner,
+  heroBanners,
   freeShippingThreshold,
   collections,
   tiles,
@@ -73,7 +77,9 @@ export default function HomeClient({
   return (
     <div className="flex flex-col">
       {/* Hero */}
-      {banner ? (
+      {heroBanners.length > 0 ? (
+        <HeroBannerCarousel banners={heroBanners} />
+      ) : banner ? (
         <section className="w-full">
           {banner.link_url ? (
             <Link

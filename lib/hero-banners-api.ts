@@ -1,0 +1,143 @@
+import { supabase } from '@/lib/supabase';
+
+export interface HeroBanner {
+  id: string;
+  position: number;
+  image_url: string;
+  link_url: string | null;
+  is_active: boolean;
+  created_at?: string;
+}
+
+export interface HeroBannerInput {
+  image_url: string;
+  link_url: string | null;
+  is_active: boolean;
+}
+
+// ---------------------------------------------------------------------
+// Admin management (Admin > Hero Banners tab)
+// ---------------------------------------------------------------------
+
+export async function fetchHeroBannersAdmin(): Promise<HeroBanner[]> {
+  const res = await fetch('/api/admin/hero-banners');
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || 'Failed to load hero banners');
+  return (body.banners ?? []) as HeroBanner[];
+}
+
+async function adminHeroBannerRequest(url: string, options: RequestInit) {
+  const res = await fetch(url, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || 'Request failed');
+  return body;
+}
+
+export async function createHeroBanner(input: HeroBannerInput) {
+  await adminHeroBannerRequest('/api/admin/hero-banners', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateHeroBanner(id: string, input: Partial<HeroBannerInput>) {
+  await adminHeroBannerRequest(`/api/admin/hero-banners/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteHeroBanner(id: string) {
+  await adminHeroBannerRequest(`/api/admin/hero-banners/${id}`, { method: 'DELETE' });
+}
+
+export async function setHeroBannerActive(id: string, is_active: boolean) {
+  await adminHeroBannerRequest(`/api/admin/hero-banners/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ is_active }),
+  });
+}
+
+// Persists a new order for all (or a subset of) banners in one batch
+// call — used by the up/down reorder buttons in the admin panel, same
+// pattern as reorderHomepageTiles in lib/homepage-tiles-api.ts.
+export async function reorderHeroBanners(orderedIds: string[]) {
+  await adminHeroBannerRequest('/api/admin/hero-banners/reorder', {
+    method: 'PATCH',
+    body: JSON.stringify({ orderedIds }),
+  });
+}
+
+// Uploads a hero banner image straight to Supabase Storage from the
+// browser, the same way homepage-tile photos are uploaded (reuses the
+// existing public "product-images" bucket so no new bucket/migration is
+// needed just for banners).
+export async function uploadHeroBannerImage(file: File): Promise<string> {
+  const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+  const path = `hero-banners/${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
+  const { error } = await supabase.storage
+    .from('product-images')
+    .upload(path, file, { cacheControl: '3600', upsert: false });
+  if (error) throw error;
+  const { data } = supabase.storage.from('product-images').getPublicUrl(path);
+  return data.publicUrl;
+}
+
+// Reads an image file's natural pixel dimensions in the browser, used by
+// the admin panel to warn when a newly-uploaded banner doesn't match the
+// size of the banners already in the list — every slide should be the
+// same size so the carousel doesn't jump/resize between slides.
+export function readImageDimensions(file: File): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new window.Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Could not read image dimensions'));
+    };
+    img.src = url;
+  });
+}
+
+// Same helper as above, but for an already-uploaded banner's remote URL
+// (used to get the "reference" size from the first existing banner in
+// the list, so we don't have to re-fetch it on every subsequent upload).
+export function readRemoteImageDimensions(
+  imageUrl: string
+): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight });
+    img.onerror = () => reject(new Error('Could not read image dimensions'));
+    img.src = imageUrl;
+  });
+}
+
+// ---------------------------------------------------------------------
+// Storefront (public) — used by the homepage hero carousel.
+// ---------------------------------------------------------------------
+
+export async function fetchActiveHeroBanners(): Promise<HeroBanner[]> {
+  try {
+    const { data, error } = await supabase
+      .from('hero_banners')
+      .select('*')
+      .eq('is_active', true)
+      .order('position', { ascending: true });
+    if (error) throw error;
+    return (data ?? []) as HeroBanner[];
+  } catch {
+    // A homepage render should never break because banners failed to
+    // load — same "fail quiet" approach as fetchHomeBanner in
+    // lib/home-data-server.ts.
+    return [];
+  }
+}

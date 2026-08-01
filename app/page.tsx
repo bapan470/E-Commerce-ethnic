@@ -98,6 +98,7 @@ export default async function Home() {
         products={homeData.products}
         categories={homeData.categories}
         banner={homeData.banner}
+        heroBanners={homeData.heroBanners}
         freeShippingThreshold={homeData.freeShippingThreshold}
         collections={homeData.collections}
         tiles={homeData.tiles}

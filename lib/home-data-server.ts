@@ -4,6 +4,7 @@ import { fetchProductsServer, fetchCategoriesServer } from './products-api-serve
 import { fetchPublicCollectionsServer, PublicCollectionRow } from './collections-api-server';
 import { Product, CategoryRow } from './types';
 import { HomepageTile } from './homepage-tiles-api';
+import { HeroBanner } from './hero-banners-api';
 
 export interface HomeBanner {
   image_url: string;
@@ -17,6 +18,7 @@ export interface HomeData {
   freeShippingThreshold: number | null;
   collections: PublicCollectionRow[];
   tiles: HomepageTile[];
+  heroBanners: HeroBanner[];
   collectionSlugById: Record<string, string>;
   /** Part 4b: promotion id -> collection slug, for tiles with
    *  link_type='promotion' to route "Shop Now" straight to the
@@ -72,6 +74,27 @@ async function fetchHomeTiles(): Promise<HomepageTile[]> {
       .order('position', { ascending: true });
     if (error) throw error;
     return (data ?? []) as HomepageTile[];
+  } catch {
+    return [];
+  }
+}
+
+// Server-only read of the hero banner carousel — deliberately does NOT
+// reuse fetchActiveHeroBanners from lib/hero-banners-api.ts, since that
+// one goes through the browser-only client in lib/supabase.ts and isn't
+// safe to call from a server component. Same "fail quiet" approach as
+// fetchHomeBanner/fetchHomeTiles above: a banners failure should never
+// break the rest of the homepage.
+async function fetchHeroBanners(): Promise<HeroBanner[]> {
+  try {
+    const supabase = getServerSupabase();
+    const { data, error } = await supabase
+      .from('hero_banners')
+      .select('*')
+      .eq('is_active', true)
+      .order('position', { ascending: true });
+    if (error) throw error;
+    return (data ?? []) as HeroBanner[];
   } catch {
     return [];
   }
@@ -148,16 +171,25 @@ async function fetchPromotionCollectionSlugMap(
  * page now arrives with everything already rendered.
  */
 export async function fetchHomeData(): Promise<HomeData> {
-  const [products, categories, banner, freeShippingThreshold, collections, tiles, collectionSlugById] =
-    await Promise.all([
-      fetchProductsServer(),
-      fetchCategoriesServer(),
-      fetchHomeBanner(),
-      fetchHomeFreeShippingThreshold(),
-      fetchPublicCollectionsServer(),
-      fetchHomeTiles(),
-      fetchCollectionSlugMap(),
-    ]);
+  const [
+    products,
+    categories,
+    banner,
+    freeShippingThreshold,
+    collections,
+    tiles,
+    heroBanners,
+    collectionSlugById,
+  ] = await Promise.all([
+    fetchProductsServer(),
+    fetchCategoriesServer(),
+    fetchHomeBanner(),
+    fetchHomeFreeShippingThreshold(),
+    fetchPublicCollectionsServer(),
+    fetchHomeTiles(),
+    fetchHeroBanners(),
+    fetchCollectionSlugMap(),
+  ]);
 
   const promotionCollectionSlugById = await fetchPromotionCollectionSlugMap(collectionSlugById);
 
@@ -168,6 +200,7 @@ export async function fetchHomeData(): Promise<HomeData> {
     freeShippingThreshold,
     collections,
     tiles,
+    heroBanners,
     collectionSlugById,
     promotionCollectionSlugById,
   };

@@ -29,6 +29,7 @@ import {
   X,
   Store,
   LayoutGrid,
+  Images,
   Truck,
   PackageCheck,
   Landmark,
@@ -57,6 +58,7 @@ export type AdminSection =
   | 'coupons'
   | 'promotions'
   | 'homepage-tiles'
+  | 'hero-banners'
   | 'marketing'
   | 'loyalty'
   | 'referrals'
@@ -127,6 +129,7 @@ const NAV_GROUPS: NavGroup[] = [
       { value: 'coupons', label: 'Coupons', icon: Tag },
       { value: 'promotions', label: 'Promotions', icon: Percent },
       { value: 'homepage-tiles', label: 'Homepage Tiles', icon: LayoutGrid },
+      { value: 'hero-banners', label: 'Hero Banners', icon: Images },
       { value: 'marketing', label: 'Marketing', icon: Megaphone },
       { value: 'loyalty', label: 'Loyalty', icon: Gift },
       { value: 'referrals', label: 'Referrals', icon: Users2 },
