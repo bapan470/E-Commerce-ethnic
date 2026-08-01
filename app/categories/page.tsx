@@ -77,7 +77,13 @@ function CategoriesPageContent() {
           .slice(0, 3)
           .map((p) => p.images[0])
           .filter(Boolean) as string[];
-        return { ...c, count: inCat.length, thumbs, group: groupFor(c.name) };
+        // Count every colour variation as its own product, not just the
+        // base listing -- a product with 3 added colours (via
+        // `variant_list`, see lib/products-api.ts) contributes 4 to the
+        // count here (its own base colour + 3 variants), matching how
+        // shoppers actually browse (each colour is its own card/page).
+        const count = inCat.reduce((sum, p) => sum + 1 + (p.variant_list?.length ?? 0), 0);
+        return { ...c, count, thumbs, group: groupFor(c.name) };
       })
       .filter((c) => c.count > 0);
   }, [categories, products]);

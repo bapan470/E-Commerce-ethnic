@@ -1,61 +1,19 @@
-diff --git a/app/api/collection/[slug]/route.ts b/app/api/collection/[slug]/route.ts
-index cd5bcb5..370b8ec 100644
---- a/app/api/collection/[slug]/route.ts
-+++ b/app/api/collection/[slug]/route.ts
-@@ -3,6 +3,13 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
- import { mapRowToProduct, CUSTOMER_SAFE_PRODUCT_COLUMNS } from '@/lib/products-api-server';
- import { ProductRow } from '@/lib/types';
- 
-+// No cookies()/headers()/searchParams here, so without this Next's App
-+// Router would cache this route's response indefinitely after the first
-+// hit post-deploy — an admin adding/removing a product from a collection
-+// (or flipping is_active) wouldn't show up here until the next deploy.
-+// Same reasoning as /api/promotions/active.
-+export const dynamic = 'force-dynamic';
-+
- /** Weighted rating/review total across a set of products, computed from the
-  *  live `reviews` table (approved only) -- the same source the single-
-  *  product page uses. A product with no live approved reviews yet falls
-diff --git a/app/api/collections/route.ts b/app/api/collections/route.ts
-index 6492a38..acbd139 100644
---- a/app/api/collections/route.ts
-+++ b/app/api/collections/route.ts
-@@ -1,6 +1,13 @@
- import { NextResponse } from 'next/server';
- import { fetchPublicCollectionsServer } from '@/lib/collections-api-server';
- 
-+// No cookies()/headers()/searchParams here, so without this Next's App
-+// Router would cache this route's response indefinitely after the first
-+// hit post-deploy — a newly-activated or newly-emptied collection
-+// wouldn't show up/disappear from the homepage until the next deploy.
-+// Same reasoning as /api/promotions/active.
-+export const dynamic = 'force-dynamic';
-+
- /**
-  * GET /api/collections
-  *
-diff --git a/app/api/promotions/active/route.ts b/app/api/promotions/active/route.ts
-index c1c76e2..47d61d7 100644
---- a/app/api/promotions/active/route.ts
-+++ b/app/api/promotions/active/route.ts
-@@ -1,6 +1,20 @@
- import { NextResponse } from 'next/server';
- import { getSupabaseAdmin } from '@/lib/supabase-admin';
- 
-+// This route has no cookies()/headers()/searchParams usage, so Next's App
-+// Router would otherwise treat it as a static route and cache its response
-+// in the full Route Cache (served from that cache indefinitely, not just
-+// briefly) -- meaning a shopper's browser keeps getting whatever the
-+// response was the first time this route was ever hit after a deploy,
-+// even after an admin removes a product from a promotion's collection or
-+// flips a promotion off. That's exactly backwards for something that (a)
-+// gates a live discount and (b) already has its own starts_at/ends_at
-+// time window logic below, which requires "now" to be genuinely live on
-+// every request. force-dynamic bypasses that cache so every request re-
-+// queries Supabase, same as the admin routes get automatically from their
-+// cookies() call in requireAdmin().
-+export const dynamic = 'force-dynamic';
-+
- // GET — public, unauthenticated. Returns every currently-active BOGO
- // promotion (is_active = true and within its start/end window), each with
- // a resolved `product_ids` array when scope = 'collection'.
+diff --git a/app/categories/page.tsx b/app/categories/page.tsx
+index 9d00b49..f717ed9 100644
+--- a/app/categories/page.tsx
++++ b/app/categories/page.tsx
+@@ -77,7 +77,13 @@ function CategoriesPageContent() {
+           .slice(0, 3)
+           .map((p) => p.images[0])
+           .filter(Boolean) as string[];
+-        return { ...c, count: inCat.length, thumbs, group: groupFor(c.name) };
++        // Count every colour variation as its own product, not just the
++        // base listing -- a product with 3 added colours (via
++        // `variant_list`, see lib/products-api.ts) contributes 4 to the
++        // count here (its own base colour + 3 variants), matching how
++        // shoppers actually browse (each colour is its own card/page).
++        const count = inCat.reduce((sum, p) => sum + 1 + (p.variant_list?.length ?? 0), 0);
++        return { ...c, count, thumbs, group: groupFor(c.name) };
+       })
+       .filter((c) => c.count > 0);
+   }, [categories, products]);
