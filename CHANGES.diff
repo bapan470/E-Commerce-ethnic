@@ -1,38 +1,41 @@
 diff --git a/app/layout.tsx b/app/layout.tsx
-index dca57b0..3661f17 100644
+index dca57b0..fde4fcb 100644
 --- a/app/layout.tsx
 +++ b/app/layout.tsx
-@@ -20,6 +20,15 @@ const playfair = Playfair_Display({
+@@ -52,6 +52,8 @@ const DEFAULT_ANALYTICS: AnalyticsSettings = {
+   ga_measurement_id: '',
+   meta_pixel_enabled: false,
+   meta_pixel_id: '',
++  trustpilot_enabled: false,
++  trustpilot_integration_key: '',
+ };
  
- const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
+ // Reads Admin > Marketing > Analytics settings (Google Analytics + Meta
+@@ -125,12 +127,28 @@ export default async function RootLayout({
+   const analytics = await getAnalyticsSettings();
+   const gaId = analytics.ga_enabled ? analytics.ga_measurement_id.trim() : '';
+   const pixelId = analytics.meta_pixel_enabled ? analytics.meta_pixel_id.trim() : '';
++  const trustpilotKey = analytics.trustpilot_enabled ? analytics.trustpilot_integration_key.trim() : '';
  
-+// Trustpilot > Integrations > Ecommerce > JavaScript Integration. This key
-+// isn't a secret -- it's meant to sit in public page HTML (same as a GA
-+// measurement id) -- so it's fine hardcoded here rather than behind an
-+// admin toggle. It only registers the `tp()` queue on every page; it does
-+// NOT show any widget or send anything by itself. The actual review-
-+// request email is triggered per-order by <TrustpilotInvitation> on the
-+// order confirmation page (components/analytics/trustpilot-invitation.tsx).
-+const TRUSTPILOT_INTEGRATION_KEY = 'En3UPwL5Q09ZQO2G';
-+
- const DEFAULT_SEO: SeoSettings = {
-   site_title: 'AruhiHandlooms — Handwoven Indian Ethnic Wear & Sarees',
-   meta_description:
-@@ -131,6 +140,18 @@ export default async function RootLayout({
+   return (
+     <html lang="en" className={`${inter.variable} ${playfair.variable}`}>
        <head>
          <script src="https://checkout.razorpay.com/v1/checkout.js" async />
  
 +        {/* Trustpilot base script — registers window.tp() so
 +           <TrustpilotInvitation> (order confirmation page) can create
-+           review-invitation emails after a purchase. */}
-+        <Script id="trustpilot-init" strategy="afterInteractive">
-+          {`
-+            (function(w,d,s,r,n){w.TrustpilotObject=n;w[n]=w[n]||function(){(w[n].q=w[n].q||[]).push(arguments)};
-+            a=d.createElement(s);a.async=1;a.src=r;a.type='text/java'+s;f=d.getElementsByTagName(s)[0];
-+            f.parentNode.insertBefore(a,f)})(window,document,'script','https://invitejs.trustpilot.com/tp.min.js','tp');
-+            tp('register', '${TRUSTPILOT_INTEGRATION_KEY}');
-+          `}
-+        </Script>
++           review-invitation emails after a purchase. Key + on/off toggle
++           live in Admin > Marketing > Analytics. */}
++        {trustpilotKey && (
++          <Script id="trustpilot-init" strategy="afterInteractive">
++            {`
++              (function(w,d,s,r,n){w.TrustpilotObject=n;w[n]=w[n]||function(){(w[n].q=w[n].q||[]).push(arguments)};
++              a=d.createElement(s);a.async=1;a.src=r;a.type='text/java'+s;f=d.getElementsByTagName(s)[0];
++              f.parentNode.insertBefore(a,f)})(window,document,'script','https://invitejs.trustpilot.com/tp.min.js','tp');
++              tp('register', '${trustpilotKey}');
++            `}
++          </Script>
++        )}
 +
          {gaId && (
            <>
@@ -61,3 +64,65 @@ index fa3a2af..35d3628 100644
        <div className="flex flex-col items-center gap-3 text-center">
          <div className="rounded-full bg-secondary/20 p-4">
            <CheckCircle2 className="h-10 w-10 text-secondary" />
+diff --git a/components/admin/marketing-panel.tsx b/components/admin/marketing-panel.tsx
+index 96f454a..f54ef53 100644
+--- a/components/admin/marketing-panel.tsx
++++ b/components/admin/marketing-panel.tsx
+@@ -862,6 +862,35 @@ function AnalyticsTab() {
+         </div>
+       </div>
+ 
++      <div className="space-y-3 rounded-lg border border-border p-3">
++        <div className="flex items-center justify-between">
++          <div>
++            <Label htmlFor="trustpilot-enabled">Trustpilot Review Invitations</Label>
++            <p className="text-xs text-muted-foreground">
++              Emails a customer a review request a few days after their order.
++            </p>
++          </div>
++          <Switch
++            id="trustpilot-enabled"
++            checked={analytics.trustpilot_enabled}
++            onCheckedChange={(checked) => setAnalytics({ ...analytics, trustpilot_enabled: checked })}
++          />
++        </div>
++        <div className="space-y-2">
++          <Label htmlFor="trustpilot-key">Integration Key</Label>
++          <Input
++            id="trustpilot-key"
++            value={analytics.trustpilot_integration_key}
++            onChange={(e) => setAnalytics({ ...analytics, trustpilot_integration_key: e.target.value })}
++            placeholder="En3UPwL5Q09ZQO2G"
++          />
++          <p className="text-xs text-muted-foreground">
++            Trustpilot Business → Integrations → Ecommerce → JavaScript Integration → copy the key from
++            the <code>tp(&apos;register&apos;, ...)</code> line.
++          </p>
++        </div>
++      </div>
++
+       <Button type="submit" disabled={saving} className="gap-2 bg-primary">
+         <Save className="h-4 w-4" />
+         {saving ? 'Saving...' : 'Save Analytics Settings'}
+diff --git a/lib/marketing-api.ts b/lib/marketing-api.ts
+index f9b9309..2d28195 100644
+--- a/lib/marketing-api.ts
++++ b/lib/marketing-api.ts
+@@ -516,6 +516,8 @@ export interface AnalyticsSettings {
+   ga_measurement_id: string; // e.g. G-XXXXXXXXXX
+   meta_pixel_enabled: boolean;
+   meta_pixel_id: string; // numeric Pixel ID
++  trustpilot_enabled: boolean;
++  trustpilot_integration_key: string; // Trustpilot > Integrations > Ecommerce > JavaScript Integration
+ }
+ 
+ const DEFAULT_ANALYTICS_SETTINGS: AnalyticsSettings = {
+@@ -523,6 +525,8 @@ const DEFAULT_ANALYTICS_SETTINGS: AnalyticsSettings = {
+   ga_measurement_id: '',
+   meta_pixel_enabled: false,
+   meta_pixel_id: '',
++  trustpilot_enabled: false,
++  trustpilot_integration_key: '',
+ };
+ 
+ export async function fetchAnalyticsSettings(): Promise<AnalyticsSettings> {

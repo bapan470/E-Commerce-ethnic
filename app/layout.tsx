@@ -20,15 +20,6 @@ const playfair = Playfair_Display({
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
-// Trustpilot > Integrations > Ecommerce > JavaScript Integration. This key
-// isn't a secret -- it's meant to sit in public page HTML (same as a GA
-// measurement id) -- so it's fine hardcoded here rather than behind an
-// admin toggle. It only registers the `tp()` queue on every page; it does
-// NOT show any widget or send anything by itself. The actual review-
-// request email is triggered per-order by <TrustpilotInvitation> on the
-// order confirmation page (components/analytics/trustpilot-invitation.tsx).
-const TRUSTPILOT_INTEGRATION_KEY = 'En3UPwL5Q09ZQO2G';
-
 const DEFAULT_SEO: SeoSettings = {
   site_title: 'AruhiHandlooms — Handwoven Indian Ethnic Wear & Sarees',
   meta_description:
@@ -61,6 +52,8 @@ const DEFAULT_ANALYTICS: AnalyticsSettings = {
   ga_measurement_id: '',
   meta_pixel_enabled: false,
   meta_pixel_id: '',
+  trustpilot_enabled: false,
+  trustpilot_integration_key: '',
 };
 
 // Reads Admin > Marketing > Analytics settings (Google Analytics + Meta
@@ -134,6 +127,7 @@ export default async function RootLayout({
   const analytics = await getAnalyticsSettings();
   const gaId = analytics.ga_enabled ? analytics.ga_measurement_id.trim() : '';
   const pixelId = analytics.meta_pixel_enabled ? analytics.meta_pixel_id.trim() : '';
+  const trustpilotKey = analytics.trustpilot_enabled ? analytics.trustpilot_integration_key.trim() : '';
 
   return (
     <html lang="en" className={`${inter.variable} ${playfair.variable}`}>
@@ -142,15 +136,18 @@ export default async function RootLayout({
 
         {/* Trustpilot base script — registers window.tp() so
            <TrustpilotInvitation> (order confirmation page) can create
-           review-invitation emails after a purchase. */}
-        <Script id="trustpilot-init" strategy="afterInteractive">
-          {`
-            (function(w,d,s,r,n){w.TrustpilotObject=n;w[n]=w[n]||function(){(w[n].q=w[n].q||[]).push(arguments)};
-            a=d.createElement(s);a.async=1;a.src=r;a.type='text/java'+s;f=d.getElementsByTagName(s)[0];
-            f.parentNode.insertBefore(a,f)})(window,document,'script','https://invitejs.trustpilot.com/tp.min.js','tp');
-            tp('register', '${TRUSTPILOT_INTEGRATION_KEY}');
-          `}
-        </Script>
+           review-invitation emails after a purchase. Key + on/off toggle
+           live in Admin > Marketing > Analytics. */}
+        {trustpilotKey && (
+          <Script id="trustpilot-init" strategy="afterInteractive">
+            {`
+              (function(w,d,s,r,n){w.TrustpilotObject=n;w[n]=w[n]||function(){(w[n].q=w[n].q||[]).push(arguments)};
+              a=d.createElement(s);a.async=1;a.src=r;a.type='text/java'+s;f=d.getElementsByTagName(s)[0];
+              f.parentNode.insertBefore(a,f)})(window,document,'script','https://invitejs.trustpilot.com/tp.min.js','tp');
+              tp('register', '${trustpilotKey}');
+            `}
+          </Script>
+        )}
 
         {gaId && (
           <>

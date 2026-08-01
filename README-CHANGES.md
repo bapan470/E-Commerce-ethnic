@@ -1,47 +1,48 @@
-# Trustpilot review-invitation integration (JavaScript Integration)
+# Trustpilot integration — ab Admin panel se manage hoga
 
-## Kya add hua
+## Kya badla (pichle zip se)
 
-1. **`app/layout.tsx`** — Trustpilot ka "base" registration script har
-   page ke `<head>` me add kar diya (integration key `En3UPwL5Q09ZQO2G`,
-   jo aapne screenshot me dikhaya tha, hardcode kar diya hai — ye secret
-   nahi hai, GA measurement ID jaisa public hi hota hai).
-   Ye script sirf `window.tp()` register karti hai — koi widget nahi
-   dikhati, koi email khud nahi bhejti.
+Pichli baar maine Integration Key seedha code me hardcode kar diya tha
+(`app/layout.tsx`). Ab wo **Admin > Marketing > Analytics** tab se
+manage hoti hai — GA4 aur Meta Pixel ki tarah hi ek naya "Trustpilot
+Review Invitations" card add ho gaya hai wahan:
 
-2. **`components/analytics/trustpilot-invitation.tsx`** — naya component,
-   bilkul `PurchaseTracker` (jo already GA4 ke liye use ho raha tha) jaisa
-   pattern follow karta hai:
-   - Order-confirmation page load hote hi `tp('createInvitation', {...})`
-     call karta hai, customer ka real email/name/order-id bhejke.
-   - `sessionStorage` se guard hai — same order page refresh karne se
-     dobara invite nahi bhejega.
-   - Agar Trustpilot ki base script thodi der se load ho (afterInteractive),
-     to 10 second tak retry karta hai, GA4 wale tracker jaisa hi.
-   - Agar order me email hi nahi hai to kuch nahi karta (guest/edge case).
+- **Toggle (on/off)** — bina code chhue integration band/chalu kar sakte ho.
+- **Integration Key** field — key change karni ho (naya Trustpilot account,
+  ya key rotate karni ho) to bas admin panel se update karo, koi deploy
+  nahi chahiye.
 
-3. **`app/order-confirmation/[id]/page.tsx`** — `PurchaseTracker` ke
-   bagal me `TrustpilotInvitation` add kar diya, order ka real
-   `customer_email`, `customer_name`, `id` pass karke.
+## Files jo change hue (is round me)
 
-## Kya NAHI badla
+1. **`lib/marketing-api.ts`** — `AnalyticsSettings` type me
+   `trustpilot_enabled` aur `trustpilot_integration_key` fields add kiye
+   (same Supabase `settings` table use hoti hai jaha GA/Meta Pixel settings
+   already store hote hain — koi naya migration nahi chahiye).
+2. **`components/admin/marketing-panel.tsx`** — Analytics tab me ek
+   naya card: "Trustpilot Review Invitations" toggle + "Integration Key"
+   input, GA/Meta Pixel wale hi pattern me.
+3. **`app/layout.tsx`** — hardcoded key hata di; ab admin settings se
+   `trustpilot_enabled`/`trustpilot_integration_key` padh ke, sirf jab
+   toggle ON ho aur key bhari ho, tabhi base script inject hoti hai.
+4. **`app/order-confirmation/[id]/page.tsx`** aur
+   **`components/analytics/trustpilot-invitation.tsx`** — pichle round
+   jaisa hi (koi badlaav nahi) — order confirmation page par asli
+   customer email/name/order-id ke saath invitation bhejta hai.
 
-- Aapka apna site review system (product page ka "Reviews" tab, Supabase
-  me store hone wale reviews, admin approval flow) — bilkul waisa hi hai,
-  koi chhed-chhad nahi.
-- Koi existing script/component delete/replace nahi hua — sirf naya add
-  hua hai.
+## Admin me kaise use karein
 
-## Test kaise karein
+1. Admin → **Marketing** → **Analytics** tab kholo.
+2. "Trustpilot Review Invitations" toggle **ON** karo.
+3. **Integration Key** field me apni key daalo: `En3UPwL5Q09ZQO2G`
+   (jo aapne Trustpilot ke JavaScript Integration page se copy ki thi).
+4. **Save Analytics Settings** dabao.
+5. Site reload karke check karo — order confirmation page par ab
+   invitation jaana chahiye.
 
-1. Deploy karne ke baad koi bhi test order place karo (COD bhi chalega).
-2. Order confirmation page khulte hi browser console me
-   (`window.tp`) available hona chahiye.
-3. Trustpilot Business dashboard → **Invitations** → **Invitation history**
-   me jaake dekho — us order ka ek queued invitation dikhna chahiye
-   (email turant nahi jaati, Trustpilot ke default delay ke baad jaati
-   hai — dashboard me settings me delay/timing change kar sakte ho).
+Agar kabhi integration band karni ho (naya account, ya temporarily rokna
+ho), bas toggle OFF kar do — code me kuch chhedne ki zaroorat nahi.
 
-`tsc --noEmit` aur `eslint` dono in files ke saath clean pass ho gaye
-(ek pre-existing warning hai layout.tsx me Meta Pixel ke `<img>` tag pe,
-uska is change se koi lena dena nahi hai).
+`tsc --noEmit` clean pass ho gaya. `eslint` bhi clean hai — is file
+(`marketing-panel.tsx`) me kuch pehle se maujood unrelated warnings/errors
+hain (unescaped quote characters kahin aur file me), unka mere naye code
+se koi lena-dena nahi — maine verify kiya ki wahi count pehle bhi tha.

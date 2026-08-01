@@ -862,6 +862,35 @@ function AnalyticsTab() {
         </div>
       </div>
 
+      <div className="space-y-3 rounded-lg border border-border p-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <Label htmlFor="trustpilot-enabled">Trustpilot Review Invitations</Label>
+            <p className="text-xs text-muted-foreground">
+              Emails a customer a review request a few days after their order.
+            </p>
+          </div>
+          <Switch
+            id="trustpilot-enabled"
+            checked={analytics.trustpilot_enabled}
+            onCheckedChange={(checked) => setAnalytics({ ...analytics, trustpilot_enabled: checked })}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="trustpilot-key">Integration Key</Label>
+          <Input
+            id="trustpilot-key"
+            value={analytics.trustpilot_integration_key}
+            onChange={(e) => setAnalytics({ ...analytics, trustpilot_integration_key: e.target.value })}
+            placeholder="En3UPwL5Q09ZQO2G"
+          />
+          <p className="text-xs text-muted-foreground">
+            Trustpilot Business → Integrations → Ecommerce → JavaScript Integration → copy the key from
+            the <code>tp(&apos;register&apos;, ...)</code> line.
+          </p>
+        </div>
+      </div>
+
       <Button type="submit" disabled={saving} className="gap-2 bg-primary">
         <Save className="h-4 w-4" />
         {saving ? 'Saving...' : 'Save Analytics Settings'}

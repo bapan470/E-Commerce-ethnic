@@ -516,6 +516,8 @@ export interface AnalyticsSettings {
   ga_measurement_id: string; // e.g. G-XXXXXXXXXX
   meta_pixel_enabled: boolean;
   meta_pixel_id: string; // numeric Pixel ID
+  trustpilot_enabled: boolean;
+  trustpilot_integration_key: string; // Trustpilot > Integrations > Ecommerce > JavaScript Integration
 }
 
 const DEFAULT_ANALYTICS_SETTINGS: AnalyticsSettings = {
@@ -523,6 +525,8 @@ const DEFAULT_ANALYTICS_SETTINGS: AnalyticsSettings = {
   ga_measurement_id: '',
   meta_pixel_enabled: false,
   meta_pixel_id: '',
+  trustpilot_enabled: false,
+  trustpilot_integration_key: '',
 };
 
 export async function fetchAnalyticsSettings(): Promise<AnalyticsSettings> {
