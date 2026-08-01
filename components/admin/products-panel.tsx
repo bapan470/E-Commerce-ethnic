@@ -3,7 +3,7 @@
 import { useState, FormEvent, useEffect, useMemo, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles, Link2, Palette, Wand2, Search, X, Truck, Package, Facebook, Instagram, Video, ExternalLink } from 'lucide-react';
+import { Plus, Pencil, Trash2, ArrowLeft, Upload, Loader2, Sparkles, Link2, Palette, Wand2, Search, X, Truck, Package, Facebook, Instagram, Video, ExternalLink, EyeOff } from 'lucide-react';
 import { useProducts, usePaymentDiscount } from '@/lib/cart-context';
 import {
   createProduct,
@@ -29,6 +29,12 @@ import {
 import { formatINR, discountPct } from '@/lib/format';
 import { fetchShippingSettings, ShippingSettings, DEFAULT_SHIPPING_SETTINGS } from '@/lib/pincode-api';
 import { PaymentDiscountSettings } from '@/lib/settings-api';
+import {
+  ProductSource,
+  fetchProductSources,
+  fetchProductSourcing,
+  saveProductSourcing,
+} from '@/lib/product-sources-api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -582,6 +588,18 @@ export default function ProductsPanel() {
   // are sensitive, and that table is read via the customer-safe product
   // query elsewhere in the app), so it resets each time the dialog opens.
   const [costPrice, setCostPrice] = useState('');
+  // Hidden admin-only sourcing fields (see lib/product-sources-api.ts).
+  // Unlike costPrice above, these ARE saved server-side — but into the
+  // separate product_sourcing table (zero anon/authenticated RLS
+  // policies), never into the `products` row itself, so they can never
+  // leak through the customer-safe product queries used elsewhere.
+  const [sourceOptions, setSourceOptions] = useState<ProductSource[]>([]);
+  const [sourceId, setSourceId] = useState('');
+  const [buyPrice, setBuyPrice] = useState('');
+  const [sourcingLoading, setSourcingLoading] = useState(false);
+  useEffect(() => {
+    fetchProductSources().then(setSourceOptions).catch(() => {});
+  }, []);
   // Settlement preview (Price field) — pulled from Admin > Settings >
   // GST & Shipping, so the fee % and other charges stay editable in one
   // place instead of being hardcoded here.
@@ -882,6 +900,8 @@ export default function ProductsPanel() {
     setEditing(null);
     setForm(emptyForm());
     setCostPrice('');
+    setSourceId('');
+    setBuyPrice('');
     setAiHint('');
     setAiNeedsReview(null);
     setOpen(true);
@@ -891,9 +911,22 @@ export default function ProductsPanel() {
     setEditing(p);
     setForm(fromProduct(p));
     setCostPrice(getStoredCostPrice(p.id));
+    setSourceId('');
+    setBuyPrice('');
     setAiHint('');
     setAiNeedsReview(null);
     setOpen(true);
+    setSourcingLoading(true);
+    fetchProductSourcing(p.id)
+      .then((s) => {
+        setSourceId(s.product_source_id || '');
+        setBuyPrice(s.buy_price != null ? String(s.buy_price) : '');
+      })
+      .catch(() => {
+        // Non-fatal — the fields just stay blank; saving will still work
+        // and simply overwrite whatever (if anything) was there before.
+      })
+      .finally(() => setSourcingLoading(false));
   };
 
   const generateWithAI = async () => {
@@ -1071,6 +1104,14 @@ export default function ProductsPanel() {
     try {
       if (editing) {
         await updateProduct(editing.id, payload);
+        await saveProductSourcing(editing.id, {
+          product_source_id: sourceId || null,
+          buy_price: buyPrice ? Number(buyPrice) : null,
+        }).catch(() => {
+          // Non-fatal — the product itself saved fine; surface separately
+          // so a sourcing hiccup never blocks the actual product update.
+          toast.error('Product saved, but the source/buy price failed to save');
+        });
         toast.success('Product updated');
         if (wasOutOfStock && newStockQty > 0) {
           triggerRestockNotifications(editing.id);
@@ -1080,6 +1121,14 @@ export default function ProductsPanel() {
         await refresh();
       } else {
         const created = await createProduct(payload);
+        if (sourceId || buyPrice) {
+          await saveProductSourcing(created.id, {
+            product_source_id: sourceId || null,
+            buy_price: buyPrice ? Number(buyPrice) : null,
+          }).catch(() => {
+            toast.error('Product added, but the source/buy price failed to save');
+          });
+        }
         toast.success('Product added — now add colour variants below, or close to finish.');
         // No auto-post here — social sharing only happens when the admin
         // clicks the Share button on this product's row (see shareProduct()).
@@ -1849,6 +1898,54 @@ export default function ProductsPanel() {
                 />
               </div>
             )}
+
+            <div className="grid gap-3 rounded-lg border border-amber-300/60 bg-amber-50 p-4">
+              <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-900">
+                <EyeOff className="h-3.5 w-3.5" /> Admin-only — never shown on the storefront
+              </p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="product-source" className="text-xs">Product source</Label>
+                  <Select
+                    value={sourceId || 'none'}
+                    onValueChange={(v) => setSourceId(v === 'none' ? '' : v)}
+                    disabled={sourcingLoading}
+                  >
+                    <SelectTrigger id="product-source" className="bg-background">
+                      <SelectValue placeholder={sourcingLoading ? 'Loading…' : 'Select a source'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">— None —</SelectItem>
+                      {sourceOptions.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                          {s.whatsapp_name ? ` (${s.whatsapp_name})` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-muted-foreground">
+                    Manage sources under Admin → Sourcing → Product Sources.
+                  </p>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="buy-price" className="text-xs">Buy price (₹)</Label>
+                  <Input
+                    id="buy-price"
+                    type="number"
+                    min={0}
+                    className="bg-background"
+                    value={buyPrice}
+                    onChange={(e) => setBuyPrice(e.target.value)}
+                    placeholder="e.g. 250"
+                    disabled={sourcingLoading}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Saved privately so you can check margins later.
+                  </p>
+                </div>
+              </div>
+            </div>
 
             <div className="grid gap-1.5">
               <Label htmlFor="fabric">Fabric</Label>

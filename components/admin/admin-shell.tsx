@@ -36,6 +36,7 @@ import {
   RotateCcw,
   FileBarChart,
   Newspaper,
+  EyeOff,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import NotificationBell from './notification-bell';
@@ -69,6 +70,7 @@ export type AdminSection =
   | 'vendor-settlements'
   | 'vendor-ops'
   | 'vendor-reports'
+  | 'product-sources'
   | 'settings';
 
 interface NavItem {
@@ -117,6 +119,7 @@ const NAV_GROUPS: NavGroup[] = [
       { value: 'vendor-settlements', label: 'Vendor Settlements', icon: Landmark },
       { value: 'vendor-ops', label: 'Vendor Ops', icon: RotateCcw },
       { value: 'vendor-reports', label: 'Vendor Reports', icon: FileBarChart },
+      { value: 'product-sources', label: 'Product Sources', icon: EyeOff },
     ],
   },
   {

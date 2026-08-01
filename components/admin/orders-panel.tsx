@@ -45,6 +45,9 @@ type Order = {
   reseller_base_cost?: number | null;
   reseller_profit?: number | null;
   reseller_brand_name?: string | null;
+  // Admin-only hidden sourcing info, attached server-side in lib/orders-api.ts
+  // (fetchOrders -> attachItemSources). Keyed by product_id.
+  _item_sources?: Record<string, { source_name: string | null; whatsapp_name: string | null; whatsapp_number: string | null; buy_price: number | null }>;
 };
 
 export default function OrdersPanel() {
@@ -527,6 +530,17 @@ function OrderRow({
               <div className="max-w-[9rem] truncate font-medium">{order.items[0]?.product_name || '—'}</div>
               {order.items.length > 1 && (
                 <div className="text-muted-foreground">+{order.items.length - 1} more</div>
+              )}
+              {order.items[0]?.product_id && order._item_sources?.[order.items[0].product_id]?.source_name && (
+                <div
+                  className="mt-0.5 w-fit rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800"
+                  title="Admin-only sourcing info — never shown to the customer"
+                >
+                  Source: {order._item_sources[order.items[0].product_id].source_name}
+                  {order._item_sources[order.items[0].product_id].whatsapp_number
+                    ? ` · ${order._item_sources[order.items[0].product_id].whatsapp_number}`
+                    : ''}
+                </div>
               )}
             </div>
           </div>
