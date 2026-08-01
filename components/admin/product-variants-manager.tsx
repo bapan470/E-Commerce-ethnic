@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, FormEvent } from 'react';
+import { useEffect, useState, useRef, FormEvent, Dispatch, SetStateAction } from 'react';
 import Image from 'next/image';
 import { Plus, Pencil, Trash2, Upload, Loader2, Star, Link2, Wand2, Video, Check, Sparkles } from 'lucide-react';
 import {
@@ -71,6 +71,18 @@ interface VariantFormState {
   sizes: { size: string; stockQuantity: string; priceOverride: string; sku: string }[];
 }
 
+/**
+ * A colour variant added while the *product itself* hasn't been saved yet
+ * (brand-new "Add New Product" form -- there's no real productId to attach
+ * a `product_variants` row to). Staged entirely in memory here and lifted
+ * up to the parent (products-panel.tsx) via `pendingVariants`/
+ * `setPendingVariants`; the parent creates the real rows through the same
+ * `createVariant` API call, one per staged entry, right after the product
+ * save succeeds and a real productId exists. See onSubmit below for the
+ * staging logic and products-panel.tsx's onSubmit for the flush.
+ */
+export type PendingVariant = VariantFormState & { localId: string };
+
 // Builds the starting size rows for a brand-new variant from the sizes
 // ticked on the main product form (e.g. "Free Size, S, M, L"). Falls back
 // to "Free Size" if the product has none selected yet.
@@ -127,6 +139,13 @@ interface Props {
   // extra click once the edit dialog is open.
   autoOpenAdd?: boolean;
   onAutoOpenAddHandled?: () => void;
+  // Staged colour variants for a brand-new product that hasn't been saved
+  // yet (productId is null). Lifted up to the parent so it can create the
+  // real rows right after the product itself is created. Once productId
+  // is real, this component ignores these and talks to the API directly
+  // like it always has.
+  pendingVariants: PendingVariant[];
+  setPendingVariants: Dispatch<SetStateAction<PendingVariant[]>>;
 }
 
 /**
@@ -146,12 +165,17 @@ export default function ProductVariantsManager({
   productSizes,
   autoOpenAdd,
   onAutoOpenAddHandled,
+  pendingVariants,
+  setPendingVariants,
 }: Props) {
   const [variants, setVariants] = useState<VariantWithSizes[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<VariantWithSizes | null>(null);
+  // Set instead of `editing` when the form is editing a *staged* (pending)
+  // variant rather than one already saved to the database.
+  const [editingPendingId, setEditingPendingId] = useState<string | null>(null);
   const [form, setForm] = useState<VariantFormState>(emptyVariantForm(productSizes));
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -160,6 +184,7 @@ export default function ProductVariantsManager({
   const [cropOnImport, setCropOnImport] = useState(false);
   const [detectingColor, setDetectingColor] = useState(false);
   const [confirmVariant, setConfirmVariant] = useState<VariantWithSizes | null>(null);
+  const [confirmPendingId, setConfirmPendingId] = useState<string | null>(null);
   const [colorSuggestions, setColorSuggestions] = useState<ColorPreset[]>([]);
   const [showColorSuggestions, setShowColorSuggestions] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(-1);
@@ -183,6 +208,7 @@ export default function ProductVariantsManager({
 
   const openNew = () => {
     setEditing(null);
+    setEditingPendingId(null);
     setForm({
       ...emptyVariantForm(productSizes),
       images: baseImage ? [baseImage] : [],
@@ -201,8 +227,11 @@ export default function ProductVariantsManager({
     .map((s) => s.trim())
     .filter(Boolean);
   const hasMultipleSizes = productSizeList.length > 1;
+  // Once a product is saved, "existing colours" comes from the API
+  // (`variants`); before that, it comes from what's staged in memory.
+  const effectiveColorNames = productId ? variants.map((v) => v.color) : pendingVariants.map((p) => p.color);
   const baseColorAlreadyVariant = baseColorName
-    ? variants.some((v) => v.color.trim().toLowerCase() === baseColorName.toLowerCase())
+    ? effectiveColorNames.some((c) => c.trim().toLowerCase() === baseColorName.toLowerCase())
     : false;
   const showConvertBaseColorButton = !!baseColorName && hasMultipleSizes && !baseColorAlreadyVariant;
 
@@ -211,6 +240,7 @@ export default function ProductVariantsManager({
   // price/stock per size and hits "Add Variant".
   const openNewFromBaseColour = () => {
     setEditing(null);
+    setEditingPendingId(null);
     setForm({
       ...emptyVariantForm(productSizes),
       color: baseColorName,
@@ -232,8 +262,86 @@ export default function ProductVariantsManager({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoOpenAdd, productId]);
 
+  // Single-size products (the common "Free Size only" case) have no
+  // per-size price grid worth filling in, so instead of making the admin
+  // click "Add ... as variant" themselves, automatically turn the base
+  // colour into a proper variant (its own SKU/stock) the moment there's a
+  // colour name and at least one photo. Multi-size products keep the
+  // manual button, since price/stock genuinely differs per size and needs
+  // the admin's own input first.
+  const autoAddingRef = useRef(false);
+  useEffect(() => {
+    if (hasMultipleSizes) return;
+    if (!baseColorName || !baseImage) return;
+    if (baseColorAlreadyVariant) return;
+    if (autoAddingRef.current) return;
+
+    const isFirstVariant = productId ? variants.length === 0 : pendingVariants.length === 0;
+    const sizeRows = defaultSizeRows(productSizes);
+
+    if (productId) {
+      autoAddingRef.current = true;
+      const vSku = productSku.trim() ? generateVariantSku(productSku.trim(), baseColorName) : null;
+      createVariant({
+        productId,
+        color: baseColorName,
+        colorHex: findPresetByName(baseColorName)?.hex ?? null,
+        slug: slugify(`${productName}-${baseColorName}`),
+        images: [baseImage],
+        isDefault: isFirstVariant,
+        sku: vSku,
+        sizes: sizeRows.map((s) => ({
+          size: s.size,
+          stockQuantity: Number(s.stockQuantity) || 0,
+          priceOverride: null,
+          sku: vSku ? generateSizeSku(vSku, s.size) : null,
+        })),
+      })
+        .then(() => {
+          toast.success(`"${baseColorName}" added automatically as this product's colour variant`);
+          return loadVariants(productId);
+        })
+        .catch(() => {
+          // Silent -- the admin can still add it manually via "Add colour"
+          // if this ever fails (e.g. a transient network error).
+        })
+        .finally(() => {
+          autoAddingRef.current = false;
+        });
+    } else {
+      const localId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      setPendingVariants((prev) => [
+        ...(isFirstVariant ? prev : prev.map((p) => ({ ...p, isDefault: false }))),
+        {
+          ...emptyVariantForm(productSizes),
+          color: baseColorName,
+          colorHex: findPresetByName(baseColorName)?.hex ?? '',
+          images: [baseImage],
+          isDefault: isFirstVariant,
+          sizes: sizeRows,
+          localId,
+        },
+      ]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasMultipleSizes, baseColorName, baseImage, baseColorAlreadyVariant, productId]);
+
+  // Opens the same form dialog pre-filled with a staged (not-yet-saved)
+  // variant's data, so it can be edited/removed before the product itself
+  // is saved.
+  const openEditPending = (localId: string) => {
+    const p = pendingVariants.find((pv) => pv.localId === localId);
+    if (!p) return;
+    const { localId: _drop, ...formState } = p;
+    setEditing(null);
+    setEditingPendingId(localId);
+    setForm(formState);
+    setOpen(true);
+  };
+
   const openEdit = (v: VariantWithSizes) => {
     setEditing(v);
+    setEditingPendingId(null);
     setForm({
       color: v.color,
       colorHex: v.color_hex ?? findPresetByName(v.color)?.hex ?? '',
@@ -315,7 +423,9 @@ export default function ProductVariantsManager({
     }
     setDetectingColor(true);
     try {
-      const existingColors = variants.filter((v) => v.id !== editing?.id).map((v) => v.color);
+      const existingColors = productId
+        ? variants.filter((v) => v.id !== editing?.id).map((v) => v.color)
+        : pendingVariants.filter((p) => p.localId !== editingPendingId).map((p) => p.color);
       const res = await fetch('/api/admin/detect-variant-color', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -406,16 +516,15 @@ export default function ProductVariantsManager({
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!productId) {
-      toast.error('Save the product first');
-      return;
-    }
     if (!form.color.trim()) {
       toast.error('Colour name is required');
       return;
     }
-    const nameTaken = variants.some(
-      (v) => v.id !== editing?.id && v.color.trim().toLowerCase() === form.color.trim().toLowerCase()
+    const existingColorNames = productId
+      ? variants.filter((v) => v.id !== editing?.id).map((v) => v.color)
+      : pendingVariants.filter((p) => p.localId !== editingPendingId).map((p) => p.color);
+    const nameTaken = existingColorNames.some(
+      (c) => c.trim().toLowerCase() === form.color.trim().toLowerCase()
     );
     if (nameTaken) {
       toast.error(
@@ -430,6 +539,35 @@ export default function ProductVariantsManager({
     const validSizes = form.sizes.filter((s) => s.size.trim());
     if (validSizes.length === 0) {
       toast.error('Add at least one size');
+      return;
+    }
+
+    // Product hasn't been saved yet -- stage this variant in memory instead
+    // of calling the API. products-panel.tsx creates the real rows right
+    // after the product itself is created (see its onSubmit).
+    if (!productId) {
+      const cleanForm: VariantFormState = { ...form, sizes: validSizes };
+      if (editingPendingId) {
+        setPendingVariants((prev) =>
+          prev.map((p) =>
+            p.localId === editingPendingId
+              ? { ...cleanForm, localId: editingPendingId }
+              : cleanForm.isDefault
+                ? { ...p, isDefault: false }
+                : p
+          )
+        );
+        toast.success('Variant updated');
+      } else {
+        const localId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        setPendingVariants((prev) => [
+          ...(cleanForm.isDefault ? prev.map((p) => ({ ...p, isDefault: false })) : prev),
+          { ...cleanForm, localId },
+        ]);
+        toast.success('Colour variant added — it will be saved once you save the product');
+      }
+      setOpen(false);
+      setEditingPendingId(null);
       return;
     }
 
@@ -527,6 +665,12 @@ export default function ProductVariantsManager({
   };
 
   const confirmDelete = async () => {
+    if (confirmPendingId) {
+      setPendingVariants((prev) => prev.filter((p) => p.localId !== confirmPendingId));
+      toast.success('Variant removed');
+      setConfirmPendingId(null);
+      return;
+    }
     if (!confirmVariant || !productId) return;
     try {
       await deleteVariant(confirmVariant.id);
@@ -550,13 +694,54 @@ export default function ProductVariantsManager({
     }
   };
 
-  if (!productId) {
+  const makePendingDefault = (localId: string) => {
+    setPendingVariants((prev) => prev.map((p) => ({ ...p, isDefault: p.localId === localId })));
+  };
+
+  // A brand-new product has no productId yet, so colour variants can't be
+  // saved to the database until the product itself is saved -- but the
+  // admin can still stage them here the moment at least one colour has
+  // been typed into the main "Colors" field above. They're held in
+  // `pendingVariants` and flushed to the API by products-panel.tsx right
+  // after the product save succeeds.
+  const hasBaseColor = (productColors ?? '').split(',').map((s) => s.trim()).filter(Boolean).length > 0;
+  if (!productId && !hasBaseColor) {
     return (
       <div className="rounded-lg border border-dashed border-border/60 bg-muted/30 p-4 text-sm text-muted-foreground">
-        Save this product first — colour/size variants can be added right here once it exists.
+        Add at least one colour above (in the &quot;Colors&quot; field) — colour/size variants can then be added
+        right here, even before you save the product.
       </div>
     );
   }
+
+  // Unified list the JSX below renders from -- backed by the API
+  // (`variants`) once the product is saved, or by the in-memory staged
+  // list (`pendingVariants`) before that.
+  const rows = productId
+    ? variants.map((v) => ({
+        id: v.id,
+        color: v.color,
+        color_hex: v.color_hex,
+        images: v.images,
+        sku: v.sku,
+        is_default: v.is_default,
+        video: v.video,
+        sizes: v.sizes.map((s) => ({ id: s.id, size: s.size, stock_quantity: s.stock_quantity })),
+        pending: false as const,
+      }))
+    : pendingVariants.map((p) => ({
+        id: p.localId,
+        color: p.color,
+        color_hex: p.colorHex || null,
+        images: p.images,
+        sku: p.sku || null,
+        is_default: p.isDefault,
+        video: p.video || null,
+        sizes: p.sizes
+          .filter((s) => s.size.trim())
+          .map((s, i) => ({ id: `${p.localId}-${i}`, size: s.size, stock_quantity: Number(s.stockQuantity) || 0 })),
+        pending: true as const,
+      }));
 
   return (
     <div className="grid gap-3 rounded-lg border border-border/60 p-3">
@@ -564,7 +749,9 @@ export default function ProductVariantsManager({
         <div>
           <p className="text-sm font-medium">Colour &amp; size variants</p>
           <p className="text-xs text-muted-foreground">
-            Each colour gets its own photos, SKU and per-size stock — managed right here.
+            {productId
+              ? 'Each colour gets its own photos, SKU and per-size stock — managed right here.'
+              : 'Staged for now — these are created for real as soon as you save the product below.'}
           </p>
         </div>
         <div className="flex shrink-0 gap-1.5">
@@ -591,13 +778,13 @@ export default function ProductVariantsManager({
           <Skeleton className="h-20 rounded-lg" />
           <Skeleton className="h-20 rounded-lg" />
         </div>
-      ) : variants.length === 0 ? (
+      ) : rows.length === 0 ? (
         <p className="text-xs text-muted-foreground">
           No colour variants yet. Click &quot;Add colour&quot; to create the first one (e.g. Maroon, Green).
         </p>
       ) : (
         <div className="grid gap-2 sm:grid-cols-2">
-          {variants.map((v) => (
+          {rows.map((v) => (
             <div
               key={v.id}
               className={`flex items-start gap-2 rounded-md border p-2 ${
@@ -625,6 +812,11 @@ export default function ProductVariantsManager({
                       <Star className="mr-0.5 h-2.5 w-2.5 fill-current" /> Default
                     </Badge>
                   )}
+                  {v.pending && (
+                    <Badge variant="outline" className="px-1 py-0 text-[10px]" title="Saved once you save the product">
+                      Staged
+                    </Badge>
+                  )}
                 </div>
                 <p className="truncate text-[11px] text-muted-foreground">
                   SKU: {v.sku || <span className="italic">not set</span>}
@@ -637,7 +829,15 @@ export default function ProductVariantsManager({
                   ))}
                 </div>
                 <div className="mt-1.5 flex flex-wrap gap-1">
-                  <Button type="button" size="sm" variant="outline" className="h-6 px-1.5 text-[11px]" onClick={() => openEdit(v)}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-6 px-1.5 text-[11px]"
+                    onClick={() =>
+                      v.pending ? openEditPending(v.id) : openEdit(variants.find((x) => x.id === v.id)!)
+                    }
+                  >
                     <Pencil className="mr-1 h-3 w-3" /> Edit
                   </Button>
                   {!v.is_default && (
@@ -646,7 +846,9 @@ export default function ProductVariantsManager({
                       size="sm"
                       variant="outline"
                       className="h-6 px-1.5 text-[11px]"
-                      onClick={() => makeDefault(v)}
+                      onClick={() =>
+                        v.pending ? makePendingDefault(v.id) : makeDefault(variants.find((x) => x.id === v.id)!)
+                      }
                     >
                       <Star className="mr-1 h-3 w-3" /> Default
                     </Button>
@@ -656,7 +858,9 @@ export default function ProductVariantsManager({
                     size="sm"
                     variant="outline"
                     className="h-6 px-1.5 text-[11px] text-destructive hover:bg-destructive/10"
-                    onClick={() => setConfirmVariant(v)}
+                    onClick={() =>
+                      v.pending ? setConfirmPendingId(v.id) : setConfirmVariant(variants.find((x) => x.id === v.id)!)
+                    }
                   >
                     <Trash2 className="h-3 w-3" />
                   </Button>
@@ -672,7 +876,7 @@ export default function ProductVariantsManager({
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="font-serif text-xl text-primary">
-              {editing ? 'Edit Variant' : 'Add Colour Variant'}
+              {editing || editingPendingId ? 'Edit Variant' : 'Add Colour Variant'}
             </DialogTitle>
             <DialogDescription>For &quot;{productName || 'this product'}&quot;</DialogDescription>
           </DialogHeader>
@@ -1101,20 +1305,29 @@ export default function ProductVariantsManager({
                 </Button>
               </DialogClose>
               <Button type="submit" disabled={saving} className="bg-primary">
-                {saving ? 'Saving…' : editing ? 'Save Changes' : 'Add Variant'}
+                {saving ? 'Saving…' : editing || editingPendingId ? 'Save Changes' : 'Add Variant'}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!confirmVariant} onOpenChange={(o) => !o && setConfirmVariant(null)}>
+      <Dialog
+        open={!!confirmVariant || !!confirmPendingId}
+        onOpenChange={(o) => {
+          if (!o) {
+            setConfirmVariant(null);
+            setConfirmPendingId(null);
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="font-serif text-xl text-primary">Delete this variant?</DialogTitle>
             <DialogDescription>
-              This removes the &quot;{confirmVariant?.color}&quot; colour option and its SEO page. This action cannot be
-              undone.
+              This removes the &quot;
+              {confirmVariant?.color ?? pendingVariants.find((p) => p.localId === confirmPendingId)?.color}&quot;
+              colour option{confirmVariant ? ' and its SEO page' : ''}. This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

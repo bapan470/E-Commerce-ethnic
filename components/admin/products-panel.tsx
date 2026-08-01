@@ -13,11 +13,12 @@ import {
   extractErrorMessage,
 } from '@/lib/products-api';
 import { generateSlideshowVideo } from '@/lib/slideshow-video-generator';
-import { generateProductSku } from '@/lib/sku';
+import { generateProductSku, generateVariantSku, generateSizeSku } from '@/lib/sku';
+import { createVariant, setDefaultVariant } from '@/lib/variants-api';
 import { searchPresets, ColorPreset } from '@/lib/color-presets';
 import { Product, CategoryRow, ProductHighlights } from '@/lib/types';
 import { STANDARD_SIZES } from '@/lib/size-chart';
-import ProductVariantsManager from '@/components/admin/product-variants-manager';
+import ProductVariantsManager, { PendingVariant } from '@/components/admin/product-variants-manager';
 import VendorSubmissionsPanel from '@/components/admin/vendor-submissions-panel';
 import {
   fetchAdminVendorProducts,
@@ -583,6 +584,11 @@ export default function ProductsPanel() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm());
+  // Colour variants added inside the "Add New Product" dialog before the
+  // product itself has been saved (no real productId to attach them to
+  // yet). Flushed to the API right after the product is created — see
+  // onSubmit below.
+  const [pendingVariants, setPendingVariants] = useState<PendingVariant[]>([]);
   // Cost price is only used to compute the Safe Profit preview below the
   // Price field — deliberately NOT saved to the products table (margins
   // are sensitive, and that table is read via the customer-safe product
@@ -904,6 +910,7 @@ export default function ProductsPanel() {
     setBuyPrice('');
     setAiHint('');
     setAiNeedsReview(null);
+    setPendingVariants([]);
     setOpen(true);
   };
 
@@ -915,6 +922,7 @@ export default function ProductsPanel() {
     setBuyPrice('');
     setAiHint('');
     setAiNeedsReview(null);
+    setPendingVariants([]);
     setOpen(true);
     setSourcingLoading(true);
     fetchProductSourcing(p.id)
@@ -1129,7 +1137,60 @@ export default function ProductsPanel() {
             toast.error('Product added, but the source/buy price failed to save');
           });
         }
-        toast.success('Product added — now add colour variants below, or close to finish.');
+
+        // Create the real product_variants rows for anything the admin
+        // staged in-form before the product had an id (see
+        // ProductVariantsManager's pending-variant mode). Best-effort per
+        // variant -- one failing shouldn't hide that the product itself,
+        // and any variants that DID succeed, are saved.
+        if (pendingVariants.length > 0) {
+          let defaultVariantId: string | null = null;
+          let failedCount = 0;
+          for (const pv of pendingVariants) {
+            try {
+              const vSku = pv.sku.trim() || generateVariantSku(payload.sku, pv.color);
+              const createdVariant = await createVariant({
+                productId: created.id,
+                color: pv.color.trim(),
+                colorHex: pv.colorHex.trim() || null,
+                slug: pv.slug.trim() || slugify(`${payload.name}-${pv.color}`),
+                images: pv.images,
+                video: pv.video.trim() || null,
+                priceOverride: pv.priceOverride ? Number(pv.priceOverride) : null,
+                metaTitle: pv.metaTitle.trim() || undefined,
+                metaDescription: pv.metaDescription.trim() || undefined,
+                styleNote: pv.styleNote.trim() || undefined,
+                isDefault: pv.isDefault,
+                sku: vSku,
+                rating: pv.rating.trim() ? Number(pv.rating) : null,
+                reviews: pv.reviews.trim() ? Number(pv.reviews) : null,
+                sizes: pv.sizes
+                  .filter((s) => s.size.trim())
+                  .map((s) => ({
+                    size: s.size.trim(),
+                    stockQuantity: Number(s.stockQuantity) || 0,
+                    priceOverride: s.priceOverride.trim() ? Number(s.priceOverride) : null,
+                    sku: s.sku.trim() || generateSizeSku(vSku, s.size),
+                  })),
+              });
+              if (pv.isDefault) defaultVariantId = createdVariant.id;
+            } catch {
+              failedCount += 1;
+            }
+          }
+          if (defaultVariantId) {
+            await setDefaultVariant(created.id, defaultVariantId).catch(() => {});
+          }
+          setPendingVariants([]);
+          if (failedCount > 0) {
+            toast.error(`Product added, but ${failedCount} colour variant(s) failed to save — add ${failedCount === 1 ? 'it' : 'them'} again below.`);
+          } else {
+            toast.success('Product and colour variants added.');
+          }
+        } else {
+          toast.success('Product added — now add colour variants below, or close to finish.');
+        }
+
         // No auto-post here — social sharing only happens when the admin
         // clicks the Share button on this product's row (see shareProduct()).
         // Keep the dialog open, switched into "edit" mode for the product we
@@ -1676,6 +1737,7 @@ export default function ProductsPanel() {
           if (!o) {
             setAutoOpenVariantAdd(false);
             setAiNeedsReview(null);
+            setPendingVariants([]);
           }
         }}
       >
@@ -2522,6 +2584,8 @@ export default function ProductsPanel() {
               productSizes={form.sizes}
               autoOpenAdd={autoOpenVariantAdd}
               onAutoOpenAddHandled={() => setAutoOpenVariantAdd(false)}
+              pendingVariants={pendingVariants}
+              setPendingVariants={setPendingVariants}
             />
 
             {/* Product video (shows as the first slide in the gallery, before photos) */}
