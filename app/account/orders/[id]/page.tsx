@@ -4,6 +4,7 @@ import { formatINR } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import ReturnRequestButton from '@/components/account/return-request-button';
+import CancelOrderButton from '@/components/account/cancel-order-button';
 import OrderTracking from '@/components/order/order-tracking';
 import DeliveredItemReview from '@/components/account/delivered-item-review';
 import { fetchFulfillmentSettings } from '@/lib/marketing-api';
@@ -14,7 +15,8 @@ export default async function OrderDetailPage({ params }: { params: { id: string
   // Same number as Admin > Marketing > Shipping & Returns Timing, so a
   // customer is never told "X-day returns" on one page and denied a
   // return under a different window on this one.
-  const { return_window_days: RETURN_WINDOW_DAYS } = await fetchFulfillmentSettings();
+  const { return_window_days: RETURN_WINDOW_DAYS, cancellation_window_hours: CANCELLATION_WINDOW_HOURS } =
+    await fetchFulfillmentSettings();
 
   const { data: order } = await supabase.from('orders').select('*').eq('id', params.id).single();
   const ownsByEmail =
@@ -35,6 +37,10 @@ export default async function OrderDetailPage({ params }: { params: { id: string
   const eligibleForReturn =
     order.status === 'delivered' && daysSinceOrder <= RETURN_WINDOW_DAYS && !returns?.length;
 
+  const hoursSinceOrder = (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60);
+  const eligibleForCancellation =
+    ['pending', 'paid', 'confirmed'].includes(order.status) && hoursSinceOrder <= CANCELLATION_WINDOW_HOURS;
+
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -46,7 +52,10 @@ export default async function OrderDetailPage({ params }: { params: { id: string
             Placed on {new Date(order.created_at).toLocaleDateString('en-IN')}
           </p>
         </div>
-        <Badge className="bg-muted text-foreground">{order.status}</Badge>
+        <div className="flex flex-col items-end gap-2">
+          <Badge className="bg-muted text-foreground">{order.status}</Badge>
+          {eligibleForCancellation && <CancelOrderButton orderId={order.id} />}
+        </div>
       </div>
 
       <div className="mt-4">
