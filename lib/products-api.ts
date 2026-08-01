@@ -97,6 +97,9 @@ export function mapRowToProduct(row: ProductRow): Product {
     origin: row.origin ?? '',
     colors: row.colors ?? [],
     all_colors: resolveAllColors(row),
+    variant_list: (row.product_variants ?? [])
+      .filter((v) => !!v.color)
+      .map((v) => ({ slug: v.slug, color: v.color as string, image: v.images?.[0] ?? null })),
     sizes: row.sizes ?? ['Free Size'],
     occasion: row.occasion ?? [],
     gender: row.gender || 'female',

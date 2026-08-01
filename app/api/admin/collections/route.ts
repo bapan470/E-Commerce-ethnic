@@ -66,6 +66,11 @@ export async function POST(req: Request) {
   const productIds: string[] = Array.isArray(body?.product_ids)
     ? body.product_ids.filter((id: unknown) => typeof id === 'string')
     : [];
+  // Per-product list of excluded variation slugs ('base' for the product's
+  // own colour, otherwise a `product_variants.slug`) — see the picker in
+  // components/admin/collections-panel.tsx.
+  const variantExclusions: Record<string, unknown> =
+    body?.variant_exclusions && typeof body.variant_exclusions === 'object' ? body.variant_exclusions : {};
 
   if (!name) {
     return NextResponse.json({ error: 'Collection name is required' }, { status: 400 });
@@ -90,11 +95,18 @@ export async function POST(req: Request) {
     if (error) throw error;
 
     if (productIds.length > 0) {
-      const rows = productIds.map((product_id, idx) => ({
-        collection_id: collection.id,
-        product_id,
-        position: idx,
-      }));
+      const rows = productIds.map((product_id, idx) => {
+        const raw = variantExclusions[product_id];
+        const excluded_variant_slugs = Array.isArray(raw)
+          ? raw.filter((s: unknown): s is string => typeof s === 'string')
+          : [];
+        return {
+          collection_id: collection.id,
+          product_id,
+          position: idx,
+          excluded_variant_slugs,
+        };
+      });
       const { error: linkErr } = await admin.from('collection_products').insert(rows);
       if (linkErr) throw linkErr;
     }

@@ -55,13 +55,22 @@ export async function fetchAdminCollections(): Promise<AdminCollectionRow[]> {
   return body.collections as AdminCollectionRow[];
 }
 
-/** One collection plus the ids of the products currently in it. */
+/** One collection plus the ids of the products currently in it, and — per
+ *  product id that has any — the list of variation slugs excluded from
+ *  the collection ('base' for the product's own colour, otherwise a
+ *  `product_variants.slug`). Products with no entry here show every
+ *  variation they have. */
 export async function fetchAdminCollection(
   id: string
-): Promise<{ collection: AdminCollectionRow; product_ids: string[] }> {
+): Promise<{
+  collection: AdminCollectionRow;
+  product_ids: string[];
+  variant_exclusions: Record<string, string[]>;
+}> {
   const res = await fetch(`/api/admin/collections/${id}`, { cache: 'no-store' });
   if (!res.ok) return parseError(res, 'Failed to load collection');
-  return res.json();
+  const body = await res.json();
+  return { ...body, variant_exclusions: body.variant_exclusions ?? {} };
 }
 
 export async function createAdminCollection(input: {
@@ -72,6 +81,7 @@ export async function createAdminCollection(input: {
   show_on_homepage?: boolean;
   show_bogo_badge?: boolean;
   product_ids?: string[];
+  variant_exclusions?: Record<string, string[]>;
 }): Promise<AdminCollectionRow> {
   const res = await fetch('/api/admin/collections', {
     method: 'POST',
@@ -93,6 +103,7 @@ export async function updateAdminCollection(
     show_on_homepage: boolean;
     show_bogo_badge: boolean;
     product_ids: string[];
+    variant_exclusions: Record<string, string[]>;
   }>
 ): Promise<AdminCollectionRow> {
   const res = await fetch(`/api/admin/collections/${id}`, {

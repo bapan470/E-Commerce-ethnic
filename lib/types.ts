@@ -92,6 +92,17 @@ export interface Product {
   video_url?: string | null;
   sku?: string | null;
   highlights?: ProductHighlights | null;
+  /**
+   * Every colour variation this product has as a distinct row (i.e. every
+   * `product_variants` entry, NOT including the base product's own
+   * colour), each with its own slug/colour/image. Exists so admin UI that
+   * needs to address one specific variation (e.g. the Collections product
+   * picker's per-colour include/exclude checkboxes) has something to key
+   * off of — `all_colors`/`all_images` above are pre-merged/flattened and
+   * lose that per-variant identity. Undefined/empty means this product
+   * has no added colour variants beyond its own base colour.
+   */
+  variant_list?: { slug: string; color: string; image?: string | null }[];
   /** Slug of this product's default colour variant (if any) -- product
    *  cards on shop/category/home should link here instead of the base
    *  product slug, so shoppers land straight on the colour that's meant

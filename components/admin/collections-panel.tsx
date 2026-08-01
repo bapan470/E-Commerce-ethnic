@@ -1,7 +1,20 @@
 'use client';
 
 import { useEffect, useMemo, useState, FormEvent } from 'react';
-import { Plus, Pencil, Trash2, Search, X, ExternalLink, Layers, Store, EyeOff } from 'lucide-react';
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Search,
+  X,
+  ExternalLink,
+  Layers,
+  Store,
+  EyeOff,
+  ChevronDown,
+  ChevronRight,
+  Gift,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { useProducts } from '@/lib/cart-context';
 import {
@@ -13,6 +26,7 @@ import {
   fetchAdminVendorCollections,
   AdminVendorCollectionRow,
 } from '@/lib/admin-collections-api';
+import { fetchActivePromotions, ActivePromotion } from '@/lib/promotions-api';
 import { AdminCollectionRow } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -62,6 +76,13 @@ export default function CollectionsPanel() {
   const [showOnHomepage, setShowOnHomepage] = useState(true);
   const [showBogoBadge, setShowBogoBadge] = useState(true);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  /** Per product id, the list of variation keys ('base' for the product's
+   *  own colour, otherwise a `product_variants.slug`) excluded from this
+   *  collection. A product with no entry here contributes every variation
+   *  it has — same as before this feature existed. */
+  const [variantExclusions, setVariantExclusions] = useState<Record<string, string[]>>({});
+  const [expandedProductIds, setExpandedProductIds] = useState<Set<string>>(new Set());
+  const [activePromotions, setActivePromotions] = useState<ActivePromotion[]>([]);
   const [productSearch, setProductSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [minPriceFilter, setMinPriceFilter] = useState<string>('');
@@ -93,7 +114,29 @@ export default function CollectionsPanel() {
 
   useEffect(() => {
     load();
+    fetchActivePromotions().then(setActivePromotions);
   }, []);
+
+  /** Product id -> a short "Buy 2 Get 1" style label, for every product
+   *  that's already covered by a live promotion (scope='all' covers every
+   *  product; scope='collection' covers just that collection's products).
+   *  Shown in the picker so the admin doesn't accidentally add the same
+   *  product into a second BOGO collection and stack/duplicate the offer. */
+  const promoLabelByProductId = useMemo(() => {
+    const map = new Map<string, string>();
+    const label = (p: ActivePromotion) => `Buy ${p.buy_qty} Get ${p.get_qty}`;
+    const allScopePromo = activePromotions.find((p) => p.scope === 'all');
+    if (allScopePromo) {
+      for (const p of products) map.set(p.id, label(allScopePromo));
+    }
+    for (const promo of activePromotions) {
+      if (promo.scope !== 'collection' || !promo.product_ids) continue;
+      for (const id of promo.product_ids) {
+        if (!map.has(id)) map.set(id, label(promo));
+      }
+    }
+    return map;
+  }, [activePromotions, products]);
 
   const allRows: Row[] = useMemo(
     () => [
@@ -183,6 +226,8 @@ export default function CollectionsPanel() {
     setMinPriceFilter('');
     setMaxPriceFilter('');
     setPercentOffFilter('');
+    setVariantExclusions({});
+    setExpandedProductIds(new Set());
     setOpen(true);
   };
 
@@ -200,11 +245,14 @@ export default function CollectionsPanel() {
     setMinPriceFilter('');
     setMaxPriceFilter('');
     setPercentOffFilter('');
+    setVariantExclusions({});
+    setExpandedProductIds(new Set());
     setOpen(true);
     setLoadingProducts(true);
     try {
-      const { product_ids } = await fetchAdminCollection(c.id);
+      const { product_ids, variant_exclusions } = await fetchAdminCollection(c.id);
       setSelectedProductIds(product_ids);
+      setVariantExclusions(variant_exclusions);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load collection products');
     } finally {
@@ -216,6 +264,46 @@ export default function CollectionsPanel() {
     setSelectedProductIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
+  const toggleProductExpanded = (id: string) => {
+    setExpandedProductIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  /** Every selectable variation of a product: its own base colour first
+   *  (key 'base'), then each `product_variants` colour (key = that
+   *  variant's slug). Products with no added colour variants just get the
+   *  one 'base' entry, so the expand toggle only ever shows for products
+   *  that actually have more than one. */
+  const variationsFor = (p: (typeof products)[number]) => {
+    const list: { key: string; color: string; image?: string | null }[] = [
+      { key: 'base', color: p.colors?.[0] || p.name, image: p.images?.[0] },
+    ];
+    for (const v of p.variant_list ?? []) {
+      list.push({ key: v.slug, color: v.color || v.slug, image: v.image });
+    }
+    return list;
+  };
+
+  const isVariantIncluded = (productId: string, variantKey: string) =>
+    !(variantExclusions[productId] ?? []).includes(variantKey);
+
+  const toggleVariant = (productId: string, variantKey: string) => {
+    setVariantExclusions((prev) => {
+      const current = prev[productId] ?? [];
+      const next = current.includes(variantKey)
+        ? current.filter((k) => k !== variantKey)
+        : [...current, variantKey];
+      const updated = { ...prev };
+      if (next.length > 0) updated[productId] = next;
+      else delete updated[productId];
+      return updated;
+    });
+  };
+
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
@@ -224,6 +312,11 @@ export default function CollectionsPanel() {
     }
     setSaving(true);
     try {
+      const selectedIdSet = new Set(selectedProductIds);
+      const trimmedExclusions: Record<string, string[]> = {};
+      for (const [productId, keys] of Object.entries(variantExclusions)) {
+        if (selectedIdSet.has(productId) && keys.length > 0) trimmedExclusions[productId] = keys;
+      }
       const payload = {
         name: name.trim(),
         slug: slug.trim() || slugify(name),
@@ -232,6 +325,7 @@ export default function CollectionsPanel() {
         show_on_homepage: showOnHomepage,
         show_bogo_badge: showBogoBadge,
         product_ids: selectedProductIds,
+        variant_exclusions: trimmedExclusions,
       };
       if (editing) {
         await updateAdminCollection(editing.id, payload);
@@ -616,47 +710,117 @@ export default function CollectionsPanel() {
                   ))}
                 </div>
               )}
-              <div className="max-h-56 overflow-y-auto rounded-md border border-border/60">
+              <div className="max-h-72 overflow-y-auto rounded-md border border-border/60">
                 {loadingProducts ? (
                   <p className="px-3 py-4 text-center text-sm text-muted-foreground">Loading products…</p>
                 ) : filteredProducts.length === 0 ? (
                   <p className="px-3 py-4 text-center text-sm text-muted-foreground">No products match.</p>
                 ) : (
-                  filteredProducts.map((p) => (
-                    <label
-                      key={p.id}
-                      className="flex cursor-pointer items-center gap-3 border-b border-border/40 px-3 py-2 text-sm last:border-b-0 hover:bg-muted/40"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedProductIds.includes(p.id)}
-                        onChange={() => toggleProduct(p.id)}
-                        className="h-4 w-4 shrink-0 accent-primary"
-                      />
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={p.default_variant_image || p.images?.[0] || ''}
-                        alt=""
-                        className="h-10 w-10 shrink-0 rounded-md border border-border/60 bg-muted object-cover"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.visibility = 'hidden';
-                        }}
-                      />
-                      <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate">{p.name}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {p.mrp && p.mrp > p.price ? (
-                            <>
-                              <span className="font-medium text-secondary">₹{p.price}</span>{' '}
-                              <span className="line-through">₹{p.mrp}</span>
-                            </>
-                          ) : (
-                            <span className="font-medium">₹{p.price}</span>
+                  filteredProducts.map((p) => {
+                    const variations = variationsFor(p);
+                    const hasVariations = variations.length > 1;
+                    const isExpanded = expandedProductIds.has(p.id);
+                    const promoLabel = promoLabelByProductId.get(p.id);
+                    return (
+                      <div key={p.id} className="border-b border-border/40 last:border-b-0">
+                        <label className="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm hover:bg-muted/40">
+                          <input
+                            type="checkbox"
+                            checked={selectedProductIds.includes(p.id)}
+                            onChange={() => toggleProduct(p.id)}
+                            className="h-4 w-4 shrink-0 accent-primary"
+                          />
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={p.default_variant_image || p.images?.[0] || ''}
+                            alt=""
+                            className="h-10 w-10 shrink-0 rounded-md border border-border/60 bg-muted object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.visibility = 'hidden';
+                            }}
+                          />
+                          <span className="flex min-w-0 flex-1 flex-col">
+                            <span className="flex items-center gap-1.5 truncate">
+                              <span className="truncate">{p.name}</span>
+                              {promoLabel && (
+                                <span
+                                  title="This product is already covered by an active promotion — adding it here too may stack/duplicate the offer."
+                                  className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800"
+                                >
+                                  <Gift className="h-3 w-3" />
+                                  {promoLabel}
+                                </span>
+                              )}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {p.mrp && p.mrp > p.price ? (
+                                <>
+                                  <span className="font-medium text-secondary">₹{p.price}</span>{' '}
+                                  <span className="line-through">₹{p.mrp}</span>
+                                </>
+                              ) : (
+                                <span className="font-medium">₹{p.price}</span>
+                              )}
+                            </span>
+                          </span>
+                          {hasVariations && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                toggleProductExpanded(p.id);
+                              }}
+                              title={`${variations.length} colour variations`}
+                              className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                            </button>
                           )}
-                        </span>
-                      </span>
-                    </label>
-                  ))
+                        </label>
+                        {hasVariations && isExpanded && (
+                          <div className="space-y-1 border-t border-border/30 bg-muted/20 px-3 py-2 pl-11">
+                            <p className="text-[11px] text-muted-foreground">
+                              Untick a colour to leave it out of this collection while keeping the
+                              rest of the product in.
+                            </p>
+                            {variations.map((v) => (
+                              <label
+                                key={v.key}
+                                className="flex cursor-pointer items-center gap-2 py-0.5 text-xs"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isVariantIncluded(p.id, v.key)}
+                                  disabled={!selectedProductIds.includes(p.id)}
+                                  onChange={() => toggleVariant(p.id, v.key)}
+                                  className="h-3.5 w-3.5 shrink-0 accent-primary disabled:opacity-40"
+                                />
+                                {v.image && (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={v.image}
+                                    alt=""
+                                    className="h-6 w-6 shrink-0 rounded border border-border/60 bg-muted object-cover"
+                                    onError={(e) => {
+                                      (e.target as HTMLImageElement).style.visibility = 'hidden';
+                                    }}
+                                  />
+                                )}
+                                <span className={selectedProductIds.includes(p.id) ? '' : 'text-muted-foreground'}>
+                                  {v.color}
+                                  {v.key === 'base' && <span className="text-muted-foreground"> (default)</span>}
+                                </span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>

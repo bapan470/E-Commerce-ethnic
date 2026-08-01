@@ -38,14 +38,24 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 
     const { data: links, error: linksErr } = await admin
       .from('collection_products')
-      .select('product_id')
+      .select('product_id, excluded_variant_slugs')
       .eq('collection_id', params.id)
       .order('position', { ascending: true });
     if (linksErr) throw linksErr;
 
+    // Only include entries that actually exclude something, so the client
+    // doesn't have to special-case an empty array per product.
+    const variantExclusions: Record<string, string[]> = {};
+    for (const l of links ?? []) {
+      if (l.excluded_variant_slugs && l.excluded_variant_slugs.length > 0) {
+        variantExclusions[l.product_id] = l.excluded_variant_slugs;
+      }
+    }
+
     return NextResponse.json({
       collection,
       product_ids: (links ?? []).map((l) => l.product_id),
+      variant_exclusions: variantExclusions,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to load collection';
@@ -101,14 +111,28 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
 
     if (Array.isArray(body?.product_ids)) {
       const productIds: string[] = body.product_ids.filter((id: unknown) => typeof id === 'string');
+      // Per-product list of excluded variation slugs ('base' for the
+      // product's own colour, otherwise a `product_variants.slug`) — lets
+      // the admin drop specific colour variations from a product without
+      // dropping the whole product. See the picker in collections-panel.tsx.
+      const variantExclusions: Record<string, unknown> =
+        body?.variant_exclusions && typeof body.variant_exclusions === 'object' ? body.variant_exclusions : {};
+
       const { error: deleteErr } = await admin.from('collection_products').delete().eq('collection_id', params.id);
       if (deleteErr) throw deleteErr;
       if (productIds.length > 0) {
-        const rows = productIds.map((product_id, idx) => ({
-          collection_id: params.id,
-          product_id,
-          position: idx,
-        }));
+        const rows = productIds.map((product_id, idx) => {
+          const raw = variantExclusions[product_id];
+          const excluded_variant_slugs = Array.isArray(raw)
+            ? raw.filter((s: unknown): s is string => typeof s === 'string')
+            : [];
+          return {
+            collection_id: params.id,
+            product_id,
+            position: idx,
+            excluded_variant_slugs,
+          };
+        });
         const { error: insertErr } = await admin.from('collection_products').insert(rows);
         if (insertErr) throw insertErr;
       }

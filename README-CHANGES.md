@@ -1,82 +1,41 @@
-# Admin > Collections — naya feature
+# Collections product picker — variations + existing-promotion badge
 
-## Kya bana
+## Kya add hua
 
-**Admin sidebar me naya tab: "Collections"** (Catalog group me, Categories ke
-neeche). Ye vendor collections se alag hai — ye poori tarah admin-managed
-hain, koi vendor inhe touch nahi kar sakta.
+1. **Har product ki colour variations picker me dikhengi**
+   - `components/admin/collections-panel.tsx` me har product row ke saamne ek chevron (▶) hai — agar us product ki 1 se zyada colour hain (base + `product_variants`), to click karke expand kar sakte ho.
+   - Expand hone par har colour apne swatch/photo ke saath ek checkbox me dikhta hai — kisi bhi colour ko untick kar sakte ho, matlab wo colour is collection me nahi jayega, baaki colours + product collection me rahenge.
+   - Product ka main checkbox off karne par uski saari variation-choices bhi ignore ho jati hain (poora product hi collection se bahar).
 
-Panel me hai:
-- **"Add New Collection" button** — naam, slug (auto-generate hota hai naam
-  se, chaho to manually bhi de sakte ho), description, Active/Inactive
-  toggle, aur ek **product picker** (search + checkbox list) jisse products
-  select karke collection me daal sakte ho.
-- **Product count** — har collection row me kitne products hain wo dikhta
-  hai.
-- **Search box** — name/slug/description se filter.
-- **Filter tabs** — All / Active / Inactive.
-- Har collection ka apna public link `/collection/[slug]` bhi row me
-  clickable hai.
-- Edit aur Delete dono options hain (delete se sirf grouping hatti hai,
-  products delete nahi hote).
+2. **"Buy X Get Y" badge — pehle se covered products pe**
+   - Picker active promotions fetch karta hai (`/api/promotions/active`).
+   - Agar koi product pehle se kisi live "Buy X Get Y" promotion me cover ho raha hai (scope = 'all', ya scope = 'collection' jiski product-list me ye product hai), to uske naam ke saamne ek amber badge dikhta hai — jaise "🎁 Buy 2 Get 1".
+   - Isse aap galti se same product ko doosri BOGO collection me dobara select nahi karoge.
 
-## Kaise kaam karta hai (technical)
+## Files jo change hue
 
-1. **Naya DB migration**: `supabase/migrations/20260814000000_admin_collections.sql`
-   - `collections` table (id, name, slug, description, is_active, timestamps)
-   - `collection_products` table (collection_id + product_id junction, with
-     position for ordering)
-   - Dono tables par RLS on hai lekin **koi public/authenticated policy nahi**
-     — matlab sirf service-role (yani sirf `/api/admin/collections/*` jo
-     admin-login cookie check karta hai) inhe touch kar sakta hai. Vendors
-     table jaisa hi secure pattern.
-   - **Isko bhi Supabase SQL editor me run karna hoga**, tabhi ye feature
-     kaam karega (jaise pichli baar bataya tha vendor storefront migration
-     ke liye).
+- `supabase/migrations/20260909000000_collection_product_variant_exclusions.sql` — **NAYA MIGRATION**. `collection_products` table me `excluded_variant_slugs text[] NOT NULL DEFAULT '{}'` column add karta hai. Isse koi existing row/behaviour break nahi hota (default empty array = pehle jaisa, sab variations included).
+- `app/api/admin/collections/route.ts` — POST (create collection) ab `variant_exclusions` payload accept karke store karta hai.
+- `app/api/admin/collections/[id]/route.ts` — GET (edit dialog load) ab `variant_exclusions` bhi return karta hai; PUT (save) ab isse store karta hai.
+- `lib/admin-collections-api.ts` — types/functions update, `variant_exclusions` field add.
+- `lib/types.ts` — `Product` type me naya `variant_list` field (per-variant slug/color/image), taaki admin UI har colour ko alag se address kar sake.
+- `lib/products-api.ts` — `mapRowToProduct()` ab `variant_list` populate karta hai.
+- `components/admin/collections-panel.tsx` — poora UI change: expand/collapse variations, per-colour checkboxes, promotion badge.
 
-2. **Admin API**: `app/api/admin/collections/route.ts` (list + create) aur
-   `app/api/admin/collections/[id]/route.ts` (get one with product ids,
-   update, delete). Dono admin-session cookie check karte hain — bina admin
-   login ke koi bhi request 401 milegi.
+## IMPORTANT — migration chalana zaroori hai
 
-3. **Public page reuse**: `/collection/[slug]` route (jo pichli baar vendor
-   ke liye bana tha) ab **dono serve karta hai** — pehle vendor slug check
-   karta hai, agar nahi mila to admin collection slug check karta hai (sirf
-   Active collections dikhti hain, Inactive 404 dega). Same rating-total
-   calculation (live reviews table se) admin collections ke liye bhi apply
-   hoti hai — koi extra toggle nahi lagaya kyunki admin collection ka koi
-   "vendor" nahi hai jiske liye hide karna ho.
+Push karne ke baad, Supabase project par ye migration file zaroor chalao (SQL editor me paste kar do, ya `supabase db push` / migration workflow jo aap use karte ho):
 
-## Files is zip me
-```
-app/admin/page.tsx                                  (Collections panel register kiya)
-app/api/admin/collections/route.ts                  (naya)
-app/api/admin/collections/[id]/route.ts              (naya)
-app/api/collection/[slug]/route.ts                   (extended — admin collections bhi serve karta hai)
-app/collection/[slug]/collection-page-client.tsx      (pichli baar se, no change is round)
-app/collection/[slug]/page.tsx                        (pichli baar se, no change is round)
-components/admin/admin-shell.tsx                      (naya sidebar item: Collections)
-components/admin/collections-panel.tsx                (naya — poora UI)
-components/admin/vendors-panel.tsx                    (pichli baar se)
-components/product/product-carousel.tsx               (pichli baar se)
-components/product/vendor-collection.tsx              (pichli baar se)
-lib/admin-collections-api.ts                          (naya — client fetch helpers)
-lib/types.ts                                          (naya AdminCollectionRow type add kiya)
-lib/vendor-storefront-api.ts                           (pichli baar se)
-supabase/migrations/20260814000000_admin_collections.sql   (naya — RUN KARNA ZAROORI HAI)
-changes.diff                                          (poora diff, rename-aware)
+```sql
+ALTER TABLE collection_products
+  ADD COLUMN IF NOT EXISTS excluded_variant_slugs text[] NOT NULL DEFAULT '{}';
 ```
 
-## Apply kaise karein
-```bash
-git apply changes.diff
-```
-Fir zaroori: **Supabase SQL editor me `20260814000000_admin_collections.sql`
-run karna na bhoolein**, warna Admin > Collections tab khulega lekin
-save/list requests fail hongi.
+Isके bina PUT/POST `/api/admin/collections*` errors dega (column not found), kyunki naya code is column ko likhne/padhne ki koshish karega.
 
-```bash
-git add -A
-git commit -m "Add admin-managed Collections (separate from vendor collections)"
-git push
-```
+## Scope note (jo isme included NAHI hai)
+
+- Ye feature sirf **Admin > Collections ke "product picker" (Add/Edit Collection dialog)** ke liye hai — jaisa screenshot me dikhaya tha.
+- Public collection page (`/collection/[slug]`) abhi bhi poora product hi dikhata hai; kisi specific excluded colour ko storefront grid se chhupane wala logic add nahi kiya, kyunki colour-variants storefront-wide ek global product attribute hain (sirf ek collection ke andar chhupana product ke baaki jagah (shop/category/home) dikhne se conflict karta, aur `/api/collection/[slug]` abhi variant list fetch bhi nahi karta). Agar aapko wo bhi chahiye, bata dena — alag se scope karna padega.
+- Poore project ka `tsc --noEmit` aur `eslint` clean pass ho gaya hai in files ke sath.
+
