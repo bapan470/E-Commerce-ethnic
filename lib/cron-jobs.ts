@@ -32,6 +32,8 @@ import {
 } from '@/lib/email-templates';
 import { publishVendorProductWithAI } from '@/lib/vendor-ai-listing';
 import { checkPickupStatusForReturn, getReturnAutomationMode } from '@/lib/return-automation';
+import { trackDelhiveryShipment } from '@/lib/delhivery-api';
+import { recordReturnRiskIncident } from '@/lib/return-risk-api';
 
 // ----------------------------- Abandoned carts -----------------------------
 export async function runAbandonedCartsJob() {
@@ -494,4 +496,89 @@ export async function runReturnPickupTrackingJob() {
   }
 
   return { checked: returns.length, received, refunded, errors };
+}
+
+// ----------------------- Forward shipment live tracking -----------------------
+// Polls Delhivery for every order that has a forward-leg waybill
+// (orders.tracking_number, set by Admin -> "Create Shipment") and isn't
+// already in a terminal state, then writes the plain-language status
+// into orders.delivery_status so both the Admin panel and the Vendor
+// dashboard (app/api/vendor/orders — order-level only, no customer
+// data) can show a live "where is it" badge without either of them
+// calling Delhivery directly.
+//
+// The FIRST time a shipment's status reads as RTO (Delhivery couldn't
+// deliver and is sending it back), this also records a return-risk
+// incident against the customer's phone (lib/return-risk-api.ts) — the
+// `delivery_status !== 'rto_initiated' && delivery_status !== 'rto_delivered'`
+// guard below makes sure that only happens once per order, not on every
+// daily poll while the RTO parcel is still in transit back.
+export async function runForwardShipmentTrackingJob() {
+  const supabase = getSupabaseAdmin();
+
+  const { data: allTracked, error } = await supabase
+    .from('orders')
+    .select('id, customer_phone, tracking_number, status, delivery_status')
+    .not('tracking_number', 'is', null);
+  if (error) throw error;
+
+  // Filtered in JS, not SQL: a plain `.not('delivery_status', 'in', ...)`
+  // would also exclude every row where delivery_status is still NULL
+  // (SQL's `NULL NOT IN (...)` is NULL, not true) — which is exactly the
+  // freshly-shipped orders this job most needs to check.
+  const orders = (allTracked || []).filter(
+    (o) => o.delivery_status !== 'delivered' && o.delivery_status !== 'rto_delivered'
+  );
+
+  if (orders.length === 0) {
+    return { checked: 0, delivered: 0, rto: 0, errors: [] as string[] };
+  }
+
+  let delivered = 0;
+  let rto = 0;
+  const errors: string[] = [];
+
+  for (const order of orders) {
+    try {
+      const tracking = await trackDelhiveryShipment(order.tracking_number as string);
+      await supabase
+        .from('orders')
+        .update({ delivery_last_checked_at: new Date().toISOString() })
+        .eq('id', order.id);
+
+      if (!tracking.tracked || !tracking.currentStatus) continue;
+
+      const statusText = tracking.currentStatus.toLowerCase();
+      let nextStatus = order.delivery_status;
+
+      if (statusText.includes('rto')) {
+        // Delhivery shows a distinct "RTO Delivered" once it's actually
+        // back at our warehouse, vs just "RTO Initiated"/"in transit" —
+        // either way it's already a lost/returned forward shipment.
+        nextStatus = statusText.includes('deliver') ? 'rto_delivered' : 'rto_initiated';
+      } else if (statusText.includes('deliver')) {
+        nextStatus = 'delivered';
+      } else if (statusText.includes('transit') || statusText.includes('dispatch') || statusText.includes('pending')) {
+        nextStatus = 'in_transit';
+      }
+
+      if (nextStatus === order.delivery_status) continue;
+
+      await supabase
+        .from('orders')
+        .update({ delivery_status: nextStatus, delivery_status_updated_at: new Date().toISOString() })
+        .eq('id', order.id);
+
+      const wasAlreadyRto = order.delivery_status === 'rto_initiated' || order.delivery_status === 'rto_delivered';
+      if ((nextStatus === 'rto_initiated' || nextStatus === 'rto_delivered') && !wasAlreadyRto) {
+        rto++;
+        recordReturnRiskIncident(supabase, order.customer_phone, 'rto').catch(() => {});
+      }
+      if (nextStatus === 'delivered') delivered++;
+    } catch (err: any) {
+      errors.push(`order ${order.id}: ${err?.message || err}`);
+    }
+  }
+
+  return { checked: orders.length, delivered, rto, errors };
 }

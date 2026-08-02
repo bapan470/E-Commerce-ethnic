@@ -821,6 +821,14 @@ export default function CheckoutPage() {
           setPlacing(false);
           return;
         }
+        if (orderError.message?.includes('COD_BLOCKED_RETURN_RISK')) {
+          toast.error(
+            'Cash on Delivery is temporarily unavailable for this number due to past returns/RTOs. Please pay online to place this order.',
+            { duration: 8000 }
+          );
+          setPlacing(false);
+          return;
+        }
         throw orderError;
       }
       const internalOrderId = newOrderId as string;

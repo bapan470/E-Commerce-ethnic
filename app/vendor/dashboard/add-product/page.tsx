@@ -20,6 +20,7 @@ import { useCategories } from '@/lib/cart-context';
 import { fetchMyVendorProfile, submitVendorProduct, triggerVendorAIProcess } from '@/lib/vendor-api';
 import PhotographyGuidelines from '@/components/vendor/photography-guidelines';
 import VendorPriceBreakdown from '@/components/vendor/vendor-price-breakdown';
+import ReturnRtoStats from '@/components/vendor/return-rto-stats';
 
 const EMPTY_FORM = {
   name: '',
@@ -168,6 +169,10 @@ export default function AddVendorProductPage() {
         </Link>
         .
       </p>
+
+      <div className="mt-4">
+        <ReturnRtoStats />
+      </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_280px]">
         <form onSubmit={handleSubmit} className="space-y-5 rounded-lg border border-border/60 bg-card p-6">

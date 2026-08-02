@@ -27,6 +27,7 @@ import {
   type VendorOrderItemRow,
   type VendorOrderItemStage,
 } from '@/lib/vendor-api';
+import ReturnRtoStats from '@/components/vendor/return-rto-stats';
 
 const STAGE_META: Record<VendorOrderItemStage, { label: string; className: string }> = {
   placed: { label: 'New — Awaiting Your Response', className: 'bg-amber-50 text-amber-700 border-amber-200' },
@@ -39,6 +40,13 @@ const STAGE_META: Record<VendorOrderItemStage, { label: string; className: strin
   cancelled: { label: 'Cancelled', className: 'bg-red-50 text-red-700 border-red-200' },
   returned: { label: 'Returned', className: 'bg-red-50 text-red-700 border-red-200' },
   quality_hold: { label: 'On Quality Hold', className: 'bg-orange-50 text-orange-700 border-orange-200' },
+};
+
+const DELIVERY_STATUS_META: Record<string, { label: string; className: string }> = {
+  in_transit: { label: 'Live: On the way to customer', className: 'text-blue-700 font-medium' },
+  delivered: { label: 'Live: Delivered to customer', className: 'text-green-700 font-medium' },
+  rto_initiated: { label: 'Live: RTO — courier bringing it back', className: 'text-red-700 font-medium' },
+  rto_delivered: { label: 'Live: RTO — back at warehouse', className: 'text-red-700 font-medium' },
 };
 
 function AcceptDeadline({ deadline }: { deadline: string | null }) {
@@ -159,6 +167,20 @@ function OrderCard({
 
       {item.stage === 'placed' && <AcceptDeadline deadline={item.vendor_accept_deadline} />}
 
+      {item.delivery_status && (
+        <p className="mt-2 flex items-center gap-1.5 text-xs">
+          <Truck className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className={DELIVERY_STATUS_META[item.delivery_status]?.className || 'text-muted-foreground'}>
+            {DELIVERY_STATUS_META[item.delivery_status]?.label || item.delivery_status}
+          </span>
+          {item.delivery_status_updated_at && (
+            <span className="text-muted-foreground">
+              · updated {new Date(item.delivery_status_updated_at).toLocaleDateString('en-IN')}
+            </span>
+          )}
+        </p>
+      )}
+
       {/* "Ship to" — warehouse address only, never the customer's. */}
       <div className="mt-3 flex items-start gap-1.5 rounded-md border border-border/60 bg-muted/30 p-2.5 text-xs text-muted-foreground">
         <Warehouse className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -254,6 +276,10 @@ export default function VendorOrdersPage() {
       <p className="mt-1 text-sm text-muted-foreground">
         Only your own order items appear here — customer details are never shown to vendors.
       </p>
+
+      <div className="mt-4">
+        <ReturnRtoStats />
+      </div>
 
       {orders.length === 0 ? (
         <p className="mt-6 text-sm text-muted-foreground">No orders yet.</p>

@@ -34,6 +34,7 @@ const VENDOR_ORDER_ITEM_COLUMNS = [
   'pickup_photo_url',
   'created_at',
   'products(images)',
+  'orders(delivery_status, delivery_status_updated_at)',
 ].join(', ');
 
 export async function GET() {
@@ -89,6 +90,12 @@ export async function GET() {
       pickup_requested_at: row.pickup_requested_at,
       pickup_photo_url: row.pickup_photo_url,
       created_at: row.created_at,
+      // Live courier status (warehouse -> customer leg) — order-level
+      // only, no customer name/phone/address, same masking guarantee as
+      // the rest of this route. Null until Admin creates the forward
+      // Delhivery shipment for this order.
+      delivery_status: row.orders?.delivery_status ?? null,
+      delivery_status_updated_at: row.orders?.delivery_status_updated_at ?? null,
     }));
 
     return NextResponse.json({ orders });

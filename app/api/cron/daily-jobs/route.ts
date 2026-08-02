@@ -6,6 +6,7 @@ import {
   runVendorSettlementJob,
   runStuckVendorListingsJob,
   runReturnPickupTrackingJob,
+  runForwardShipmentTrackingJob,
 } from '@/lib/cron-jobs';
 
 export const dynamic = 'force-dynamic';
@@ -72,6 +73,12 @@ export async function GET(req: Request) {
     results.returnPickupTracking = await runReturnPickupTrackingJob();
   } catch (err: any) {
     results.returnPickupTracking = { error: err?.message || 'Failed' };
+  }
+
+  try {
+    results.forwardShipmentTracking = await runForwardShipmentTrackingJob();
+  } catch (err: any) {
+    results.forwardShipmentTracking = { error: err?.message || 'Failed' };
   }
 
   // Weekly settlement: only run it on Mondays so behaviour matches the

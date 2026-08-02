@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { getReturnRiskForPhones } from '@/lib/return-risk-api';
 
 export async function GET() {
   const cookie = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? null;
@@ -26,15 +27,24 @@ export async function GET() {
     if (orderIds.length > 0) {
       const { data: orders } = await supabase
         .from('orders')
-        .select('id, customer_name, customer_email, total_amount, items, payment_method')
+        .select('id, customer_name, customer_email, customer_phone, total_amount, items, payment_method')
         .in('id', orderIds);
       ordersById = Object.fromEntries((orders || []).map((o) => [o.id, o]));
     }
 
-    const enriched = (returns || []).map((r) => ({
-      ...r,
-      order: ordersById[r.order_id] || null,
-    }));
+    // Return/RTO risk per customer phone — powers the "2 returns -> 15
+    // day COD cooldown" badge on each return card (see
+    // lib/return-risk-api.ts for the rule).
+    const phones = Object.values(ordersById)
+      .map((o: any) => o.customer_phone)
+      .filter((p): p is string => !!p);
+    const riskByPhone = await getReturnRiskForPhones(supabase, phones);
+
+    const enriched = (returns || []).map((r) => {
+      const order = ordersById[r.order_id] || null;
+      const risk = order?.customer_phone ? riskByPhone[order.customer_phone] || null : null;
+      return { ...r, order, return_risk: risk };
+    });
 
     return NextResponse.json({ returns: enriched });
   } catch (err) {

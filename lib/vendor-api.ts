@@ -475,6 +475,11 @@ export interface VendorOrderItemRow {
   pickup_requested_at: string | null;
   pickup_photo_url: string | null;
   created_at: string;
+  /** Live Delhivery courier status for the warehouse -> customer leg —
+   *  'in_transit' | 'delivered' | 'rto_initiated' | 'rto_delivered' | null
+   *  (null until Admin books the forward shipment). */
+  delivery_status: string | null;
+  delivery_status_updated_at: string | null;
 }
 
 /** Every order item ever placed against this vendor's products — never
@@ -487,6 +492,25 @@ export async function fetchMyVendorOrders(): Promise<VendorOrderItemRow[]> {
   }
   const body = await res.json();
   return body.orders as VendorOrderItemRow[];
+}
+
+export interface VendorReturnRiskStats {
+  total_items: number;
+  return_count: number;
+  rto_count: number;
+  return_rate_percent: number | null;
+  rto_rate_percent: number | null;
+}
+
+/** This vendor's own aggregate return + RTO rate — no customer data,
+ *  see app/api/vendor/return-risk/route.ts. */
+export async function fetchMyReturnRiskStats(): Promise<VendorReturnRiskStats> {
+  const res = await fetch('/api/vendor/return-risk');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to load return/RTO stats');
+  }
+  return res.json();
 }
 
 /** Vendor accepts an order item -> stage 'vendor_accepted'. */

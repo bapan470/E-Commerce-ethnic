@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2, RotateCcw, Truck, IndianRupee } from 'lucide-react';
+import { Loader2, RotateCcw, Truck, IndianRupee, ShieldAlert } from 'lucide-react';
 import { formatINR } from '@/lib/format';
 import {
   fetchReturnAutomationSettings,
@@ -34,6 +34,12 @@ type ReturnRow = {
     customer_email?: string;
     total_amount?: number;
     payment_method?: string;
+  } | null;
+  return_risk?: {
+    return_count: number;
+    rto_count: number;
+    blocked_until: string | null;
+    is_blocked: boolean;
   } | null;
 };
 
@@ -302,6 +308,20 @@ function ReturnCard({ r, onUpdated }: { r: ReturnRow; onUpdated: () => void }) {
           <p className="mt-1 text-xs text-muted-foreground">
             Requested {new Date(r.created_at).toLocaleString('en-IN')}
           </p>
+          {r.return_risk && r.return_risk.return_count + r.return_risk.rto_count >= 2 && (
+            <span
+              className={`mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
+                r.return_risk.is_blocked ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+              }`}
+            >
+              <ShieldAlert className="h-3 w-3" />
+              {r.return_risk.return_count} return{r.return_risk.return_count === 1 ? '' : 's'} &middot;{' '}
+              {r.return_risk.rto_count} RTO{r.return_risk.rto_count === 1 ? '' : 's'}
+              {r.return_risk.is_blocked && r.return_risk.blocked_until && (
+                <> — COD paused till {new Date(r.return_risk.blocked_until).toLocaleDateString('en-IN')}</>
+              )}
+            </span>
+          )}
         </div>
         {r.order?.total_amount !== undefined && (
           <div className="text-sm font-semibold">{formatINR(r.order.total_amount)}</div>

@@ -19,6 +19,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { createDelhiveryReversePickup, trackDelhiveryShipment } from './delhivery-api';
 import { refundRazorpayPayment } from './razorpay-refund';
+import { recordReturnRiskIncident } from './return-risk-api';
 import { sendEmail } from './email';
 import {
   returnPickupScheduledEmail,
@@ -162,10 +163,16 @@ export async function processRefundForReturn(
   if (ret.refund_status === 'refunded') {
     return { success: true, refunded: true };
   }
+  if (ret.refund_status === 'not_applicable') {
+    return { success: true, refunded: false }; // already recorded — don't double-count the risk incident
+  }
 
   const needsRefund = order.payment_method === 'online' && !!order.razorpay_payment_id;
   if (!needsRefund) {
     await admin.from('returns').update({ refund_status: 'not_applicable' }).eq('id', ret.id);
+    if (ret.type === 'return') {
+      recordReturnRiskIncident(admin, order.customer_phone, 'return').catch(() => {});
+    }
     return { success: true, refunded: false };
   }
 
@@ -194,6 +201,13 @@ export async function processRefundForReturn(
       resolved_at: new Date().toISOString(),
     })
     .eq('id', ret.id);
+
+  // Return-risk tracking: only "return" (not "exchange") counts as a
+  // return-risk incident — an exchange isn't money/stock lost the way a
+  // refunded return or an RTO is.
+  if (ret.type === 'return') {
+    recordReturnRiskIncident(admin, order.customer_phone, 'return').catch(() => {});
+  }
 
   if (order.customer_email) {
     const { subject, html } = returnRefundProcessedEmail({
