@@ -250,11 +250,13 @@ export default function EditVendorProductPage() {
                 is YOUR price, not the website price — pickup + delivery shipping and the platform
                 markup get added on top to get the final website price (see below).
               </p>
-              <VendorPriceBreakdown
-                vendorPrice={form.vendor_expected_price ? Number(form.vendor_expected_price) : null}
-              />
             </div>
           </div>
+
+          {/* Price breakdown — full width so the tiles/lines have room to breathe */}
+          <VendorPriceBreakdown
+            vendorPrice={form.vendor_expected_price ? Number(form.vendor_expected_price) : null}
+          />
 
           {/* Dead stock checkbox */}
           <div className="flex items-start gap-2">

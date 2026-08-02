@@ -27,6 +27,19 @@ website price = (vendor's price + pickup shipping + delivery shipping) × (1 + m
   they can see exactly where the difference between "Your Price" and the
   website price comes from.
 
+## v2 — layout fix
+The price breakdown card was originally squeezed into the same half-width
+column as the "Your Price" input, next to "Quantity" — on the vendor
+form's already-narrow left column this made everything cramped (tiny
+tiles, wrapped text, numbers overlapping). Fixed by:
+- Moving the breakdown card **out of the 2-column grid** so it spans the
+  full form width, right below the Quantity/Price row, on all 3 vendor
+  pages.
+- Redesigned the card itself: clearer heading, more padding, line items
+  that don't crowd together, and the 3 markup tiles (Entry/Mid/Premium)
+  now stack in a single column on very narrow screens instead of always
+  forcing 3-across.
+
 ## Files changed
 - `lib/pincode-api.ts` — added `vendor_pickup_shipping_cost` to `ShippingSettings`.
 - `lib/vendor-pricing.ts` **(new)** — the calculator: `computeVendorPriceBreakdown()`.
@@ -43,8 +56,9 @@ website price = (vendor's price + pickup shipping + delivery shipping) × (1 + m
 - `app/vendor/dashboard/add-product/page.tsx`,
   `app/vendor/dashboard/products/add-product/page.tsx`,
   `app/vendor/dashboard/products/edit-product/[id]/page.tsx` — swapped in
-  the new breakdown component, relabeled "Expected Price" → "Your Price"
-  with copy explaining it's not the website price.
+  the new breakdown component (now full-width, see "v2" above), relabeled
+  "Expected Price" → "Your Price" with copy explaining it's not the
+  website price.
 - `components/admin/settings-panel.tsx` — added the input field for the
   new `vendor_pickup_shipping_cost` setting.
 
@@ -61,7 +75,8 @@ website price = (vendor's price + pickup shipping + delivery shipping) × (1 + m
    those now drive the vendor-side website price too.
 
 ## What I verified
-- Full project `tsc --noEmit` — zero type errors.
+- Full project `tsc --noEmit` — zero type errors (checked again after the
+  layout fix).
 - `next build` couldn't finish in my sandbox only because Google Fonts
   (`fonts.googleapis.com`) isn't reachable in this network-restricted
   environment — unrelated to this change. Worth a normal `npm run build`

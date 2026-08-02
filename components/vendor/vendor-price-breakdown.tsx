@@ -18,10 +18,9 @@ import { formatINR } from '@/lib/format';
 // showing what THEY keep after the price is fixed, it shows how their
 // asking price turns INTO the actual website price.
 //
-// Deliberately makes explicit that "Your Price" and "Website Price"
-// are two different numbers — that used to not be true (a vendor's
-// price was saved straight into `price` with nothing added), which
-// meant the platform never actually recovered shipping or commission.
+// Deliberately rendered full-width by the caller (not squeezed into a
+// half-width form column) — the tiles and line items need real room,
+// see app/vendor/dashboard/*/add-product/page.tsx and edit-product.
 export default function VendorPriceBreakdown({ vendorPrice }: { vendorPrice: number | null }) {
   const [settings, setSettings] = useState<ShippingSettings>(DEFAULT_SHIPPING_SETTINGS);
   const [fee, setFee] = useState<HandlingFeeSettings | null>(null);
@@ -42,7 +41,7 @@ export default function VendorPriceBreakdown({ vendorPrice }: { vendorPrice: num
   const b = computeVendorPriceBreakdown(vendorPrice, settings);
 
   // What you'd net if the item sells at the final website price —
-  // same commission formula as VendorPayoutPreview, just applied to
+  // same commission formula as the old payout preview, just applied to
   // the real website price instead of your raw asking price.
   const commissionFee = fee
     ? Math.min(
@@ -52,63 +51,69 @@ export default function VendorPriceBreakdown({ vendorPrice }: { vendorPrice: num
     : 0;
   const payable = fee ? Math.max(0, b.websitePrice - commissionFee) : null;
 
+  const rows: { icon?: boolean; label: string; value: string; muted?: boolean }[] = [
+    { label: 'Your price', value: formatINR(b.vendorPrice) },
+    { icon: true, label: 'Pickup shipping — your location → our warehouse', value: `+${formatINR(b.inboundShipping)}`, muted: true },
+    { icon: true, label: 'Delivery shipping — warehouse → customer', value: `+${formatINR(b.outboundShipping)}`, muted: true },
+  ];
+
   return (
-    <div className="mt-2 space-y-3 rounded-lg border border-border/60 bg-card p-4 text-sm">
-      <div className="space-y-1 text-xs text-muted-foreground">
-        <div className="flex items-center justify-between">
-          <span>Your price</span>
-          <span className="font-medium text-foreground">{formatINR(b.vendorPrice)}</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="flex items-center gap-1">
-            <Truck className="h-3 w-3" /> Pickup shipping (your location → our warehouse)
-          </span>
-          <span>+{formatINR(b.inboundShipping)}</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="flex items-center gap-1">
-            <Truck className="h-3 w-3" /> Delivery shipping (warehouse → customer)
-          </span>
-          <span>+{formatINR(b.outboundShipping)}</span>
-        </div>
-        <div className="flex items-center justify-between border-t border-border/60 pt-1 font-medium text-foreground">
-          <span>Cost basis (your price + both shipping legs)</span>
-          <span>{formatINR(b.costBasis)}</span>
+    <div className="rounded-xl border border-border/60 bg-card p-5">
+      <h3 className="mb-3 text-sm font-semibold text-foreground">How your price becomes the website price</h3>
+
+      <div className="space-y-2.5">
+        {rows.map((row) => (
+          <div key={row.label} className="flex items-start justify-between gap-4 text-sm">
+            <span className={`flex items-start gap-1.5 ${row.muted ? 'text-muted-foreground' : 'text-foreground'}`}>
+              {row.icon && <Truck className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
+              {row.label}
+            </span>
+            <span className={`shrink-0 whitespace-nowrap font-medium ${row.muted ? 'text-muted-foreground' : 'text-foreground'}`}>
+              {row.value}
+            </span>
+          </div>
+        ))}
+        <div className="flex items-center justify-between gap-4 border-t border-border/60 pt-2.5 text-sm font-semibold text-foreground">
+          <span>Cost basis (price + both shipping legs)</span>
+          <span className="shrink-0 whitespace-nowrap">{formatINR(b.costBasis)}</span>
         </div>
       </div>
 
-      <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
-        <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium">
-          <TrendingUp className="h-3.5 w-3.5" />
-          <span>Website Price (what customers actually see)</span>
+      <div className="mt-4 rounded-lg border border-primary/30 bg-primary/5 p-4">
+        <div className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-foreground">
+          <TrendingUp className="h-4 w-4 text-primary" />
+          <span>Website Price — what customers actually see</span>
         </div>
-        <div className="grid grid-cols-3 gap-2 text-center text-[11px]">
-          <div className="rounded border border-border/60 bg-background px-2 py-1.5">
-            <div className="text-muted-foreground">Entry +{settings.entry_markup_percent}%</div>
-            <div className="font-semibold">{formatINR(b.entryPrice)}</div>
+
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className="rounded-lg border border-border/60 bg-background px-3 py-2.5 text-center">
+            <div className="text-[11px] text-muted-foreground">Entry +{settings.entry_markup_percent}%</div>
+            <div className="mt-0.5 font-serif text-base font-semibold text-foreground">{formatINR(b.entryPrice)}</div>
           </div>
-          <div className="rounded border-2 border-primary bg-background px-2 py-1.5">
-            <div className="text-primary">Mid-range +{settings.mid_markup_percent}%</div>
-            <div className="font-serif text-base font-bold text-primary">{formatINR(b.midPrice)}</div>
+          <div className="rounded-lg border-2 border-primary bg-background px-3 py-2.5 text-center">
+            <div className="text-[11px] font-medium text-primary">Mid-range +{settings.mid_markup_percent}%</div>
+            <div className="mt-0.5 font-serif text-lg font-bold text-primary">{formatINR(b.midPrice)}</div>
           </div>
-          <div className="rounded border border-border/60 bg-background px-2 py-1.5">
-            <div className="text-muted-foreground">Premium +{settings.premium_markup_percent}%</div>
-            <div className="font-semibold">{formatINR(b.premiumPrice)}</div>
+          <div className="rounded-lg border border-border/60 bg-background px-3 py-2.5 text-center">
+            <div className="text-[11px] text-muted-foreground">Premium +{settings.premium_markup_percent}%</div>
+            <div className="mt-0.5 font-serif text-base font-semibold text-foreground">{formatINR(b.premiumPrice)}</div>
           </div>
         </div>
-        <p className="mt-2 text-[11px] text-muted-foreground">
-          Your product will be listed at <span className="font-semibold text-foreground">{formatINR(b.websitePrice)}</span> on
-          the website — not the {formatINR(b.vendorPrice)} you entered. The difference covers pickup + delivery
-          shipping and the platform markup.
+
+        <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+          Your product will be listed at{' '}
+          <span className="font-semibold text-foreground">{formatINR(b.websitePrice)}</span> on the website — not
+          the {formatINR(b.vendorPrice)} you entered. The difference covers pickup + delivery shipping and the
+          platform markup.
         </p>
       </div>
 
       {payable !== null && fee && (
-        <div className="flex items-start gap-1.5 rounded-md border border-emerald-200/70 bg-emerald-50/60 px-3 py-2 text-xs leading-snug text-emerald-700">
-          <Wallet className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <div className="mt-3 flex items-start gap-2 rounded-lg border border-emerald-200/70 bg-emerald-50/60 px-3.5 py-3 text-xs leading-relaxed text-emerald-700">
+          <Wallet className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
-            You&apos;ll get <span className="font-semibold">{formatINR(payable)}</span> per piece once this sells and
-            is delivered ({fee.handling_fee_percent}% commission
+            You&apos;ll get <span className="font-semibold">{formatINR(payable)}</span> per piece once this sells
+            and is delivered ({fee.handling_fee_percent}% commission
             {fee.handling_fee_base > 0 ? ` + ${formatINR(fee.handling_fee_base)} handling fee` : ''} on the website
             price). This is only an estimate — the final amount is locked in when the order is delivered.
           </span>
