@@ -43,6 +43,10 @@ export interface VendorProfile {
    *  same pages still show the vendor's product listing, just without
    *  that rating block. */
   show_public_rating: boolean;
+  /** How many days a returned/RTO unit sits in the warehouse before it's
+   *  auto-flagged in Return to Vendor. Vendor-configurable, 15 (default) to
+   *  30 — see update_vendor_stock_hold_days(). */
+  stock_hold_days: number;
 }
 
 export interface VendorApplicationInput {
@@ -654,9 +658,32 @@ export interface ReturnToVendorRow {
   product_name: string;
   order_item_id: string | null;
   quantity: number | null;
-  reason: 'never_sold_90d' | 'cancelled_returned_60d' | 'offboarding';
+  reason:
+    | 'never_sold_90d'
+    | 'cancelled_returned_60d'
+    | 'offboarding'
+    | 'returned_2x_consent'
+    | 'unsold_after_return';
   note: string | null;
   created_at: string;
+  /** Only set for reason='unsold_after_return' — the vendor's hold deadline
+   *  that was already crossed when this row got created. */
+  hold_deadline: string | null;
+}
+
+export interface StockHoldRow {
+  id: string;
+  vendor_id: string;
+  business_name: string;
+  stock_hold_days_setting: number;
+  product_id: string | null;
+  product_name: string;
+  order_item_id: string;
+  source: 'return' | 'rto';
+  returned_at: string;
+  hold_days: number;
+  hold_deadline: string;
+  status: 'holding' | 'resold' | 'flagged' | 'returned';
 }
 
 export interface RestockSuggestionRow {
@@ -710,6 +737,48 @@ export const fetchReturnToVendorQueue = () => fetchVendorOps<ReturnToVendorRow>(
 export const fetchRestockSuggestions = () => fetchVendorOps<RestockSuggestionRow>('restock');
 export const fetchVendorPerformance = () => fetchVendorOps<VendorPerformanceRow>('performance');
 export const fetchStaleInventory = () => fetchVendorOps<StaleInventoryRow>('stale');
+export const fetchStockHoldTimers = () => fetchVendorOps<StockHoldRow>('stock-holds');
+
+// ---------------------------------------------------------------------
+// Vendor's own "stock hold days" setting (Vendor > Settings) — how long
+// a returned/RTO unit of theirs sits in the warehouse before it's
+// auto-flagged in Return to Vendor. Min 15, max 30.
+// ---------------------------------------------------------------------
+
+export async function fetchMyStockHoldDays(): Promise<number> {
+  const res = await fetch('/api/vendor/settings');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to load settings');
+  }
+  const body = await res.json();
+  return body.stock_hold_days as number;
+}
+
+export async function updateMyStockHoldDays(days: number): Promise<number> {
+  const res = await fetch('/api/vendor/settings', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ stock_hold_days: days }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to update settings');
+  }
+  const body = await res.json();
+  return body.stock_hold_days as number;
+}
+
+/** Vendor's own active/overdue stock-hold timers (My Orders / Add Product page). */
+export async function fetchMyStockHoldTimers(): Promise<StockHoldRow[]> {
+  const res = await fetch('/api/vendor/stock-holds');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to load stock hold timers');
+  }
+  const body = await res.json();
+  return body.rows as StockHoldRow[];
+}
 
 /** Marks a Return-to-Vendor queue row as physically returned. */
 export async function markReturnToVendorResolved(id: string): Promise<void> {

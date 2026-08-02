@@ -281,6 +281,25 @@ export async function runVendorReturnTimersJob() {
   };
 }
 
+// ----------------------------- Vendor stock-hold timers -----------------------------
+// Opens a hold the moment a unit comes back to the warehouse (return or
+// RTO), auto-resolves it if a repeat order for the same product shows
+// up, and flags it into Return to Vendor once the vendor's own
+// configured hold window (15-30 days) runs out with nothing resold.
+// See supabase/migrations/20260912000000_vendor_stock_hold_and_unsold_return.sql
+export async function runVendorStockHoldScanJob() {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.rpc('run_vendor_return_hold_scan');
+  if (error) throw error;
+
+  const row = Array.isArray(data) ? data[0] : data;
+  return {
+    holds_opened: row?.holds_opened ?? 0,
+    holds_resolved_resold: row?.holds_resolved_resold ?? 0,
+    holds_flagged: row?.holds_flagged ?? 0,
+  };
+}
+
 // ----------------------------- Stuck vendor listings (safety net) -----------------------------
 // Vendor products go to 'pending_review' right after creation (or after an
 // edit), and are supposed to flip to 'live' once /api/vendor/ai-process/[id]

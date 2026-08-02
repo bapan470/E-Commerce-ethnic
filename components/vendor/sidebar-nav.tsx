@@ -8,6 +8,7 @@ import {
   PackageSearch,
   Wallet,
   ShieldCheck,
+  Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -17,6 +18,7 @@ const NAV = [
   { href: '/vendor/dashboard/orders', label: 'My Orders', icon: PackageSearch },
   { href: '/vendor/dashboard/earnings', label: 'Earnings', icon: Wallet },
   { href: '/vendor/dashboard/kyc', label: 'KYC Documents', icon: ShieldCheck },
+  { href: '/vendor/dashboard/settings', label: 'Settings', icon: Settings },
 ];
 
 export default function VendorSidebarNav({ businessName }: { businessName?: string }) {

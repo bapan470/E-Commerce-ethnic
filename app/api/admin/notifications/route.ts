@@ -11,7 +11,15 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 // count, so nothing here needs a dedicated read/unread column.
 export type AdminNotification = {
   id: string;
-  type: 'order' | 'contact_message' | 'support_ticket' | 'return' | 'restock' | 'abandoned_cart' | 'vendor_pickup';
+  type:
+    | 'order'
+    | 'contact_message'
+    | 'support_ticket'
+    | 'return'
+    | 'restock'
+    | 'abandoned_cart'
+    | 'vendor_pickup'
+    | 'vendor_return_pending';
   title: string;
   message: string;
   section: string;
@@ -28,7 +36,7 @@ export async function GET() {
   const supabase = getSupabaseAdmin();
 
   try {
-    const [ordersRes, contactRes, ticketsRes, returnsRes, restockRes, cartsRes, pickupRes] = await Promise.all([
+    const [ordersRes, contactRes, ticketsRes, returnsRes, restockRes, cartsRes, pickupRes, vendorReturnRes] = await Promise.all([
       supabase
         .from('orders')
         .select('id, customer_name, customer_email, total_amount, created_at')
@@ -76,6 +84,16 @@ export async function GET() {
         .not('pickup_requested_at', 'is', null)
         .order('pickup_requested_at', { ascending: false })
         .limit(20),
+      // Return to Vendor queue — same-product-returned-2x, unsold past
+      // the vendor's hold window, never-sold, etc. One task per pending
+      // row, with "how many days it's been sitting" baked into the
+      // message so the bell doubles as the days-pending indicator.
+      supabase
+        .from('return_to_vendor_queue')
+        .select('id, reason, note, created_at, vendors(business_name), products(name), order_items(product_name)')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(30),
     ]);
 
     const notifications: AdminNotification[] = [];
@@ -154,6 +172,31 @@ export async function GET() {
         message: `Book pickup for "${p.product_name}" (qty ${p.quantity}) — ${p.vendors?.business_name || 'vendor'} at ${p.vendors?.pickup_address || 'address on file'}`,
         section: 'vendors',
         created_at: p.pickup_requested_at,
+      });
+    });
+
+    const RTV_REASON_LABEL: Record<string, string> = {
+      never_sold_90d: 'Never sold 90+ din',
+      cancelled_returned_60d: 'Cancelled/Returned 60+ din',
+      offboarding: 'Vendor off-boarded',
+      returned_2x_consent: 'Returned/RTO 2x — same product',
+      unsold_after_return: "Unsold past vendor's hold window",
+    };
+
+    (vendorReturnRes.data || []).forEach((r: any) => {
+      const daysPending = Math.max(
+        0,
+        Math.floor((Date.now() - new Date(r.created_at).getTime()) / 86_400_000)
+      );
+      const productName = r.products?.name || r.order_items?.product_name || 'a product';
+      const reasonLabel = RTV_REASON_LABEL[r.reason] || r.reason;
+      notifications.push({
+        id: `vendor-return-${r.id}`,
+        type: 'vendor_return_pending',
+        title: 'Return to Vendor — pending',
+        message: `${productName} (${r.vendors?.business_name || 'vendor'}) — ${reasonLabel} · pending ${daysPending} din`,
+        section: 'vendor-ops',
+        created_at: r.created_at,
       });
     });
 

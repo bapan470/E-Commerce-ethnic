@@ -3,6 +3,7 @@ import {
   runAbandonedCartsJob,
   runEmailAutomationJob,
   runVendorReturnTimersJob,
+  runVendorStockHoldScanJob,
   runVendorSettlementJob,
   runStuckVendorListingsJob,
   runReturnPickupTrackingJob,
@@ -61,6 +62,12 @@ export async function GET(req: Request) {
     results.vendorReturnTimers = await runVendorReturnTimersJob();
   } catch (err: any) {
     results.vendorReturnTimers = { error: err?.message || 'Failed' };
+  }
+
+  try {
+    results.vendorStockHoldScan = await runVendorStockHoldScanJob();
+  } catch (err: any) {
+    results.vendorStockHoldScan = { error: err?.message || 'Failed' };
   }
 
   try {

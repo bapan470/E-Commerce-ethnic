@@ -32,7 +32,7 @@ export async function GET(req: Request) {
       const { data, error } = await admin
         .from('return_to_vendor_queue')
         .select(
-          'id, vendor_id, product_id, order_item_id, reason, note, status, created_at, resolved_at, vendors(business_name), products(name), order_items(product_name, quantity, stage)'
+          'id, vendor_id, product_id, order_item_id, reason, note, status, created_at, resolved_at, hold_deadline, vendors(business_name), products(name), order_items(product_name, quantity, stage)'
         )
         .eq('status', 'pending')
         .order('created_at', { ascending: true });
@@ -49,6 +49,39 @@ export async function GET(req: Request) {
         reason: row.reason,
         note: row.note,
         created_at: row.created_at,
+        hold_deadline: row.hold_deadline ?? null,
+      }));
+
+      return NextResponse.json({ rows });
+    }
+
+    // Vendor Ops -> "Stock Hold Timers" tab: every active/overdue hold
+    // (both still-holding = green countdown, and already-flagged =
+    // red overdue), so admin sees the full picture, not just the
+    // ones that already crossed into the queue.
+    if (type === 'stock-holds') {
+      const { data, error } = await admin
+        .from('vendor_return_holds')
+        .select(
+          'id, vendor_id, product_id, order_item_id, source, returned_at, hold_days, hold_deadline, status, vendors(business_name, stock_hold_days), products(name), order_items(product_name)'
+        )
+        .in('status', ['holding', 'flagged'])
+        .order('hold_deadline', { ascending: true });
+      if (error) throw error;
+
+      const rows = (data ?? []).map((row: any) => ({
+        id: row.id,
+        vendor_id: row.vendor_id,
+        business_name: row.vendors?.business_name ?? 'Unknown vendor',
+        stock_hold_days_setting: row.vendors?.stock_hold_days ?? 15,
+        product_id: row.product_id,
+        product_name: row.products?.name ?? row.order_items?.product_name ?? 'Unknown product',
+        order_item_id: row.order_item_id,
+        source: row.source,
+        returned_at: row.returned_at,
+        hold_days: row.hold_days,
+        hold_deadline: row.hold_deadline,
+        status: row.status,
       }));
 
       return NextResponse.json({ rows });

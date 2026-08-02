@@ -28,6 +28,7 @@ import {
   type VendorOrderItemStage,
 } from '@/lib/vendor-api';
 import ReturnRtoStats from '@/components/vendor/return-rto-stats';
+import StockHoldTimers from '@/components/vendor/stock-hold-timers';
 
 const STAGE_META: Record<VendorOrderItemStage, { label: string; className: string }> = {
   placed: { label: 'New — Awaiting Your Response', className: 'bg-amber-50 text-amber-700 border-amber-200' },
@@ -277,8 +278,9 @@ export default function VendorOrdersPage() {
         Only your own order items appear here — customer details are never shown to vendors.
       </p>
 
-      <div className="mt-4">
+      <div className="mt-4 space-y-4">
         <ReturnRtoStats />
+        <StockHoldTimers />
       </div>
 
       {orders.length === 0 ? (

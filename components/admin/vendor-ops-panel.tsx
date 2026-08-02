@@ -9,6 +9,7 @@ import {
   Gauge,
   AlarmClockOff,
   CheckCircle2,
+  TimerReset,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -17,17 +18,20 @@ import {
   fetchRestockSuggestions,
   fetchVendorPerformance,
   fetchStaleInventory,
+  fetchStockHoldTimers,
   markReturnToVendorResolved,
   type ReturnToVendorRow,
   type RestockSuggestionRow,
   type VendorPerformanceRow,
   type StaleInventoryRow,
+  type StockHoldRow,
 } from '@/lib/vendor-api';
 
-type TabKey = 'return-to-vendor' | 'restock' | 'performance' | 'stale';
+type TabKey = 'return-to-vendor' | 'stock-holds' | 'restock' | 'performance' | 'stale';
 
 const TABS: { value: TabKey; label: string; icon: typeof RotateCcw }[] = [
   { value: 'return-to-vendor', label: 'Return to Vendor', icon: RotateCcw },
+  { value: 'stock-holds', label: 'Stock Hold Timers', icon: TimerReset },
   { value: 'restock', label: 'Restock Suggested', icon: PackagePlus },
   { value: 'performance', label: 'Vendor Performance', icon: Gauge },
   { value: 'stale', label: 'Stale Inventory', icon: AlarmClockOff },
@@ -40,6 +44,14 @@ const REASON_META: Record<ReturnToVendorRow['reason'], { label: string; classNam
     className: 'bg-orange-50 text-orange-700 border-orange-200',
   },
   offboarding: { label: 'Vendor Off-boarded', className: 'bg-red-50 text-red-700 border-red-200' },
+  returned_2x_consent: {
+    label: 'Same product returned/RTO 2x',
+    className: 'bg-red-50 text-red-700 border-red-200',
+  },
+  unsold_after_return: {
+    label: "Unsold past vendor's hold window",
+    className: 'bg-rose-50 text-rose-700 border-rose-200',
+  },
 };
 
 function pct(n: number | null | undefined) {
@@ -54,12 +66,25 @@ function minutesToReadable(m: number | null | undefined) {
   return `${(hours / 24).toFixed(1)} days`;
 }
 
+// Green while there's still time left in the vendor's hold window, red
+// once the deadline has passed — shown on both the Return to Vendor
+// "unsold_after_return" rows and every row in the Stock Hold Timers tab.
+function holdCountdown(hold_deadline: string) {
+  const diffMs = new Date(hold_deadline).getTime() - Date.now();
+  const diffDays = Math.round(Math.abs(diffMs) / 86_400_000);
+  if (diffMs > 0) {
+    return { label: `${diffDays} din baaki`, className: 'bg-green-50 text-green-700 border-green-200' };
+  }
+  return { label: `${diffDays} din overdue`, className: 'bg-red-50 text-red-700 border-red-200' };
+}
+
 export default function VendorOpsPanel() {
   const [tab, setTab] = useState<TabKey>('return-to-vendor');
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const [rtvRows, setRtvRows] = useState<ReturnToVendorRow[]>([]);
+  const [stockHoldRows, setStockHoldRows] = useState<StockHoldRow[]>([]);
   const [restockRows, setRestockRows] = useState<RestockSuggestionRow[]>([]);
   const [performanceRows, setPerformanceRows] = useState<VendorPerformanceRow[]>([]);
   const [staleRows, setStaleRows] = useState<StaleInventoryRow[]>([]);
@@ -68,6 +93,7 @@ export default function VendorOpsPanel() {
     setLoading(true);
     try {
       if (which === 'return-to-vendor') setRtvRows(await fetchReturnToVendorQueue());
+      if (which === 'stock-holds') setStockHoldRows(await fetchStockHoldTimers());
       if (which === 'restock') setRestockRows(await fetchRestockSuggestions());
       if (which === 'performance') setPerformanceRows(await fetchVendorPerformance());
       if (which === 'stale') setStaleRows(await fetchStaleInventory());
@@ -86,6 +112,11 @@ export default function VendorOpsPanel() {
   const neverSold = useMemo(() => rtvRows.filter((r) => r.reason === 'never_sold_90d'), [rtvRows]);
   const cancelledReturned = useMemo(
     () => rtvRows.filter((r) => r.reason === 'cancelled_returned_60d'),
+    [rtvRows]
+  );
+  const returned2x = useMemo(() => rtvRows.filter((r) => r.reason === 'returned_2x_consent'), [rtvRows]);
+  const unsoldAfterReturn = useMemo(
+    () => rtvRows.filter((r) => r.reason === 'unsold_after_return'),
     [rtvRows]
   );
   const offboarded = useMemo(() => rtvRows.filter((r) => r.reason === 'offboarding'), [rtvRows]);
@@ -125,6 +156,11 @@ export default function VendorOpsPanel() {
                   <div className="flex items-center gap-2">
                     <p className="font-medium text-primary">{row.product_name}</p>
                     <Badge className={`border ${meta.className}`}>{meta.label}</Badge>
+                    {row.hold_deadline && (
+                      <Badge className={`border ${holdCountdown(row.hold_deadline).className}`}>
+                        {holdCountdown(row.hold_deadline).label}
+                      </Badge>
+                    )}
                   </div>
                   <p className="text-sm text-muted-foreground">
                     Vendor: {row.business_name}
@@ -186,10 +222,52 @@ export default function VendorOpsPanel() {
         </div>
       ) : tab === 'return-to-vendor' ? (
         <div>
+          {renderRtvGroup('Same product returned/RTO 2x', returned2x)}
+          {renderRtvGroup("Unsold past vendor's hold window", unsoldAfterReturn)}
           {renderRtvGroup('Never Sold — 90 din', neverSold)}
           {renderRtvGroup('Cancelled/Returned — 60 din', cancelledReturned)}
           {offboarded.length > 0 && renderRtvGroup('Vendor Off-boarded', offboarded)}
         </div>
+      ) : tab === 'stock-holds' ? (
+        stockHoldRows.length === 0 ? (
+          <div className="rounded-lg border border-border/60 bg-card py-10 text-center text-sm text-muted-foreground">
+            Nothing here — no returned/RTO unit is currently sitting in a hold window.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {stockHoldRows.map((row) => {
+              const countdown = holdCountdown(row.hold_deadline);
+              return (
+                <div
+                  key={row.id}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 bg-card p-3"
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-primary">{row.product_name}</p>
+                      <Badge className="border bg-slate-50 text-slate-700 border-slate-200">
+                        {row.source === 'rto' ? 'RTO' : 'Return'}
+                      </Badge>
+                      <Badge className={`border ${countdown.className}`}>{countdown.label}</Badge>
+                      {row.status === 'flagged' && (
+                        <Badge className="border bg-red-50 text-red-700 border-red-200">
+                          Sent to Return to Vendor
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Vendor: {row.business_name} · Hold window: {row.stock_hold_days_setting} din (vendor-set)
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Back in warehouse since {new Date(row.returned_at).toLocaleDateString('en-IN')} · deadline{' '}
+                      {new Date(row.hold_deadline).toLocaleDateString('en-IN')}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )
       ) : tab === 'restock' ? (
         restockRows.length === 0 ? (
           <div className="rounded-lg border border-border/60 bg-card py-10 text-center text-sm text-muted-foreground">

@@ -21,6 +21,7 @@ import { fetchMyVendorProfile, submitVendorProduct, triggerVendorAIProcess } fro
 import PhotographyGuidelines from '@/components/vendor/photography-guidelines';
 import VendorPriceBreakdown from '@/components/vendor/vendor-price-breakdown';
 import ReturnRtoStats from '@/components/vendor/return-rto-stats';
+import StockHoldTimers from '@/components/vendor/stock-hold-timers';
 
 const EMPTY_FORM = {
   name: '',
@@ -170,8 +171,9 @@ export default function AddVendorProductPage() {
         .
       </p>
 
-      <div className="mt-4">
+      <div className="mt-4 space-y-4">
         <ReturnRtoStats />
+        <StockHoldTimers />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_280px]">

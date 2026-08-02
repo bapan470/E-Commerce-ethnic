@@ -29,7 +29,8 @@ interface AdminNotification {
     | 'abandoned_cart'
     | 'vendor_application'
     | 'vendor_bank_update'
-    | 'vendor_pickup';
+    | 'vendor_pickup'
+    | 'vendor_return_pending';
   title: string;
   message: string;
   section: string;
@@ -46,6 +47,7 @@ const ICONS: Record<AdminNotification['type'], typeof Bell> = {
   vendor_application: Truck,
   vendor_bank_update: Landmark,
   vendor_pickup: Truck,
+  vendor_return_pending: Undo2,
 };
 
 const LAST_SEEN_KEY = 'admin_notifications_last_seen';

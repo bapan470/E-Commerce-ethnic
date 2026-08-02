@@ -17,6 +17,7 @@ import {
   Eye,
   Store,
   ExternalLink,
+  TimerReset,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -363,6 +364,13 @@ export default function VendorsPanel() {
                     )}
                     {v.expected_category && (
                       <p className="mt-1 text-xs text-muted-foreground">Category: {v.expected_category}</p>
+                    )}
+                    {v.status === 'approved' && (
+                      <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                        <TimerReset className="h-3 w-3" />
+                        Stock hold window: <span className="font-medium text-foreground">{v.stock_hold_days ?? 15} din</span>{' '}
+                        (vendor-set, 15–30 range)
+                      </p>
                     )}
                     <VendorKycSection vendorId={v.id} />
 
