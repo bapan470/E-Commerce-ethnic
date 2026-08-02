@@ -31,6 +31,9 @@ import {
   RefundAutomationSettings,
   fetchRefundAutomationSettings,
   saveRefundAutomationSettings,
+  HandlingFeeSettings,
+  fetchHandlingFeeSettings,
+  saveHandlingFeeSettings,
 } from '@/lib/settings-api';
 import { uploadProductImage } from '@/lib/products-api';
 import {
@@ -97,6 +100,8 @@ export default function SettingsPanel() {
   const [savingPaymentDiscount, setSavingPaymentDiscount] = useState(false);
   const [refundAutomationForm, setRefundAutomationForm] = useState<RefundAutomationSettings | null>(null);
   const [savingRefundAutomation, setSavingRefundAutomation] = useState(false);
+  const [handlingFeeForm, setHandlingFeeForm] = useState<HandlingFeeSettings | null>(null);
+  const [savingHandlingFee, setSavingHandlingFee] = useState(false);
 
   useEffect(() => {
     fetchStoreInfo()
@@ -147,6 +152,10 @@ export default function SettingsPanel() {
     fetchRefundAutomationSettings()
       .then(setRefundAutomationForm)
       .catch(() => toast.error('Failed to load refund automation settings'));
+
+    fetchHandlingFeeSettings()
+      .then(setHandlingFeeForm)
+      .catch(() => toast.error('Failed to load vendor commission settings'));
   }, []);
 
   const onSubmit = async (e: FormEvent) => {
@@ -292,6 +301,20 @@ export default function SettingsPanel() {
       toast.error(err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setSavingRefundAutomation(false);
+    }
+  };
+
+  const onSubmitHandlingFee = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!handlingFeeForm) return;
+    setSavingHandlingFee(true);
+    try {
+      await saveHandlingFeeSettings(handlingFeeForm);
+      toast.success('Vendor commission settings saved');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSavingHandlingFee(false);
     }
   };
 
@@ -951,6 +974,114 @@ export default function SettingsPanel() {
             onCheckedChange={onToggleRefundAutomation}
           />
         </div>
+      )}
+
+      <div className="mt-8">
+        <h2 className="font-serif text-2xl font-bold text-primary">Vendor Commission &amp; Settlement</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Your cut from every vendor's sale. The moment an order item is marked "Delivered", this
+          formula runs once and locks in: <code className="rounded bg-muted px-1 py-0.5 text-xs">
+          fee = flat fee + (item price × quantity × percent / 100)</code>. The vendor's payable
+          amount is the rest. Changing these numbers only affects items delivered after you save —
+          already-settled or already-delivered items keep their original locked-in fee.
+        </p>
+      </div>
+
+      {!handlingFeeForm ? (
+        <p className="py-4 text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <form
+          onSubmit={onSubmitHandlingFee}
+          className="mt-4 grid max-w-xl gap-4 rounded-lg border border-border/60 bg-card p-5"
+        >
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-1.5">
+              <Label htmlFor="handling-fee-percent">Your commission (%)</Label>
+              <Input
+                id="handling-fee-percent"
+                type="number"
+                min={0}
+                max={100}
+                step="0.5"
+                value={handlingFeeForm.handling_fee_percent}
+                onChange={(e) =>
+                  setHandlingFeeForm(
+                    (f) => f && { ...f, handling_fee_percent: Number(e.target.value) }
+                  )
+                }
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="handling-fee-base">Flat fee per item (₹)</Label>
+              <Input
+                id="handling-fee-base"
+                type="number"
+                min={0}
+                step="1"
+                value={handlingFeeForm.handling_fee_base}
+                onChange={(e) =>
+                  setHandlingFeeForm(
+                    (f) => f && { ...f, handling_fee_base: Number(e.target.value) }
+                  )
+                }
+              />
+              <p className="text-xs text-muted-foreground">Optional. Leave 0 if you only want a %.</p>
+            </div>
+          </div>
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="handling-fee-return-window">Vendor payout hold — return window (days)</Label>
+            <Input
+              id="handling-fee-return-window"
+              type="number"
+              min={0}
+              step="1"
+              value={handlingFeeForm.return_window_days}
+              onChange={(e) =>
+                setHandlingFeeForm(
+                  (f) => f && { ...f, return_window_days: Number(e.target.value) }
+                )
+              }
+            />
+            <p className="text-xs text-muted-foreground">
+              A delivered item is only included in the weekly vendor settlement once this many days
+              have passed since delivery (so a return/refund can still happen before you've already
+              paid the vendor out).
+            </p>
+          </div>
+
+          <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
+            Example: a ₹1,000 item with{' '}
+            {handlingFeeForm.handling_fee_percent || 0}% + ₹{handlingFeeForm.handling_fee_base || 0}{' '}
+            flat fee → you keep{' '}
+            <span className="font-semibold text-foreground">
+              ₹
+              {Math.min(
+                (handlingFeeForm.handling_fee_base || 0) +
+                  (1000 * (handlingFeeForm.handling_fee_percent || 0)) / 100,
+                1000
+              ).toFixed(2)}
+            </span>
+            , vendor gets{' '}
+            <span className="font-semibold text-foreground">
+              ₹
+              {(
+                1000 -
+                Math.min(
+                  (handlingFeeForm.handling_fee_base || 0) +
+                    (1000 * (handlingFeeForm.handling_fee_percent || 0)) / 100,
+                  1000
+                )
+              ).toFixed(2)}
+            </span>
+            .
+          </div>
+
+          <Button type="submit" disabled={savingHandlingFee} className="mt-2 w-fit bg-primary">
+            <Save className="mr-1.5 h-4 w-4" />{' '}
+            {savingHandlingFee ? 'Saving…' : 'Save Commission Settings'}
+          </Button>
+        </form>
       )}
 
       <div className="mt-8">
