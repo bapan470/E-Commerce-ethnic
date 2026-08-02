@@ -68,7 +68,6 @@ export default function VendorPriceBreakdown({ vendorPrice }: { vendorPrice: num
   const costNum = costPrice.trim() === '' ? null : Number(costPrice);
   const hasValidCost = costNum !== null && Number.isFinite(costNum) && costNum >= 0;
   const profitPerSale = hasValidCost && payable !== null ? payable - costNum! : null;
-  const worstCaseAfter2Returns = hasValidCost && payable !== null ? payable - costNum! * 2 : null;
 
   const rows: { icon?: boolean; label: string; value: string; muted?: boolean }[] = [
     { label: 'Your price', value: formatINR(b.vendorPrice) },
@@ -142,61 +141,59 @@ export default function VendorPriceBreakdown({ vendorPrice }: { vendorPrice: num
       <div className="mt-3 rounded-lg border border-border/60 bg-muted/30 p-4">
         <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-foreground">
           <ShieldCheck className="h-4 w-4 text-primary" />
-          <span>Profit safety check — will this survive a 2x return?</span>
+          <span>Will you still be safe if this gets returned?</span>
         </div>
-        <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
-          If this exact listing gets returned twice, the payout for the 2nd (threshold-hitting) order is clawed
-          back from your next settlement and the item is sent back to you. Enter your real cost per piece (fabric
-          + stitching + sourcing) to see if your current price still leaves you in profit.
-        </p>
 
         <label className="mb-1 block text-xs font-medium text-foreground" htmlFor="vendor-cost-price">
-          Your actual cost per piece (optional)
+          What does 1 piece cost you to make?
         </label>
         <input
           id="vendor-cost-price"
           type="number"
           min={0}
           inputMode="decimal"
-          placeholder="e.g. 350"
+          placeholder="e.g. 300"
           value={costPrice}
           onChange={(e) => setCostPrice(e.target.value)}
           className="mb-3 w-full max-w-[180px] rounded-md border border-border/60 bg-background px-2.5 py-1.5 text-sm text-foreground outline-none focus:border-primary"
         />
 
-        {hasValidCost && payable !== null && profitPerSale !== null && worstCaseAfter2Returns !== null ? (
+        {hasValidCost && payable !== null && profitPerSale !== null ? (
           <div
-            className={`flex items-start gap-2 rounded-md px-3 py-2.5 text-xs leading-relaxed ${
+            className={`rounded-md px-3 py-3 text-xs leading-relaxed ${
               profitPerSale > 0
                 ? 'border border-emerald-200/70 bg-emerald-50/60 text-emerald-700'
                 : 'border border-red-200/70 bg-red-50/60 text-red-700'
             }`}
           >
-            {profitPerSale > 0 ? (
-              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-            ) : (
-              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
-            )}
-            <span>
-              Profit per normal sale: <span className="font-semibold">{formatINR(profitPerSale)}</span>
-              {' '}(payout {formatINR(payable)} − cost {formatINR(costNum!)}).
+            <div className="mb-2 flex items-center gap-1.5 font-semibold">
               {profitPerSale > 0 ? (
-                <>
-                  {' '}Since a single kept sale already clears your cost, a 2x-return clawback on this listing
-                  won&apos;t push you into an overall loss — you&apos;ll just lose the &quot;extra&quot; payout
-                  from the returned unit, and get that unit back to resell.
-                </>
+                <ShieldCheck className="h-4 w-4 shrink-0" />
               ) : (
-                <>
-                  {' '}Your price doesn&apos;t even cover your own cost on a normal sale — raise &quot;Your
-                  Price&quot; before listing, or every return (let alone 2 returns) will put you in a loss.
-                </>
+                <ShieldAlert className="h-4 w-4 shrink-0" />
               )}
-              {' '}Worst case if the returned unit is unsellable too: {formatINR(worstCaseAfter2Returns)}.
-            </span>
+              <span>{profitPerSale > 0 ? "Yes, you're safe" : "No, you'll lose money"}</span>
+            </div>
+
+            <div className="space-y-0.5">
+              <div>💰 You get: <span className="font-semibold">{formatINR(payable)}</span></div>
+              <div>🧵 It costs you: <span className="font-semibold">{formatINR(costNum!)}</span></div>
+              <div>
+                {profitPerSale > 0 ? '✅ You keep' : '❌ You lose'}:{' '}
+                <span className="font-semibold">{formatINR(Math.abs(profitPerSale))}</span>
+              </div>
+            </div>
+
+            <p className="mt-2">
+              {profitPerSale > 0 ? (
+                <>Sell 2, one comes back → you still keep {formatINR(profitPerSale)} from the one that sold. Plus you get the returned one back to sell again.</>
+              ) : (
+                <>Your price is too low — it doesn&apos;t even cover the cost. Raise &quot;Your Price&quot; before listing.</>
+              )}
+            </p>
           </div>
         ) : (
-          <p className="text-xs text-muted-foreground">Enter your cost above to see the safety check.</p>
+          <p className="text-xs text-muted-foreground">Type your cost above to check.</p>
         )}
       </div>
     </div>
