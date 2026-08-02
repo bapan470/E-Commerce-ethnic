@@ -116,6 +116,7 @@ export async function POST(req: Request) {
   const images = Array.isArray(body?.images) ? body.images.filter((u: unknown) => typeof u === 'string' && u) : [];
   const available_quantity = Number(body?.available_quantity);
   const is_dead_stock = Boolean(body?.is_dead_stock);
+  const vendor_return_consent = body?.vendor_return_consent === true;
   const vendor_expected_price =
     body?.vendor_expected_price === '' || body?.vendor_expected_price === null || body?.vendor_expected_price === undefined
       ? null
@@ -132,6 +133,12 @@ export async function POST(req: Request) {
   }
   if (vendor_expected_price !== null && (!Number.isFinite(vendor_expected_price) || vendor_expected_price < 0)) {
     return NextResponse.json({ error: 'Expected price must be a non-negative number' }, { status: 400 });
+  }
+  if (!vendor_return_consent) {
+    return NextResponse.json(
+      { error: 'Please accept the return policy: if this product is returned 2 times, it goes back to you and the cost is deducted from your next settlement.' },
+      { status: 400 }
+    );
   }
 
   const supabase = await getSupabaseServer();
@@ -219,6 +226,8 @@ export async function POST(req: Request) {
       vendor_expected_price,
       available_quantity,
       is_dead_stock,
+      vendor_return_consent: true,
+      vendor_return_consent_at: new Date().toISOString(),
       final_price: livePrice,
       ai_suggested_price: suggested_price,
     };

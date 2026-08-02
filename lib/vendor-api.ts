@@ -240,6 +240,10 @@ export interface VendorProductInput {
   available_quantity: number;
   vendor_expected_price?: number | null;
   is_dead_stock: boolean;
+  /** Vendor's acceptance of: "returned 2x -> sent back to me, cost deducted
+   *  from my next settlement." Required — the API rejects the listing
+   *  without it. See app/api/vendor/products/route.ts. */
+  vendor_return_consent: boolean;
 }
 
 /** Publishes a new product straight to the live site — no admin review

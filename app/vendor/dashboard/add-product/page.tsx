@@ -29,6 +29,7 @@ const EMPTY_FORM = {
   available_quantity: '',
   vendor_expected_price: '',
   is_dead_stock: false,
+  vendor_return_consent: false,
   images: [] as string[],
 };
 
@@ -92,6 +93,11 @@ export default function AddVendorProductPage() {
       return;
     }
 
+    if (!form.vendor_return_consent) {
+      toast.error('Please accept the 2x-return policy checkbox below to continue');
+      return;
+    }
+
     setSubmitting(true);
     try {
       const created = await submitVendorProduct({
@@ -102,6 +108,7 @@ export default function AddVendorProductPage() {
         available_quantity: qty,
         vendor_expected_price: form.vendor_expected_price ? Number(form.vendor_expected_price) : null,
         is_dead_stock: form.is_dead_stock,
+        vendor_return_consent: form.vendor_return_consent,
         images: form.images,
       });
 
@@ -245,6 +252,23 @@ export default function AddVendorProductPage() {
             </label>
           </div>
 
+          <div className="flex items-start gap-2 rounded-md border border-amber-300/70 bg-amber-50/60 p-3">
+            <Checkbox
+              id="return-consent"
+              required
+              checked={form.vendor_return_consent}
+              onCheckedChange={(v) => setForm((f) => ({ ...f, vendor_return_consent: v === true }))}
+            />
+            <label htmlFor="return-consent" className="text-sm leading-snug">
+              I agree: if this product is returned 2 times, it will be sent back to me and its cost
+              will be deducted from my next settlement. *
+              <span className="block text-xs text-muted-foreground">
+                Required to list — this keeps repeatedly-returned stock from being restocked and
+                resold at a loss.
+              </span>
+            </label>
+          </div>
+
           <div className="grid gap-1.5">
             <Label>Photos *</Label>
             <div className="flex flex-wrap items-center gap-3">
@@ -281,7 +305,7 @@ export default function AddVendorProductPage() {
             )}
           </div>
 
-          <Button type="submit" className="w-full bg-primary" disabled={submitting || uploading}>
+          <Button type="submit" className="w-full bg-primary" disabled={submitting || uploading || !form.vendor_return_consent}>
             {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Publish Product'}
           </Button>
         </form>
