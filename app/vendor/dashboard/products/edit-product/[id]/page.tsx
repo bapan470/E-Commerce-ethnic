@@ -25,7 +25,7 @@ import {
   type VendorProductRow,
 } from '@/lib/vendor-api';
 import PhotographyGuidelines from '@/components/vendor/photography-guidelines';
-import VendorPayoutPreview from '@/components/vendor/payout-preview';
+import VendorPriceBreakdown from '@/components/vendor/vendor-price-breakdown';
 
 export default function EditVendorProductPage() {
   const { id } = useParams<{ id: string }>();
@@ -236,7 +236,7 @@ export default function EditVendorProductPage() {
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="price">Expected Price (optional)</Label>
+              <Label htmlFor="price">Your Price (optional)</Label>
               <Input
                 id="price"
                 type="number"
@@ -246,10 +246,12 @@ export default function EditVendorProductPage() {
                 onChange={(e) => setForm((f) => ({ ...f, vendor_expected_price: e.target.value }))}
               />
               <p className="text-xs text-muted-foreground">
-                Leave blank and we&apos;ll price it automatically based on similar live listings.
+                Leave blank and we&apos;ll price it automatically based on similar live listings. This
+                is YOUR price, not the website price — pickup + delivery shipping and the platform
+                markup get added on top to get the final website price (see below).
               </p>
-              <VendorPayoutPreview
-                price={form.vendor_expected_price ? Number(form.vendor_expected_price) : null}
+              <VendorPriceBreakdown
+                vendorPrice={form.vendor_expected_price ? Number(form.vendor_expected_price) : null}
               />
             </div>
           </div>

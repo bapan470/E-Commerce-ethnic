@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser, getSupabaseServer } from '@/lib/supabase-server-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { computeVendorPriceBreakdown } from '@/lib/vendor-pricing';
+import { fetchShippingSettings } from '@/lib/pincode-api';
 
 // Fields the vendor is allowed to see about their own product
 const VENDOR_PRODUCT_COLUMNS = [
@@ -113,8 +115,28 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     patch.in_stock = available_quantity > 0;
   }
   if (is_dead_stock !== undefined) patch.is_dead_stock = is_dead_stock;
-  if (vendor_expected_price !== undefined) patch.vendor_expected_price = vendor_expected_price;
   if (images !== undefined) patch.images = images;
+
+  // The vendor's price is their ASKING/COST price, never the live
+  // website price directly — see lib/vendor-pricing.ts. Whenever it
+  // changes we recompute `price`/`final_price` the same way the
+  // create route (app/api/vendor/products/route.ts POST) does, so an
+  // edit doesn't leave the website showing a stale or unmarked-up
+  // number. Previously this route saved vendor_expected_price but
+  // never touched price/final_price at all — that bug is fixed here.
+  if (vendor_expected_price !== undefined) {
+    patch.vendor_expected_price = vendor_expected_price;
+    if (vendor_expected_price != null) {
+      const shippingSettings = await fetchShippingSettings();
+      const breakdown = computeVendorPriceBreakdown(vendor_expected_price, shippingSettings);
+      patch.price = Math.max(0, breakdown.websitePrice);
+      patch.final_price = Math.max(0, breakdown.websitePrice);
+    }
+    // If the vendor clears their price (vendor_expected_price === null),
+    // we deliberately leave the existing price/final_price untouched —
+    // there's nothing new to mark up from, and zeroing out a live
+    // product's price would be worse than just keeping the last one.
+  }
 
   const { data: updated, error: updateErr } = await admin
     .from('products')

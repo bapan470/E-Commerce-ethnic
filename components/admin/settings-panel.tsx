@@ -1140,6 +1140,29 @@ export default function SettingsPanel() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-1.5">
+              <Label htmlFor="vendor-pickup-shipping-cost">Vendor pickup shipping cost (₹)</Label>
+              <Input
+                id="vendor-pickup-shipping-cost"
+                type="number"
+                min={0}
+                step="1"
+                value={checkoutForm.vendor_pickup_shipping_cost}
+                onChange={(e) =>
+                  setCheckoutForm(
+                    (f) => f && { ...f, vendor_pickup_shipping_cost: Number(e.target.value) }
+                  )
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                What it costs you to get stock FROM a vendor TO your warehouse (pickup courier).
+                This is the "2nd shipping" leg vendors see added on top of their price on the
+                vendor Add/Edit Product form — separate from the COD/prepaid courier cost above,
+                which is warehouse → customer.
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="grid gap-1.5">
               <Label htmlFor="gateway-fee">Payment gateway fee (%)</Label>
               <Input
                 id="gateway-fee"

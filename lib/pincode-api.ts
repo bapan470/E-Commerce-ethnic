@@ -131,6 +131,18 @@ export interface ShippingSettings {
    */
   prepaid_logistics_cost: number;
   /**
+   * Your ACTUAL cost, in rupees, to get stock FROM a vendor TO your
+   * warehouse (pickup courier / freight) — e.g. a Delhivery/Porter
+   * pickup booked against the vendor's address. This is the "first leg"
+   * shipping cost that only exists for vendor-sourced stock (admin's own
+   * stock is already at the warehouse, so it doesn't apply there). Used
+   * by lib/vendor-pricing.ts to mark up a vendor's asking price into the
+   * real website price — see computeVendorPriceBreakdown(). Kept
+   * separate from cod_logistics_cost/prepaid_logistics_cost above, which
+   * are the "second leg" (warehouse -> customer) cost.
+   */
+  vendor_pickup_shipping_cost: number;
+  /**
    * Average coupon usage rate across ALL orders, as a % (0-100) — e.g. if
    * roughly 3 out of 10 orders use a coupon, enter 30. Used with
    * `coupon_discount_type`/`coupon_discount_value` below to blend the
@@ -163,6 +175,7 @@ export const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
   return_rate_percent: 15,
   cod_logistics_cost: 0,
   prepaid_logistics_cost: 0,
+  vendor_pickup_shipping_cost: 60,
   coupon_usage_percent: 0,
   coupon_discount_type: 'flat',
   coupon_discount_value: 0,

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getCurrentUser, getSupabaseServer } from '@/lib/supabase-server-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { suggestVendorProductPrice } from '@/lib/ai-pricing';
+import { computeVendorPriceBreakdown } from '@/lib/vendor-pricing';
+import { fetchShippingSettings } from '@/lib/pincode-api';
 import { runStuckVendorListingsJob } from '@/lib/cron-jobs';
 import { buildSlug } from '@/lib/slug-utils';
 
@@ -156,6 +158,8 @@ export async function POST(req: Request) {
     // 'pending_review' and an admin set the real price before it ever
     // went live). Since this route publishes the product immediately,
     // we need a real price up front. Never throws — see ai-pricing.ts.
+    // Kept as a fallback path only now (see livePrice below) — a vendor
+    // who gives a price gets the real markup calculation instead.
     const { suggested_price } = await suggestVendorProductPrice(getSupabaseAdmin(), {
       category_name,
       fabric,
@@ -163,15 +167,23 @@ export async function POST(req: Request) {
       is_dead_stock,
     });
 
-    // Live price, in priority order: vendor's own expected price, else
-    // the AI suggestion, else a safe fallback so nothing ever
-    // publishes at ₹0 (admin can still correct it from Admin > Products
-    // any time afterwards).
+    // Live price shown to customers. The vendor's own number
+    // (`vendor_expected_price`) is their ASKING/COST price, never the
+    // website price directly — see lib/vendor-pricing.ts for why:
+    // both shipping legs (vendor -> warehouse, warehouse -> customer)
+    // and the platform's markup % (Admin > Settings > Profit Estimate,
+    // same entry/mid/premium tiers used on the admin Add/Edit Product
+    // form) get added on top. Falls back to the AI suggestion, then a
+    // safe default, only when the vendor left the price blank.
     const FALLBACK_PRICE = 999;
-    const livePrice = Math.max(
-      0,
-      Math.round(vendor_expected_price ?? suggested_price ?? FALLBACK_PRICE)
-    );
+    let livePrice: number;
+    if (vendor_expected_price != null) {
+      const shippingSettings = await fetchShippingSettings();
+      const breakdown = computeVendorPriceBreakdown(vendor_expected_price, shippingSettings);
+      livePrice = Math.max(0, breakdown.websitePrice);
+    } else {
+      livePrice = Math.max(0, Math.round(suggested_price ?? FALLBACK_PRICE));
+    }
 
     const insertPayload = {
       name,

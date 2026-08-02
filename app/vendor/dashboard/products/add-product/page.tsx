@@ -19,7 +19,7 @@ import { uploadProductImage } from '@/lib/products-api';
 import { useCategories } from '@/lib/cart-context';
 import { fetchMyVendorProfile, submitVendorProduct, triggerVendorAIProcess } from '@/lib/vendor-api';
 import PhotographyGuidelines from '@/components/vendor/photography-guidelines';
-import VendorPayoutPreview from '@/components/vendor/payout-preview';
+import VendorPriceBreakdown from '@/components/vendor/vendor-price-breakdown';
 
 const EMPTY_FORM = {
   name: '',
@@ -208,7 +208,7 @@ export default function AddVendorProductPage() {
               />
             </div>
             <div>
-              <Label>Expected Price (optional)</Label>
+              <Label>Your Price (optional)</Label>
               <Input
                 type="number"
                 min={0}
@@ -218,10 +218,11 @@ export default function AddVendorProductPage() {
               />
               <p className="mt-1 text-xs text-muted-foreground">
                 Leave blank and we'll price it automatically based on similar live listings. This is
-                the price that goes live — you can ask an admin to adjust it later if needed.
+                YOUR price, not the website price — pickup + delivery shipping and the platform
+                markup get added on top to get the final website price (see below).
               </p>
-              <VendorPayoutPreview
-                price={form.vendor_expected_price ? Number(form.vendor_expected_price) : null}
+              <VendorPriceBreakdown
+                vendorPrice={form.vendor_expected_price ? Number(form.vendor_expected_price) : null}
               />
             </div>
           </div>
