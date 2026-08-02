@@ -11,7 +11,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import WishlistButton from '@/components/wishlist-button';
 import { blurDataURL } from '@/lib/utils';
-import { useFreeShippingThreshold, qualifiesForFreeDelivery } from '@/hooks/use-free-shipping-threshold';
 import { Truck } from 'lucide-react';
 
 export default function ProductCard({
@@ -39,8 +38,6 @@ export default function ProductCard({
 }) {
   const { addItem, activePromotions } = useCart();
   const router = useRouter();
-  const freeShippingThreshold = useFreeShippingThreshold();
-  const freeDelivery = qualifiesForFreeDelivery(product.price, freeShippingThreshold);
 
   // Part 4b: tag products currently inside an active BOGO promotion's
   // scope, same "is this product in scope" rule the cart itself uses to
@@ -176,12 +173,10 @@ export default function ProductCard({
               </>
             )}
           </p>
-          {freeDelivery && (
-            <span className="flex shrink-0 items-center gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-600">
-              <Truck className="h-3 w-3" />
-              Free Delivery
-            </span>
-          )}
+          <span className="flex shrink-0 items-center gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-600">
+            <Truck className="h-3 w-3" />
+            Free Delivery
+          </span>
         </div>
         <h3 className={`line-clamp-2 font-serif font-semibold leading-snug text-foreground ${compact ? 'text-xs' : 'text-sm'}`}>
           {product.name}
