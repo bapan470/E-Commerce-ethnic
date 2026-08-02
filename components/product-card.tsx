@@ -11,6 +11,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import WishlistButton from '@/components/wishlist-button';
 import { blurDataURL } from '@/lib/utils';
+import { useFreeShippingThreshold, qualifiesForFreeDelivery } from '@/hooks/use-free-shipping-threshold';
+import { Truck } from 'lucide-react';
 
 export default function ProductCard({
   product,
@@ -37,6 +39,8 @@ export default function ProductCard({
 }) {
   const { addItem, activePromotions } = useCart();
   const router = useRouter();
+  const freeShippingThreshold = useFreeShippingThreshold();
+  const freeDelivery = qualifiesForFreeDelivery(product.price, freeShippingThreshold);
 
   // Part 4b: tag products currently inside an active BOGO promotion's
   // scope, same "is this product in scope" rule the cart itself uses to
@@ -152,25 +156,33 @@ export default function ProductCard({
       </div>
 
       <div className={`flex flex-1 flex-col gap-1 ${compact ? 'p-2.5' : 'p-4'}`}>
-        <p className="flex flex-wrap items-center gap-x-1.5 text-[11px] font-semibold uppercase tracking-wider text-secondary">
-          <span
-            onClick={goToCategory}
-            className="cursor-pointer hover:underline"
-          >
-            {product.category}
-          </span>
-          {product.collection && (
-            <>
-              <span className="text-secondary/40">·</span>
-              <span
-                onClick={goToCollection}
-                className="cursor-pointer text-foreground/60 hover:underline"
-              >
-                {product.collection.name}
-              </span>
-            </>
+        <div className="flex items-center justify-between gap-1.5">
+          <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-[11px] font-semibold uppercase tracking-wider text-secondary">
+            <span
+              onClick={goToCategory}
+              className="cursor-pointer hover:underline"
+            >
+              {product.category}
+            </span>
+            {product.collection && (
+              <>
+                <span className="text-secondary/40">·</span>
+                <span
+                  onClick={goToCollection}
+                  className="cursor-pointer text-foreground/60 hover:underline"
+                >
+                  {product.collection.name}
+                </span>
+              </>
+            )}
+          </p>
+          {freeDelivery && (
+            <span className="flex shrink-0 items-center gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-600">
+              <Truck className="h-3 w-3" />
+              Free Delivery
+            </span>
           )}
-        </p>
+        </div>
         <h3 className={`line-clamp-2 font-serif font-semibold leading-snug text-foreground ${compact ? 'text-xs' : 'text-sm'}`}>
           {product.name}
         </h3>

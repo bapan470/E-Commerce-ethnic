@@ -767,22 +767,34 @@ function ProductInfo({
       <div>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <p className="flex flex-wrap items-center gap-x-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
-              <Link href={`/shop?category=${encodeURIComponent(product.category)}`} className="hover:underline">
-                {product.category}
-              </Link>
-              {product.collection && (
-                <>
-                  <span className="text-secondary/40">·</span>
-                  <Link
-                    href={`/collection/${product.collection.slug}`}
-                    className="text-foreground/60 hover:underline"
-                  >
-                    {product.collection.name}
-                  </Link>
-                </>
-              )}
-            </p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
+                <Link href={`/shop?category=${encodeURIComponent(product.category)}`} className="hover:underline">
+                  {product.category}
+                </Link>
+                {product.collection && (
+                  <>
+                    <span className="text-secondary/40">·</span>
+                    <Link
+                      href={`/collection/${product.collection.slug}`}
+                      className="text-foreground/60 hover:underline"
+                    >
+                      {product.collection.name}
+                    </Link>
+                  </>
+                )}
+              </p>
+              {/* Only shown once we know the live threshold (Admin >
+                  Settings > Shipping) and this size's price actually
+                  clears it -- a 0 threshold means every order ships free. */}
+              {freeShippingThreshold !== undefined &&
+                (freeShippingThreshold === 0 || selectedSizePrice >= freeShippingThreshold) && (
+                  <span className="flex shrink-0 items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-600">
+                    <Truck className="h-3.5 w-3.5" />
+                    Free Delivery
+                  </span>
+                )}
+            </div>
             <h1 className="mt-1 font-serif text-base font-bold text-primary sm:text-xl">
               {displayName}
             </h1>
