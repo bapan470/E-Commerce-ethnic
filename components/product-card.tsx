@@ -153,8 +153,8 @@ export default function ProductCard({
       </div>
 
       <div className={`flex flex-1 flex-col gap-1 ${compact ? 'p-2.5' : 'p-4'}`}>
-        <div className="flex items-center justify-between gap-1.5">
-          <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-[11px] font-semibold uppercase tracking-wider text-secondary">
+        <div className="flex flex-col gap-0.5">
+          <p className="flex flex-wrap items-center gap-x-1.5 text-[11px] font-semibold uppercase tracking-wider text-secondary">
             <span
               onClick={goToCategory}
               className="cursor-pointer hover:underline"
@@ -173,7 +173,7 @@ export default function ProductCard({
               </>
             )}
           </p>
-          <span className="flex shrink-0 items-center gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-600">
+          <span className="flex items-center gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-600">
             <Truck className="h-3 w-3" />
             Free Delivery
           </span>
