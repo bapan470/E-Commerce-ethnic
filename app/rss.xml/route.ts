@@ -8,6 +8,7 @@
 // "products" table automatically — no manual edits needed when products change.
 
 import { fetchProductsServer } from "@/lib/products-api-server";
+import { resolveGoogleProductCategory } from "@/lib/google-category";
 
 export const dynamic = "force-dynamic"; // always fetch fresh data on each request
 
@@ -44,6 +45,8 @@ export async function GET() {
       <g:price>${p.price} INR</g:price>
       <g:availability>${p.inStock ? "in stock" : "out of stock"}</g:availability>
       <g:condition>new</g:condition>
+      <g:product_type>${escapeXml(p.category)}</g:product_type>
+      <g:google_product_category>${escapeXml(resolveGoogleProductCategory(p.category, p.name))}</g:google_product_category>
     </item>`;
     })
     .join("");
