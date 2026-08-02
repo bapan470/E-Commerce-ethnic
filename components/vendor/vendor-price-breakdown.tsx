@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Truck, Wallet, TrendingUp } from 'lucide-react';
+import { Truck, Wallet, TrendingUp, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { fetchShippingSettings, ShippingSettings, DEFAULT_SHIPPING_SETTINGS } from '@/lib/pincode-api';
 import {
   HandlingFeeSettings,
@@ -25,6 +25,13 @@ export default function VendorPriceBreakdown({ vendorPrice }: { vendorPrice: num
   const [settings, setSettings] = useState<ShippingSettings>(DEFAULT_SHIPPING_SETTINGS);
   const [fee, setFee] = useState<HandlingFeeSettings | null>(null);
   const [loaded, setLoaded] = useState(false);
+  // Vendor's own real cost (fabric/stitching/sourcing) — never sent to
+  // the server, purely a client-side "will I stay in profit if this
+  // listing hits the 2x-return clawback threshold?" calculator. See
+  // supabase/migrations/20260901000000_vendor_return_consent.sql for
+  // how the clawback itself works (vendor_payable_amount of the 2nd/
+  // threshold-hitting order is deducted from the next settlement).
+  const [costPrice, setCostPrice] = useState('');
 
   useEffect(() => {
     Promise.all([fetchShippingSettings(), fetchHandlingFeeSettings()])
@@ -50,6 +57,18 @@ export default function VendorPriceBreakdown({ vendorPrice }: { vendorPrice: num
       )
     : 0;
   const payable = fee ? Math.max(0, b.websitePrice - commissionFee) : null;
+
+  // Profit-safety check: does this price survive the "2x return ->
+  // sent back to vendor + clawback" flow? Clawback only ever removes
+  // ONE payout (the order that trips the threshold), so with 2 sales:
+  //   best case  = 1 kept payout - 1 unit's cost   (the returned unit
+  //                comes back physically and can be resold later)
+  //   worst case = 1 kept payout - 2 units' cost   (treat the returned
+  //                unit as a total loss, e.g. damaged on return)
+  const costNum = costPrice.trim() === '' ? null : Number(costPrice);
+  const hasValidCost = costNum !== null && Number.isFinite(costNum) && costNum >= 0;
+  const profitPerSale = hasValidCost && payable !== null ? payable - costNum! : null;
+  const worstCaseAfter2Returns = hasValidCost && payable !== null ? payable - costNum! * 2 : null;
 
   const rows: { icon?: boolean; label: string; value: string; muted?: boolean }[] = [
     { label: 'Your price', value: formatINR(b.vendorPrice) },
@@ -119,6 +138,67 @@ export default function VendorPriceBreakdown({ vendorPrice }: { vendorPrice: num
           </span>
         </div>
       )}
+
+      <div className="mt-3 rounded-lg border border-border/60 bg-muted/30 p-4">
+        <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-foreground">
+          <ShieldCheck className="h-4 w-4 text-primary" />
+          <span>Profit safety check — will this survive a 2x return?</span>
+        </div>
+        <p className="mb-3 text-xs leading-relaxed text-muted-foreground">
+          If this exact listing gets returned twice, the payout for the 2nd (threshold-hitting) order is clawed
+          back from your next settlement and the item is sent back to you. Enter your real cost per piece (fabric
+          + stitching + sourcing) to see if your current price still leaves you in profit.
+        </p>
+
+        <label className="mb-1 block text-xs font-medium text-foreground" htmlFor="vendor-cost-price">
+          Your actual cost per piece (optional)
+        </label>
+        <input
+          id="vendor-cost-price"
+          type="number"
+          min={0}
+          inputMode="decimal"
+          placeholder="e.g. 350"
+          value={costPrice}
+          onChange={(e) => setCostPrice(e.target.value)}
+          className="mb-3 w-full max-w-[180px] rounded-md border border-border/60 bg-background px-2.5 py-1.5 text-sm text-foreground outline-none focus:border-primary"
+        />
+
+        {hasValidCost && payable !== null && profitPerSale !== null && worstCaseAfter2Returns !== null ? (
+          <div
+            className={`flex items-start gap-2 rounded-md px-3 py-2.5 text-xs leading-relaxed ${
+              profitPerSale > 0
+                ? 'border border-emerald-200/70 bg-emerald-50/60 text-emerald-700'
+                : 'border border-red-200/70 bg-red-50/60 text-red-700'
+            }`}
+          >
+            {profitPerSale > 0 ? (
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+            ) : (
+              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+            )}
+            <span>
+              Profit per normal sale: <span className="font-semibold">{formatINR(profitPerSale)}</span>
+              {' '}(payout {formatINR(payable)} − cost {formatINR(costNum!)}).
+              {profitPerSale > 0 ? (
+                <>
+                  {' '}Since a single kept sale already clears your cost, a 2x-return clawback on this listing
+                  won&apos;t push you into an overall loss — you&apos;ll just lose the &quot;extra&quot; payout
+                  from the returned unit, and get that unit back to resell.
+                </>
+              ) : (
+                <>
+                  {' '}Your price doesn&apos;t even cover your own cost on a normal sale — raise &quot;Your
+                  Price&quot; before listing, or every return (let alone 2 returns) will put you in a loss.
+                </>
+              )}
+              {' '}Worst case if the returned unit is unsellable too: {formatINR(worstCaseAfter2Returns)}.
+            </span>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">Enter your cost above to see the safety check.</p>
+        )}
+      </div>
     </div>
   );
 }
