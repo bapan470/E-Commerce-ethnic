@@ -767,7 +767,7 @@ function ProductInfo({
       <div>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center justify-start gap-4">
               <p className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
                 <Link href={`/shop?category=${encodeURIComponent(product.category)}`} className="hover:underline">
                   {product.category}
