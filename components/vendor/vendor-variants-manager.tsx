@@ -11,6 +11,7 @@ import {
   VendorVariant,
 } from '@/lib/vendor-api';
 import { uploadProductImage } from '@/lib/products-api';
+import VendorPayoutPreview from '@/components/vendor/payout-preview';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -251,6 +252,9 @@ export default function VendorVariantsManager({ productId, productName, expanded
                 value={form.priceOverride}
                 onChange={(e) => setForm((f) => ({ ...f, priceOverride: e.target.value }))}
                 placeholder="Leave blank to use the base price"
+              />
+              <VendorPayoutPreview
+                price={form.priceOverride ? Number(form.priceOverride) : null}
               />
             </div>
 

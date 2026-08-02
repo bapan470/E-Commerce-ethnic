@@ -25,6 +25,7 @@ import {
   type VendorProductRow,
 } from '@/lib/vendor-api';
 import PhotographyGuidelines from '@/components/vendor/photography-guidelines';
+import VendorPayoutPreview from '@/components/vendor/payout-preview';
 
 export default function EditVendorProductPage() {
   const { id } = useParams<{ id: string }>();
@@ -247,6 +248,9 @@ export default function EditVendorProductPage() {
               <p className="text-xs text-muted-foreground">
                 Leave blank and we&apos;ll price it automatically based on similar live listings.
               </p>
+              <VendorPayoutPreview
+                price={form.vendor_expected_price ? Number(form.vendor_expected_price) : null}
+              />
             </div>
           </div>
 

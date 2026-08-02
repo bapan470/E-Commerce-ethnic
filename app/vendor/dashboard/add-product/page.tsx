@@ -19,6 +19,7 @@ import { uploadProductImage } from '@/lib/products-api';
 import { useCategories } from '@/lib/cart-context';
 import { fetchMyVendorProfile, submitVendorProduct, triggerVendorAIProcess } from '@/lib/vendor-api';
 import PhotographyGuidelines from '@/components/vendor/photography-guidelines';
+import VendorPayoutPreview from '@/components/vendor/payout-preview';
 
 const EMPTY_FORM = {
   name: '',
@@ -221,6 +222,9 @@ export default function AddVendorProductPage() {
                 Leave blank and we'll price it automatically based on similar live listings. This is
                 the price that goes live — you can ask an admin to adjust it later if needed.
               </p>
+              <VendorPayoutPreview
+                price={form.vendor_expected_price ? Number(form.vendor_expected_price) : null}
+              />
             </div>
           </div>
 
