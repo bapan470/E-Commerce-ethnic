@@ -696,14 +696,26 @@ export default function CartDrawer() {
                   </span>
                 </div>
               )}
-              <div className="p-5">
-                {onlinePaymentSavings > 0 && (
-                  <div className="mb-3 flex items-center gap-1.5 rounded-md bg-green-50 px-2.5 py-1.5 text-xs font-medium text-green-700">
-                    <Wallet className="h-3.5 w-3.5 shrink-0" />
-                    Pay online and save an extra {formatINR(onlinePaymentSavings)} (
-                    {paymentDiscount.percent}%) at checkout
+              {onlinePaymentSavings > 0 && (
+                <div className="mx-5 mt-4 flex flex-col gap-1 rounded-xl border border-emerald-200/70 bg-gradient-to-br from-emerald-50 via-emerald-50/60 to-white px-3.5 py-2.5 shadow-sm">
+                  <div className="flex items-baseline gap-1.5">
+                    <Wallet className="h-3.5 w-3.5 shrink-0 self-center text-emerald-600" />
+                    <span className="text-[11px] font-medium uppercase tracking-wide text-emerald-700/80">
+                      Pay online &amp; get this at
+                    </span>
+                    <span className="font-serif text-base font-bold text-emerald-700">
+                      {formatINR(
+                        Math.max(0, subtotal - couponDiscount - bogoDiscount - onlinePaymentSavings)
+                      )}
+                    </span>
                   </div>
-                )}
+                  <p className="text-[11px] leading-snug text-emerald-700/80">
+                    Extra {formatINR(onlinePaymentSavings)} ({paymentDiscount.percent}%) off with{' '}
+                    {paymentDiscount.label} — applied automatically at checkout
+                  </p>
+                </div>
+              )}
+              <div className="p-5">
                 <p className="mb-3 text-xs text-muted-foreground">
                   Shipping &amp; taxes calculated at checkout.
                 </p>

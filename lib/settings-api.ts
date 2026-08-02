@@ -177,9 +177,16 @@ export async function saveSocialLinks(links: SocialLinks) {
 
 // ---------------------------------------------------------------------
 // Online payment discount — an extra % off applied at checkout when the
-// customer pays online (Razorpay) instead of COD. Shown as an incentive
-// badge on the product page and cart drawer, and actually applied to the
-// order total in checkout once "Pay online" is selected.
+// customer pays online (via the payment gateway) instead of COD. Shown as
+// a consistent incentive card on the product page, the cart drawer, and
+// the full cart page, and actually applied to the order total in
+// checkout once "Pay online" is selected.
+//
+// The `label` should describe the payment methods that actually qualify
+// (e.g. "UPI / Cards / Netbanking" or just "UPI" if that's the only
+// qualifying method) rather than naming the payment gateway/processor
+// itself — naming the processor implies it is the one offering the
+// discount, which it isn't, and risks misrepresentation.
 //
 // Deliberately NOT submitted to Google Merchant Center as a structured
 // "Promotion" or baked into the product feed / JSON-LD price: Merchant
