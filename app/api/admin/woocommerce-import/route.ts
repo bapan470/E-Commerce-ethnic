@@ -3,6 +3,12 @@ import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
+// Give this route as much wall-clock time as the platform allows (Vercel
+// Pro/Enterprise honour this up to their plan's cap; Hobby ignores it and
+// stays capped at 10s -- which is exactly why the import is now chunked +
+// resumable below instead of relying on one call finishing everything).
+export const maxDuration = 60;
+
 // SECURITY: this route touches another store's WooCommerce Consumer
 // Key/Secret and writes personal data (email/phone) into our DB. It must
 // only ever run server-side, gated by the admin session cookie -- never
@@ -83,7 +89,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  let body: { storeUrl?: string; consumerKey?: string; consumerSecret?: string };
+  let body: { storeUrl?: string; consumerKey?: string; consumerSecret?: string; reset?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -103,6 +109,27 @@ export async function POST(req: NextRequest) {
 
   const creds = { storeUrl, consumerKey, consumerSecret };
   const supabase = getSupabaseAdmin();
+  const reset = body.reset === true;
+
+  // ---- Resume support --------------------------------------------------
+  // Fetching every order page from another site (through Cloudflare) is
+  // slow, and serverless functions have a hard execution time limit
+  // (10-60s depending on host/plan). Doing all 20-30+ pages in one request
+  // was silently getting killed mid-way, leaving an incomplete import with
+  // no clear error. Instead: process a small chunk of pages per call, save
+  // how far we got in the `settings` table, and let the browser call this
+  // route again automatically until every page is done.
+  const CURSOR_KEY = 'woocommerce_import_cursor';
+  const PAGES_PER_CALL = 8; // ~8 sequential external requests fits comfortably in 10-60s
+
+  let startPage = 1;
+  if (!reset) {
+    const { data: cursorRow } = await supabase.from('settings').select('value').eq('key', CURSOR_KEY).maybeSingle();
+    const cursor = cursorRow?.value as { storeUrl?: string; page?: number } | undefined;
+    if (cursor?.storeUrl === storeUrl && cursor.page) {
+      startPage = cursor.page;
+    }
+  }
 
   // Only pull from REAL orders -- never from /wp-json/wc/v3/customers.
   // The customers endpoint returns every *registered* WordPress user with
@@ -112,19 +139,26 @@ export async function POST(req: NextRequest) {
   // out -- exactly what the site's own admin "Customers" tab does too.
   //
   // Keyed by email (not order id / customer id), so the same person is
-  // never duplicated across pages or across repeated imports.
+  // never duplicated across pages or across repeated/resumed imports.
   const byEmail = new Map<
     string,
     { name: string | null; email: string; phone: string | null; latestOrderId: number }
   >();
 
   try {
-    let page = 1;
-    let totalOrdersSeen = 0;
-    for (;;) {
+    let page = startPage;
+    let pagesThisCall = 0;
+    let done = false;
+    let ordersScanned = 0;
+
+    while (pagesThisCall < PAGES_PER_CALL) {
       const orders: WooOrder[] = await wooFetch(`/wp-json/wc/v3/orders?per_page=100&page=${page}`, creds);
-      if (!Array.isArray(orders) || orders.length === 0) break;
-      totalOrdersSeen += orders.length;
+      pagesThisCall += 1;
+      if (!Array.isArray(orders) || orders.length === 0) {
+        done = true;
+        break;
+      }
+      ordersScanned += orders.length;
 
       for (const o of orders) {
         const email = (o.billing?.email || '').trim().toLowerCase();
@@ -141,9 +175,16 @@ export async function POST(req: NextRequest) {
           byEmail.set(email, { name, email, phone, latestOrderId: o.id });
         }
       }
-      if (orders.length < 100) break;
+
+      if (orders.length < 100) {
+        done = true;
+        break;
+      }
       page += 1;
-      if (page > 500) break; // safety cap: 50,000 orders
+      if (page > 1000) {
+        done = true; // safety cap: 100,000 orders
+        break;
+      }
     }
 
     const rows = Array.from(byEmail.values()).map((r) => ({
@@ -155,13 +196,9 @@ export async function POST(req: NextRequest) {
       updated_at: new Date().toISOString(),
     }));
 
-    if (rows.length === 0) {
-      return NextResponse.json({ imported: 0, updated: 0, skipped: 0, total: 0, ordersScanned: totalOrdersSeen });
-    }
-
-    // Upsert in batches, deduped on email (fixes the "same email twice" bug --
-    // re-importing now updates the existing row for that email instead of
-    // creating a second one).
+    // Upsert whatever we found this call, deduped on email (fixes the
+    // "same email twice" bug -- re-importing/resuming updates the existing
+    // row for that email instead of creating a second one).
     const BATCH = 500;
     for (let i = 0; i < rows.length; i += BATCH) {
       const chunk = rows.slice(i, i + BATCH);
@@ -169,12 +206,20 @@ export async function POST(req: NextRequest) {
       if (error) throw error;
     }
 
+    if (done) {
+      // Import finished -- clear the cursor so the next click starts fresh.
+      await supabase.from('settings').delete().eq('key', CURSOR_KEY);
+    } else {
+      await supabase
+        .from('settings')
+        .upsert({ key: CURSOR_KEY, value: { storeUrl, page } }, { onConflict: 'key' });
+    }
+
     return NextResponse.json({
+      done,
       imported: rows.length,
-      updated: 0,
-      skipped: 0,
-      total: rows.length,
-      ordersScanned: totalOrdersSeen,
+      ordersScanned,
+      nextPage: done ? null : page,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Import failed';

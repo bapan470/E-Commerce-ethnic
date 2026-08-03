@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   fetchImportedCustomers,
-  importWooCommerceCustomers,
+  importWooCommerceCustomersChunk,
   deleteImportedCustomer,
   sendWooCommerceCampaign,
   type ImportedCustomer,
@@ -19,6 +19,7 @@ export default function WooCommerceImportPanel() {
   const [customers, setCustomers] = useState<ImportedCustomer[]>([]);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState('');
   const [sending, setSending] = useState(false);
 
   const [storeUrl, setStoreUrl] = useState('');
@@ -80,14 +81,38 @@ export default function WooCommerceImportPanel() {
       return;
     }
     setImporting(true);
+    let totalOrders = 0;
     try {
-      const result = await importWooCommerceCustomers({ storeUrl, consumerKey, consumerSecret });
-      toast.success(`${result.total} customers import ho gaye`);
-      await load();
+      for (;;) {
+        setImportProgress(
+          totalOrders === 0 ? 'Shuru ho raha hai...' : `${totalOrders} orders scan ho chuke hain...`
+        );
+        // reset is always false here: the server keeps a saved cursor keyed
+        // to this storeUrl, so clicking Import again (e.g. after a timeout)
+        // automatically resumes from where it left off instead of
+        // restarting from page 1. A different storeUrl gets a fresh start
+        // automatically too, since the saved cursor won't match it.
+        const result = await importWooCommerceCustomersChunk({
+          storeUrl,
+          consumerKey,
+          consumerSecret,
+          reset: false,
+        });
+        totalOrders += result.ordersScanned;
+        await load(); // refresh the list so progress is visible as it goes
+        if (result.done) {
+          toast.success(`Import complete — ${totalOrders} orders scan hue`);
+          break;
+        }
+      }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Import fail ho gaya');
+      toast.error(
+        (err instanceof Error ? err.message : 'Import fail ho gaya') +
+          ' — dubara "Import Customers" dabao, jaha ruka tha wahi se continue hoga.'
+      );
     } finally {
       setImporting(false);
+      setImportProgress('');
     }
   };
 
@@ -167,7 +192,7 @@ export default function WooCommerceImportPanel() {
         </p>
         <Button onClick={handleImport} disabled={importing} className="gap-2 w-fit">
           <Download className="h-4 w-4" />
-          {importing ? 'Import ho raha hai...' : 'Import Customers'}
+          {importing ? importProgress || 'Import ho raha hai...' : 'Import Customers'}
         </Button>
       </div>
 

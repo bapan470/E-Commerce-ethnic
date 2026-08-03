@@ -27,14 +27,14 @@ export interface ImportedCustomer {
 }
 
 export interface ImportResult {
+  done: boolean;
   imported: number;
-  updated: number;
-  skipped: number;
-  total: number;
+  ordersScanned: number;
+  nextPage: number | null;
 }
 
-export async function importWooCommerceCustomers(
-  creds: WooCommerceCredentials
+export async function importWooCommerceCustomersChunk(
+  creds: WooCommerceCredentials & { reset?: boolean }
 ): Promise<ImportResult> {
   const res = await fetch('/api/admin/woocommerce-import', {
     method: 'POST',
