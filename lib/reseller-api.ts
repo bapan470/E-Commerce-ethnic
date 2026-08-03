@@ -26,7 +26,9 @@ export interface ResellerEarnings {
   pendingOrders: number;
   /** Margin on orders not yet delivered — nothing to pay yet. */
   pendingDeliveryProfit: number;
-  /** Margin on delivered orders, owed but not yet paid by the admin. */
+  /** Margin on delivered orders still inside the return window — not payable yet. */
+  inReturnWindowProfit: number;
+  /** Margin on orders past the return window, owed but not yet paid by the admin. */
   eligibleProfit: number;
   /** Margin the admin has already paid out. */
   paidProfit: number;
@@ -141,7 +143,7 @@ export interface ResellerOrderRow {
   reseller_margin_percent: number;
   status: string;
   delivery_status: string | null;
-  /** pending_delivery | eligible | paid | void — see reseller payout system. */
+  /** pending_delivery | in_return_window | eligible | paid | void — see reseller payout system. */
   reseller_payout_status: string | null;
   customer_name: string | null;
   customer_phone: string | null;
@@ -229,6 +231,8 @@ export interface AdminResellerPayoutRow {
   payoutAccountHolder: string | null;
   pendingDeliveryAmount: number;
   pendingDeliveryCount: number;
+  inReturnWindowAmount: number;
+  inReturnWindowCount: number;
   eligibleAmount: number;
   eligibleOrders: AdminResellerEligibleOrder[];
   paidAmount: number;
@@ -250,7 +254,7 @@ export interface AdminPayoutHistoryRow {
 export interface AdminResellerPayoutsOverview {
   resellers: AdminResellerPayoutRow[];
   payoutHistory: AdminPayoutHistoryRow[];
-  totals: { pendingDelivery: number; eligible: number; paid: number };
+  totals: { pendingDelivery: number; inReturnWindow: number; eligible: number; paid: number };
 }
 
 export async function fetchAdminResellerPayouts(): Promise<AdminResellerPayoutsOverview> {

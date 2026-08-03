@@ -17,7 +17,7 @@ import {
 export default function ResellerPayoutsPanel() {
   const [resellers, setResellers] = useState<AdminResellerPayoutRow[]>([]);
   const [history, setHistory] = useState<AdminPayoutHistoryRow[]>([]);
-  const [totals, setTotals] = useState({ pendingDelivery: 0, eligible: 0, paid: 0 });
+  const [totals, setTotals] = useState({ pendingDelivery: 0, inReturnWindow: 0, eligible: 0, paid: 0 });
   const [loading, setLoading] = useState(true);
   const [payoutTarget, setPayoutTarget] = useState<AdminResellerPayoutRow | null>(null);
 
@@ -42,21 +42,27 @@ export default function ResellerPayoutsPanel() {
   return (
     <div>
       <p className="mb-4 max-w-2xl text-sm text-muted-foreground">
-        A reseller's margin only becomes payable once their order is actually{' '}
-        <strong>delivered</strong> — it moves here automatically. If an order comes back RTO,
-        gets cancelled, or refunded first, it's voided instead of paid.
+        A reseller's margin only becomes payable once their order is{' '}
+        <strong>delivered</strong> and the store's <strong>return window has passed</strong> —
+        it moves here automatically. If an order comes back RTO, gets cancelled, refunded, or
+        the customer files a return during that window, it's voided instead of paid.
       </p>
 
-      <div className="mb-6 grid grid-cols-3 gap-3">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-lg border border-border/60 bg-card p-4">
           <Clock className="h-4 w-4 text-muted-foreground" />
           <p className="mt-2 text-xl font-bold text-primary">{formatINR(totals.pendingDelivery)}</p>
           <p className="text-xs text-muted-foreground">Awaiting delivery (not owed yet)</p>
         </div>
+        <div className="rounded-lg border border-orange-300 bg-orange-50 p-4">
+          <Clock className="h-4 w-4 text-orange-700" />
+          <p className="mt-2 text-xl font-bold text-orange-700">{formatINR(totals.inReturnWindow)}</p>
+          <p className="text-xs text-orange-700">Delivered — in return window</p>
+        </div>
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
           <IndianRupee className="h-4 w-4 text-amber-700" />
           <p className="mt-2 text-xl font-bold text-amber-700">{formatINR(totals.eligible)}</p>
-          <p className="text-xs text-amber-700">Delivered — ready to pay</p>
+          <p className="text-xs text-amber-700">Return window passed — ready to pay</p>
         </div>
         <div className="rounded-lg border border-green-300 bg-green-50 p-4">
           <CheckCircle2 className="h-4 w-4 text-green-700" />
@@ -72,6 +78,7 @@ export default function ResellerPayoutsPanel() {
               <th className="px-4 py-3">Reseller</th>
               <th className="px-4 py-3">Payout details</th>
               <th className="px-4 py-3">Awaiting delivery</th>
+              <th className="px-4 py-3">In return window</th>
               <th className="px-4 py-3">Ready to pay</th>
               <th className="px-4 py-3">Paid so far</th>
               <th className="px-4 py-3">Action</th>
@@ -101,6 +108,12 @@ export default function ResellerPayoutsPanel() {
                   )}
                 </td>
                 <td className="px-4 py-3 text-sm">
+                  <span className="font-semibold text-orange-700">{formatINR(r.inReturnWindowAmount)}</span>
+                  {r.inReturnWindowCount > 0 && (
+                    <span className="ml-1 text-xs text-muted-foreground">({r.inReturnWindowCount} order{r.inReturnWindowCount === 1 ? '' : 's'})</span>
+                  )}
+                </td>
+                <td className="px-4 py-3 text-sm">
                   <span className="font-semibold text-amber-700">{formatINR(r.eligibleAmount)}</span>
                   {r.eligibleOrders.length > 0 && (
                     <span className="ml-1 text-xs text-muted-foreground">({r.eligibleOrders.length} order{r.eligibleOrders.length === 1 ? '' : 's'})</span>
@@ -121,7 +134,7 @@ export default function ResellerPayoutsPanel() {
             ))}
             {!loading && resellers.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
                   No resellers yet.
                 </td>
               </tr>

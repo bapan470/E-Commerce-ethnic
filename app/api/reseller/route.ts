@@ -29,6 +29,7 @@ export async function GET() {
           totalProfit: 0,
           pendingOrders: 0,
           pendingDeliveryProfit: 0,
+          inReturnWindowProfit: 0,
           eligibleProfit: 0,
           paidProfit: 0,
         },
@@ -55,6 +56,7 @@ export async function GET() {
         .reduce((sum, o) => sum + (o.reseller_profit || 0), 0);
 
     const pendingDeliveryProfit = sumWhere(['pending_delivery']);
+    const inReturnWindowProfit = sumWhere(['in_return_window']);
     const eligibleProfit = sumWhere(['eligible']);
     const paidProfit = sumWhere(['paid']);
 
@@ -66,6 +68,7 @@ export async function GET() {
         totalProfit,
         pendingOrders,
         pendingDeliveryProfit,
+        inReturnWindowProfit,
         eligibleProfit,
         paidProfit,
       },

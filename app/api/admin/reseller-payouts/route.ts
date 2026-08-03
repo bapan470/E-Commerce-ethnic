@@ -11,12 +11,16 @@ async function requireAdmin() {
 
 // ---------------------------------------------------------------------
 // Reseller payouts — a reseller's margin is only ever payable once their
-// order is actually delivered (orders.reseller_payout_status flips
-// 'pending_delivery' -> 'eligible' automatically via a DB trigger the
-// moment orders.delivery_status/status reads 'delivered' — see
-// supabase/migrations/20260803140000_reseller_payout_system.sql). This
-// route just surfaces that: what's owed per reseller, broken down by
-// stage, plus the "Mark as Paid" action and payout history.
+// order is delivered AND the store's return window has passed
+// (orders.reseller_payout_status flips 'pending_delivery' ->
+// 'in_return_window' the moment delivery happens, then ->  'eligible'
+// once reseller_payout_return_window_ends_at passes — the first via a
+// DB trigger, the second via a daily cron calling
+// promote_reseller_payouts_after_return_window(); see
+// supabase/migrations/20260803140000_reseller_payout_system.sql and
+// 20260803150000_reseller_payout_return_window.sql). This route just
+// surfaces that: what's owed per reseller, broken down by stage, plus
+// the "Mark as Paid" action and payout history.
 // ---------------------------------------------------------------------
 
 // GET — every reseller with a payout-stage breakdown (pending delivery /
@@ -77,6 +81,7 @@ export async function GET() {
 
       const eligibleOrders = myOrders.filter((o) => o.reseller_payout_status === 'eligible');
       const pendingDeliveryOrders = myOrders.filter((o) => o.reseller_payout_status === 'pending_delivery');
+      const inReturnWindowOrders = myOrders.filter((o) => o.reseller_payout_status === 'in_return_window');
       const paidOrders = myOrders.filter((o) => o.reseller_payout_status === 'paid');
       const voidOrders = myOrders.filter((o) => o.reseller_payout_status === 'void');
 
@@ -92,6 +97,8 @@ export async function GET() {
         payoutAccountHolder: r.payout_account_holder,
         pendingDeliveryAmount: sum(pendingDeliveryOrders),
         pendingDeliveryCount: pendingDeliveryOrders.length,
+        inReturnWindowAmount: sum(inReturnWindowOrders),
+        inReturnWindowCount: inReturnWindowOrders.length,
         eligibleAmount: sum(eligibleOrders),
         eligibleOrders: eligibleOrders.map((o) => ({
           id: o.id,
@@ -123,6 +130,7 @@ export async function GET() {
       payoutHistory,
       totals: {
         pendingDelivery: resellerRows.reduce((s, r) => s + r.pendingDeliveryAmount, 0),
+        inReturnWindow: resellerRows.reduce((s, r) => s + r.inReturnWindowAmount, 0),
         eligible: resellerRows.reduce((s, r) => s + r.eligibleAmount, 0),
         paid: resellerRows.reduce((s, r) => s + r.paidAmount, 0),
       },

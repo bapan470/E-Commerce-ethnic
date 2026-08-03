@@ -6,17 +6,26 @@ Reseller ka margin (profit) order place hote hi calculate ho jaata tha, lekin:
 - Admin ke paas koi **payout management screen** nahi thi
 
 ## Rule implemented
-> Reseller ka margin sirf tab "payable" hota hai jab uska order **actually deliver** ho jaaye.
+> Reseller ka margin sirf tab "payable" hota hai jab uska order **actually deliver** ho jaaye
+> **AND** store ka return window (Admin → Marketing → Shipping & Returns Timing → Return window
+> days) khatam ho jaaye. Isse pehle koi bhi margin "ready to pay" nahi dikhega — agar customer
+> return kar deta hai to koi clawback ki zaroorat hi nahi padegi, kyunki payout kabhi generate
+> hi nahi hua tha.
+>
+> _(See `RESELLER-PAYOUT-RETURN-WINDOW-README.md` for the follow-up change that added this
+> return-window wait — this file describes the original delivery-only version plus the update.)_
 
 Har reseller order ka ek naya status hota hai — `orders.reseller_payout_status`:
 ```
-pending_delivery -> eligible -> paid
-                 \-> void   (agar RTO / cancelled / refunded ho jaaye)
+pending_delivery -> in_return_window -> eligible -> paid
+                                      \-> void   (agar RTO / cancelled / refunded / return file ho jaaye)
 ```
-Ye automatically ek **database trigger** se update hota hai jab `orders.delivery_status`
-(Delhivery live tracking cron se) ya `orders.status` "delivered" ho jaata hai — aapko kuch
-manually karne ki zaroorat nahi. Agar shipment RTO ho jaaye, order cancel ho jaaye, ya refund ho
-jaaye, wahi trigger payout ko "void" kar deta hai — us order ka margin kabhi paid nahi hoga.
+Delivery hote hi order `in_return_window` mein chala jaata hai (ek **database trigger** se,
+automatically). Return window khatam hone ke baad ek **daily cron job**
+(`runResellerPayoutWindowJob`) use `eligible` mein promote kar deta hai — tabhi wo admin ke
+"Pay Now" screen mein aata hai. Agar shipment RTO ho jaaye, order cancel ho jaaye, refund ho
+jaaye, ya customer koi return file kare (chahe abhi approve na hua ho), wahi order turant
+"void" ho jaata hai — us order ka margin kabhi paid nahi hoga.
 
 Ek baar jab kisi order ka payout "paid" mark ho jaata hai, trigger use kabhi dobara nahi chhedta —
 agar baad mein return/refund ho, wo ek manual clawback matter ban jaata hai (jaisa vendor

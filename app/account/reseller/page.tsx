@@ -21,9 +21,10 @@ import {
 
 const PAYOUT_LABELS: Record<string, { label: string; className: string }> = {
   pending_delivery: { label: 'Awaiting delivery', className: 'bg-muted text-muted-foreground' },
+  in_return_window: { label: 'Delivered — in return window', className: 'bg-orange-100 text-orange-700' },
   eligible: { label: 'Ready — will be paid soon', className: 'bg-amber-100 text-amber-700' },
   paid: { label: 'Paid', className: 'bg-green-100 text-green-700' },
-  void: { label: 'Not payable (RTO/cancelled)', className: 'bg-red-100 text-red-700' },
+  void: { label: 'Not payable (RTO/cancelled/returned)', className: 'bg-red-100 text-red-700' },
 };
 
 export default function ResellerPage() {
@@ -35,6 +36,7 @@ export default function ResellerPage() {
     totalProfit: 0,
     pendingOrders: 0,
     pendingDeliveryProfit: 0,
+    inReturnWindowProfit: 0,
     eligibleProfit: 0,
     paidProfit: 0,
   });
@@ -193,15 +195,19 @@ export default function ResellerPage() {
         </div>
       </div>
 
-      {/* Payout stage breakdown — margin is only paid once an order is delivered */}
-      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+      {/* Payout stage breakdown — margin is only paid once an order is delivered AND the return window has passed */}
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-lg border border-border/60 bg-muted/30 p-4">
           <p className="text-xl font-bold text-muted-foreground">{formatINR(earnings.pendingDeliveryProfit)}</p>
           <p className="text-xs text-muted-foreground">Awaiting delivery (not payable yet)</p>
         </div>
+        <div className="rounded-lg border border-orange-300 bg-orange-50 p-4">
+          <p className="text-xl font-bold text-orange-700">{formatINR(earnings.inReturnWindowProfit)}</p>
+          <p className="text-xs text-orange-700">Delivered — in return window</p>
+        </div>
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
           <p className="text-xl font-bold text-amber-700">{formatINR(earnings.eligibleProfit)}</p>
-          <p className="text-xs text-amber-700">Delivered — will be paid soon</p>
+          <p className="text-xs text-amber-700">Return window passed — will be paid soon</p>
         </div>
         <div className="rounded-lg border border-green-300 bg-green-50 p-4">
           <p className="text-xl font-bold text-green-700">{formatINR(earnings.paidProfit)}</p>

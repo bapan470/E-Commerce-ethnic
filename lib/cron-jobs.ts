@@ -465,6 +465,24 @@ export async function runVendorSettlementJob() {
   };
 }
 
+// ----------------------------- Reseller payout — return window -----------------------------
+// A reseller's margin sits in 'in_return_window' from the moment their
+// order is delivered until the store's return window closes (see
+// supabase/migrations/20260803150000_reseller_payout_return_window.sql)
+// — only then does it flip to 'eligible' and become payable. This just
+// calls the DB function that does that flip; also callable manually
+// from the Supabase SQL editor for testing.
+export async function runResellerPayoutWindowJob() {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.rpc('promote_reseller_payouts_after_return_window');
+  if (error) throw error;
+
+  return {
+    promoted: data?.length ?? 0,
+    order_ids: (data ?? []).map((row: { order_id: string }) => row.order_id),
+  };
+}
+
 // ----------------------------- Return pickup tracking -----------------------------
 // Polls Delhivery for every return with a reverse-pickup in flight
 // (scheduled/picked_up/in_transit) and, once it shows delivered back

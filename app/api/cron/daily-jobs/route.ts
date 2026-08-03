@@ -8,6 +8,7 @@ import {
   runStuckVendorListingsJob,
   runReturnPickupTrackingJob,
   runForwardShipmentTrackingJob,
+  runResellerPayoutWindowJob,
 } from '@/lib/cron-jobs';
 
 export const dynamic = 'force-dynamic';
@@ -86,6 +87,12 @@ export async function GET(req: Request) {
     results.forwardShipmentTracking = await runForwardShipmentTrackingJob();
   } catch (err: any) {
     results.forwardShipmentTracking = { error: err?.message || 'Failed' };
+  }
+
+  try {
+    results.resellerPayoutWindow = await runResellerPayoutWindowJob();
+  } catch (err: any) {
+    results.resellerPayoutWindow = { error: err?.message || 'Failed' };
   }
 
   // Weekly settlement: only run it on Mondays so behaviour matches the
