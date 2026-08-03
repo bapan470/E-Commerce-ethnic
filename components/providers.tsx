@@ -14,6 +14,7 @@ import SiteBanner from './site-banner';
 import WhatsAppButton from './whatsapp-button';
 import LiveChatWidget from './live-chat-widget';
 import ActivityTracker from './activity-tracker';
+import AffiliateTracker from './affiliate-tracker';
 import UrgencyBanner from './growth/urgency-banner';
 import SaleCountdownBar from './growth/sale-countdown-bar';
 import ExitIntentModal from './growth/exit-intent-modal';
@@ -36,6 +37,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         <PaymentDiscountProvider>
           <CartProvider>
             <ActivityTracker />
+            <AffiliateTracker />
             <div className="flex min-h-screen flex-col bg-background">
               <UrgencyBanner />
               <SaleCountdownBar />
