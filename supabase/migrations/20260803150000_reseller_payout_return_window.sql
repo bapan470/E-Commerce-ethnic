@@ -160,18 +160,18 @@ BEGIN
   v_return_window_days := coalesce(v_return_window_days, 7);
 
   UPDATE orders
-  SET reseller_payout_delivered_at = coalesce(reseller_payout_delivered_at, reseller_payout_eligible_at, updated_at),
+  SET reseller_payout_delivered_at = coalesce(reseller_payout_delivered_at, reseller_payout_eligible_at, created_at),
       reseller_payout_return_window_ends_at =
-        coalesce(reseller_payout_delivered_at, reseller_payout_eligible_at, updated_at)
+        coalesce(reseller_payout_delivered_at, reseller_payout_eligible_at, created_at)
         + (v_return_window_days || ' days')::interval,
       reseller_payout_status = CASE
-        WHEN coalesce(reseller_payout_delivered_at, reseller_payout_eligible_at, updated_at)
+        WHEN coalesce(reseller_payout_delivered_at, reseller_payout_eligible_at, created_at)
              + (v_return_window_days || ' days')::interval <= now()
           THEN 'eligible'
         ELSE 'in_return_window'
       END,
       reseller_payout_eligible_at = CASE
-        WHEN coalesce(reseller_payout_delivered_at, reseller_payout_eligible_at, updated_at)
+        WHEN coalesce(reseller_payout_delivered_at, reseller_payout_eligible_at, created_at)
              + (v_return_window_days || ' days')::interval <= now()
           THEN reseller_payout_eligible_at
         ELSE NULL
