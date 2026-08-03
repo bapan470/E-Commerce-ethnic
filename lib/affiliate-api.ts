@@ -128,6 +128,46 @@ export function buildAffiliateReferralLink(code: string, origin?: string): strin
   return `${base}/?aff=${encodeURIComponent(code)}`;
 }
 
+/** Builds an affiliate link for a SPECIFIC product (or colour-variant —
+ *  variants live at their own /product/[slug] URL in this repo, so no
+ *  special-casing needed) instead of the generic homepage link. Takes
+ *  either a full URL the affiliate pasted in (copied straight from
+ *  their browser's address bar) or a bare path like "/product/kanjivaram-silk-saree",
+ *  and appends `?aff=CODE` — preserving any existing query params
+ *  (e.g. a size pre-selected via the URL) rather than clobbering them.
+ *  Returns null if the input isn't a recognisable URL/path on this site. */
+export function buildAffiliateProductLink(
+  code: string,
+  productUrlOrPath: string,
+  origin?: string
+): string | null {
+  const base =
+    origin ||
+    (typeof window !== 'undefined' ? window.location.origin : '') ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    '';
+  if (!base || !productUrlOrPath?.trim()) return null;
+
+  let url: URL;
+  try {
+    // Absolute URL (e.g. pasted from the address bar) — parse as-is.
+    url = new URL(productUrlOrPath.trim());
+  } catch {
+    // Not absolute — treat as a path off this site.
+    try {
+      const path = productUrlOrPath.trim().startsWith('/')
+        ? productUrlOrPath.trim()
+        : `/${productUrlOrPath.trim()}`;
+      url = new URL(path, base);
+    } catch {
+      return null;
+    }
+  }
+
+  url.searchParams.set('aff', code);
+  return url.toString();
+}
+
 // ---------------------------------------------------------------------
 // localStorage referral-code capture (guest + logged-in browsers) —
 // mirrors the pattern in lib/recently-viewed.ts: client-only, fails
@@ -135,7 +175,7 @@ export function buildAffiliateReferralLink(code: string, origin?: string): strin
 // ---------------------------------------------------------------------
 
 const STORAGE_KEY = 'saaj_affiliate_ref';
-const CODE_EXPIRY_DAYS = 30;
+export const CODE_EXPIRY_DAYS = 30;
 
 interface StoredAffiliateRef {
   code: string;

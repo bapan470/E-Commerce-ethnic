@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Users2, IndianRupee, Package, TrendingUp, Loader2, Wallet, Copy, Clock } from 'lucide-react';
+import { Users2, IndianRupee, Package, TrendingUp, Loader2, Wallet, Copy, Clock, Link2, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,8 @@ import {
   applyForAffiliate,
   updateAffiliatePayoutDetails,
   buildAffiliateReferralLink,
+  buildAffiliateProductLink,
+  CODE_EXPIRY_DAYS,
   type AffiliateProfile,
   type AffiliateEarningsSummary,
   type AffiliateOrderRow,
@@ -51,6 +53,8 @@ export default function AffiliatePage() {
   const [upiInput, setUpiInput] = useState('');
   const [holderInput, setHolderInput] = useState('');
   const [savingPayout, setSavingPayout] = useState(false);
+  const [productUrlInput, setProductUrlInput] = useState('');
+  const [generatedProductLink, setGeneratedProductLink] = useState('');
 
   const load = async () => {
     try {
@@ -82,7 +86,7 @@ export default function AffiliatePage() {
     try {
       const { profile: p } = await applyForAffiliate();
       setProfile(p);
-      toast.success("Application submitted! You'll be notified once approved.");
+      toast.success("You're in! Your referral link is ready below.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to apply');
     } finally {
@@ -119,6 +123,28 @@ export default function AffiliatePage() {
       .catch(() => toast.error('Could not copy — copy it manually'));
   };
 
+  const handleGenerateProductLink = () => {
+    if (!profile) return;
+    if (!productUrlInput.trim()) {
+      toast.error('Paste a product page link first');
+      return;
+    }
+    const link = buildAffiliateProductLink(profile.code, productUrlInput.trim());
+    if (!link) {
+      toast.error("Couldn't recognise that as a link — paste the full product page URL");
+      return;
+    }
+    setGeneratedProductLink(link);
+  };
+
+  const copyProductLink = () => {
+    if (!generatedProductLink) return;
+    navigator.clipboard
+      .writeText(generatedProductLink)
+      .then(() => toast.success('Product link copied'))
+      .catch(() => toast.error('Could not copy — copy it manually'));
+  };
+
   if (loading) {
     return <p className="text-sm text-muted-foreground">Loading…</p>;
   }
@@ -138,12 +164,12 @@ export default function AffiliatePage() {
             </div>
             <div>
               <p className="font-serif text-lg font-semibold text-primary">Same login, no new signup</p>
-              <p className="text-sm text-muted-foreground">Apply with this account — an admin reviews and approves it.</p>
+              <p className="text-sm text-muted-foreground">Apply with this account — you're approved instantly.</p>
             </div>
           </div>
           <ul className="mt-4 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-            <li>Apply once, get a unique referral code/link after approval</li>
-            <li>Share it — anyone who orders after clicking it is tracked to you</li>
+            <li>Apply once — you're approved instantly, no waiting on admin review</li>
+            <li>Get a unique referral code/link right away and start sharing</li>
             <li>Earn a % commission on their order, no pricing changes on your end</li>
             <li>Commission is payable once the order is delivered and the return window passes</li>
           </ul>
@@ -201,6 +227,83 @@ export default function AffiliatePage() {
           Your code: <span className="font-mono font-medium">{profile.code}</span> · Commission:{' '}
           {profile.commission_percent}% per order
         </p>
+      </div>
+
+      {/* Product-specific link generator */}
+      <div className="mt-4 rounded-lg border border-border/60 p-4">
+        <Label className="flex items-center gap-2 text-sm font-medium">
+          <Link2 className="h-4 w-4" /> Create a link for a specific product
+        </Label>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Want to promote one exact saree or colour variant instead of the homepage? Paste that
+          product's page link below (copy it from your browser's address bar while viewing it) and
+          we'll turn it into your own trackable link — same commission, same rules.
+        </p>
+        <div className="mt-2 flex max-w-lg gap-2">
+          <Input
+            placeholder="https://www.aruhihandlooms.com/product/kanjivaram-silk-saree"
+            value={productUrlInput}
+            onChange={(e) => setProductUrlInput(e.target.value)}
+          />
+          <Button variant="outline" onClick={handleGenerateProductLink} className="shrink-0">
+            Generate
+          </Button>
+        </div>
+        {generatedProductLink && (
+          <div className="mt-2 flex max-w-lg gap-2">
+            <Input readOnly value={generatedProductLink} className="font-mono text-xs" />
+            <Button variant="outline" onClick={copyProductLink} className="shrink-0 gap-1">
+              <Copy className="h-4 w-4" /> Copy
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* How it works — full details */}
+      <div className="mt-4 rounded-lg border border-border/60 bg-muted/20 p-4">
+        <Label className="flex items-center gap-2 text-sm font-medium">
+          <Info className="h-4 w-4" /> How this works, in detail
+        </Label>
+        <div className="mt-3 space-y-3 text-sm text-muted-foreground">
+          <div>
+            <p className="font-medium text-primary">1. Sharing your link</p>
+            <p>
+              Use your homepage link above to promote the whole store, or generate a link to one
+              specific product/variant using the tool above. Both work exactly the same way — the
+              only difference is where the visitor lands.
+            </p>
+          </div>
+          <div>
+            <p className="font-medium text-primary">2. How long a click stays valid</p>
+            <p>
+              When someone clicks your link, we remember it in their browser for{' '}
+              <strong>{CODE_EXPIRY_DAYS} days</strong>. If they place an order any time within
+              those {CODE_EXPIRY_DAYS} days — even if they browse around, close the tab, or come
+              back later — it's still credited to you. After {CODE_EXPIRY_DAYS} days with no order,
+              the link expires and stops tracking to you.
+            </p>
+          </div>
+          <div>
+            <p className="font-medium text-primary">3. How commission is calculated</p>
+            <p>
+              You earn <strong>{profile.commission_percent}%</strong> of the order's subtotal — no
+              markup or pricing changes on your side, the customer always pays the normal store
+              price.
+            </p>
+          </div>
+          <div>
+            <p className="font-medium text-primary">4. How and when you get paid</p>
+            <p>
+              A new commission starts as <strong>awaiting delivery</strong>. Once the order is
+              delivered, it moves to <strong>in return window</strong> for our standard return
+              period. If the order isn't returned, cancelled, or refunded during that window, it
+              becomes <strong>eligible</strong> — ready to be paid. We then send it to the UPI ID
+              you've saved below, and it shows as <strong>paid</strong> once sent. If the order is
+              returned, cancelled, or fails delivery during the return window, that commission is
+              voided instead and won't be paid.
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Earnings summary */}
