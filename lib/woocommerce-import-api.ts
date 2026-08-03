@@ -1,0 +1,83 @@
+// ---------------------------------------------------------------------
+// WooCommerce customer import.
+//
+// Lets the admin connect to an *external* WooCommerce store's REST API
+// and pull customer name / email / phone into this store's admin, so
+// they can be targeted with email marketing campaigns from here.
+//
+// Client-side wrappers only -- the actual WooCommerce fetch + Supabase
+// writes happen server-side in app/api/admin/woocommerce-import/route.ts
+// (never expose the WooCommerce Consumer Secret to the browser bundle).
+// ---------------------------------------------------------------------
+
+export interface WooCommerceCredentials {
+  storeUrl: string; // e.g. https://mystore.com (no trailing slash needed)
+  consumerKey: string;
+  consumerSecret: string;
+}
+
+export interface ImportedCustomer {
+  id: string;
+  wc_customer_id: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  source: string;
+  imported_at: string;
+}
+
+export interface ImportResult {
+  imported: number;
+  updated: number;
+  skipped: number;
+  total: number;
+}
+
+export async function importWooCommerceCustomers(
+  creds: WooCommerceCredentials
+): Promise<ImportResult> {
+  const res = await fetch('/api/admin/woocommerce-import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(creds),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Import failed');
+  return json as ImportResult;
+}
+
+export async function fetchImportedCustomers(): Promise<ImportedCustomer[]> {
+  const res = await fetch('/api/admin/woocommerce-import');
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to load imported customers');
+  return json.customers as ImportedCustomer[];
+}
+
+export async function deleteImportedCustomer(id: string): Promise<void> {
+  const res = await fetch(`/api/admin/woocommerce-import/${id}`, { method: 'DELETE' });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to delete');
+}
+
+export interface SendCampaignArgs {
+  customerIds: string[];
+  subject: string;
+  html: string;
+}
+
+export interface SendCampaignResult {
+  sent: number;
+  failed: number;
+  skipped: number;
+}
+
+export async function sendWooCommerceCampaign(args: SendCampaignArgs): Promise<SendCampaignResult> {
+  const res = await fetch('/api/admin/woocommerce-import/send-campaign', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(args),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to send campaign');
+  return json as SendCampaignResult;
+}

@@ -1,0 +1,245 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import { Download, Send, Trash2, Search } from 'lucide-react';
+import { toast } from 'sonner';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  fetchImportedCustomers,
+  importWooCommerceCustomers,
+  deleteImportedCustomer,
+  sendWooCommerceCampaign,
+  type ImportedCustomer,
+} from '@/lib/woocommerce-import-api';
+
+export default function WooCommerceImportPanel() {
+  const [customers, setCustomers] = useState<ImportedCustomer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  const [storeUrl, setStoreUrl] = useState('');
+  const [consumerKey, setConsumerKey] = useState('');
+  const [consumerSecret, setConsumerSecret] = useState('');
+
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [subject, setSubject] = useState('');
+  const [message, setMessage] = useState('');
+
+  const load = () =>
+    fetchImportedCustomers()
+      .then(setCustomers)
+      .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load'))
+      .finally(() => setLoading(false));
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return customers;
+    return customers.filter(
+      (c) =>
+        (c.name ?? '').toLowerCase().includes(q) ||
+        (c.email ?? '').toLowerCase().includes(q) ||
+        (c.phone ?? '').toLowerCase().includes(q)
+    );
+  }, [customers, search]);
+
+  const allFilteredSelected = filtered.length > 0 && filtered.every((c) => selected.has(c.id));
+
+  const toggleAll = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) {
+        filtered.forEach((c) => next.delete(c.id));
+      } else {
+        filtered.forEach((c) => next.add(c.id));
+      }
+      return next;
+    });
+  };
+
+  const toggleOne = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleImport = async () => {
+    if (!storeUrl || !consumerKey || !consumerSecret) {
+      toast.error('Store URL, Consumer Key aur Consumer Secret teeno bharo');
+      return;
+    }
+    setImporting(true);
+    try {
+      const result = await importWooCommerceCustomers({ storeUrl, consumerKey, consumerSecret });
+      toast.success(`${result.total} customers import ho gaye`);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Import fail ho gaya');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteImportedCustomer(id);
+      setCustomers((prev) => prev.filter((c) => c.id !== id));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Delete fail ho gaya');
+    }
+  };
+
+  const handleSend = async () => {
+    if (selected.size === 0) {
+      toast.error('Kam se kam ek customer select karo');
+      return;
+    }
+    if (!subject.trim() || !message.trim()) {
+      toast.error('Subject aur message dono likho');
+      return;
+    }
+    setSending(true);
+    try {
+      const html = `<div style="font-family:sans-serif;font-size:15px;line-height:1.6">${message.replace(
+        /\n/g,
+        '<br/>'
+      )}<hr style="margin-top:24px"/><p style="font-size:12px;color:#888">Aapko ye email isliye mili hai kyunki aapne hamare store se pehle kharidari ki thi. Agar aage aisi emails nahi chahiye, to reply karke bata dijiye.</p></div>`;
+      const result = await sendWooCommerceCampaign({
+        customerIds: Array.from(selected),
+        subject,
+        html,
+      });
+      toast.success(`Sent: ${result.sent}, Skipped: ${result.skipped}, Failed: ${result.failed}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Campaign send fail ho gaya');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="grid gap-6">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">Admin</p>
+        <h1 className="text-2xl font-serif font-semibold">WooCommerce Customer Import</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Apne WooCommerce store se customer name, email, phone yahan la kar unhe email
+          marketing bhejo. Sirf apne khud ke store ka data import karo, aur emails me
+          hamesha opt-out ka option rakho.
+        </p>
+      </div>
+
+      {/* Connect form */}
+      <div className="rounded-lg border p-4 grid gap-3 max-w-xl">
+        <h2 className="font-medium">1. WooCommerce se connect karo</h2>
+        <Input
+          placeholder="Store URL (e.g. https://mystore.com)"
+          value={storeUrl}
+          onChange={(e) => setStoreUrl(e.target.value)}
+        />
+        <Input
+          placeholder="Consumer Key (ck_...)"
+          value={consumerKey}
+          onChange={(e) => setConsumerKey(e.target.value)}
+        />
+        <Input
+          type="password"
+          placeholder="Consumer Secret (cs_...)"
+          value={consumerSecret}
+          onChange={(e) => setConsumerSecret(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          Ye WooCommerce me milta hai: WordPress Admin → WooCommerce → Settings → Advanced →
+          REST API → "Add key" (Permissions: Read).
+        </p>
+        <Button onClick={handleImport} disabled={importing} className="gap-2 w-fit">
+          <Download className="h-4 w-4" />
+          {importing ? 'Import ho raha hai...' : 'Import Customers'}
+        </Button>
+      </div>
+
+      {/* Imported list + campaign composer */}
+      <div className="rounded-lg border p-4 grid gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-medium">2. Imported customers ({customers.length})</h2>
+          <div className="relative w-64">
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              className="pl-8"
+              placeholder="Search name/email/phone"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        ) : filtered.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Abhi koi customer import nahi hua.</p>
+        ) : (
+          <div className="max-h-80 overflow-auto rounded border">
+            <table className="w-full text-sm">
+              <thead className="bg-muted sticky top-0">
+                <tr>
+                  <th className="p-2 text-left">
+                    <Checkbox checked={allFilteredSelected} onCheckedChange={toggleAll} />
+                  </th>
+                  <th className="p-2 text-left">Name</th>
+                  <th className="p-2 text-left">Email</th>
+                  <th className="p-2 text-left">Phone</th>
+                  <th className="p-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((c) => (
+                  <tr key={c.id} className="border-t">
+                    <td className="p-2">
+                      <Checkbox checked={selected.has(c.id)} onCheckedChange={() => toggleOne(c.id)} />
+                    </td>
+                    <td className="p-2">{c.name || '—'}</td>
+                    <td className="p-2">{c.email || '—'}</td>
+                    <td className="p-2">{c.phone || '—'}</td>
+                    <td className="p-2 text-right">
+                      <Button variant="ghost" size="icon" onClick={() => handleDelete(c.id)}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <h2 className="font-medium">3. Email campaign bhejo ({selected.size} selected)</h2>
+        <Input placeholder="Subject line" value={subject} onChange={(e) => setSubject(e.target.value)} />
+        <Textarea
+          placeholder="Message likho..."
+          rows={6}
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">
+          Email bhejne ke liye Admin → Settings → Email Notifications me pehle Resend ya
+          ZeptoMail configure karo, warna send fail hoga.
+        </p>
+        <Button onClick={handleSend} disabled={sending} className="gap-2 w-fit">
+          <Send className="h-4 w-4" />
+          {sending ? 'Bhej raha hai...' : `Send to ${selected.size} customers`}
+        </Button>
+      </div>
+    </div>
+  );
+}

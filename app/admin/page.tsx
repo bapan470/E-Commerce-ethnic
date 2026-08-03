@@ -23,6 +23,7 @@ import PartnerPagesPanel from '@/components/admin/partner-pages-panel';
 import StockNotificationsPanel from '@/components/admin/stock-notifications-panel';
 import AnalyticsPanel from '@/components/admin/analytics-panel';
 import CustomersPanel from '@/components/admin/customers-panel';
+import WooCommerceImportPanel from '@/components/admin/woocommerce-import-panel';
 import WholesalePanel from '@/components/admin/wholesale-panel';
 import LoyaltyPanel from '@/components/admin/loyalty-panel';
 import ReferralsPanel from '@/components/admin/referrals-panel';
@@ -45,6 +46,7 @@ const PANELS: Record<AdminSection, React.ComponentType> = {
   reviews: ReviewsPanel,
   orders: OrdersPanel,
   customers: CustomersPanel,
+  'woocommerce-import': WooCommerceImportPanel,
   returns: ReturnsPanel,
   'support-tickets': SupportTicketsPanel,
   'contact-messages': ContactMessagesPanel,

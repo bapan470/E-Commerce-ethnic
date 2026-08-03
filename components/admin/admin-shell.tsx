@@ -37,6 +37,7 @@ import {
   FileBarChart,
   Newspaper,
   EyeOff,
+  Download,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import NotificationBell from './notification-bell';
@@ -50,6 +51,7 @@ export type AdminSection =
   | 'reviews'
   | 'orders'
   | 'customers'
+  | 'woocommerce-import'
   | 'returns'
   | 'support-tickets'
   | 'contact-messages'
@@ -126,7 +128,10 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: 'People',
-    items: [{ value: 'customers', label: 'Customers', icon: Users }],
+    items: [
+      { value: 'customers', label: 'Customers', icon: Users },
+      { value: 'woocommerce-import', label: 'WooCommerce Import', icon: Download },
+    ],
   },
   {
     label: 'Marketing',
