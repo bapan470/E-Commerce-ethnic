@@ -27,6 +27,7 @@ import WholesalePanel from '@/components/admin/wholesale-panel';
 import LoyaltyPanel from '@/components/admin/loyalty-panel';
 import ReferralsPanel from '@/components/admin/referrals-panel';
 import ResellersPanel from '@/components/admin/resellers-panel';
+import AffiliatesPanel from '@/components/admin/affiliates-panel';
 import GiftCardsPanel from '@/components/admin/giftcards-panel';
 import VendorsPanel from '@/components/admin/vendors-panel';
 import FulfillmentPanel from '@/components/admin/fulfillment-panel';
@@ -59,6 +60,7 @@ const PANELS: Record<AdminSection, React.ComponentType> = {
   loyalty: LoyaltyPanel,
   referrals: ReferralsPanel,
   resellers: ResellersPanel,
+  affiliates: AffiliatesPanel,
   giftcards: GiftCardsPanel,
   vendors: VendorsPanel,
   fulfillment: FulfillmentPanel,

@@ -21,6 +21,7 @@ import { computeCouponDiscount } from '@/lib/coupons-api';
 import { fetchAddresses } from '@/lib/addresses-api';
 import { Address } from '@/lib/types';
 import { joinResellerProgram, fetchMyResellerOverview } from '@/lib/reseller-api';
+import { getStoredAffiliateCode, clearStoredAffiliateCode } from '@/lib/affiliate-api';
 import {
   fetchLoyaltySettings,
   fetchMyLoyaltyBalance,
@@ -811,6 +812,12 @@ export default function CheckoutPage() {
           reseller_base_cost: isResale ? total : null,
           reseller_profit: isResale ? resaleProfit : null,
           reseller_brand_name: isResale ? resaleBrandName || null : null,
+          // Affiliate referral — the RPC looks this code up server-side
+          // against an APPROVED affiliate and computes the commission
+          // itself (see place_order_with_items in
+          // supabase/migrations/20260913000000_affiliate_program.sql);
+          // we never trust or compute a commission amount here.
+          affiliate_code: getStoredAffiliateCode(),
         },
         p_items: orderItems,
       });
@@ -832,6 +839,10 @@ export default function CheckoutPage() {
         throw orderError;
       }
       const internalOrderId = newOrderId as string;
+      // Order is placed (commission, if any, is already stamped on the
+      // row by the RPC) — the referral has done its job, so drop it
+      // rather than let it linger and get attributed to a later order.
+      clearStoredAffiliateCode();
 
       // 2. Cash on Delivery — no online payment step, order is confirmed as-is
       // and payment is collected at delivery time.

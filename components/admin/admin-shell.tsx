@@ -65,6 +65,7 @@ export type AdminSection =
   | 'loyalty'
   | 'referrals'
   | 'resellers'
+  | 'affiliates'
   | 'giftcards'
   | 'vendors'
   | 'fulfillment'
@@ -139,6 +140,7 @@ const NAV_GROUPS: NavGroup[] = [
       { value: 'loyalty', label: 'Loyalty', icon: Gift },
       { value: 'referrals', label: 'Referrals', icon: Users2 },
       { value: 'resellers', label: 'Resellers', icon: Store },
+      { value: 'affiliates', label: 'Affiliates', icon: Users2 },
       { value: 'giftcards', label: 'Gift Cards', icon: CreditCard },
     ],
   },

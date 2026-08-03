@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
-import { Package, MapPin, User, Heart, RotateCcw, LogOut, Gift, Users2, Store } from 'lucide-react';
+import { Package, MapPin, User, Heart, RotateCcw, LogOut, Gift, Users2, Store, Link2 } from 'lucide-react';
 
 const links = [
   { href: '/account/orders', label: 'Orders', icon: Package },
@@ -12,6 +12,7 @@ const links = [
   { href: '/account/loyalty', label: 'Reward Points', icon: Gift },
   { href: '/account/referrals', label: 'Refer & Earn', icon: Users2 },
   { href: '/account/reseller', label: 'Reseller', icon: Store },
+  { href: '/account/affiliate', label: 'Affiliate', icon: Link2 },
   { href: '/account/addresses', label: 'Addresses', icon: MapPin },
   { href: '/account/returns', label: 'Returns & Exchanges', icon: RotateCcw },
   { href: '/account/profile', label: 'Profile', icon: User },

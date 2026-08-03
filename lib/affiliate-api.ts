@@ -186,3 +186,145 @@ export function clearStoredAffiliateCode() {
     // ignore
   }
 }
+
+// ---------------------------------------------------------------------
+// Admin (Admin > Affiliates tab) — go through /api/admin/affiliates so
+// requests are checked against the admin session cookie server-side,
+// same pattern as /api/admin/resellers.
+// ---------------------------------------------------------------------
+
+export interface AdminAffiliateRow {
+  id: string;
+  userId: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  code: string;
+  status: AffiliateStatus;
+  commissionPercent: number;
+  createdAt: string;
+  totalOrders: number;
+  totalSales: number;
+  totalCommission: number;
+}
+
+export interface AdminAffiliatesOverview {
+  affiliates: AdminAffiliateRow[];
+  totalAffiliates: number;
+  totalOrders: number;
+  totalSales: number;
+}
+
+export async function fetchAdminAffiliatesOverview(): Promise<AdminAffiliatesOverview> {
+  const res = await fetch('/api/admin/affiliates');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to load affiliates');
+  }
+  return res.json();
+}
+
+/** Approve / reject / suspend an affiliate. */
+export async function updateAdminAffiliateStatus(id: string, status: AffiliateStatus): Promise<void> {
+  const res = await fetch('/api/admin/affiliates', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, status }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to update affiliate');
+  }
+}
+
+/** Set an affiliate's commission percentage (0–100). */
+export async function updateAdminAffiliateCommission(id: string, commissionPercent: number): Promise<void> {
+  const res = await fetch('/api/admin/affiliates', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, commission_percent: commissionPercent }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to update commission');
+  }
+}
+
+// ---------------------------------------------------------------------
+// Admin (Admin > Affiliates > Payouts tab) — commission is only payable
+// once a referred order is delivered and the return window has passed.
+// See supabase/migrations/20260913000000_affiliate_program.sql.
+// ---------------------------------------------------------------------
+
+export interface AdminAffiliateEligibleOrder {
+  id: string;
+  customerName: string | null;
+  totalAmount: number;
+  commissionAmount: number | null;
+  deliveredAt: string | null;
+  createdAt: string;
+}
+
+export interface AdminAffiliatePayoutRow {
+  id: string;
+  userId: string;
+  name: string;
+  code: string;
+  phone: string | null;
+  status: AffiliateStatus;
+  commissionPercent: number;
+  payoutUpiId: string | null;
+  payoutAccountHolder: string | null;
+  pendingDeliveryAmount: number;
+  pendingDeliveryCount: number;
+  inReturnWindowAmount: number;
+  inReturnWindowCount: number;
+  eligibleAmount: number;
+  eligibleOrders: AdminAffiliateEligibleOrder[];
+  paidAmount: number;
+  voidAmount: number;
+  voidCount: number;
+}
+
+export interface AdminAffiliatePayoutHistoryRow {
+  id: string;
+  affiliateId: string;
+  affiliateName: string;
+  totalAmount: number;
+  orderCount: number;
+  paymentReference: string | null;
+  notes: string | null;
+  paidAt: string;
+}
+
+export interface AdminAffiliatePayoutsOverview {
+  affiliates: AdminAffiliatePayoutRow[];
+  payoutHistory: AdminAffiliatePayoutHistoryRow[];
+  totals: { pendingDelivery: number; inReturnWindow: number; eligible: number; paid: number };
+}
+
+export async function fetchAdminAffiliatePayouts(): Promise<AdminAffiliatePayoutsOverview> {
+  const res = await fetch('/api/admin/affiliate-payouts');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to load affiliate payouts');
+  }
+  return res.json();
+}
+
+export async function markAffiliatePayoutPaid(
+  affiliateId: string,
+  orderIds: string[],
+  paymentReference: string,
+  notes?: string
+): Promise<void> {
+  const res = await fetch('/api/admin/affiliate-payouts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ affiliate_id: affiliateId, order_ids: orderIds, payment_reference: paymentReference, notes }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to record payout');
+  }
+}
