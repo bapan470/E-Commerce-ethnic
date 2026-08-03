@@ -140,14 +140,15 @@ export async function POST(req: NextRequest) {
   // how far we got in the `settings` table, and let the browser call this
   // route again automatically until every page is done.
   const CURSOR_KEY = 'woocommerce_import_cursor';
-  // NOTE: this project deploys to Netlify (see netlify.toml), whose default
-  // function timeout is well under the 60s "maxDuration" above (that value
-  // is a Vercel-only setting and does nothing here). 8 sequential external
-  // requests to a Cloudflare-protected store routinely blew past that limit,
-  // the function got killed mid-request, and the platform's own timeout
-  // page (not JSON) came back -- which is why the browser only ever showed
-  // the generic "Import failed" fallback instead of a real reason. Keeping
-  // each call to a small handful of pages keeps us safely inside the limit.
+  // Confirmed: this deploys to Vercel Hobby, not Netlify (an old, unused
+  // netlify.toml in the repo caused an earlier wrong guess here). On Hobby,
+  // maxDuration=60 above genuinely applies (Vercel raised Hobby's ceiling
+  // to 60s in 2024), so a single call has up to ~60s of wall-clock time.
+  // Still keeping PAGES_PER_CALL modest -- a slow/Cloudflare-protected
+  // external store can easily take several seconds per page, and staying
+  // well under the ceiling leaves headroom for slow pages instead of
+  // cutting it close every call. Bump this back up if imports feel slower
+  // than necessary; 60s / ~2-4s per page comfortably supports higher than 3.
   const PAGES_PER_CALL = 3;
 
   let startPage = 1;
