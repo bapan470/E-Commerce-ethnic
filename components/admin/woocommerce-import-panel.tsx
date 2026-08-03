@@ -134,9 +134,11 @@ export default function WooCommerceImportPanel() {
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">Admin</p>
         <h1 className="text-2xl font-serif font-semibold">WooCommerce Customer Import</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Apne WooCommerce store se customer name, email, phone yahan la kar unhe email
-          marketing bhejo. Sirf apne khud ke store ka data import karo, aur emails me
-          hamesha opt-out ka option rakho.
+          Apne WooCommerce store ke <strong>real orders</strong> se customer name, email, phone
+          yahan la kar unhe email marketing bhejo. Ye sirf un logon ko import karta hai jinhone
+          kabhi order kiya ho — WordPress ke fake/spam registered users kabhi include nahi
+          honge. Sirf apne khud ke store ka data import karo, aur emails me hamesha opt-out ka
+          option rakho.
         </p>
       </div>
 

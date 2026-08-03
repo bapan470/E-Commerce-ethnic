@@ -33,18 +33,11 @@ export async function GET() {
   }
 }
 
-type WooCustomer = {
-  id: number;
-  first_name?: string;
-  last_name?: string;
-  email?: string;
-  billing?: { phone?: string; email?: string };
-};
-
 type WooOrder = {
   id: number;
   billing?: { first_name?: string; last_name?: string; email?: string; phone?: string };
   customer_id?: number;
+  date_created?: string;
 };
 
 function normalizeUrl(url: string) {
@@ -111,71 +104,50 @@ export async function POST(req: NextRequest) {
   const creds = { storeUrl, consumerKey, consumerSecret };
   const supabase = getSupabaseAdmin();
 
-  // Map of email -> best-known row, so a person who appears both as a
-  // registered customer and on a guest order only gets imported once.
+  // Only pull from REAL orders -- never from /wp-json/wc/v3/customers.
+  // The customers endpoint returns every *registered* WordPress user with
+  // the customer role, which on many stores includes hundreds/thousands of
+  // bot spam sign-ups that never bought anything. Building the list from
+  // orders instead means every row here is someone who actually checked
+  // out -- exactly what the site's own admin "Customers" tab does too.
+  //
+  // Keyed by email (not order id / customer id), so the same person is
+  // never duplicated across pages or across repeated imports.
   const byEmail = new Map<
     string,
-    { wc_customer_id: string; name: string | null; email: string | null; phone: string | null }
+    { name: string | null; email: string; phone: string | null; latestOrderId: number }
   >();
 
   try {
-    // ---- Pass 1: registered customers (/wp-json/wc/v3/customers) ----
     let page = 1;
-    for (;;) {
-      const customers: WooCustomer[] = await wooFetch(
-        `/wp-json/wc/v3/customers?per_page=100&page=${page}`,
-        creds
-      );
-      if (!Array.isArray(customers) || customers.length === 0) break;
-
-      for (const c of customers) {
-        const email = (c.email || c.billing?.email || '').trim().toLowerCase();
-        if (!email) continue;
-        byEmail.set(email, {
-          wc_customer_id: `customer:${c.id}`,
-          name: [c.first_name, c.last_name].filter(Boolean).join(' ').trim() || null,
-          email,
-          phone: c.billing?.phone?.trim() || null,
-        });
-      }
-      if (customers.length < 100) break;
-      page += 1;
-      if (page > 100) break; // safety cap: 10,000 customers
-    }
-
-    // ---- Pass 2: orders (/wp-json/wc/v3/orders) -- catches guest checkouts ----
-    // and fills in phone numbers that the /customers endpoint sometimes omits.
-    page = 1;
+    let totalOrdersSeen = 0;
     for (;;) {
       const orders: WooOrder[] = await wooFetch(`/wp-json/wc/v3/orders?per_page=100&page=${page}`, creds);
       if (!Array.isArray(orders) || orders.length === 0) break;
+      totalOrdersSeen += orders.length;
 
       for (const o of orders) {
         const email = (o.billing?.email || '').trim().toLowerCase();
         if (!email) continue;
         const name = [o.billing?.first_name, o.billing?.last_name].filter(Boolean).join(' ').trim() || null;
         const phone = o.billing?.phone?.trim() || null;
+
         const existing = byEmail.get(email);
         if (existing) {
-          // Fill in anything the customer record was missing.
+          // Keep the most complete info seen for this email across all their orders.
           if (!existing.name && name) existing.name = name;
           if (!existing.phone && phone) existing.phone = phone;
         } else {
-          byEmail.set(email, {
-            wc_customer_id: o.customer_id ? `customer:${o.customer_id}` : `order:${o.id}`,
-            name,
-            email,
-            phone,
-          });
+          byEmail.set(email, { name, email, phone, latestOrderId: o.id });
         }
       }
       if (orders.length < 100) break;
       page += 1;
-      if (page > 200) break; // safety cap: 20,000 orders
+      if (page > 500) break; // safety cap: 50,000 orders
     }
 
     const rows = Array.from(byEmail.values()).map((r) => ({
-      wc_customer_id: r.wc_customer_id,
+      wc_customer_id: `order:${r.latestOrderId}`,
       name: r.name,
       email: r.email,
       phone: r.phone,
@@ -184,19 +156,17 @@ export async function POST(req: NextRequest) {
     }));
 
     if (rows.length === 0) {
-      return NextResponse.json({ imported: 0, updated: 0, skipped: 0, total: 0 });
+      return NextResponse.json({ imported: 0, updated: 0, skipped: 0, total: 0, ordersScanned: totalOrdersSeen });
     }
 
-    // Upsert in batches on wc_customer_id (dedupes across re-imports).
+    // Upsert in batches, deduped on email (fixes the "same email twice" bug --
+    // re-importing now updates the existing row for that email instead of
+    // creating a second one).
     const BATCH = 500;
-    let imported = 0;
     for (let i = 0; i < rows.length; i += BATCH) {
       const chunk = rows.slice(i, i + BATCH);
-      const { error, count } = await supabase
-        .from('woocommerce_customers')
-        .upsert(chunk, { onConflict: 'wc_customer_id', count: 'exact' });
+      const { error } = await supabase.from('woocommerce_customers').upsert(chunk, { onConflict: 'email' });
       if (error) throw error;
-      imported += count ?? chunk.length;
     }
 
     return NextResponse.json({
@@ -204,6 +174,7 @@ export async function POST(req: NextRequest) {
       updated: 0,
       skipped: 0,
       total: rows.length,
+      ordersScanned: totalOrdersSeen,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Import failed';
