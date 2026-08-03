@@ -494,6 +494,44 @@ export function vendorApplicationStatusEmail(vendor: {
   return { subject, html };
 }
 
+/** Sent to the customer once the admin approves/rejects/suspends their
+ *  affiliate application — exact mirror of vendorApplicationStatusEmail,
+ *  pointed at the affiliate dashboard instead of the vendor dashboard. */
+export function affiliateApplicationStatusEmail(affiliate: {
+  name: string;
+  status: 'approved' | 'rejected' | 'suspended';
+  commission_percent?: number | null;
+}) {
+  const approved = affiliate.status === 'approved';
+  const suspended = affiliate.status === 'suspended';
+  const subject = approved
+    ? `You're approved as an affiliate — ${SITE_NAME}`
+    : suspended
+      ? `Your affiliate account has been suspended — ${SITE_NAME}`
+      : `Update on your affiliate application — ${SITE_NAME}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">${approved ? 'Application approved!' : suspended ? 'Account suspended' : 'Application update'}</h2>
+    <p>Hi ${affiliate.name},</p>
+    ${
+      approved
+        ? `<p>Good news — your affiliate application with ${SITE_NAME} has been approved${affiliate.commission_percent != null ? ` at a <strong>${affiliate.commission_percent}%</strong> commission rate` : ''}. Log in to your dashboard to get your referral link and start earning.</p>`
+        : suspended
+          ? `<p>Your affiliate account with ${SITE_NAME} has been suspended. Any commission already marked as paid is unaffected, but no new referrals will earn commission while your account is suspended.</p>`
+          : `<p>Thanks for applying to the ${SITE_NAME} affiliate program. After review, we're not able to approve your application at this time.</p>`
+    }
+    ${
+      approved
+        ? `<p style="text-align:center; margin-top: 20px;">
+            <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/account/affiliate" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+              Go to affiliate dashboard
+            </a>
+          </p>`
+        : ''
+    }
+  `);
+  return { subject, html };
+}
+
 /** Sent to the vendor once the admin approves/rejects their bank-detail change request. */
 export function vendorBankUpdateStatusEmail(vendor: {
   business_name: string;

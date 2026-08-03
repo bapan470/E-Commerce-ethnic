@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { sendEmail } from '@/lib/email';
+import { affiliateApplicationStatusEmail } from '@/lib/email-templates';
 
 async function requireAdmin() {
   const cookie = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? null;
@@ -120,8 +122,40 @@ export async function PUT(req: Request) {
 
   const supabase = getSupabaseAdmin();
   try {
-    const { error } = await supabase.from('affiliates').update(updates).eq('id', id);
+    const { data: updated, error } = await supabase
+      .from('affiliates')
+      .update(updates)
+      .eq('id', id)
+      .select('user_id, commission_percent')
+      .maybeSingle();
     if (error) throw error;
+
+    // Only fire an email when the status itself actually changed (not
+    // for a commission-only edit, and not for 'pending' — nothing to
+    // tell the customer yet at that stage). A failed email should never
+    // fail the request, so it's wrapped in its own try/catch — but it
+    // IS awaited (not fire-and-forget), since a serverless function can
+    // be frozen/killed right after the response is sent.
+    if (status && ['approved', 'rejected', 'suspended'].includes(status) && updated?.user_id) {
+      try {
+        const [{ data: authUser }, { data: profile }] = await Promise.all([
+          supabase.auth.admin.getUserById(updated.user_id),
+          supabase.from('profiles').select('full_name').eq('id', updated.user_id).maybeSingle(),
+        ]);
+        const email = authUser?.user?.email;
+        if (email) {
+          const { subject, html } = affiliateApplicationStatusEmail({
+            name: profile?.full_name || 'there',
+            status: status as 'approved' | 'rejected' | 'suspended',
+            commission_percent: updated.commission_percent,
+          });
+          await sendEmail({ to: email, subject, html });
+        }
+      } catch (emailErr) {
+        console.error('[admin/affiliates] status email failed:', emailErr);
+      }
+    }
+
     return NextResponse.json({ success: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to update affiliate';
