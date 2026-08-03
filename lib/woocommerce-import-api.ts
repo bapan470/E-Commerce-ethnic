@@ -41,8 +41,23 @@ export async function importWooCommerceCustomersChunk(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(creds),
   });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json.error || 'Import failed');
+  let parseFailed = false;
+  const json = await res.json().catch(() => {
+    parseFailed = true;
+    return {};
+  });
+  if (!res.ok) {
+    // A non-JSON body on failure means the platform (not our route) cut the
+    // request off -- almost always a function timeout -- rather than our
+    // own try/catch, which always returns real JSON with an `error` field.
+    if (parseFailed) {
+      throw new Error(
+        `Server ne time se pehle jawab nahi diya (status ${res.status}) — is se ye lagta hai ki request timeout ho gayi, ` +
+          `galat credentials ka issue nahi hai. Kam pages-per-call try karo ya thodi der baad phir se try karo.`
+      );
+    }
+    throw new Error(json.error || 'Import failed');
+  }
   return json as ImportResult;
 }
 

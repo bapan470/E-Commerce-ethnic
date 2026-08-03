@@ -120,7 +120,15 @@ export async function POST(req: NextRequest) {
   // how far we got in the `settings` table, and let the browser call this
   // route again automatically until every page is done.
   const CURSOR_KEY = 'woocommerce_import_cursor';
-  const PAGES_PER_CALL = 8; // ~8 sequential external requests fits comfortably in 10-60s
+  // NOTE: this project deploys to Netlify (see netlify.toml), whose default
+  // function timeout is well under the 60s "maxDuration" above (that value
+  // is a Vercel-only setting and does nothing here). 8 sequential external
+  // requests to a Cloudflare-protected store routinely blew past that limit,
+  // the function got killed mid-request, and the platform's own timeout
+  // page (not JSON) came back -- which is why the browser only ever showed
+  // the generic "Import failed" fallback instead of a real reason. Keeping
+  // each call to a small handful of pages keeps us safely inside the limit.
+  const PAGES_PER_CALL = 3;
 
   let startPage = 1;
   if (!reset) {
