@@ -19,6 +19,7 @@ import SupportTicketsPanel from '@/components/admin/support-tickets-panel';
 import ContactMessagesPanel from '@/components/admin/contact-messages-panel';
 import AbandonedCartsPanel from '@/components/admin/abandoned-carts-panel';
 import MarketingPanel from '@/components/admin/marketing-panel';
+import PartnerPagesPanel from '@/components/admin/partner-pages-panel';
 import StockNotificationsPanel from '@/components/admin/stock-notifications-panel';
 import AnalyticsPanel from '@/components/admin/analytics-panel';
 import CustomersPanel from '@/components/admin/customers-panel';
@@ -54,6 +55,7 @@ const PANELS: Record<AdminSection, React.ComponentType> = {
   'homepage-tiles': HomepageTilesPanel,
   'hero-banners': HeroBannersPanel,
   marketing: MarketingPanel,
+  'partner-pages': PartnerPagesPanel,
   loyalty: LoyaltyPanel,
   referrals: ReferralsPanel,
   resellers: ResellersPanel,

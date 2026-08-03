@@ -128,10 +128,136 @@ export async function fetchAboutContent(): Promise<AboutContent> {
   return mergeAboutContent(data.value as Partial<AboutContent>);
 }
 
-export async function saveAboutContent(content: AboutContent) {
+// ---------------------------------------------------------------------
+// Partner pages content — the 4 public vendor/reseller SEO landing pages
+// (/vendor-registration, /vendor-login, /reseller-registration,
+// /reseller-login). These exist outside the login-protected /vendor and
+// /account paths specifically so Google can index them; the text is
+// editable here so admins don't need a code change to update copy.
+// ---------------------------------------------------------------------
+export interface PartnerPageStep {
+  title: string;
+  body: string;
+}
+
+export interface PartnerPageFaq {
+  q: string;
+  a: string;
+}
+
+export interface PartnerLandingContent {
+  hero_heading: string;
+  hero_subtext: string;
+  cta_label: string;
+}
+
+export interface PartnerRegistrationContent extends PartnerLandingContent {
+  steps: PartnerPageStep[]; // exactly 4 — icons fixed in code, matched by position
+  faqs: PartnerPageFaq[]; // exactly 3
+}
+
+export interface PartnerPagesContent {
+  vendor_registration: PartnerRegistrationContent;
+  vendor_login: PartnerLandingContent;
+  reseller_registration: PartnerRegistrationContent;
+  reseller_login: PartnerLandingContent;
+}
+
+export const DEFAULT_PARTNER_PAGES_CONTENT: PartnerPagesContent = {
+  vendor_registration: {
+    hero_heading: 'Vendor Registration',
+    hero_subtext:
+      'Supply handwoven sarees, lehengas, and ethnic wear to AruhiHandlooms. Register as a vendor, get verified, and let us handle photography, listing, and shipping for every order.',
+    cta_label: 'Start Vendor Registration',
+    steps: [
+      { title: 'Apply online', body: 'Fill in your business details, PAN, and pickup address in a short form — takes under 5 minutes.' },
+      { title: 'Get verified', body: 'Our team reviews your application and KYC details, usually within a few business days.' },
+      { title: 'We handle logistics', body: 'Once approved, we photograph, list, and ship every order to the customer — you just supply stock.' },
+      { title: 'Get paid', body: 'Track orders and settlements from your vendor dashboard after every fulfilled order.' },
+    ],
+    faqs: [
+      { q: 'How do I register as a vendor on AruhiHandlooms?', a: 'Click "Start Vendor Registration", log in or create a free account, and submit the vendor application form with your business name, PAN, and pickup address.' },
+      { q: 'Is there a fee for vendor registration?', a: 'No. Vendor registration and onboarding are free. You only need valid PAN details, and GST if applicable.' },
+      { q: 'How do I log in after I become a vendor?', a: 'Approved vendors log in with the same account used to apply, via the vendor login page, and are taken straight to their vendor dashboard.' },
+    ],
+  },
+  vendor_login: {
+    hero_heading: 'Vendor Login',
+    hero_subtext:
+      "Vendors log in with the same account used to apply. Once logged in, you'll be taken straight to your vendor dashboard to manage products, orders, and earnings.",
+    cta_label: 'Log In to Vendor Dashboard',
+  },
+  reseller_registration: {
+    hero_heading: 'Reseller Registration',
+    hero_subtext:
+      'Start reselling and earn on every order. Set your own markup and sell our handloom collection under your name — zero inventory required.',
+    cta_label: 'Start Reseller Registration',
+    steps: [
+      { title: 'Create a free account', body: 'Sign up or log in with your existing AruhiHandlooms account — no separate reseller signup needed.' },
+      { title: 'Join the reseller program', body: 'One click from your account to join — no application review, no waiting period.' },
+      { title: 'Share products, zero inventory', body: 'Share our handloom catalog with your customers. We handle stock, packing, and shipping.' },
+      { title: 'Set your markup, earn per order', body: 'Choose your own markup on top of our price and earn on every order placed through you.' },
+    ],
+    faqs: [
+      { q: 'How do I register as a reseller on AruhiHandlooms?', a: 'Log in or create a free AruhiHandlooms account, then join the reseller program from your account page in a single click — there is no separate application form.' },
+      { q: 'Is reseller registration free?', a: 'Yes, joining the reseller program is free and there is no inventory to buy upfront.' },
+      { q: 'How much can I earn as a reseller?', a: 'You set your own markup amount on top of the base price. You earn that markup on every order placed through your reseller link.' },
+    ],
+  },
+  reseller_login: {
+    hero_heading: 'Reseller Login',
+    hero_subtext:
+      "Resellers log in with their regular AruhiHandlooms account. Once logged in, you'll be taken straight to your reseller dashboard to track orders and earnings.",
+    cta_label: 'Log In to Reseller Dashboard',
+  },
+};
+
+function mergeLanding(
+  value: Partial<PartnerLandingContent> | null | undefined,
+  fallback: PartnerLandingContent
+): PartnerLandingContent {
+  return { ...fallback, ...(value || {}) };
+}
+
+function mergeRegistration(
+  value: Partial<PartnerRegistrationContent> | null | undefined,
+  fallback: PartnerRegistrationContent
+): PartnerRegistrationContent {
+  const v = value || {};
+  return {
+    ...fallback,
+    ...v,
+    steps: Array.isArray(v.steps) && v.steps.length === 4 ? v.steps : fallback.steps,
+    faqs: Array.isArray(v.faqs) && v.faqs.length === 3 ? v.faqs : fallback.faqs,
+  };
+}
+
+export function mergePartnerPagesContent(
+  value: Partial<PartnerPagesContent> | null | undefined
+): PartnerPagesContent {
+  const v = value || {};
+  return {
+    vendor_registration: mergeRegistration(v.vendor_registration, DEFAULT_PARTNER_PAGES_CONTENT.vendor_registration),
+    vendor_login: mergeLanding(v.vendor_login, DEFAULT_PARTNER_PAGES_CONTENT.vendor_login),
+    reseller_registration: mergeRegistration(v.reseller_registration, DEFAULT_PARTNER_PAGES_CONTENT.reseller_registration),
+    reseller_login: mergeLanding(v.reseller_login, DEFAULT_PARTNER_PAGES_CONTENT.reseller_login),
+  };
+}
+
+export async function fetchPartnerPagesContent(): Promise<PartnerPagesContent> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'partner_pages_content')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_PARTNER_PAGES_CONTENT;
+  return mergePartnerPagesContent(data.value as Partial<PartnerPagesContent>);
+}
+
+export async function savePartnerPagesContent(content: PartnerPagesContent) {
   const { error } = await supabase
     .from('settings')
-    .upsert({ key: 'about_content', value: content }, { onConflict: 'key' });
+    .upsert({ key: 'partner_pages_content', value: content }, { onConflict: 'key' });
   if (error) throw error;
 }
 

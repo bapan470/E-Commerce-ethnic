@@ -3,63 +3,43 @@ import type { Metadata } from 'next';
 import { CheckCircle2, Store, IndianRupee, Package, TrendingUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { safeJsonLd } from '@/lib/json-ld';
+import { getServerSupabase } from '@/lib/supabase-server';
+import { mergePartnerPagesContent, type PartnerPagesContent } from '@/lib/settings-api';
 
 // Public, crawlable landing page for the "reseller registration" search
-// intent. The reseller program itself lives at /account/reseller, which
-// requires login (middleware redirects logged-out visitors, including
-// Googlebot, to /login before any content loads) — so it can't rank for
-// this keyword on its own. This page gives Google real, indexable content
-// to match the query, then funnels into login/join.
-export const metadata: Metadata = {
-  title: 'Reseller Registration — Become an AruhiHandlooms Reseller',
-  description:
-    'Register as a reseller with AruhiHandlooms. Set your own markup and resell handloom sarees and ethnic wear under your name — zero inventory required.',
-  alternates: { canonical: '/reseller-registration' },
-};
+// intent. /account/reseller requires login (middleware redirects
+// logged-out visitors, including Googlebot, to /login) so it can't rank
+// for this keyword on its own. Content is admin-editable at
+// Admin > Marketing > Partner Pages.
 
-const steps = [
-  {
-    icon: Store,
-    title: 'Create a free account',
-    body: 'Sign up or log in with your existing AruhiHandlooms account — no separate reseller signup needed.',
-  },
-  {
-    icon: TrendingUp,
-    title: 'Join the reseller program',
-    body: 'One click from your account to join — no application review, no waiting period.',
-  },
-  {
-    icon: Package,
-    title: 'Share products, zero inventory',
-    body: 'Share our handloom catalog with your customers. We handle stock, packing, and shipping.',
-  },
-  {
-    icon: IndianRupee,
-    title: 'Set your markup, earn per order',
-    body: 'Choose your own markup on top of our price and earn on every order placed through you.',
-  },
-];
+const stepIcons = [Store, TrendingUp, Package, IndianRupee];
 
-const faqs = [
-  {
-    q: 'How do I register as a reseller on AruhiHandlooms?',
-    a: 'Log in or create a free AruhiHandlooms account, then join the reseller program from your account page in a single click — there is no separate application form.',
-  },
-  {
-    q: 'Is reseller registration free?',
-    a: 'Yes, joining the reseller program is free and there is no inventory to buy upfront.',
-  },
-  {
-    q: 'How much can I earn as a reseller?',
-    a: 'You set your own markup amount on top of the base price. You earn that markup on every order placed through your reseller link.',
-  },
-];
+async function getContent(): Promise<PartnerPagesContent> {
+  const supabase = getServerSupabase();
+  const { data } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'partner_pages_content')
+    .maybeSingle();
+  return mergePartnerPagesContent(data?.value as any);
+}
 
-export default function ResellerRegistrationPage() {
+export async function generateMetadata(): Promise<Metadata> {
+  const content = await getContent();
+  return {
+    title: 'Reseller Registration — Become an AruhiHandlooms Reseller',
+    description: content.reseller_registration.hero_subtext,
+    alternates: { canonical: '/reseller-registration' },
+  };
+}
+
+export default async function ResellerRegistrationPage() {
+  const { reseller_registration: c } = await getContent();
+
   const faqJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'FAQPage',
-    mainEntity: faqs.map((f) => ({
+    mainEntity: c.faqs.map((f) => ({
       '@type': 'Question',
       name: f.q,
       acceptedAnswer: { '@type': 'Answer', text: f.a },
@@ -84,16 +64,15 @@ export default function ResellerRegistrationPage() {
             Become a Partner
           </p>
           <h1 className="mt-3 max-w-2xl font-serif text-4xl font-bold leading-tight sm:text-5xl">
-            Reseller Registration
+            {c.hero_heading}
           </h1>
           <p className="mt-4 max-w-xl text-sm text-primary-foreground/80 sm:text-base">
-            Start reselling and earn on every order. Set your own markup and sell our
-            handloom collection under your name — zero inventory required.
+            {c.hero_subtext}
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
             <Link href="/login?next=/account/reseller">
               <Button className="bg-secondary text-secondary-foreground hover:bg-secondary/90">
-                Start Reseller Registration
+                {c.cta_label}
               </Button>
             </Link>
             <Link href="/reseller-login">
@@ -110,13 +89,16 @@ export default function ResellerRegistrationPage() {
           How reseller registration works
         </h2>
         <div className="mt-8 grid gap-6 sm:grid-cols-2">
-          {steps.map(({ icon: Icon, title, body }) => (
-            <div key={title} className="rounded-lg border border-border/60 bg-card p-5">
-              <Icon className="h-6 w-6 text-secondary" />
-              <p className="mt-3 font-serif text-lg font-semibold text-primary">{title}</p>
-              <p className="mt-1 text-sm text-muted-foreground">{body}</p>
-            </div>
-          ))}
+          {c.steps.map((step, i) => {
+            const Icon = stepIcons[i] || Store;
+            return (
+              <div key={step.title} className="rounded-lg border border-border/60 bg-card p-5">
+                <Icon className="h-6 w-6 text-secondary" />
+                <p className="mt-3 font-serif text-lg font-semibold text-primary">{step.title}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{step.body}</p>
+              </div>
+            );
+          })}
         </div>
 
         <h2 className="mt-14 font-serif text-2xl font-bold text-primary sm:text-3xl">
@@ -140,7 +122,7 @@ export default function ResellerRegistrationPage() {
           Frequently asked questions
         </h2>
         <div className="mt-6 space-y-6">
-          {faqs.map((f) => (
+          {c.faqs.map((f) => (
             <div key={f.q}>
               <p className="font-semibold text-primary">{f.q}</p>
               <p className="mt-1 text-sm text-muted-foreground">{f.a}</p>
@@ -154,7 +136,7 @@ export default function ResellerRegistrationPage() {
             Join the program in a single click from your account.
           </p>
           <Link href="/login?next=/account/reseller">
-            <Button className="mt-5 bg-primary">Start Reseller Registration</Button>
+            <Button className="mt-5 bg-primary">{c.cta_label}</Button>
           </Link>
         </div>
       </div>

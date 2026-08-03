@@ -61,6 +61,7 @@ export type AdminSection =
   | 'homepage-tiles'
   | 'hero-banners'
   | 'marketing'
+  | 'partner-pages'
   | 'loyalty'
   | 'referrals'
   | 'resellers'
@@ -134,6 +135,7 @@ const NAV_GROUPS: NavGroup[] = [
       { value: 'homepage-tiles', label: 'Homepage Tiles', icon: LayoutGrid },
       { value: 'hero-banners', label: 'Hero Banners', icon: Images },
       { value: 'marketing', label: 'Marketing', icon: Megaphone },
+      { value: 'partner-pages', label: 'Partner Pages', icon: Store },
       { value: 'loyalty', label: 'Loyalty', icon: Gift },
       { value: 'referrals', label: 'Referrals', icon: Users2 },
       { value: 'resellers', label: 'Resellers', icon: Store },
