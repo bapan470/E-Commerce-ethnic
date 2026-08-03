@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Store, IndianRupee, Package, TrendingUp, Loader2, ShoppingBag } from 'lucide-react';
+import { Store, IndianRupee, Package, TrendingUp, Loader2, ShoppingBag, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -13,10 +13,18 @@ import {
   fetchMyResellerOrders,
   joinResellerProgram,
   updateResellerDefaultMarkup,
+  updateResellerPayoutDetails,
   type ResellerProfile,
   type ResellerEarnings,
   type ResellerOrderRow,
 } from '@/lib/reseller-api';
+
+const PAYOUT_LABELS: Record<string, { label: string; className: string }> = {
+  pending_delivery: { label: 'Awaiting delivery', className: 'bg-muted text-muted-foreground' },
+  eligible: { label: 'Ready — will be paid soon', className: 'bg-amber-100 text-amber-700' },
+  paid: { label: 'Paid', className: 'bg-green-100 text-green-700' },
+  void: { label: 'Not payable (RTO/cancelled)', className: 'bg-red-100 text-red-700' },
+};
 
 export default function ResellerPage() {
   const [loading, setLoading] = useState(true);
@@ -26,11 +34,17 @@ export default function ResellerPage() {
     totalSales: 0,
     totalProfit: 0,
     pendingOrders: 0,
+    pendingDeliveryProfit: 0,
+    eligibleProfit: 0,
+    paidProfit: 0,
   });
   const [orders, setOrders] = useState<ResellerOrderRow[]>([]);
   const [joining, setJoining] = useState(false);
   const [markupInput, setMarkupInput] = useState('100');
   const [savingMarkup, setSavingMarkup] = useState(false);
+  const [upiInput, setUpiInput] = useState('');
+  const [holderInput, setHolderInput] = useState('');
+  const [savingPayout, setSavingPayout] = useState(false);
 
   const load = async () => {
     try {
@@ -39,6 +53,8 @@ export default function ResellerPage() {
       setEarnings(overview.earnings);
       if (overview.profile) {
         setMarkupInput(String(overview.profile.default_markup_amount));
+        setUpiInput(overview.profile.payout_upi_id || '');
+        setHolderInput(overview.profile.payout_account_holder || '');
         const myOrders = await fetchMyResellerOrders();
         setOrders(myOrders);
       }
@@ -83,6 +99,23 @@ export default function ResellerPage() {
       toast.error(err instanceof Error ? err.message : 'Failed to update');
     } finally {
       setSavingMarkup(false);
+    }
+  };
+
+  const handleSavePayout = async () => {
+    if (!upiInput.trim()) {
+      toast.error('Enter a UPI ID');
+      return;
+    }
+    setSavingPayout(true);
+    try {
+      await updateResellerPayoutDetails(upiInput.trim(), holderInput.trim());
+      setProfile((p) => (p ? { ...p, payout_upi_id: upiInput.trim(), payout_account_holder: holderInput.trim() } : p));
+      toast.success('Payout details saved');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save payout details');
+    } finally {
+      setSavingPayout(false);
     }
   };
 
@@ -160,6 +193,40 @@ export default function ResellerPage() {
         </div>
       </div>
 
+      {/* Payout stage breakdown — margin is only paid once an order is delivered */}
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="rounded-lg border border-border/60 bg-muted/30 p-4">
+          <p className="text-xl font-bold text-muted-foreground">{formatINR(earnings.pendingDeliveryProfit)}</p>
+          <p className="text-xs text-muted-foreground">Awaiting delivery (not payable yet)</p>
+        </div>
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4">
+          <p className="text-xl font-bold text-amber-700">{formatINR(earnings.eligibleProfit)}</p>
+          <p className="text-xs text-amber-700">Delivered — will be paid soon</p>
+        </div>
+        <div className="rounded-lg border border-green-300 bg-green-50 p-4">
+          <p className="text-xl font-bold text-green-700">{formatINR(earnings.paidProfit)}</p>
+          <p className="text-xs text-green-700">Already paid to you</p>
+        </div>
+      </div>
+
+      {/* Payout details */}
+      <div className="mt-6 rounded-lg border border-border/60 p-4">
+        <Label className="flex items-center gap-2 text-sm font-medium">
+          <Wallet className="h-4 w-4" /> Where should we pay you?
+        </Label>
+        <p className="text-xs text-muted-foreground">
+          Once an order you resold is delivered, your margin becomes payable. We'll send it to this
+          UPI ID.
+        </p>
+        <div className="mt-2 grid max-w-md gap-2 sm:grid-cols-2">
+          <Input placeholder="UPI ID, e.g. yourname@upi" value={upiInput} onChange={(e) => setUpiInput(e.target.value)} />
+          <Input placeholder="Account holder name" value={holderInput} onChange={(e) => setHolderInput(e.target.value)} />
+        </div>
+        <Button variant="outline" className="mt-2" onClick={handleSavePayout} disabled={savingPayout}>
+          {savingPayout ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save payout details'}
+        </Button>
+      </div>
+
       {/* Default markup setting */}
       <div className="mt-6 rounded-lg border border-border/60 p-4">
         <Label className="text-sm font-medium">Your default profit amount (₹)</Label>
@@ -195,7 +262,18 @@ export default function ResellerPage() {
                 <p className="font-semibold">{formatINR(o.total_amount)}</p>
                 <p className="text-xs text-green-600">+{formatINR(o.reseller_profit)} profit</p>
               </div>
-              <span className="rounded-full bg-secondary px-2 py-1 text-xs capitalize">{o.status}</span>
+              <div className="flex flex-col items-end gap-1">
+                <span className="rounded-full bg-secondary px-2 py-1 text-xs capitalize">{o.status}</span>
+                {o.reseller_payout_status && (
+                  <span
+                    className={`rounded-full px-2 py-1 text-xs ${
+                      PAYOUT_LABELS[o.reseller_payout_status]?.className || 'bg-muted text-muted-foreground'
+                    }`}
+                  >
+                    {PAYOUT_LABELS[o.reseller_payout_status]?.label || o.reseller_payout_status}
+                  </span>
+                )}
+              </div>
             </div>
           ))}
         </div>

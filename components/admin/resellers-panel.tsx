@@ -11,8 +11,10 @@ import {
   updateAdminResellerStatus,
   type AdminResellerRow,
 } from '@/lib/reseller-api';
+import ResellerPayoutsPanel from './reseller-payouts-panel';
 
 export default function ResellersPanel() {
+  const [tab, setTab] = useState<'overview' | 'payouts'>('overview');
   const [resellers, setResellers] = useState<AdminResellerRow[]>([]);
   const [totals, setTotals] = useState({ totalResellers: 0, totalOrders: 0, totalSales: 0 });
   const [loading, setLoading] = useState(true);
@@ -65,6 +67,29 @@ export default function ResellersPanel() {
         </div>
       </div>
 
+      <div className="mb-6 flex gap-2 border-b border-border/60">
+        <button
+          onClick={() => setTab('overview')}
+          className={`px-3 pb-2 text-sm font-medium ${
+            tab === 'overview' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'
+          }`}
+        >
+          Overview
+        </button>
+        <button
+          onClick={() => setTab('payouts')}
+          className={`px-3 pb-2 text-sm font-medium ${
+            tab === 'payouts' ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'
+          }`}
+        >
+          Payouts
+        </button>
+      </div>
+
+      {tab === 'payouts' ? (
+        <ResellerPayoutsPanel />
+      ) : (
+        <>
       <div className="mb-6 grid grid-cols-3 gap-3">
         <div className="rounded-lg border border-border/60 bg-card p-4">
           <Store className="h-4 w-4 text-primary" />
@@ -143,6 +168,8 @@ export default function ResellersPanel() {
           </tbody>
         </table>
       </div>
+        </>
+      )}
     </div>
   );
 }

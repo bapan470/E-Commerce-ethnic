@@ -30,7 +30,7 @@ export async function GET() {
     const { data: orders, error } = await supabase
       .from('orders')
       .select(
-        'id, items, total_amount, reseller_base_cost, reseller_profit, reseller_margin_percent, status, customer_name, customer_phone, shipping_address, created_at'
+        'id, items, total_amount, reseller_base_cost, reseller_profit, reseller_margin_percent, status, delivery_status, reseller_payout_status, customer_name, customer_phone, shipping_address, created_at'
       )
       .eq('reseller_id', profile.id)
       .order('created_at', { ascending: false });

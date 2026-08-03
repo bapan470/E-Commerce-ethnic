@@ -13,6 +13,9 @@ export interface ResellerProfile {
   /** Flat rupee amount added on top of the base price, e.g. 100 (not a %). */
   default_markup_amount: number;
   business_name: string | null;
+  /** Where the admin should send the reseller's margin once it's eligible. */
+  payout_upi_id: string | null;
+  payout_account_holder: string | null;
   created_at: string;
 }
 
@@ -21,6 +24,12 @@ export interface ResellerEarnings {
   totalSales: number; // sum of what reseller's customers paid
   totalProfit: number; // reseller's earnings (sales - base cost)
   pendingOrders: number;
+  /** Margin on orders not yet delivered — nothing to pay yet. */
+  pendingDeliveryProfit: number;
+  /** Margin on delivered orders, owed but not yet paid by the admin. */
+  eligibleProfit: number;
+  /** Margin the admin has already paid out. */
+  paidProfit: number;
 }
 
 export interface ResellerOverview {
@@ -63,6 +72,19 @@ export async function updateResellerDefaultMarkup(defaultMarkupAmount: number): 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || 'Failed to update default markup');
+  }
+}
+
+/** Updates where the reseller wants their margin paid out (UPI ID + account holder name). */
+export async function updateResellerPayoutDetails(payoutUpiId: string, payoutAccountHolder: string): Promise<void> {
+  const res = await fetch('/api/reseller', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ payout_upi_id: payoutUpiId, payout_account_holder: payoutAccountHolder }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to update payout details');
   }
 }
 
@@ -118,6 +140,9 @@ export interface ResellerOrderRow {
   reseller_profit: number;
   reseller_margin_percent: number;
   status: string;
+  delivery_status: string | null;
+  /** pending_delivery | eligible | paid | void — see reseller payout system. */
+  reseller_payout_status: string | null;
   customer_name: string | null;
   customer_phone: string | null;
   shipping_address: any;
@@ -177,5 +202,79 @@ export async function updateAdminResellerStatus(id: string, status: 'active' | '
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.error || 'Failed to update reseller');
+  }
+}
+
+// ---------------------------------------------------------------------
+// Admin (Admin > Resellers > Payouts tab) — margin is only payable once
+// an order is delivered. See supabase/migrations/20260803140000_reseller_payout_system.sql.
+// ---------------------------------------------------------------------
+
+export interface AdminResellerEligibleOrder {
+  id: string;
+  customerName: string | null;
+  totalAmount: number;
+  resellerProfit: number;
+  deliveredAt: string | null;
+  createdAt: string;
+}
+
+export interface AdminResellerPayoutRow {
+  id: string;
+  userId: string;
+  name: string;
+  phone: string | null;
+  status: 'active' | 'suspended';
+  payoutUpiId: string | null;
+  payoutAccountHolder: string | null;
+  pendingDeliveryAmount: number;
+  pendingDeliveryCount: number;
+  eligibleAmount: number;
+  eligibleOrders: AdminResellerEligibleOrder[];
+  paidAmount: number;
+  voidAmount: number;
+  voidCount: number;
+}
+
+export interface AdminPayoutHistoryRow {
+  id: string;
+  resellerId: string;
+  resellerName: string;
+  totalAmount: number;
+  orderCount: number;
+  paymentReference: string | null;
+  notes: string | null;
+  paidAt: string;
+}
+
+export interface AdminResellerPayoutsOverview {
+  resellers: AdminResellerPayoutRow[];
+  payoutHistory: AdminPayoutHistoryRow[];
+  totals: { pendingDelivery: number; eligible: number; paid: number };
+}
+
+export async function fetchAdminResellerPayouts(): Promise<AdminResellerPayoutsOverview> {
+  const res = await fetch('/api/admin/reseller-payouts');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to load reseller payouts');
+  }
+  return res.json();
+}
+
+export async function markResellerPayoutPaid(
+  resellerId: string,
+  orderIds: string[],
+  paymentReference: string,
+  notes?: string
+): Promise<void> {
+  const res = await fetch('/api/admin/reseller-payouts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reseller_id: resellerId, order_ids: orderIds, payment_reference: paymentReference, notes }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to record payout');
   }
 }
