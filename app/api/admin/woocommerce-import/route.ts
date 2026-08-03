@@ -34,7 +34,12 @@ export async function GET() {
     if (error) throw error;
     return NextResponse.json({ customers: data ?? [] });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to load customers';
+    const message =
+      err instanceof Error
+        ? err.message
+        : typeof err === 'object' && err !== null && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : 'Failed to load customers';
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -230,7 +235,20 @@ export async function POST(req: NextRequest) {
       nextPage: done ? null : page,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Import failed';
+    // Supabase's PostgrestError (and most other thrown error shapes) is a
+    // plain object, NOT an instance of the built-in Error class -- so
+    // `err instanceof Error` was always false for DB errors and silently
+    // fell back to a hardcoded, meaningless "Import failed" string. Pull
+    // `.message` off whatever shape we got instead, so the real reason
+    // (bad credentials, Cloudflare block, a Postgres constraint error, etc.)
+    // actually reaches the admin.
+    const message =
+      err instanceof Error
+        ? err.message
+        : typeof err === 'object' && err !== null && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : 'Import failed';
+    console.error('[woocommerce-import] failed:', err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
