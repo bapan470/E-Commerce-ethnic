@@ -483,6 +483,26 @@ export async function runResellerPayoutWindowJob() {
   };
 }
 
+// ----------------------------- Affiliate payout — return window -----------------------------
+// Exact mirror of runResellerPayoutWindowJob above, for the customer-
+// facing Affiliate program. An affiliate order's commission sits in
+// 'in_return_window' from the moment the order is delivered until the
+// store's return window closes (see
+// supabase/migrations/20260913000000_affiliate_program.sql) — only
+// then does it flip to 'eligible' and become payable. This just calls
+// the DB function that does that flip; also callable manually from the
+// Supabase SQL editor for testing.
+export async function runAffiliatePayoutWindowJob() {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.rpc('promote_affiliate_payouts_after_return_window');
+  if (error) throw error;
+
+  return {
+    promoted: data?.length ?? 0,
+    order_ids: (data ?? []).map((row: { order_id: string }) => row.order_id),
+  };
+}
+
 // ----------------------------- Return pickup tracking -----------------------------
 // Polls Delhivery for every return with a reverse-pickup in flight
 // (scheduled/picked_up/in_transit) and, once it shows delivered back
