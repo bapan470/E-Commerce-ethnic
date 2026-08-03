@@ -86,7 +86,14 @@ async function wooFetch(path: string, creds: { storeUrl: string; consumerKey: st
     }
     throw new Error(`WooCommerce API error (${res.status}): ${body.slice(0, 300) || res.statusText}`);
   }
-  return res.json();
+  // WooCommerce sends the true total order count on every /orders response
+  // via this header, independent of pagination -- capturing it lets us
+  // detect a WAF/security-plugin cutting pagination short and silently
+  // returning an empty/short page instead of an error (see POST handler).
+  const totalHeader = res.headers.get('X-WP-Total');
+  const wpTotal = totalHeader ? parseInt(totalHeader, 10) : null;
+  const data = await res.json();
+  return { data, wpTotal: Number.isFinite(wpTotal) ? wpTotal : null };
 }
 
 export async function POST(req: NextRequest) {
@@ -136,11 +143,17 @@ export async function POST(req: NextRequest) {
   const PAGES_PER_CALL = 3;
 
   let startPage = 1;
+  let scannedSoFar = 0; // cumulative across all resumed chunks for this import run
+  let expectedTotal: number | null = null; // WooCommerce's own claimed order count (X-WP-Total)
   if (!reset) {
     const { data: cursorRow } = await supabase.from('settings').select('value').eq('key', CURSOR_KEY).maybeSingle();
-    const cursor = cursorRow?.value as { storeUrl?: string; page?: number } | undefined;
+    const cursor = cursorRow?.value as
+      | { storeUrl?: string; page?: number; scannedSoFar?: number; expectedTotal?: number | null }
+      | undefined;
     if (cursor?.storeUrl === storeUrl && cursor.page) {
       startPage = cursor.page;
+      scannedSoFar = cursor.scannedSoFar ?? 0;
+      expectedTotal = cursor.expectedTotal ?? null;
     }
   }
 
@@ -165,8 +178,12 @@ export async function POST(req: NextRequest) {
     let ordersScanned = 0;
 
     while (pagesThisCall < PAGES_PER_CALL) {
-      const orders: WooOrder[] = await wooFetch(`/wp-json/wc/v3/orders?per_page=100&page=${page}`, creds);
+      const { data: orders, wpTotal } = (await wooFetch(
+        `/wp-json/wc/v3/orders?per_page=100&page=${page}`,
+        creds
+      )) as { data: WooOrder[]; wpTotal: number | null };
       pagesThisCall += 1;
+      if (page === 1 && wpTotal !== null) expectedTotal = wpTotal;
       if (!Array.isArray(orders) || orders.length === 0) {
         done = true;
         break;
@@ -219,13 +236,32 @@ export async function POST(req: NextRequest) {
       if (error) throw error;
     }
 
+    const totalScannedAllTime = scannedSoFar + ordersScanned;
+
     if (done) {
       // Import finished -- clear the cursor so the next click starts fresh.
       await supabase.from('settings').delete().eq('key', CURSOR_KEY);
     } else {
-      await supabase
-        .from('settings')
-        .upsert({ key: CURSOR_KEY, value: { storeUrl, page } }, { onConflict: 'key' });
+      await supabase.from('settings').upsert(
+        { key: CURSOR_KEY, value: { storeUrl, page, scannedSoFar: totalScannedAllTime, expectedTotal } },
+        { onConflict: 'key' }
+      );
+    }
+
+    // WooCommerce told us up front (via X-WP-Total on page 1) how many
+    // orders exist. If pagination says "done" but we scanned meaningfully
+    // fewer orders than that, some WAF/security-plugin/host almost
+    // certainly cut the REST API off silently (returned an empty/short
+    // page with a normal 200 instead of an error) rather than the store
+    // genuinely running out of orders. A small buffer (10) allows for
+    // trashed/in-between orders that legitimately don't show up.
+    let warning: string | null = null;
+    if (done && expectedTotal !== null && totalScannedAllTime < expectedTotal - 10) {
+      warning =
+        `WooCommerce ne bataya tha store me ${expectedTotal} orders hain, lekin sirf ${totalScannedAllTime} hi scan ho paaye ` +
+        `import "complete" hone se pehle. Iska matlab REST API pagination beech me hi kisi WAF/security plugin/hosting rate-limit ` +
+        `ki wajah se chup-chaap ruk gayi -- store me genuinely utne orders kam nahi hain. WordPress admin -> ` +
+        `security/firewall plugin (Wordfence, etc.) ya hosting provider se REST API ke liye rate-limit/pagination cap check karo.`;
     }
 
     return NextResponse.json({
@@ -233,6 +269,9 @@ export async function POST(req: NextRequest) {
       imported: rows.length,
       ordersScanned,
       nextPage: done ? null : page,
+      totalScannedAllTime,
+      expectedTotal,
+      warning,
     });
   } catch (err) {
     // Supabase's PostgrestError (and most other thrown error shapes) is a

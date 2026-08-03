@@ -101,7 +101,11 @@ export default function WooCommerceImportPanel() {
         totalOrders += result.ordersScanned;
         await load(); // refresh the list so progress is visible as it goes
         if (result.done) {
-          toast.success(`Import complete — ${totalOrders} orders scan hue`);
+          if (result.warning) {
+            toast.error(result.warning, { duration: 15000 });
+          } else {
+            toast.success(`Import complete — ${totalOrders} orders scan hue`);
+          }
           break;
         }
       }

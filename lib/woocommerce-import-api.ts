@@ -31,6 +31,9 @@ export interface ImportResult {
   imported: number;
   ordersScanned: number;
   nextPage: number | null;
+  totalScannedAllTime?: number;
+  expectedTotal?: number | null;
+  warning?: string | null;
 }
 
 export async function importWooCommerceCustomersChunk(
