@@ -99,3 +99,37 @@ export async function sendWooCommerceCampaign(args: SendCampaignArgs): Promise<S
   if (!res.ok) throw new Error(json.error || 'Failed to send campaign');
   return json as SendCampaignResult;
 }
+
+export interface CampaignHistoryEntry {
+  subject: string;
+  sent: number;
+  failed: number;
+  skipped: number;
+  opened: number;
+  lastSentAt: string;
+}
+
+export async function fetchCampaignHistory(): Promise<CampaignHistoryEntry[]> {
+  const res = await fetch('/api/admin/woocommerce-import/send-campaign');
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to load campaign history');
+  return json.campaigns as CampaignHistoryEntry[];
+}
+
+export interface FeaturedProduct {
+  id: string;
+  name: string;
+  slug: string;
+  price: number;
+  mrp: number | null;
+  image: string | null;
+  category_name: string | null;
+  url: string;
+}
+
+export async function fetchFeaturedProducts(limit = 6): Promise<FeaturedProduct[]> {
+  const res = await fetch(`/api/admin/woocommerce-import/featured-products?limit=${limit}`);
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to load products');
+  return json.products as FeaturedProduct[];
+}

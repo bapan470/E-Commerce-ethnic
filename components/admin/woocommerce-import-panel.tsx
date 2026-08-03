@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Download, Send, Trash2, Search } from 'lucide-react';
+import { Download, Send, Trash2, Search, Sparkles, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -12,8 +12,17 @@ import {
   importWooCommerceCustomersChunk,
   deleteImportedCustomer,
   sendWooCommerceCampaign,
+  fetchFeaturedProducts,
+  fetchCampaignHistory,
   type ImportedCustomer,
+  type CampaignHistoryEntry,
 } from '@/lib/woocommerce-import-api';
+import {
+  buildPremiumCampaignHtml,
+  CAMPAIGN_TEMPLATES,
+  TRACKING_PIXEL_PLACEHOLDER,
+  type CampaignTemplateId,
+} from '@/lib/campaign-templates';
 
 export default function WooCommerceImportPanel() {
   const [customers, setCustomers] = useState<ImportedCustomer[]>([]);
@@ -31,6 +40,24 @@ export default function WooCommerceImportPanel() {
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
 
+  // Premium template picker: when a template is applied, `message` holds
+  // full ready-to-send HTML (built from real products) instead of plain
+  // text. Detected by content (starts with <!DOCTYPE/<html) rather than a
+  // separate boolean, so direct HTML edits after applying a template still
+  // send correctly without extra state to keep in sync.
+  const isPremiumHtml = /^\s*<(!doctype|html)/i.test(message);
+  const [applyingTemplate, setApplyingTemplate] = useState<CampaignTemplateId | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
+
+  const [history, setHistory] = useState<CampaignHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+
+  const loadHistory = () =>
+    fetchCampaignHistory()
+      .then(setHistory)
+      .catch(() => {})
+      .finally(() => setHistoryLoading(false));
+
   const load = () =>
     fetchImportedCustomers()
       .then(setCustomers)
@@ -39,6 +66,7 @@ export default function WooCommerceImportPanel() {
 
   useEffect(() => {
     load();
+    loadHistory();
   }, []);
 
   const filtered = useMemo(() => {
@@ -129,6 +157,44 @@ export default function WooCommerceImportPanel() {
     }
   };
 
+  const [heroImageUrl, setHeroImageUrl] = useState('');
+
+  const applyTemplate = async (templateId: CampaignTemplateId) => {
+    setApplyingTemplate(templateId);
+    try {
+      const products = await fetchFeaturedProducts(6);
+      if (products.length === 0) {
+        toast.error('Koi in-stock product (image ke saath) nahi mila is store me');
+        return;
+      }
+      const templateMeta = CAMPAIGN_TEMPLATES.find((t) => t.id === templateId)!;
+      const headline =
+        templateId === 'festive'
+          ? 'Handpicked Sarees, Now At Special Prices'
+          : templateId === 'new-arrivals'
+            ? 'Fresh Off The Loom — New Arrivals'
+            : `A Note From ${'AruhiHandlooms'}`;
+      const html = buildPremiumCampaignHtml({
+        templateId,
+        headline,
+        subheadline:
+          templateId === 'minimal'
+            ? 'Handpicked ethnic wear, woven by master craftsmen across India.'
+            : 'Handpicked pieces our customers love — real photos, real stock, click to shop instantly.',
+        discountBadge: templateId === 'festive' ? 'LIMITED TIME OFFER' : undefined,
+        heroImage: templateId === 'festive' && heroImageUrl.trim() ? heroImageUrl.trim() : undefined,
+        products,
+      });
+      setMessage(html);
+      if (!subject.trim()) setSubject(headline);
+      toast.success(`${templateMeta.label} template laga diya (${products.length} real products ke saath)`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Template load nahi ho paya');
+    } finally {
+      setApplyingTemplate(null);
+    }
+  };
+
   const handleSend = async () => {
     if (selected.size === 0) {
       toast.error('Kam se kam ek customer select karo');
@@ -140,16 +206,19 @@ export default function WooCommerceImportPanel() {
     }
     setSending(true);
     try {
-      const html = `<div style="font-family:sans-serif;font-size:15px;line-height:1.6">${message.replace(
-        /\n/g,
-        '<br/>'
-      )}<hr style="margin-top:24px"/><p style="font-size:12px;color:#888">Aapko ye email isliye mili hai kyunki aapne hamare store se pehle kharidari ki thi. Agar aage aisi emails nahi chahiye, to reply karke bata dijiye.</p></div>`;
+      const html = isPremiumHtml
+        ? message
+        : `<div style="font-family:sans-serif;font-size:15px;line-height:1.6">${message.replace(
+            /\n/g,
+            '<br/>'
+          )}<hr style="margin-top:24px"/><p style="font-size:12px;color:#888">Aapko ye email isliye mili hai kyunki aapne hamare store se pehle kharidari ki thi. Agar aage aisi emails nahi chahiye, to reply karke bata dijiye.${TRACKING_PIXEL_PLACEHOLDER}</p></div>`;
       const result = await sendWooCommerceCampaign({
         customerIds: Array.from(selected),
         subject,
         html,
       });
       toast.success(`Sent: ${result.sent}, Skipped: ${result.skipped}, Failed: ${result.failed}`);
+      loadHistory();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Campaign send fail ho gaya');
     } finally {
@@ -255,13 +324,68 @@ export default function WooCommerceImportPanel() {
         )}
 
         <h2 className="font-medium">3. Email campaign bhejo ({selected.size} selected)</h2>
+
+        <div className="rounded-md border bg-muted/30 p-3 grid gap-2">
+          <p className="text-xs font-medium flex items-center gap-1">
+            <Sparkles className="h-3.5 w-3.5" /> Premium template (asli products, clickable)
+          </p>
+          <Input
+            placeholder="Hero banner image URL (optional — Festive template ke top pe dikhega, jaisa homepage pe hai)"
+            value={heroImageUrl}
+            onChange={(e) => setHeroImageUrl(e.target.value)}
+            className="text-xs"
+          />
+          <div className="flex flex-wrap gap-2">
+            {CAMPAIGN_TEMPLATES.map((t) => (
+              <Button
+                key={t.id}
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={applyingTemplate !== null}
+                onClick={() => applyTemplate(t.id)}
+                title={t.description}
+              >
+                {applyingTemplate === t.id ? 'Loading...' : t.label}
+              </Button>
+            ))}
+            {isPremiumHtml && (
+              <Button type="button" variant="ghost" size="sm" className="gap-1" onClick={() => setShowPreview((s) => !s)}>
+                <Eye className="h-3.5 w-3.5" /> {showPreview ? 'Preview hide karo' : 'Preview dekho'}
+              </Button>
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Ek click me tumhare store ke real in-stock products (photo, naam, price) se poora
+            template ban jayega — har product click karne par uske asli product page pe khulega.
+            Hero banner me ek <strong>animated .gif</strong> ka URL bhi daal sakte ho (jo 2-3 banners
+            cycle kare) — asli JS carousel to email me nahi chalta, lekin GIF sabse close alternative hai.
+          </p>
+        </div>
+
+        {showPreview && isPremiumHtml && (
+          <iframe
+            title="Email preview"
+            srcDoc={message.replace(TRACKING_PIXEL_PLACEHOLDER, '')}
+            className="w-full h-96 rounded border bg-white"
+          />
+        )}
+
         <Input placeholder="Subject line" value={subject} onChange={(e) => setSubject(e.target.value)} />
+        {isPremiumHtml && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+            Premium template active hai (HTML source niche dikh raha hai) — "Preview dekho" se
+            visual check karo. Niche direct HTML edit bhi kar sakte ho.
+          </p>
+        )}
         <Textarea
-          placeholder="Message likho..."
-          rows={6}
+          placeholder="Message likho... (ya upar se ek premium template chuno)"
+          rows={isPremiumHtml ? 10 : 6}
+          className={isPremiumHtml ? 'font-mono text-xs' : undefined}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
         />
+
         <p className="text-xs text-muted-foreground">
           Email bhejne ke liye Admin → Settings → Email Notifications me pehle Resend ya
           ZeptoMail configure karo, warna send fail hoga.
@@ -270,6 +394,45 @@ export default function WooCommerceImportPanel() {
           <Send className="h-4 w-4" />
           {sending ? 'Bhej raha hai...' : `Send to ${selected.size} customers`}
         </Button>
+      </div>
+
+      {/* Campaign history + open tracking */}
+      <div className="rounded-lg border p-4 grid gap-3">
+        <h2 className="font-medium">4. Pehle bheji gayi campaigns (open tracking)</h2>
+        {historyLoading ? (
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        ) : history.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Abhi tak koi campaign nahi bheji gayi.</p>
+        ) : (
+          <div className="overflow-auto rounded border">
+            <table className="w-full text-sm">
+              <thead className="bg-muted">
+                <tr>
+                  <th className="p-2 text-left">Subject</th>
+                  <th className="p-2 text-right">Sent</th>
+                  <th className="p-2 text-right">Opened</th>
+                  <th className="p-2 text-right">Open rate</th>
+                  <th className="p-2 text-right">Failed</th>
+                  <th className="p-2 text-left">Last sent</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((h) => (
+                  <tr key={h.subject} className="border-t">
+                    <td className="p-2">{h.subject}</td>
+                    <td className="p-2 text-right">{h.sent}</td>
+                    <td className="p-2 text-right">{h.opened}</td>
+                    <td className="p-2 text-right">
+                      {h.sent > 0 ? `${Math.round((h.opened / h.sent) * 100)}%` : '—'}
+                    </td>
+                    <td className="p-2 text-right">{h.failed}</td>
+                    <td className="p-2">{new Date(h.lastSentAt).toLocaleString('en-IN')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
