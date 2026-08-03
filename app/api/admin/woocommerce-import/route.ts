@@ -27,10 +27,18 @@ export async function GET() {
   }
   const supabase = getSupabaseAdmin();
   try {
+    // Supabase/PostgREST caps unpaginated selects at a default of 1000 rows
+    // (project setting "max rows"), regardless of how many rows actually
+    // exist. Without an explicit .range() the UI silently showed "1000"
+    // even after every order in the store had genuinely been scanned and
+    // upserted -- the data was already correct in the DB, just truncated
+    // on the way out. 20,000 comfortably covers any realistic store size;
+    // if that's ever not enough, switch this to real cursor pagination.
     const { data, error } = await supabase
       .from('woocommerce_customers')
       .select('*')
-      .order('imported_at', { ascending: false });
+      .order('imported_at', { ascending: false })
+      .range(0, 19999);
     if (error) throw error;
     return NextResponse.json({ customers: data ?? [] });
   } catch (err) {
