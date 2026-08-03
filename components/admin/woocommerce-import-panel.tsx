@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   fetchImportedCustomers,
   importWooCommerceCustomersChunk,
@@ -16,6 +17,7 @@ import {
   fetchCampaignHistory,
   type ImportedCustomer,
   type CampaignHistoryEntry,
+  type CampaignCategoryOption,
 } from '@/lib/woocommerce-import-api';
 import {
   buildPremiumCampaignHtml,
@@ -51,6 +53,9 @@ export default function WooCommerceImportPanel() {
 
   const [history, setHistory] = useState<CampaignHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+  const [heroImageUrl, setHeroImageUrl] = useState('');
+  const [availableCategories, setAvailableCategories] = useState<CampaignCategoryOption[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('__all__');
 
   const loadHistory = () =>
     fetchCampaignHistory()
@@ -67,6 +72,9 @@ export default function WooCommerceImportPanel() {
   useEffect(() => {
     load();
     loadHistory();
+    fetchFeaturedProducts(1)
+      .then(({ categories }) => setAvailableCategories(categories))
+      .catch(() => {});
   }, []);
 
   const filtered = useMemo(() => {
@@ -157,22 +165,30 @@ export default function WooCommerceImportPanel() {
     }
   };
 
-  const [heroImageUrl, setHeroImageUrl] = useState('');
-
   const applyTemplate = async (templateId: CampaignTemplateId) => {
     setApplyingTemplate(templateId);
     try {
-      const products = await fetchFeaturedProducts(6);
+      const categoryFilter = selectedCategory === '__all__' ? undefined : selectedCategory;
+      const { products, categories } = await fetchFeaturedProducts(6, categoryFilter);
+      setAvailableCategories(categories); // keeps the dropdown's options fresh/live
       if (products.length === 0) {
-        toast.error('Koi in-stock product (image ke saath) nahi mila is store me');
+        toast.error(
+          categoryFilter
+            ? `"${categoryFilter}" category me koi in-stock product (image ke saath) nahi mila`
+            : 'Koi in-stock product (image ke saath) nahi mila is store me'
+        );
         return;
       }
       const templateMeta = CAMPAIGN_TEMPLATES.find((t) => t.id === templateId)!;
       const headline =
         templateId === 'festive'
-          ? 'Handpicked Sarees, Now At Special Prices'
+          ? categoryFilter
+            ? `${categoryFilter} — Now At Special Prices`
+            : 'Handpicked Sarees, Now At Special Prices'
           : templateId === 'new-arrivals'
-            ? 'Fresh Off The Loom — New Arrivals'
+            ? categoryFilter
+              ? `New In ${categoryFilter}`
+              : 'Fresh Off The Loom — New Arrivals'
             : `A Note From ${'AruhiHandlooms'}`;
       const html = buildPremiumCampaignHtml({
         templateId,
@@ -184,6 +200,7 @@ export default function WooCommerceImportPanel() {
         discountBadge: templateId === 'festive' ? 'LIMITED TIME OFFER' : undefined,
         heroImage: templateId === 'festive' && heroImageUrl.trim() ? heroImageUrl.trim() : undefined,
         products,
+        categories, // renders the "Shop by Category" circle row, same as homepage
       });
       setMessage(html);
       if (!subject.trim()) setSubject(headline);
@@ -335,6 +352,22 @@ export default function WooCommerceImportPanel() {
             onChange={(e) => setHeroImageUrl(e.target.value)}
             className="text-xs"
           />
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">Category filter:</span>
+            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+              <SelectTrigger className="h-8 w-56 text-xs">
+                <SelectValue placeholder="Sabhi categories" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Sabhi categories (featured/latest)</SelectItem>
+                {availableCategories.map((c) => (
+                  <SelectItem key={c.slug} value={c.name}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="flex flex-wrap gap-2">
             {CAMPAIGN_TEMPLATES.map((t) => (
               <Button
@@ -356,8 +389,10 @@ export default function WooCommerceImportPanel() {
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            Ek click me tumhare store ke real in-stock products (photo, naam, price) se poora
-            template ban jayega — har product click karne par uske asli product page pe khulega.
+            Ek click me tumhare store ke real in-stock products (photo, naam, price) aur
+            categories (round photo, jaisa homepage pe hai) se poora template ban jayega — har
+            category aur product click karne par uske asli page pe khulega. Upar se ek category
+            chun ke products sirf usi category ke dikha sakte ho (default: featured/latest sabse).
             Hero banner me ek <strong>animated .gif</strong> ka URL bhi daal sakte ho (jo 2-3 banners
             cycle kare) — asli JS carousel to email me nahi chalta, lekin GIF sabse close alternative hai.
           </p>

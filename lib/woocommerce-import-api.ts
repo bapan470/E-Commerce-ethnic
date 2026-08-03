@@ -127,9 +127,21 @@ export interface FeaturedProduct {
   url: string;
 }
 
-export async function fetchFeaturedProducts(limit = 6): Promise<FeaturedProduct[]> {
-  const res = await fetch(`/api/admin/woocommerce-import/featured-products?limit=${limit}`);
+export interface CampaignCategoryOption {
+  name: string;
+  slug: string;
+  image: string | null;
+  url: string;
+}
+
+export async function fetchFeaturedProducts(
+  limit = 6,
+  category?: string
+): Promise<{ products: FeaturedProduct[]; categories: CampaignCategoryOption[] }> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (category) params.set('category', category);
+  const res = await fetch(`/api/admin/woocommerce-import/featured-products?${params.toString()}`);
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.error || 'Failed to load products');
-  return json.products as FeaturedProduct[];
+  return { products: json.products ?? [], categories: json.categories ?? [] };
 }

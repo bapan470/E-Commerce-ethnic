@@ -19,6 +19,13 @@ export interface CampaignProduct {
   category_name?: string | null;
 }
 
+export interface CampaignCategory {
+  name: string;
+  slug: string;
+  image: string | null;
+  url: string;
+}
+
 export type CampaignTemplateId = 'festive' | 'new-arrivals' | 'minimal';
 
 export const CAMPAIGN_TEMPLATES: { id: CampaignTemplateId; label: string; description: string }[] = [
@@ -57,6 +64,44 @@ function header() {
         <span style="color:#fff; font-family: Georgia, 'Times New Roman', serif; font-size: 24px; letter-spacing: 0.08em; text-transform: uppercase;">
           ${SITE_NAME}
         </span>
+      </td>
+    </tr>`;
+}
+
+// Mirrors the homepage's "Shop by Category" row — round thumbnails, name
+// below, each one a real, clickable link straight to that category page.
+// Email clients render <table> layouts far more reliably than flexbox, so
+// this is built the same way the product grid is: a table of fixed-width
+// cells, wrapped so it naturally goes to a new line every 4 categories.
+function categorySection(categories: CampaignCategory[]) {
+  if (!categories.length) return '';
+  const shown = categories.slice(0, 8);
+
+  // 4 categories per row (mirrors the homepage's 4-per-row mobile grid).
+  const rows: string[] = [];
+  for (let i = 0; i < shown.length; i += 4) {
+    const rowCells = shown.slice(i, i + 4).map(
+      (c) => `
+      <td width="25%" style="padding: 6px 4px; text-align:center; vertical-align:top;">
+        <a href="${c.url}" style="text-decoration:none; color:#2b2320;">
+          ${
+            c.image
+              ? `<img src="${c.image}" width="64" height="64" alt="${c.name}" style="width:64px; height:64px; border-radius:50%; object-fit:cover; display:block; margin:0 auto; border:1px solid #eee2d8;" />`
+              : `<div style="width:64px; height:64px; border-radius:50%; background:#f1e9e1; margin:0 auto;"></div>`
+          }
+          <p style="margin:6px 0 0; font-size:11px; font-weight:600; line-height:1.3;">${c.name}</p>
+        </a>
+      </td>`
+    );
+    const pad = 4 - rowCells.length;
+    rows.push(`<tr>${rowCells.join('')}${'<td width="25%"></td>'.repeat(pad)}</tr>`);
+  }
+
+  return `
+    <tr>
+      <td style="padding: 6px 16px 4px;">
+        <p style="margin:0 0 10px; text-align:center; font-size:11px; letter-spacing:0.15em; text-transform:uppercase; color:${BRAND_COLOR}; font-weight:bold;">Shop by Category</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows.join('')}</table>
       </td>
     </tr>`;
 }
@@ -120,6 +165,7 @@ function festiveTemplate(opts: {
   discountBadge?: string;
   heroImage?: string | null;
   products: CampaignProduct[];
+  categories: CampaignCategory[];
   ctaUrl: string;
 }) {
   const hero = opts.heroImage
@@ -138,6 +184,7 @@ function festiveTemplate(opts: {
         </div>
       </td>
     </tr>
+    ${categorySection(opts.categories)}
     <tr>
       <td style="padding: 8px 16px 20px;">
         ${productGrid(opts.products)}
@@ -151,6 +198,7 @@ function newArrivalsTemplate(opts: {
   headline: string;
   subheadline?: string;
   products: CampaignProduct[];
+  categories: CampaignCategory[];
   ctaUrl: string;
 }) {
   return wrapDocument(`
@@ -162,6 +210,7 @@ function newArrivalsTemplate(opts: {
         ${opts.subheadline ? `<p style="margin:0 0 18px; font-size:14px; color:#6b5f57;">${opts.subheadline}</p>` : ''}
       </td>
     </tr>
+    ${categorySection(opts.categories)}
     <tr>
       <td style="padding: 8px 16px 12px;">
         ${productGrid(opts.products)}
@@ -180,6 +229,7 @@ function minimalTemplate(opts: {
   headline: string;
   subheadline?: string;
   products: CampaignProduct[];
+  categories: CampaignCategory[];
   ctaUrl: string;
 }) {
   return wrapDocument(`
@@ -190,6 +240,7 @@ function minimalTemplate(opts: {
         ${opts.subheadline ? `<p style="margin:0 0 22px; font-size:14px; color:#6b5f57; line-height:1.6;">${opts.subheadline}</p>` : ''}
       </td>
     </tr>
+    ${categorySection(opts.categories)}
     <tr>
       <td style="padding: 0 16px 8px;">
         ${productGrid(opts.products)}
@@ -210,18 +261,20 @@ export function buildPremiumCampaignHtml(opts: {
   subheadline?: string;
   discountBadge?: string;
   products: CampaignProduct[];
+  categories?: CampaignCategory[];
   heroImage?: string | null;
 }): string {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';
   const ctaUrl = `${siteUrl}/shop`;
+  const categories = opts.categories ?? [];
 
   switch (opts.templateId) {
     case 'festive':
-      return festiveTemplate({ ...opts, ctaUrl });
+      return festiveTemplate({ ...opts, categories, ctaUrl });
     case 'new-arrivals':
-      return newArrivalsTemplate({ ...opts, ctaUrl });
+      return newArrivalsTemplate({ ...opts, categories, ctaUrl });
     case 'minimal':
     default:
-      return minimalTemplate({ ...opts, ctaUrl });
+      return minimalTemplate({ ...opts, categories, ctaUrl });
   }
 }
