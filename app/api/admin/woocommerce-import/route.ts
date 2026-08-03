@@ -53,14 +53,33 @@ function normalizeUrl(url: string) {
 
 async function wooFetch(path: string, creds: { storeUrl: string; consumerKey: string; consumerSecret: string }) {
   const base = normalizeUrl(creds.storeUrl);
-  const sep = path.includes('?') ? '&' : '?';
-  const url = `${base}${path}${sep}consumer_key=${encodeURIComponent(
-    creds.consumerKey
-  )}&consumer_secret=${encodeURIComponent(creds.consumerSecret)}`;
+  const url = `${base}${path}`;
 
-  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+  // Use HTTP Basic Auth (recommended by WooCommerce for HTTPS stores) instead
+  // of ?consumer_key=&consumer_secret= in the query string -- some
+  // Cloudflare / WAF rules flag secrets-in-the-URL as suspicious and block
+  // the request with a "Just a moment..." challenge page before it ever
+  // reaches WordPress. A normal browser-like User-Agent avoids the same
+  // bot-protection filters that a bare server-to-server request would trip.
+  const basicAuth = Buffer.from(`${creds.consumerKey}:${creds.consumerSecret}`).toString('base64');
+
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Basic ${basicAuth}`,
+      Accept: 'application/json',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    },
+  });
+
   if (!res.ok) {
     const body = await res.text().catch(() => '');
+    const isCloudflareChallenge = body.includes('Just a moment') || body.includes('cf-browser-verification');
+    if (isCloudflareChallenge) {
+      throw new Error(
+        `Cloudflare ne is request ko block kar diya (site "${base}" Cloudflare ke peeche hai). ` +
+          `Cloudflare dashboard me /wp-json/wc/* path ke liye Bot Fight Mode/WAF me exception banani hogi.`
+      );
+    }
     throw new Error(`WooCommerce API error (${res.status}): ${body.slice(0, 300) || res.statusText}`);
   }
   return res.json();
