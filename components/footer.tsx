@@ -33,7 +33,7 @@ export default function Footer() {
 
   return (
     <footer className="mt-16 border-t border-border/60 bg-primary text-primary-foreground">
-      <div className="container-boutique grid gap-10 py-12 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="container-boutique grid gap-10 py-12 sm:grid-cols-2 lg:grid-cols-5">
         <div>
           <h3 className="font-serif text-2xl font-bold text-secondary">AruhiHandlooms</h3>
           <p className="mt-3 text-sm text-primary-foreground/80">
@@ -77,6 +77,17 @@ export default function Footer() {
             <li><Link href="/legal/refund-policy" className="hover:text-secondary">Refund & Cancellation</Link></li>
             <li><Link href="/legal/privacy-policy" className="hover:text-secondary">Privacy Policy</Link></li>
             <li><Link href="/legal/terms-conditions" className="hover:text-secondary">Terms & Conditions</Link></li>
+          </ul>
+        </div>
+        <div>
+          <h4 className="text-sm font-semibold uppercase tracking-wider text-secondary">
+            Partner With Us
+          </h4>
+          <ul className="mt-3 space-y-2 text-sm text-primary-foreground/80">
+            <li><Link href="/vendor-registration" className="hover:text-secondary">Vendor Registration</Link></li>
+            <li><Link href="/vendor-login" className="hover:text-secondary">Vendor Login</Link></li>
+            <li><Link href="/reseller-registration" className="hover:text-secondary">Reseller Registration</Link></li>
+            <li><Link href="/reseller-login" className="hover:text-secondary">Reseller Login</Link></li>
           </ul>
         </div>
         <div>
