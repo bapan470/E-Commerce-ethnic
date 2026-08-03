@@ -128,6 +128,13 @@ export async function fetchAboutContent(): Promise<AboutContent> {
   return mergeAboutContent(data.value as Partial<AboutContent>);
 }
 
+export async function saveAboutContent(content: AboutContent) {
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ key: 'about_content', value: content }, { onConflict: 'key' });
+  if (error) throw error;
+}
+
 // ---------------------------------------------------------------------
 // Partner pages content — the 4 public vendor/reseller SEO landing pages
 // (/vendor-registration, /vendor-login, /reseller-registration,
