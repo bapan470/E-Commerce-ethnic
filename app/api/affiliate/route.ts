@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/supabase-server-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { sendEmail } from '@/lib/email';
+import { affiliateApplicationStatusEmail } from '@/lib/email-templates';
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I — avoids typos when shared verbally
 
@@ -97,8 +99,9 @@ export async function GET() {
 }
 
 // POST — apply to join the affiliate program using the SAME logged-in
-// account (no new email/signup required). Starts out 'pending' until
-// an admin approves it. Generates a unique referral code.
+// account (no new email/signup required). Auto-approved immediately on
+// apply (no admin review step) — generates a unique referral code and
+// the affiliate can start referring right away.
 export async function POST() {
   const user = await getCurrentUser();
   if (!user) {
@@ -124,7 +127,7 @@ export async function POST() {
       code = randomCode();
       const { data, error } = await supabase
         .from('affiliates')
-        .insert({ user_id: user.id, code, status: 'pending' })
+        .insert({ user_id: user.id, code, status: 'approved' })
         .select('*')
         .maybeSingle();
       if (!error && data) {
@@ -137,6 +140,27 @@ export async function POST() {
 
     if (!created) {
       throw new Error('Could not generate a unique affiliate code, please try again');
+    }
+
+    // Fire the same "approved" email an admin approval would normally
+    // trigger (see app/api/admin/affiliates/route.ts) — awaited, but
+    // wrapped so an email failure never blocks the apply response.
+    try {
+      if (user.email) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', user.id)
+          .maybeSingle();
+        const { subject, html } = affiliateApplicationStatusEmail({
+          name: profile?.full_name || 'there',
+          status: 'approved',
+          commission_percent: created.commission_percent,
+        });
+        await sendEmail({ to: user.email, subject, html });
+      }
+    } catch (emailErr) {
+      console.error('[affiliate apply] approval email failed:', emailErr);
     }
 
     return NextResponse.json({ profile: created });
