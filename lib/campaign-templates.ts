@@ -102,6 +102,36 @@ export interface CampaignCategory {
   url: string;
 }
 
+// Minimal shape needed to render a coupon in a campaign email — matches
+// the fields on lib/coupons-api.ts's Coupon type, kept separate so this
+// file doesn't have to import the browser supabase client that
+// coupons-api.ts pulls in.
+export interface CampaignCoupon {
+  code: string;
+  discount_type: 'percentage' | 'flat';
+  discount_value: number;
+  min_order_value: number;
+}
+
+// Shared "which coupon wins when more than one qualifies" ranking:
+// percentage coupons are preferred (they read as a bigger, more
+// attention-grabbing offer) over flat ones, then the highest value within
+// the same type. Used everywhere "the one best live offer" needs picking
+// -- the homepage banner (lib/coupons-api.ts), and here for the campaign
+// email banner -- so it always means the same thing.
+export function pickBestCampaignCoupon<T extends Pick<CampaignCoupon, 'discount_type' | 'discount_value'>>(
+  coupons: T[]
+): T | null {
+  if (coupons.length === 0) return null;
+  const sorted = [...coupons].sort((a, b) => {
+    if (a.discount_type !== b.discount_type) {
+      return a.discount_type === 'percentage' ? -1 : 1;
+    }
+    return b.discount_value - a.discount_value;
+  });
+  return sorted[0];
+}
+
 export type CampaignTemplateId = 'festive' | 'new-arrivals' | 'minimal' | 'introduction';
 
 export const CAMPAIGN_TEMPLATES: { id: CampaignTemplateId; label: string; description: string }[] = [
@@ -186,6 +216,39 @@ function resellerPromoBanner(ctaBaseUrl: string) {
         <p style="margin: 10px 0 0; text-align:center; font-size:11px; color:#9a8f87;">
           100% Secure &amp; Verified &nbsp;·&nbsp; Points Never Expire Unused &nbsp;·&nbsp; Trusted by Real Customers
         </p>
+      </td>
+    </tr>`;
+}
+
+// Ticket-style coupon banner — dashed border + gold accents, mirrors the
+// site's own coupon chip (components/product/coupon-list.tsx) so it reads
+// as the same brand element instead of a generic "sale" graphic. Renders
+// nothing when there's no eligible coupon (opts.coupon is null/undefined),
+// so campaigns built while no coupon is live/flagged "Show on Product
+// Page" look exactly as before -- this is purely additive.
+function couponBanner(coupon: CampaignCoupon | null | undefined, ctaUrl: string) {
+  if (!coupon) return '';
+  const discountLabel = coupon.discount_type === 'percentage' ? `${coupon.discount_value}% OFF` : `${formatINR(coupon.discount_value)} OFF`;
+  const minOrderLine =
+    coupon.min_order_value > 0 ? `On orders above ${formatINR(coupon.min_order_value)}` : 'No minimum order value';
+  return `
+    <tr>
+      <td style="padding: 0 16px 4px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fdf8f2; border:1.5px dashed ${LOGO_GOLD}; border-radius:12px;">
+          <tr>
+            <td style="padding: 16px 18px; text-align:center;">
+              <p style="margin:0 0 6px; font-size:10px; font-weight:bold; letter-spacing:0.18em; text-transform:uppercase; color:${BRAND_COLOR};">Special Discount For You</p>
+              <p style="margin:0 0 10px; font-size:22px; font-weight:bold; color:${LOGO_MAROON}; font-family: Georgia, 'Times New Roman', serif;">${discountLabel}</p>
+              <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 10px;">
+                <tr>
+                  <td style="border:1.5px dashed ${BRAND_COLOR}; border-radius:6px; padding:8px 18px; font-family: 'Courier New', monospace; font-size:16px; font-weight:bold; letter-spacing:0.1em; color:${BRAND_COLOR};">${coupon.code}</td>
+                </tr>
+              </table>
+              <p style="margin:0 0 14px; font-size:12px; color:#6b5f57;">${minOrderLine}</p>
+              <a href="${ctaUrl}" style="display:inline-block; background:${BRAND_COLOR}; color:#fff; padding:10px 26px; text-decoration:none; border-radius:20px; font-size:13px; font-weight:bold;">Shop Now &amp; Save →</a>
+            </td>
+          </tr>
+        </table>
       </td>
     </tr>`;
 }
@@ -293,6 +356,7 @@ function festiveTemplate(opts: {
   products: CampaignProduct[];
   categories: CampaignCategory[];
   ctaUrl: string;
+  coupon?: CampaignCoupon | null;
   siteUrl: string;
 }) {
   const hero = opts.heroImage
@@ -311,6 +375,7 @@ function festiveTemplate(opts: {
         </div>
       </td>
     </tr>
+    ${couponBanner(opts.coupon, opts.ctaUrl)}
     ${resellerPromoBanner(opts.siteUrl)}
     ${categorySection(opts.categories)}
     <tr>
@@ -328,6 +393,7 @@ function newArrivalsTemplate(opts: {
   products: CampaignProduct[];
   categories: CampaignCategory[];
   ctaUrl: string;
+  coupon?: CampaignCoupon | null;
   siteUrl: string;
 }) {
   return wrapDocument(`
@@ -339,6 +405,7 @@ function newArrivalsTemplate(opts: {
         ${opts.subheadline ? `<p style="margin:0 0 18px; font-size:14px; color:#6b5f57;">${opts.subheadline}</p>` : ''}
       </td>
     </tr>
+    ${couponBanner(opts.coupon, opts.ctaUrl)}
     ${resellerPromoBanner(opts.siteUrl)}
     ${categorySection(opts.categories)}
     <tr>
@@ -361,6 +428,7 @@ function minimalTemplate(opts: {
   products: CampaignProduct[];
   categories: CampaignCategory[];
   ctaUrl: string;
+  coupon?: CampaignCoupon | null;
   siteUrl: string;
 }) {
   return wrapDocument(`
@@ -371,6 +439,7 @@ function minimalTemplate(opts: {
         ${opts.subheadline ? `<p style="margin:0 0 22px; font-size:14px; color:#6b5f57; line-height:1.6;">${opts.subheadline}</p>` : ''}
       </td>
     </tr>
+    ${couponBanner(opts.coupon, opts.ctaUrl)}
     ${resellerPromoBanner(opts.siteUrl)}
     ${categorySection(opts.categories)}
     <tr>
@@ -399,6 +468,7 @@ function introductionTemplate(opts: {
   products: CampaignProduct[];
   categories: CampaignCategory[];
   ctaUrl: string;
+  coupon?: CampaignCoupon | null;
 }) {
   return wrapDocument(`
     ${header()}
@@ -419,6 +489,7 @@ function introductionTemplate(opts: {
         <a href="${UNSUBSCRIBE_LINK_PLACEHOLDER}" style="display:inline-block; border:1px solid #9a8f87; color:#6b5f57; padding:11px 24px; text-decoration:none; border-radius:4px; font-size:13px;">Not Interested</a>
       </td>
     </tr>
+    ${couponBanner(opts.coupon, opts.ctaUrl)}
     ${categorySection(opts.categories)}
     <tr>
       <td style="padding: 8px 16px 20px;">
@@ -437,6 +508,13 @@ export function buildPremiumCampaignHtml(opts: {
   products: CampaignProduct[];
   categories?: CampaignCategory[];
   heroImage?: string | null;
+  // Fetched fresh each time an email is built (see fetchTopCampaignCoupon
+  // in woocommerce-automation.ts, and the panel's applyTemplate) -- so a
+  // template always reflects whichever coupon is CURRENTLY active and
+  // flagged "Show on Product Page" in Admin > Coupons, with zero code
+  // changes needed when that changes. null/undefined = no eligible coupon
+  // right now, banner simply doesn't render.
+  coupon?: CampaignCoupon | null;
 }): string {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';
   const ctaUrl = `${siteUrl}/shop`;

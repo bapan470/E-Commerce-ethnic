@@ -30,6 +30,7 @@ import {
   type WooCommerceDripSettings,
   type DripProgress,
 } from '@/lib/woocommerce-import-api';
+import { fetchProductPageCoupons, pickBestCoupon } from '@/lib/coupons-api';
 import {
   buildPremiumCampaignHtml,
   CAMPAIGN_TEMPLATES,
@@ -295,7 +296,16 @@ export default function WooCommerceImportPanel() {
     setApplyingTemplate(templateId);
     try {
       const categoryFilter = selectedCategory === '__all__' ? undefined : selectedCategory;
-      const { products, categories } = await fetchFeaturedProducts(6, categoryFilter);
+      const [{ products, categories }, productPageCoupons] = await Promise.all([
+        fetchFeaturedProducts(6, categoryFilter),
+        // Whichever coupon is currently active AND flagged "Show on
+        // Product Page" in Admin > Coupons -- same source the product
+        // page's own coupon list reads from, so the email banner and the
+        // product page never disagree about what's actually live. Fails
+        // open (empty list) rather than blocking template generation if
+        // this lookup has a hiccup.
+        fetchProductPageCoupons().catch(() => []),
+      ]);
       setAvailableCategories(categories); // keeps the dropdown's options fresh/live
       if (products.length === 0) {
         toast.error(
@@ -305,6 +315,7 @@ export default function WooCommerceImportPanel() {
         );
         return;
       }
+      const coupon = pickBestCoupon(productPageCoupons);
       const templateMeta = CAMPAIGN_TEMPLATES.find((t) => t.id === templateId)!;
       const headline =
         templateId === 'festive'
@@ -329,6 +340,7 @@ export default function WooCommerceImportPanel() {
         heroImage: templateId === 'festive' && heroImageUrl.trim() ? heroImageUrl.trim() : undefined,
         products,
         categories, // renders the "Shop by Category" circle row, same as homepage
+        coupon,
       });
       setMessage(html);
       if (!subject.trim()) setSubject(headline);
@@ -732,6 +744,10 @@ export default function WooCommerceImportPanel() {
             chun ke products sirf usi category ke dikha sakte ho (default: featured/latest sabse).
             Hero banner me ek <strong>animated .gif</strong> ka URL bhi daal sakte ho (jo 2-3 banners
             cycle kare) — asli JS carousel to email me nahi chalta, lekin GIF sabse close alternative hai.
+            Jo bhi coupon abhi <strong>Active</strong> aur <strong>Show on Product Page</strong> pe on hai
+            (Admin → Coupons), wo apne aap ek discount banner ki tarah template me lag jayega — koi
+            manual step nahi; agar coupon badlega ya band hoga, agli baar template banate hi wo bhi
+            khud update ho jayega.
           </p>
         </div>
 

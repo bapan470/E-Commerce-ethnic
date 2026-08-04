@@ -34,7 +34,9 @@ import {
   UNSUBSCRIBE_LINK_PLACEHOLDER,
   type CampaignProduct,
   type CampaignCategory,
+  type CampaignCoupon,
   type CampaignTemplateId,
+  pickBestCampaignCoupon,
 } from './campaign-templates';
 import { randomUUID } from 'crypto';
 
@@ -106,6 +108,34 @@ export async function saveDripSettings(settings: WooCommerceDripSettings, supaba
 // other from the server-only cron -- duplicating ~30 lines here is safer
 // than routing the cron through an HTTP call to itself).
 // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// The one coupon (if any) to headline in an automated campaign email:
+// must be active AND flagged "Show on Product Page" in Admin > Coupons,
+// same eligibility as lib/coupons-api.ts's fetchProductPageCoupons (not
+// expired, not past its usage limit), picked with the same
+// percentage-preferred/highest-value ranking as the homepage banner.
+// Queried directly with the service-role admin client (rather than
+// reusing coupons-api.ts, which is a 'use client' module built for the
+// browser) since this runs from the server-only cron job.
+// ---------------------------------------------------------------------
+export async function fetchTopCampaignCoupon(
+  supabase: ReturnType<typeof getSupabaseAdmin>
+): Promise<CampaignCoupon | null> {
+  const { data } = await supabase
+    .from('coupons')
+    .select('code, discount_type, discount_value, min_order_value, usage_limit, times_used, expires_at')
+    .eq('is_active', true)
+    .eq('show_on_product_page', true);
+
+  const now = Date.now();
+  const eligible = (data ?? []).filter(
+    (c: any) =>
+      (!c.expires_at || new Date(c.expires_at).getTime() > now) &&
+      (c.usage_limit === null || c.times_used < c.usage_limit)
+  );
+  return pickBestCampaignCoupon(eligible as CampaignCoupon[]);
+}
+
 export async function fetchCampaignProductsAndCategories(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   siteUrl: string,
@@ -295,6 +325,7 @@ export async function runWooCommerceDripJob(force = false) {
 
     if (needWelcome.length > 0) {
       const { products, categories } = await fetchCampaignProductsAndCategories(supabase, siteUrl, 6);
+      const coupon = await fetchTopCampaignCoupon(supabase);
       // Built ONCE, store-agnostic (holds SOURCE_STORE_* placeholders) --
       // the store each customer actually came from is resolved per
       // recipient at actual send time (sendQueuedEmail), not baked in
@@ -305,6 +336,7 @@ export async function runWooCommerceDripJob(force = false) {
         subheadline: settings.welcome.subheadline || undefined,
         products,
         categories,
+        coupon,
       });
       const rows = needWelcome.map((customer_id) => ({
         customer_id,
@@ -367,6 +399,7 @@ export async function runWooCommerceDripJob(force = false) {
 
     if (needFollowup.length > 0) {
       const { products, categories } = await fetchCampaignProductsAndCategories(supabase, siteUrl, 6);
+      const coupon = await fetchTopCampaignCoupon(supabase);
       // Same store-agnostic build as the welcome step above -- resolved
       // per recipient at actual send time.
       const html = buildPremiumCampaignHtml({
@@ -375,6 +408,7 @@ export async function runWooCommerceDripJob(force = false) {
         subheadline: settings.followup.subheadline || undefined,
         products,
         categories,
+        coupon,
       });
       const rows = needFollowup.map((r) => ({
         customer_id: r.customer_id,

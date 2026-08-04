@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { pickBestCampaignCoupon } from './campaign-templates';
 
 export interface Coupon {
   id: string;
@@ -90,6 +91,15 @@ export async function setCouponShowOnProductPage(id: string, show_on_product_pag
 // ---------------------------------------------------------------------
 
 /**
+ * Shared "which coupon wins" ranking — see pickBestCampaignCoupon in
+ * campaign-templates.ts for the actual rule (percentage preferred, then
+ * highest value). Re-exported under this name for existing callers.
+ */
+export function pickBestCoupon(coupons: Coupon[]): Coupon | null {
+  return pickBestCampaignCoupon(coupons);
+}
+
+/**
  * Picks one coupon to headline on the homepage: must be active, not
  * expired, and not past its usage limit. Percentage coupons are preferred
  * (they read as a bigger, more attention-grabbing offer), then the highest
@@ -109,15 +119,7 @@ export async function fetchHomepageCoupon(): Promise<Coupon | null> {
       (!c.expires_at || new Date(c.expires_at).getTime() > now) &&
       (c.usage_limit === null || c.times_used < c.usage_limit)
   );
-  if (eligible.length === 0) return null;
-
-  eligible.sort((a, b) => {
-    if (a.discount_type !== b.discount_type) {
-      return a.discount_type === 'percentage' ? -1 : 1;
-    }
-    return b.discount_value - a.discount_value;
-  });
-  return eligible[0];
+  return pickBestCoupon(eligible);
 }
 
 /**
