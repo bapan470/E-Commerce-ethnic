@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import { CheckCircle2, Download, Truck, ShieldCheck } from 'lucide-react';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
@@ -77,12 +78,23 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
 
         <div className="divide-y divide-border/60">
           {items.map((item: any, i: number) => (
-            <div key={i} className="flex items-center justify-between py-3 text-sm">
-              <div>
-                <p className="font-medium">{item.product_name}</p>
-                <p className="text-muted-foreground">
-                  Size: {item.size} &middot; Qty: {item.quantity}
-                </p>
+            <div key={i} className="flex items-center justify-between gap-3 py-3 text-sm">
+              <div className="flex items-center gap-3">
+                <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md border border-border/60 bg-muted">
+                  <Image
+                    src={item.image_url || 'https://placehold.co/80x80?text=No+Image'}
+                    alt={item.product_name || 'Product'}
+                    fill
+                    sizes="56px"
+                    className="object-cover"
+                  />
+                </div>
+                <div>
+                  <p className="font-medium">{item.product_name}</p>
+                  <p className="text-muted-foreground">
+                    Size: {item.size} &middot; Qty: {item.quantity}
+                  </p>
+                </div>
               </div>
               <p className="font-medium">{formatINR(item.price * item.quantity)}</p>
             </div>
