@@ -4,7 +4,11 @@ import { randomUUID } from 'crypto';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { sendEmail } from '@/lib/email';
-import { TRACKING_PIXEL_PLACEHOLDER, UNSUBSCRIBE_LINK_PLACEHOLDER } from '@/lib/campaign-templates';
+import {
+  TRACKING_PIXEL_PLACEHOLDER,
+  UNSUBSCRIBE_LINK_PLACEHOLDER,
+  wrapCampaignLinksForClickTracking,
+} from '@/lib/campaign-templates';
 
 async function requireAdmin() {
   const cookie = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? null;
@@ -22,19 +26,50 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  let body: { customerIds?: string[]; subject?: string; html?: string };
+  let body: { customerIds?: string[]; subject?: string; html?: string; scheduleAfterHours?: number };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const { customerIds, subject, html } = body;
+  const { customerIds, subject, html, scheduleAfterHours } = body;
   if (!customerIds?.length || !subject || !html) {
     return NextResponse.json({ error: 'customerIds, subject and html are required' }, { status: 400 });
   }
 
   const supabase = getSupabaseAdmin();
+
+  // A schedule was requested ("send after N hours" in the admin panel):
+  // don't send anything now — write one queue row per selected customer
+  // instead, and let the daily drip cron (lib/woocommerce-automation.ts,
+  // wired into /api/cron/daily-jobs) pick them up once due, same as the
+  // automated welcome/follow-up steps and subject to the same daily cap.
+  // NOTE: the cron only runs once/day, so "after N hours" really means
+  // "on the first cron run after N hours have passed", not to-the-minute.
+  if (scheduleAfterHours && scheduleAfterHours > 0) {
+    const { data: eligible, error: eligErr } = await supabase
+      .from('woocommerce_customers')
+      .select('id')
+      .in('id', customerIds)
+      .eq('opted_out', false);
+    if (eligErr) return NextResponse.json({ error: eligErr.message }, { status: 500 });
+
+    const scheduledAt = new Date(Date.now() + scheduleAfterHours * 60 * 60 * 1000).toISOString();
+    const rows = (eligible ?? []).map((c) => ({
+      customer_id: c.id,
+      campaign_type: 'manual',
+      subject,
+      html,
+      scheduled_at: scheduledAt,
+      status: 'queued',
+    }));
+    if (rows.length > 0) {
+      const { error: insErr } = await supabase.from('woocommerce_send_queue').insert(rows);
+      if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
+    }
+    return NextResponse.json({ sent: 0, failed: 0, skipped: 0, queued: rows.length, scheduledAt });
+  }
 
   // opted_out = false is enforced here, in the query, not just filtered out
   // in the admin UI — someone who unsubscribed can never be re-included in
@@ -88,6 +123,7 @@ export async function POST(req: NextRequest) {
       email: c.email,
       subject,
       status: 'sending',
+      automation_step: null, // this route is always a manual/one-off send, never the automated drip
     });
 
     let perRecipientHtml = html;
@@ -97,6 +133,10 @@ export async function POST(req: NextRequest) {
         `<img src="${siteUrl}/api/track/open/${sendId}" width="1" height="1" alt="" style="display:block; border:0;" />`
       );
     }
+    // Rewrite real links so a later click can be tied back to this send —
+    // must run before the unsubscribe placeholder is swapped (see
+    // wrapCampaignLinksForClickTracking's own comment for why).
+    perRecipientHtml = wrapCampaignLinksForClickTracking(perRecipientHtml, sendId, siteUrl);
     perRecipientHtml = perRecipientHtml.split(UNSUBSCRIBE_LINK_PLACEHOLDER).join(`${siteUrl}/api/unsubscribe/${sendId}`);
 
     const result = await sendEmail({ to: c.email, subject, html: perRecipientHtml });
@@ -132,7 +172,7 @@ export async function GET() {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from('woocommerce_campaign_sends')
-    .select('subject, status, opened_at, sent_at')
+    .select('subject, status, opened_at, clicked_at, sent_at')
     .order('sent_at', { ascending: false })
     .limit(2000);
 
@@ -142,7 +182,7 @@ export async function GET() {
 
   const bySubject = new Map<
     string,
-    { subject: string; sent: number; failed: number; skipped: number; opened: number; lastSentAt: string }
+    { subject: string; sent: number; failed: number; skipped: number; opened: number; clicked: number; lastSentAt: string }
   >();
 
   for (const row of data ?? []) {
@@ -152,12 +192,14 @@ export async function GET() {
       failed: 0,
       skipped: 0,
       opened: 0,
+      clicked: 0,
       lastSentAt: row.sent_at,
     };
     if (row.status === 'sent') entry.sent += 1;
     else if (row.status === 'failed') entry.failed += 1;
     else entry.skipped += 1;
     if (row.opened_at) entry.opened += 1;
+    if (row.clicked_at) entry.clicked += 1;
     if (row.sent_at > entry.lastSentAt) entry.lastSentAt = row.sent_at;
     bySubject.set(row.subject, entry);
   }

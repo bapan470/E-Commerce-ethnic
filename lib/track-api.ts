@@ -36,6 +36,19 @@ interface TrackOptions {
   metadata?: Record<string, any>;
 }
 
+// Set by /api/track/click/<sendId> (a non-httpOnly cookie) when a visitor
+// arrives here via a link inside a WooCommerce campaign email. Reading it
+// here means every event this visitor triggers afterwards (page_view,
+// product_view, purchase, ...) gets tagged with the same send id, which is
+// how the admin's cold/warm/hot audience view knows this person actually
+// browsed the site (warm) or went on to view 2+ pages / buy (hot) after
+// that specific email.
+function getCampaignSendId(): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(/(?:^|;\s*)wc_sid=([0-9a-f-]{36})/i);
+  return match ? match[1] : null;
+}
+
 /**
  * Fire-and-forget event log used by the Admin > Analytics dashboard for
  * sales trends, top products, conversion rate and customer behaviour.
@@ -51,6 +64,7 @@ export async function trackEvent(eventType: ActivityEventType, options: TrackOpt
       product_id: options.productId ?? null,
       order_id: options.orderId ?? null,
       metadata: options.metadata ?? {},
+      campaign_send_id: getCampaignSendId(),
     });
   } catch {
     // best-effort only

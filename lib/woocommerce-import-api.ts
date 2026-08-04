@@ -83,12 +83,18 @@ export interface SendCampaignArgs {
   customerIds: string[];
   subject: string;
   html: string;
+  // If set (> 0), nothing is sent immediately — the selected customers are
+  // queued and picked up by the daily drip cron once this many hours have
+  // passed (subject to the same daily send cap as the automation).
+  scheduleAfterHours?: number;
 }
 
 export interface SendCampaignResult {
   sent: number;
   failed: number;
   skipped: number;
+  queued?: number;
+  scheduledAt?: string;
 }
 
 export async function sendWooCommerceCampaign(args: SendCampaignArgs): Promise<SendCampaignResult> {
@@ -108,6 +114,7 @@ export interface CampaignHistoryEntry {
   failed: number;
   skipped: number;
   opened: number;
+  clicked: number;
   lastSentAt: string;
 }
 
@@ -146,4 +153,91 @@ export async function fetchFeaturedProducts(
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.error || 'Failed to load products');
   return { products: json.products ?? [], categories: json.categories ?? [] };
+}
+
+// ---------------------------------------------------------------------
+// Audience segmentation (cold / warm / hot)
+// ---------------------------------------------------------------------
+
+export type AudienceSegment = 'cold' | 'warm' | 'hot';
+
+export interface SegmentCounts {
+  cold: number;
+  warm: number;
+  hot: number;
+  total: number;
+}
+
+export interface SegmentsResult {
+  segments: Record<string, AudienceSegment>;
+  counts: SegmentCounts;
+}
+
+// GET /api/admin/woocommerce-import/segments
+// cold = kabhi email open nahi kiya (ya open kiya par link click nahi kiya)
+// warm = email ka link click kiya, site pe aaya, par kharida nahi (sirf 1 page dekha)
+// hot  = kharida, YA email click karke 2+ pages dekhe
+export async function fetchAudienceSegments(): Promise<SegmentsResult> {
+  const res = await fetch('/api/admin/woocommerce-import/segments');
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to load segments');
+  return json as SegmentsResult;
+}
+
+// ---------------------------------------------------------------------
+// Welcome -> Follow-up drip automation
+// ---------------------------------------------------------------------
+
+export interface DripStepSettings {
+  templateId: CampaignTemplateIdLike;
+  subject: string;
+  headline: string;
+  subheadline: string;
+}
+
+// Kept as a loose string type here (instead of importing CampaignTemplateId)
+// so this file doesn't have to depend on campaign-templates.ts — the admin
+// panel already imports the real type from there and passes it through.
+export type CampaignTemplateIdLike = string;
+
+export interface WooCommerceDripSettings {
+  enabled: boolean;
+  dailySendCap: number;
+  followupDelayDays: number;
+  sourceStoreName: string;
+  welcome: DripStepSettings;
+  followup: DripStepSettings;
+}
+
+export interface DripProgress {
+  sentToday: number;
+  dailyCap: number;
+  queuedWelcome: number;
+  queuedFollowup: number;
+  sentWelcomeTotal: number;
+  sentFollowupTotal: number;
+}
+
+export async function fetchDripAutomationSettings(): Promise<{
+  settings: WooCommerceDripSettings;
+  progress: DripProgress;
+}> {
+  const res = await fetch('/api/admin/woocommerce-import/automation');
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to load automation settings');
+  return json as { settings: WooCommerceDripSettings; progress: DripProgress };
+}
+
+export async function saveDripAutomationSettings(
+  settings: WooCommerceDripSettings,
+  runNow = false
+): Promise<{ settings: WooCommerceDripSettings; runResult: any }> {
+  const res = await fetch('/api/admin/woocommerce-import/automation', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ settings, runNow }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to save automation settings');
+  return json as { settings: WooCommerceDripSettings; runResult: any };
 }

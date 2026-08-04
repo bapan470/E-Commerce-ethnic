@@ -11,6 +11,25 @@ export const TRACKING_PIXEL_PLACEHOLDER = '__TRACKING_PIXEL__';
 // clicking it can only ever opt out that one person.
 export const UNSUBSCRIBE_LINK_PLACEHOLDER = '__UNSUBSCRIBE_LINK__';
 
+// Rewrites every real http(s) link in a built campaign email (product
+// cards, category circles, "Take A Look" CTA, ...) to go through
+// /api/track/click/<send id> first, so we know that *this* recipient
+// actually clicked into the site -- this is what promotes someone from
+// "cold" (never opened/clicked) to "warm" (clicked) in the admin's
+// cold/warm/hot audience view. Must run AFTER the tracking-pixel
+// placeholder is swapped (its <img src> is untouched, this only touches
+// href="http...") and BEFORE the unsubscribe placeholder is swapped (the
+// placeholder text isn't a real http url yet, so it's naturally skipped —
+// unsubscribing should never be logged as an engaged click).
+export function wrapCampaignLinksForClickTracking(html: string, sendId: string, siteUrl: string): string {
+  if (!siteUrl) return html;
+  return html.replace(/href="(https?:\/\/[^"]+)"/g, (match, url: string) => {
+    if (url.includes('/api/track/click/') || url.includes('/api/unsubscribe/')) return match;
+    const target = `${siteUrl}/api/track/click/${sendId}?u=${encodeURIComponent(url)}`;
+    return `href="${target}"`;
+  });
+}
+
 const BRAND_COLOR = '#7c3a1d';
 const SITE_NAME = 'AruhiHandlooms';
 

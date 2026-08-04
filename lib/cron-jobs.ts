@@ -34,6 +34,16 @@ import { publishVendorProductWithAI } from '@/lib/vendor-ai-listing';
 import { checkPickupStatusForReturn, getReturnAutomationMode } from '@/lib/return-automation';
 import { trackDelhiveryShipment } from '@/lib/delhivery-api';
 import { recordReturnRiskIncident } from '@/lib/return-risk-api';
+import { runWooCommerceDripJob as runWooCommerceDripJobImpl } from '@/lib/woocommerce-automation';
+
+// -------------------- WooCommerce imported-customer drip --------------------
+// Thin wrapper so this job is listed alongside the others here and picked
+// up the same way by app/api/cron/daily-jobs/route.ts. Actual logic (queue
+// welcome/follow-up emails, work the queue up to the daily cap) lives in
+// lib/woocommerce-automation.ts.
+export async function runWooCommerceDripJob() {
+  return runWooCommerceDripJobImpl();
+}
 
 // ----------------------------- Abandoned carts -----------------------------
 export async function runAbandonedCartsJob() {

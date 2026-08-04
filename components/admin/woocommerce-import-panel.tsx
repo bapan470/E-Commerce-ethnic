@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Flame, ThermometerSnowflake, Waves } from 'lucide-react';
 import {
   fetchImportedCustomers,
   importWooCommerceCustomersChunk,
@@ -15,9 +17,16 @@ import {
   sendWooCommerceCampaign,
   fetchFeaturedProducts,
   fetchCampaignHistory,
+  fetchAudienceSegments,
+  fetchDripAutomationSettings,
+  saveDripAutomationSettings,
   type ImportedCustomer,
   type CampaignHistoryEntry,
   type CampaignCategoryOption,
+  type AudienceSegment,
+  type SegmentCounts,
+  type WooCommerceDripSettings,
+  type DripProgress,
 } from '@/lib/woocommerce-import-api';
 import {
   buildPremiumCampaignHtml,
@@ -26,6 +35,22 @@ import {
   UNSUBSCRIBE_LINK_PLACEHOLDER,
   type CampaignTemplateId,
 } from '@/lib/campaign-templates';
+
+const SEGMENT_STYLES: Record<AudienceSegment, string> = {
+  cold: 'bg-sky-50 text-sky-700 border-sky-200',
+  warm: 'bg-amber-50 text-amber-700 border-amber-200',
+  hot: 'bg-red-50 text-red-700 border-red-200',
+};
+
+const SEGMENT_LABELS: Record<AudienceSegment, string> = { cold: 'Cold', warm: 'Warm', hot: 'Hot' };
+
+function SegmentBadge({ segment }: { segment: AudienceSegment }) {
+  return (
+    <span className={`inline-block rounded-full border px-2 py-0.5 text-[11px] font-medium ${SEGMENT_STYLES[segment]}`}>
+      {SEGMENT_LABELS[segment]}
+    </span>
+  );
+}
 
 export default function WooCommerceImportPanel() {
   const [customers, setCustomers] = useState<ImportedCustomer[]>([]);
@@ -63,6 +88,40 @@ export default function WooCommerceImportPanel() {
   const [availableCategories, setAvailableCategories] = useState<CampaignCategoryOption[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('__all__');
 
+  // Cold / warm / hot audience segmentation
+  const [segments, setSegments] = useState<Record<string, AudienceSegment>>({});
+  const [segmentCounts, setSegmentCounts] = useState<SegmentCounts>({ cold: 0, warm: 0, hot: 0, total: 0 });
+  const [segmentFilter, setSegmentFilter] = useState<'all' | AudienceSegment>('all');
+  const [segmentsLoading, setSegmentsLoading] = useState(true);
+
+  // Manual send scheduling ("send now" vs "send after N hours")
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduleHours, setScheduleHours] = useState('24');
+
+  // Welcome -> follow-up drip automation
+  const [dripSettings, setDripSettings] = useState<WooCommerceDripSettings | null>(null);
+  const [dripProgress, setDripProgress] = useState<DripProgress | null>(null);
+  const [dripLoading, setDripLoading] = useState(true);
+  const [dripSaving, setDripSaving] = useState(false);
+
+  const loadSegments = () =>
+    fetchAudienceSegments()
+      .then(({ segments: s, counts }) => {
+        setSegments(s);
+        setSegmentCounts(counts);
+      })
+      .catch(() => {})
+      .finally(() => setSegmentsLoading(false));
+
+  const loadDripAutomation = () =>
+    fetchDripAutomationSettings()
+      .then(({ settings, progress }) => {
+        setDripSettings(settings);
+        setDripProgress(progress);
+      })
+      .catch(() => {})
+      .finally(() => setDripLoading(false));
+
   const loadHistory = () =>
     fetchCampaignHistory()
       .then(setHistory)
@@ -78,6 +137,8 @@ export default function WooCommerceImportPanel() {
   useEffect(() => {
     load();
     loadHistory();
+    loadSegments();
+    loadDripAutomation();
     fetchFeaturedProducts(1)
       .then(({ categories }) => setAvailableCategories(categories))
       .catch(() => {});
@@ -95,8 +156,13 @@ export default function WooCommerceImportPanel() {
   // selected for a future campaign even by accident.
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return customers.filter((c) => !c.opted_out && matchesSearch(c, q));
-  }, [customers, search]);
+    return customers.filter(
+      (c) =>
+        !c.opted_out &&
+        matchesSearch(c, q) &&
+        (segmentFilter === 'all' || (segments[c.id] ?? 'cold') === segmentFilter)
+    );
+  }, [customers, search, segmentFilter, segments]);
 
   const optedOut = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -250,17 +316,47 @@ export default function WooCommerceImportPanel() {
             /\n/g,
             '<br/>'
           )}<hr style="margin-top:24px"/><p style="font-size:12px;color:#888">You're receiving this email because ${sourceClause}. <a href="${UNSUBSCRIBE_LINK_PLACEHOLDER}" style="color:#888;">Not interested? Click here and we'll never email you again.</a>${TRACKING_PIXEL_PLACEHOLDER}</p></div>`;
+      const scheduleAfterHours = scheduleEnabled ? Number(scheduleHours) || 0 : 0;
       const result = await sendWooCommerceCampaign({
         customerIds: Array.from(selected),
         subject,
         html,
+        scheduleAfterHours: scheduleAfterHours > 0 ? scheduleAfterHours : undefined,
       });
-      toast.success(`Sent: ${result.sent}, Skipped: ${result.skipped}, Failed: ${result.failed}`);
+      if (scheduleAfterHours > 0) {
+        toast.success(
+          `${result.queued ?? 0} customers ke liye schedule ho gaya — ~${scheduleAfterHours} ghante baad bhejna shuru hoga (daily cap ke hisaab se).`
+        );
+      } else {
+        toast.success(`Sent: ${result.sent}, Skipped: ${result.skipped}, Failed: ${result.failed}`);
+      }
       loadHistory();
+      loadSegments();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Campaign send fail ho gaya');
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleSaveDrip = async (runNow: boolean) => {
+    if (!dripSettings) return;
+    setDripSaving(true);
+    try {
+      const { runResult } = await saveDripAutomationSettings(dripSettings, runNow);
+      toast.success(runNow ? 'Settings save ho gayi aur batch bhej diya' : 'Automation settings save ho gayi');
+      if (runNow && runResult && !runResult.error) {
+        toast.success(
+          `Run result — Welcome queued: ${runResult.welcomeQueued ?? 0}, Follow-up queued: ${runResult.followupQueued ?? 0}, Sent: ${runResult.sent ?? 0}, Failed: ${runResult.failed ?? 0}`
+        );
+      }
+      await loadDripAutomation();
+      loadHistory();
+      loadSegments();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Automation settings save nahi hui');
+    } finally {
+      setDripSaving(false);
     }
   };
 
@@ -322,6 +418,52 @@ export default function WooCommerceImportPanel() {
           </div>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">Audience:</span>
+          <Button
+            type="button"
+            variant={segmentFilter === 'all' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setSegmentFilter('all')}
+          >
+            Sabhi ({segmentCounts.total})
+          </Button>
+          <Button
+            type="button"
+            variant={segmentFilter === 'cold' ? 'default' : 'outline'}
+            size="sm"
+            className="gap-1"
+            onClick={() => setSegmentFilter('cold')}
+            title="Kabhi email open nahi kiya, ya open kiya par link click nahi kiya"
+          >
+            <ThermometerSnowflake className="h-3.5 w-3.5" /> Cold ({segmentCounts.cold})
+          </Button>
+          <Button
+            type="button"
+            variant={segmentFilter === 'warm' ? 'default' : 'outline'}
+            size="sm"
+            className="gap-1"
+            onClick={() => setSegmentFilter('warm')}
+            title="Link click kiya, site pe aaya, par kharida nahi (sirf 1 page dekha)"
+          >
+            <Waves className="h-3.5 w-3.5" /> Warm ({segmentCounts.warm})
+          </Button>
+          <Button
+            type="button"
+            variant={segmentFilter === 'hot' ? 'default' : 'outline'}
+            size="sm"
+            className="gap-1"
+            onClick={() => setSegmentFilter('hot')}
+            title="Kharida, ya click karke 2+ pages dekhe"
+          >
+            <Flame className="h-3.5 w-3.5" /> Hot ({segmentCounts.hot})
+          </Button>
+          {segmentsLoading && <span className="text-xs text-muted-foreground">Audience calculate ho raha hai...</span>}
+          <Button type="button" variant="ghost" size="sm" onClick={loadSegments} className="ml-auto text-xs">
+            Refresh
+          </Button>
+        </div>
+
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading...</p>
         ) : filtered.length === 0 ? (
@@ -337,6 +479,7 @@ export default function WooCommerceImportPanel() {
                   <th className="p-2 text-left">Name</th>
                   <th className="p-2 text-left">Email</th>
                   <th className="p-2 text-left">Phone</th>
+                  <th className="p-2 text-left">Audience</th>
                   <th className="p-2" />
                 </tr>
               </thead>
@@ -349,6 +492,9 @@ export default function WooCommerceImportPanel() {
                     <td className="p-2">{c.name || '—'}</td>
                     <td className="p-2">{c.email || '—'}</td>
                     <td className="p-2">{c.phone || '—'}</td>
+                    <td className="p-2">
+                      <SegmentBadge segment={segments[c.id] ?? 'cold'} />
+                    </td>
                     <td className="p-2 text-right">
                       <Button variant="ghost" size="icon" onClick={() => handleDelete(c.id)}>
                         <Trash2 className="h-4 w-4 text-destructive" />
@@ -480,9 +626,37 @@ export default function WooCommerceImportPanel() {
           Email bhejne ke liye Admin → Settings → Email Notifications me pehle Resend ya
           ZeptoMail configure karo, warna send fail hoga.
         </p>
+
+        <div className="flex flex-wrap items-center gap-3 rounded-md border bg-muted/20 p-3">
+          <label className="flex items-center gap-2 text-xs font-medium">
+            <Switch checked={scheduleEnabled} onCheckedChange={setScheduleEnabled} />
+            Schedule karo (abhi nahi, baad me bhejo)
+          </label>
+          {scheduleEnabled && (
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-muted-foreground">Kitne ghante baad:</span>
+              <Input
+                type="number"
+                min={1}
+                className="h-8 w-20"
+                value={scheduleHours}
+                onChange={(e) => setScheduleHours(e.target.value)}
+              />
+              <span className="text-muted-foreground">
+                (daily cron ek din me sirf ek baar chalta hai, isliye ye N ghante baad se pehle
+                available cron run pe bhejega, exact minute pe nahi)
+              </span>
+            </div>
+          )}
+        </div>
+
         <Button onClick={handleSend} disabled={sending} className="gap-2 w-fit">
           <Send className="h-4 w-4" />
-          {sending ? 'Bhej raha hai...' : `Send to ${selected.size} customers`}
+          {sending
+            ? 'Bhej raha hai...'
+            : scheduleEnabled
+              ? `Schedule ${selected.size} customers`
+              : `Send to ${selected.size} customers`}
         </Button>
       </div>
 
@@ -502,6 +676,7 @@ export default function WooCommerceImportPanel() {
                   <th className="p-2 text-right">Sent</th>
                   <th className="p-2 text-right">Opened</th>
                   <th className="p-2 text-right">Open rate</th>
+                  <th className="p-2 text-right">Clicked</th>
                   <th className="p-2 text-right">Failed</th>
                   <th className="p-2 text-left">Last sent</th>
                 </tr>
@@ -515,6 +690,7 @@ export default function WooCommerceImportPanel() {
                     <td className="p-2 text-right">
                       {h.sent > 0 ? `${Math.round((h.opened / h.sent) * 100)}%` : '—'}
                     </td>
+                    <td className="p-2 text-right">{h.clicked}</td>
                     <td className="p-2 text-right">{h.failed}</td>
                     <td className="p-2">{new Date(h.lastSentAt).toLocaleString('en-IN')}</td>
                   </tr>
@@ -522,6 +698,149 @@ export default function WooCommerceImportPanel() {
               </tbody>
             </table>
           </div>
+        )}
+      </div>
+
+      {/* Welcome -> follow-up drip automation */}
+      <div className="rounded-lg border p-4 grid gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-medium">5. Automated welcome + follow-up (drip)</h2>
+          {dripSettings && (
+            <label className="flex items-center gap-2 text-xs font-medium">
+              <Switch
+                checked={dripSettings.enabled}
+                onCheckedChange={(checked) => setDripSettings({ ...dripSettings, enabled: checked })}
+              />
+              {dripSettings.enabled ? 'ON — automatic emails ja rahe hain' : 'OFF — koi automatic email nahi jaayega'}
+            </label>
+          )}
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          Jab ON ho: har naye imported customer ko pehle <strong>Welcome</strong> email jaata hai. Us
+          welcome ke bhejne ke <strong>N din baad</strong>, agar wo customer opt-out nahi hua, use
+          doosra <strong>Follow-up</strong> email jaata hai (jo template aap niche set karo). Poori
+          list ek saath nahi jaati — roz sirf <strong>daily cap</strong> tak bhejta hai, list ke sabse
+          purane/top imported customer se shuru karke.
+        </p>
+
+        {dripLoading || !dripSettings ? (
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        ) : (
+          <>
+            {dripProgress && (
+              <div className="grid grid-cols-2 gap-2 rounded-md border bg-muted/20 p-3 text-xs sm:grid-cols-4">
+                <div>
+                  <p className="text-muted-foreground">Aaj bheje</p>
+                  <p className="font-medium">
+                    {dripProgress.sentToday} / {dripProgress.dailyCap}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Welcome queue me</p>
+                  <p className="font-medium">{dripProgress.queuedWelcome}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Follow-up queue me</p>
+                  <p className="font-medium">{dripProgress.queuedFollowup}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Total welcome/follow-up bheje</p>
+                  <p className="font-medium">
+                    {dripProgress.sentWelcomeTotal} / {dripProgress.sentFollowupTotal}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-1">
+                <label className="text-xs font-medium">Daily send cap (per din max kitne email)</label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={dripSettings.dailySendCap}
+                  onChange={(e) => setDripSettings({ ...dripSettings, dailySendCap: Number(e.target.value) || 1 })}
+                />
+              </div>
+              <div className="grid gap-1">
+                <label className="text-xs font-medium">Follow-up kitne din baad</label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={dripSettings.followupDelayDays}
+                  onChange={(e) => setDripSettings({ ...dripSettings, followupDelayDays: Number(e.target.value) || 0 })}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-1">
+              <label className="text-xs font-medium">Source store name (disclosure me dikhega)</label>
+              <Input
+                value={dripSettings.sourceStoreName}
+                onChange={(e) => setDripSettings({ ...dripSettings, sourceStoreName: e.target.value })}
+                placeholder="e.g. mishaboutique.com"
+              />
+            </div>
+
+            {(['welcome', 'followup'] as const).map((step) => (
+              <div key={step} className="grid gap-2 rounded-md border p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {step === 'welcome' ? '1st email — Welcome' : `2nd email — Follow-up (${dripSettings.followupDelayDays} din baad)`}
+                </p>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">Template:</span>
+                  <Select
+                    value={dripSettings[step].templateId}
+                    onValueChange={(v) =>
+                      setDripSettings({ ...dripSettings, [step]: { ...dripSettings[step], templateId: v } })
+                    }
+                  >
+                    <SelectTrigger className="h-8 w-56 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CAMPAIGN_TEMPLATES.map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Input
+                  placeholder="Subject line"
+                  value={dripSettings[step].subject}
+                  onChange={(e) => setDripSettings({ ...dripSettings, [step]: { ...dripSettings[step], subject: e.target.value } })}
+                />
+                <Input
+                  placeholder="Headline"
+                  value={dripSettings[step].headline}
+                  onChange={(e) => setDripSettings({ ...dripSettings, [step]: { ...dripSettings[step], headline: e.target.value } })}
+                />
+                <Textarea
+                  placeholder="Subheadline (optional)"
+                  rows={2}
+                  value={dripSettings[step].subheadline}
+                  onChange={(e) => setDripSettings({ ...dripSettings, [step]: { ...dripSettings[step], subheadline: e.target.value } })}
+                />
+              </div>
+            ))}
+
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => handleSaveDrip(false)} disabled={dripSaving} variant="outline">
+                {dripSaving ? 'Save ho raha hai...' : 'Settings save karo'}
+              </Button>
+              <Button onClick={() => handleSaveDrip(true)} disabled={dripSaving}>
+                {dripSaving ? 'Chal raha hai...' : 'Save & Abhi Run Karo'}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Note: ye daily cron (roz ek baar) se chalta hai, isliye kitne-din-baad wala gap
+              approximate hai (agle cron run tak). Save &amp; Abhi Run Karo turant ek batch bhej dega
+              (daily cap tak) taaki turant test kar sako.
+            </p>
+          </>
         )}
       </div>
     </div>
