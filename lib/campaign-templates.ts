@@ -11,6 +11,57 @@ export const TRACKING_PIXEL_PLACEHOLDER = '__TRACKING_PIXEL__';
 // clicking it can only ever opt out that one person.
 export const UNSUBSCRIBE_LINK_PLACEHOLDER = '__UNSUBSCRIBE_LINK__';
 
+// ---------------------------------------------------------------------
+// Source-store placeholders: every template now bakes these tokens into
+// its html at BUILD time (when we don't yet know which specific customer
+// each copy is going to), and the actual sender -- automation.ts's
+// sendQueuedEmail for drip/scheduled sends, send-campaign/route.ts for
+// immediate manual sends -- swaps them for that one recipient's real
+// wording right before dispatch, via resolveSourceStorePlaceholders()
+// below. This makes a single built html store-agnostic and safe to reuse
+// across a mixed-store recipient list, instead of having to build one
+// html per distinct source store up front.
+// ---------------------------------------------------------------------
+export const SOURCE_STORE_FOOTER_CLAUSE_PLACEHOLDER = '__SOURCE_STORE_FOOTER_CLAUSE__';
+export const SOURCE_STORE_INTRO_CLAUSE_PLACEHOLDER = '__SOURCE_STORE_INTRO_CLAUSE__';
+export const SOURCE_STORE_NOT_CLAUSE_PLACEHOLDER = '__SOURCE_STORE_NOT_CLAUSE__';
+
+// Turns a saved store URL (e.g. "https://mishaboutique.com") into a clean
+// display name for disclosure lines ("you previously purchased from
+// mishaboutique.com"). Falls back to the raw string if it isn't a valid
+// URL for some reason.
+export function storeDisplayName(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
+
+// Swaps every source-store placeholder in `html` for the real wording for
+// ONE specific recipient. `sourceStoreName` should already be the final
+// display name to use (the caller is responsible for falling back from a
+// customer's own source_store_url to the global settings name to nothing,
+// in that order -- see storeDisplayName above).
+export function resolveSourceStorePlaceholders(html: string, sourceStoreName?: string | null): string {
+  const name = sourceStoreName?.trim() || undefined;
+  const footerClause = name
+    ? `you previously purchased from <strong>${name}</strong>`
+    : 'you previously purchased from one of our partner stores';
+  const introClause = name
+    ? `you previously shopped at <strong>${name}</strong>`
+    : 'you previously shopped with one of our partner stores';
+  const notClause = name ? ` — not ${name}` : '';
+  return html
+    .split(SOURCE_STORE_FOOTER_CLAUSE_PLACEHOLDER)
+    .join(footerClause)
+    .split(SOURCE_STORE_INTRO_CLAUSE_PLACEHOLDER)
+    .join(introClause)
+    .split(SOURCE_STORE_NOT_CLAUSE_PLACEHOLDER)
+    .join(notClause);
+}
+
 // Rewrites every real http(s) link in a built campaign email (product
 // cards, category circles, "Take A Look" CTA, ...) to go through
 // /api/track/click/<send id> first, so we know that *this* recipient
@@ -76,17 +127,15 @@ export const CAMPAIGN_TEMPLATES: { id: CampaignTemplateId; label: string; descri
   },
 ];
 
-// `sourceStoreName` is optional so existing calls (and the plain-text send
-// path) keep working without it -- when present it makes the disclosure
-// specific ("...from mishaboutique.com") instead of the generic fallback.
-function unsubscribeFooter(sourceStoreName?: string) {
-  const sourceClause = sourceStoreName
-    ? `you previously purchased from <strong>${sourceStoreName}</strong>`
-    : 'you previously purchased from one of our partner stores';
+// Store-agnostic at build time -- embeds the SOURCE_STORE_FOOTER_CLAUSE
+// placeholder instead of a baked-in name, so the same built html can be
+// resolved differently per recipient right before sending (see
+// resolveSourceStorePlaceholders above).
+function unsubscribeFooter() {
   return `
     <tr>
       <td style="padding: 20px 24px; text-align: center; font-size: 11px; color: #9a8f87; background:#fffaf5;">
-        You're receiving this email because ${sourceClause}.
+        You're receiving this email because ${SOURCE_STORE_FOOTER_CLAUSE_PLACEHOLDER}.
         <br/>
         <a href="${UNSUBSCRIBE_LINK_PLACEHOLDER}" style="color:#9a8f87; text-decoration:underline;">
           Not interested? Click here and we'll never email you again.
@@ -244,7 +293,6 @@ function festiveTemplate(opts: {
   products: CampaignProduct[];
   categories: CampaignCategory[];
   ctaUrl: string;
-  sourceStoreName?: string;
   siteUrl: string;
 }) {
   const hero = opts.heroImage
@@ -270,7 +318,7 @@ function festiveTemplate(opts: {
         ${productGrid(opts.products)}
       </td>
     </tr>
-    ${unsubscribeFooter(opts.sourceStoreName)}
+    ${unsubscribeFooter()}
   `);
 }
 
@@ -280,7 +328,6 @@ function newArrivalsTemplate(opts: {
   products: CampaignProduct[];
   categories: CampaignCategory[];
   ctaUrl: string;
-  sourceStoreName?: string;
   siteUrl: string;
 }) {
   return wrapDocument(`
@@ -304,7 +351,7 @@ function newArrivalsTemplate(opts: {
         <a href="${opts.ctaUrl}" style="display:inline-block; background:${BRAND_COLOR}; color:#fff; padding:12px 32px; text-decoration:none; border-radius:4px; font-size:14px; font-weight:bold;">View Full Collection</a>
       </td>
     </tr>
-    ${unsubscribeFooter(opts.sourceStoreName)}
+    ${unsubscribeFooter()}
   `);
 }
 
@@ -314,7 +361,6 @@ function minimalTemplate(opts: {
   products: CampaignProduct[];
   categories: CampaignCategory[];
   ctaUrl: string;
-  sourceStoreName?: string;
   siteUrl: string;
 }) {
   return wrapDocument(`
@@ -337,7 +383,7 @@ function minimalTemplate(opts: {
         <a href="${opts.ctaUrl}" style="display:inline-block; border:1px solid ${BRAND_COLOR}; color:${BRAND_COLOR}; padding:11px 30px; text-decoration:none; border-radius:4px; font-size:13px; letter-spacing:0.05em;">Explore ${SITE_NAME}</a>
       </td>
     </tr>
-    ${unsubscribeFooter(opts.sourceStoreName)}
+    ${unsubscribeFooter()}
   `);
 }
 
@@ -353,19 +399,15 @@ function introductionTemplate(opts: {
   products: CampaignProduct[];
   categories: CampaignCategory[];
   ctaUrl: string;
-  sourceStoreName?: string;
 }) {
-  const sourceLine = opts.sourceStoreName
-    ? `you previously shopped at <strong>${opts.sourceStoreName}</strong>`
-    : 'you previously shopped with one of our partner stores';
   return wrapDocument(`
     ${header()}
     <tr>
       <td style="padding: 32px 28px 4px; text-align:center;">
         <h1 style="margin: 0 0 12px; font-size: 22px; font-weight:normal; color:#2b2320;">${opts.headline}</h1>
         <p style="margin:0 0 18px; font-size:14px; color:#6b5f57; line-height:1.7;">
-          We're reaching out because ${sourceLine}. ${SITE_NAME} is a separate,
-          new store${opts.sourceStoreName ? ` — not ${opts.sourceStoreName}` : ''} — and this is the only email
+          We're reaching out because ${SOURCE_STORE_INTRO_CLAUSE_PLACEHOLDER}. ${SITE_NAME} is a separate,
+          new store${SOURCE_STORE_NOT_CLAUSE_PLACEHOLDER} — and this is the only email
           you'll get introducing us.
           ${opts.subheadline ? opts.subheadline : ''}
         </p>
@@ -383,7 +425,7 @@ function introductionTemplate(opts: {
         ${productGrid(opts.products)}
       </td>
     </tr>
-    ${unsubscribeFooter(opts.sourceStoreName)}
+    ${unsubscribeFooter()}
   `);
 }
 
@@ -395,7 +437,6 @@ export function buildPremiumCampaignHtml(opts: {
   products: CampaignProduct[];
   categories?: CampaignCategory[];
   heroImage?: string | null;
-  sourceStoreName?: string;
 }): string {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';
   const ctaUrl = `${siteUrl}/shop`;

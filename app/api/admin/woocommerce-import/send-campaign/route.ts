@@ -8,7 +8,10 @@ import {
   TRACKING_PIXEL_PLACEHOLDER,
   UNSUBSCRIBE_LINK_PLACEHOLDER,
   wrapCampaignLinksForClickTracking,
+  resolveSourceStorePlaceholders,
+  storeDisplayName,
 } from '@/lib/campaign-templates';
+import { fetchDripSettings } from '@/lib/woocommerce-automation';
 
 async function requireAdmin() {
   const cookie = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? null;
@@ -77,12 +80,18 @@ export async function POST(req: NextRequest) {
   // has them in it.
   const { data: customers, error } = await supabase
     .from('woocommerce_customers')
-    .select('id, email')
+    .select('id, email, source_store_url')
     .in('id', customerIds)
     .eq('opted_out', false);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // Global fallback store name (Settings -> WooCommerce drip automation),
+  // used only for customers whose own source_store_url is unknown -- each
+  // customer's own store (when known) always takes priority. See
+  // resolveSourceStorePlaceholders' comment in campaign-templates.ts.
+  const { sourceStoreName: globalFallbackStoreName } = await fetchDripSettings(supabase);
 
   // Don't re-send the same subject to someone already emailed for this campaign.
   const { data: alreadySent } = await supabase
@@ -126,7 +135,11 @@ export async function POST(req: NextRequest) {
       automation_step: null, // this route is always a manual/one-off send, never the automated drip
     });
 
-    let perRecipientHtml = html;
+    // Resolve this recipient's own source-store wording first (their own
+    // source_store_url, falling back to the global drip-settings name,
+    // then to no name at all) -- BEFORE the tracking/unsubscribe
+    // placeholders, same ordering as sendQueuedEmail in automation.ts.
+    let perRecipientHtml = resolveSourceStorePlaceholders(html, storeDisplayName(c.source_store_url) || globalFallbackStoreName || undefined);
     if (hasPixelPlaceholder) {
       perRecipientHtml = perRecipientHtml.replace(
         TRACKING_PIXEL_PLACEHOLDER,

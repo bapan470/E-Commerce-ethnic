@@ -35,6 +35,8 @@ import {
   CAMPAIGN_TEMPLATES,
   TRACKING_PIXEL_PLACEHOLDER,
   UNSUBSCRIBE_LINK_PLACEHOLDER,
+  SOURCE_STORE_FOOTER_CLAUSE_PLACEHOLDER,
+  storeDisplayName,
   type CampaignTemplateId,
 } from '@/lib/campaign-templates';
 
@@ -82,11 +84,6 @@ export default function WooCommerceImportPanel() {
   const [history, setHistory] = useState<CampaignHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [heroImageUrl, setHeroImageUrl] = useState('');
-  // Shown in the Welcome Introduction template (and folded into every other
-  // template's footer disclosure) so recipients see exactly which store
-  // they actually bought from — e.g. "mishaboutique.com" — instead of a
-  // vague "one of our partner stores".
-  const [sourceStoreName, setSourceStoreName] = useState('');
   const [availableCategories, setAvailableCategories] = useState<CampaignCategoryOption[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('__all__');
 
@@ -116,13 +113,6 @@ export default function WooCommerceImportPanel() {
     for (const c of customers) if (c.source_store_url) urls.add(c.source_store_url);
     return Array.from(urls).sort();
   }, [customers]);
-  const storeDisplayName = (url: string) => {
-    try {
-      return new URL(url).hostname.replace(/^www\./, '');
-    } catch {
-      return url;
-    }
-  };
   // Rendering thousands of <tr> rows at once (e.g. "Sabhi"/"Cold" with 6800+
   // customers) is what was making those tabs slow, while "Hot" (2 rows) felt
   // instant — it's a DOM size problem, not a data-fetch problem. So we only
@@ -339,7 +329,6 @@ export default function WooCommerceImportPanel() {
         heroImage: templateId === 'festive' && heroImageUrl.trim() ? heroImageUrl.trim() : undefined,
         products,
         categories, // renders the "Shop by Category" circle row, same as homepage
-        sourceStoreName: sourceStoreName.trim() || undefined,
       });
       setMessage(html);
       if (!subject.trim()) setSubject(headline);
@@ -362,15 +351,16 @@ export default function WooCommerceImportPanel() {
     }
     setSending(true);
     try {
-      const sourceClause = sourceStoreName.trim()
-        ? `you previously purchased from <strong>${sourceStoreName.trim()}</strong>`
-        : 'you previously purchased from one of our partner stores';
+      // Leaves the SOURCE_STORE_FOOTER_CLAUSE placeholder in place — the
+      // server resolves it per recipient (their own source_store_url,
+      // falling back to Settings' global store name) right before sending,
+      // so a mixed-store selection still gets each person's real store.
       const html = isPremiumHtml
         ? message
         : `<div style="font-family:sans-serif;font-size:15px;line-height:1.6">${message.replace(
             /\n/g,
             '<br/>'
-          )}<hr style="margin-top:24px"/><p style="font-size:12px;color:#888">You're receiving this email because ${sourceClause}. <a href="${UNSUBSCRIBE_LINK_PLACEHOLDER}" style="color:#888;">Not interested? Click here and we'll never email you again.</a>${TRACKING_PIXEL_PLACEHOLDER}</p></div>`;
+          )}<hr style="margin-top:24px"/><p style="font-size:12px;color:#888">You're receiving this email because ${SOURCE_STORE_FOOTER_CLAUSE_PLACEHOLDER}. <a href="${UNSUBSCRIBE_LINK_PLACEHOLDER}" style="color:#888;">Not interested? Click here and we'll never email you again.</a>${TRACKING_PIXEL_PLACEHOLDER}</p></div>`;
       const scheduleAfterHours = scheduleEnabled ? Number(scheduleHours) || 0 : 0;
       const result = await sendWooCommerceCampaign({
         customerIds: Array.from(selected),
@@ -688,12 +678,11 @@ export default function WooCommerceImportPanel() {
           <p className="text-xs font-medium flex items-center gap-1">
             <Sparkles className="h-3.5 w-3.5" /> Premium template (asli products, clickable)
           </p>
-          <Input
-            placeholder="Source store name (optional — e.g. mishaboutique.com — shown in the disclosure so recipients know where their info came from)"
-            value={sourceStoreName}
-            onChange={(e) => setSourceStoreName(e.target.value)}
-            className="text-xs"
-          />
+          <p className="text-xs text-muted-foreground">
+            Source store naam ab automatic hai — har customer ko unke apne source store ka naam
+            dikhega (disclosure line me), Settings me diye gaye naam ko sirf fallback ki tarah use
+            karte hue jab kisi customer ka apna store pata na ho.
+          </p>
           <Input
             placeholder="Hero banner image URL (optional — Festive template ke top pe dikhega, jaisa homepage pe hai)"
             value={heroImageUrl}
