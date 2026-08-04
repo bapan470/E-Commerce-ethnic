@@ -95,6 +95,33 @@ function header() {
     </tr>`;
 }
 
+// Static, non-animated version of the homepage's PromoSlider "Become a
+// Partner" banner (components/home/promo-slider.tsx). A real JS carousel
+// can't run inside an email client, so this renders just its reseller
+// slide as one fixed banner — same copy, same maroon background, same
+// pill CTA and trust-badge strip underneath — instead of trying (and
+// failing) to reproduce the swipe/autoplay behaviour.
+function resellerPromoBanner(ctaBaseUrl: string) {
+  return `
+    <tr>
+      <td style="padding: 0 16px 4px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${LOGO_MAROON}; border-radius:12px;">
+          <tr>
+            <td style="padding: 22px 22px 18px;">
+              <p style="margin:0 0 6px; font-size:10px; font-weight:bold; letter-spacing:0.2em; text-transform:uppercase; color:rgba(255,255,255,0.75);">Become A Partner</p>
+              <p style="margin:0 0 6px; font-size:19px; font-weight:bold; color:#fff; font-family: Georgia, 'Times New Roman', serif;">Start Reselling, Earn Every Order</p>
+              <p style="margin:0 0 14px; font-size:13px; color:rgba(255,255,255,0.85); line-height:1.5;">Set your own markup and sell our handloom collection under your name — zero inventory required.</p>
+              <a href="${ctaBaseUrl}/account/reseller" style="display:inline-block; background:rgba(255,255,255,0.18); border:1px solid rgba(255,255,255,0.4); color:#fff; padding:9px 18px; text-decoration:none; border-radius:20px; font-size:12px; font-weight:bold;">Start Reselling →</a>
+            </td>
+          </tr>
+        </table>
+        <p style="margin: 10px 0 0; text-align:center; font-size:11px; color:#9a8f87;">
+          100% Secure &amp; Verified &nbsp;·&nbsp; Points Never Expire Unused &nbsp;·&nbsp; Trusted by Real Customers
+        </p>
+      </td>
+    </tr>`;
+}
+
 // Mirrors the homepage's "Shop by Category" row — round thumbnails, name
 // below, each one a real, clickable link straight to that category page.
 // Email clients render <table> layouts far more reliably than flexbox, so
@@ -172,6 +199,10 @@ function productGrid(products: CampaignProduct[]) {
 function wrapDocument(bodyRows: string) {
   return `<!DOCTYPE html>
 <html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  </head>
   <body style="margin:0; padding:0; background:#f4efe9;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4efe9;">
       <tr>
@@ -195,6 +226,7 @@ function festiveTemplate(opts: {
   categories: CampaignCategory[];
   ctaUrl: string;
   sourceStoreName?: string;
+  siteUrl: string;
 }) {
   const hero = opts.heroImage
     ? `<img src="${opts.heroImage}" width="600" alt="" style="width:100%; max-width:600px; display:block;" />`
@@ -212,6 +244,7 @@ function festiveTemplate(opts: {
         </div>
       </td>
     </tr>
+    ${resellerPromoBanner(opts.siteUrl)}
     ${categorySection(opts.categories)}
     <tr>
       <td style="padding: 8px 16px 20px;">
@@ -229,6 +262,7 @@ function newArrivalsTemplate(opts: {
   categories: CampaignCategory[];
   ctaUrl: string;
   sourceStoreName?: string;
+  siteUrl: string;
 }) {
   return wrapDocument(`
     ${header()}
@@ -239,6 +273,7 @@ function newArrivalsTemplate(opts: {
         ${opts.subheadline ? `<p style="margin:0 0 18px; font-size:14px; color:#6b5f57;">${opts.subheadline}</p>` : ''}
       </td>
     </tr>
+    ${resellerPromoBanner(opts.siteUrl)}
     ${categorySection(opts.categories)}
     <tr>
       <td style="padding: 8px 16px 12px;">
@@ -261,6 +296,7 @@ function minimalTemplate(opts: {
   categories: CampaignCategory[];
   ctaUrl: string;
   sourceStoreName?: string;
+  siteUrl: string;
 }) {
   return wrapDocument(`
     ${header()}
@@ -270,6 +306,7 @@ function minimalTemplate(opts: {
         ${opts.subheadline ? `<p style="margin:0 0 22px; font-size:14px; color:#6b5f57; line-height:1.6;">${opts.subheadline}</p>` : ''}
       </td>
     </tr>
+    ${resellerPromoBanner(opts.siteUrl)}
     ${categorySection(opts.categories)}
     <tr>
       <td style="padding: 0 16px 8px;">
@@ -347,13 +384,16 @@ export function buildPremiumCampaignHtml(opts: {
 
   switch (opts.templateId) {
     case 'introduction':
+      // No reseller promo banner here on purpose — this email's whole job
+      // is an honest, low-pressure re-introduction with a clear opt-out;
+      // an upsell banner would undercut that.
       return introductionTemplate({ ...opts, categories, ctaUrl });
     case 'festive':
-      return festiveTemplate({ ...opts, categories, ctaUrl });
+      return festiveTemplate({ ...opts, categories, ctaUrl, siteUrl });
     case 'new-arrivals':
-      return newArrivalsTemplate({ ...opts, categories, ctaUrl });
+      return newArrivalsTemplate({ ...opts, categories, ctaUrl, siteUrl });
     case 'minimal':
     default:
-      return minimalTemplate({ ...opts, categories, ctaUrl });
+      return minimalTemplate({ ...opts, categories, ctaUrl, siteUrl });
   }
 }
