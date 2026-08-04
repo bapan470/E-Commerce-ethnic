@@ -3,6 +3,19 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  // Without this, Next.js's webpack bundling for route handlers (app/api/**)
+  // can mangle sharp's native .node binary instead of require()-ing it
+  // directly at runtime. That failure only shows up in production builds
+  // (local dev / `next dev` doesn't bundle the same way), and it's silent
+  // here because app/api/upload-image/route.ts and
+  // app/api/admin/import-image/route.ts both catch sharp errors and fall
+  // back to uploading the original (non-WebP) file rather than hard-failing
+  // the upload. That silent fallback is what was producing .jpeg/.jpg files
+  // in the "variants" storage folder instead of .webp. This tells Next to
+  // leave sharp out of the bundle and load it natively instead.
+  experimental: {
+    serverComponentsExternalPackages: ['sharp'],
+  },
   images: {
     // Vercel's built-in Image Optimization API (the /_next/image endpoint)
     // has a monthly quota on the Hobby plan. Once that quota is used up,
