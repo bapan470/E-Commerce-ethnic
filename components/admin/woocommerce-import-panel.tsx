@@ -23,6 +23,7 @@ import {
   buildPremiumCampaignHtml,
   CAMPAIGN_TEMPLATES,
   TRACKING_PIXEL_PLACEHOLDER,
+  UNSUBSCRIBE_LINK_PLACEHOLDER,
   type CampaignTemplateId,
 } from '@/lib/campaign-templates';
 
@@ -54,6 +55,11 @@ export default function WooCommerceImportPanel() {
   const [history, setHistory] = useState<CampaignHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [heroImageUrl, setHeroImageUrl] = useState('');
+  // Shown in the Welcome Introduction template (and folded into every other
+  // template's footer disclosure) so recipients see exactly which store
+  // they actually bought from — e.g. "mishaboutique.com" — instead of a
+  // vague "one of our partner stores".
+  const [sourceStoreName, setSourceStoreName] = useState('');
   const [availableCategories, setAvailableCategories] = useState<CampaignCategoryOption[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('__all__');
 
@@ -77,15 +83,24 @@ export default function WooCommerceImportPanel() {
       .catch(() => {});
   }, []);
 
+  const matchesSearch = (c: ImportedCustomer, q: string) =>
+    !q ||
+    (c.name ?? '').toLowerCase().includes(q) ||
+    (c.email ?? '').toLowerCase().includes(q) ||
+    (c.phone ?? '').toLowerCase().includes(q);
+
+  // Opted-out customers never appear in the selectable/sendable list — this
+  // mirrors the hard exclusion send-campaign already does server-side
+  // (`.eq('opted_out', false)`), so there's no UI path that lets them get
+  // selected for a future campaign even by accident.
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return customers;
-    return customers.filter(
-      (c) =>
-        (c.name ?? '').toLowerCase().includes(q) ||
-        (c.email ?? '').toLowerCase().includes(q) ||
-        (c.phone ?? '').toLowerCase().includes(q)
-    );
+    return customers.filter((c) => !c.opted_out && matchesSearch(c, q));
+  }, [customers, search]);
+
+  const optedOut = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return customers.filter((c) => c.opted_out && matchesSearch(c, q));
   }, [customers, search]);
 
   const allFilteredSelected = filtered.length > 0 && filtered.every((c) => selected.has(c.id));
@@ -189,7 +204,9 @@ export default function WooCommerceImportPanel() {
             ? categoryFilter
               ? `New In ${categoryFilter}`
               : 'Fresh Off The Loom — New Arrivals'
-            : `A Note From ${'AruhiHandlooms'}`;
+            : templateId === 'introduction'
+              ? `Introducing ${'AruhiHandlooms'}`
+              : `A Note From ${'AruhiHandlooms'}`;
       const html = buildPremiumCampaignHtml({
         templateId,
         headline,
@@ -201,6 +218,7 @@ export default function WooCommerceImportPanel() {
         heroImage: templateId === 'festive' && heroImageUrl.trim() ? heroImageUrl.trim() : undefined,
         products,
         categories, // renders the "Shop by Category" circle row, same as homepage
+        sourceStoreName: sourceStoreName.trim() || undefined,
       });
       setMessage(html);
       if (!subject.trim()) setSubject(headline);
@@ -223,12 +241,15 @@ export default function WooCommerceImportPanel() {
     }
     setSending(true);
     try {
+      const sourceClause = sourceStoreName.trim()
+        ? `you previously purchased from <strong>${sourceStoreName.trim()}</strong>`
+        : 'you previously purchased from one of our partner stores';
       const html = isPremiumHtml
         ? message
         : `<div style="font-family:sans-serif;font-size:15px;line-height:1.6">${message.replace(
             /\n/g,
             '<br/>'
-          )}<hr style="margin-top:24px"/><p style="font-size:12px;color:#888">You're receiving this email because you previously purchased from one of our partner stores. If you'd rather not get emails like this, just reply and let us know and we'll remove you.${TRACKING_PIXEL_PLACEHOLDER}</p></div>`;
+          )}<hr style="margin-top:24px"/><p style="font-size:12px;color:#888">You're receiving this email because ${sourceClause}. <a href="${UNSUBSCRIBE_LINK_PLACEHOLDER}" style="color:#888;">Not interested? Click here and we'll never email you again.</a>${TRACKING_PIXEL_PLACEHOLDER}</p></div>`;
       const result = await sendWooCommerceCampaign({
         customerIds: Array.from(selected),
         subject,
@@ -340,12 +361,46 @@ export default function WooCommerceImportPanel() {
           </div>
         )}
 
+        {optedOut.length > 0 && (
+          <details className="rounded border bg-muted/20">
+            <summary className="cursor-pointer p-2 text-sm font-medium text-muted-foreground">
+              Opted out ({optedOut.length}) — excluded from every future campaign
+            </summary>
+            <div className="max-h-56 overflow-auto border-t">
+              <table className="w-full text-sm">
+                <thead className="bg-muted sticky top-0">
+                  <tr>
+                    <th className="p-2 text-left">Name</th>
+                    <th className="p-2 text-left">Email</th>
+                    <th className="p-2 text-left">Opted out</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {optedOut.map((c) => (
+                    <tr key={c.id} className="border-t text-muted-foreground">
+                      <td className="p-2">{c.name || '—'}</td>
+                      <td className="p-2">{c.email || '—'}</td>
+                      <td className="p-2">{c.opted_out_at ? new Date(c.opted_out_at).toLocaleDateString() : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        )}
+
         <h2 className="font-medium">3. Email campaign bhejo ({selected.size} selected)</h2>
 
         <div className="rounded-md border bg-muted/30 p-3 grid gap-2">
           <p className="text-xs font-medium flex items-center gap-1">
             <Sparkles className="h-3.5 w-3.5" /> Premium template (asli products, clickable)
           </p>
+          <Input
+            placeholder="Source store name (optional — e.g. mishaboutique.com — shown in the disclosure so recipients know where their info came from)"
+            value={sourceStoreName}
+            onChange={(e) => setSourceStoreName(e.target.value)}
+            className="text-xs"
+          />
           <Input
             placeholder="Hero banner image URL (optional — Festive template ke top pe dikhega, jaisa homepage pe hai)"
             value={heroImageUrl}

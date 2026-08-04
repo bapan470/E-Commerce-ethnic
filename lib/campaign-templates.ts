@@ -5,6 +5,12 @@ import { formatINR, discountPct } from './format';
 // so "open" is tracked per customer, per send.
 export const TRACKING_PIXEL_PLACEHOLDER = '__TRACKING_PIXEL__';
 
+// The send-campaign route swaps this for a real, per-recipient unsubscribe
+// link (/api/unsubscribe/<send id>) right before sending -- same per-send
+// uuid the tracking pixel reuses, so the link is unique per recipient and
+// clicking it can only ever opt out that one person.
+export const UNSUBSCRIBE_LINK_PLACEHOLDER = '__UNSUBSCRIBE_LINK__';
+
 const BRAND_COLOR = '#7c3a1d';
 const SITE_NAME = 'AruhiHandlooms';
 
@@ -26,9 +32,14 @@ export interface CampaignCategory {
   url: string;
 }
 
-export type CampaignTemplateId = 'festive' | 'new-arrivals' | 'minimal';
+export type CampaignTemplateId = 'festive' | 'new-arrivals' | 'minimal' | 'introduction';
 
 export const CAMPAIGN_TEMPLATES: { id: CampaignTemplateId; label: string; description: string }[] = [
+  {
+    id: 'introduction',
+    label: 'Welcome Introduction',
+    description: 'First-contact email for imported contacts — names the store they bought from, introduces us, clear opt-out',
+  },
   {
     id: 'festive',
     label: 'Festive Sale',
@@ -46,12 +57,21 @@ export const CAMPAIGN_TEMPLATES: { id: CampaignTemplateId; label: string; descri
   },
 ];
 
-function unsubscribeFooter() {
+// `sourceStoreName` is optional so existing calls (and the plain-text send
+// path) keep working without it -- when present it makes the disclosure
+// specific ("...from mishaboutique.com") instead of the generic fallback.
+function unsubscribeFooter(sourceStoreName?: string) {
+  const sourceClause = sourceStoreName
+    ? `you previously purchased from <strong>${sourceStoreName}</strong>`
+    : 'you previously purchased from one of our partner stores';
   return `
     <tr>
       <td style="padding: 20px 24px; text-align: center; font-size: 11px; color: #9a8f87; background:#fffaf5;">
-        You're receiving this email because you previously purchased from one of our partner stores.
-        If you'd rather not get emails like this, just reply and let us know and we'll remove you.
+        You're receiving this email because ${sourceClause}.
+        <br/>
+        <a href="${UNSUBSCRIBE_LINK_PLACEHOLDER}" style="color:#9a8f87; text-decoration:underline;">
+          Not interested? Click here and we'll never email you again.
+        </a>
         ${TRACKING_PIXEL_PLACEHOLDER}
       </td>
     </tr>`;
@@ -167,6 +187,7 @@ function festiveTemplate(opts: {
   products: CampaignProduct[];
   categories: CampaignCategory[];
   ctaUrl: string;
+  sourceStoreName?: string;
 }) {
   const hero = opts.heroImage
     ? `<img src="${opts.heroImage}" width="600" alt="" style="width:100%; max-width:600px; display:block;" />`
@@ -190,7 +211,7 @@ function festiveTemplate(opts: {
         ${productGrid(opts.products)}
       </td>
     </tr>
-    ${unsubscribeFooter()}
+    ${unsubscribeFooter(opts.sourceStoreName)}
   `);
 }
 
@@ -200,6 +221,7 @@ function newArrivalsTemplate(opts: {
   products: CampaignProduct[];
   categories: CampaignCategory[];
   ctaUrl: string;
+  sourceStoreName?: string;
 }) {
   return wrapDocument(`
     ${header()}
@@ -221,7 +243,7 @@ function newArrivalsTemplate(opts: {
         <a href="${opts.ctaUrl}" style="display:inline-block; background:${BRAND_COLOR}; color:#fff; padding:12px 32px; text-decoration:none; border-radius:4px; font-size:14px; font-weight:bold;">View Full Collection</a>
       </td>
     </tr>
-    ${unsubscribeFooter()}
+    ${unsubscribeFooter(opts.sourceStoreName)}
   `);
 }
 
@@ -231,6 +253,7 @@ function minimalTemplate(opts: {
   products: CampaignProduct[];
   categories: CampaignCategory[];
   ctaUrl: string;
+  sourceStoreName?: string;
 }) {
   return wrapDocument(`
     ${header()}
@@ -251,7 +274,53 @@ function minimalTemplate(opts: {
         <a href="${opts.ctaUrl}" style="display:inline-block; border:1px solid ${BRAND_COLOR}; color:${BRAND_COLOR}; padding:11px 30px; text-decoration:none; border-radius:4px; font-size:13px; letter-spacing:0.05em;">Explore ${SITE_NAME}</a>
       </td>
     </tr>
-    ${unsubscribeFooter()}
+    ${unsubscribeFooter(opts.sourceStoreName)}
+  `);
+}
+
+// First-contact email for someone imported from another store's WooCommerce
+// orders who has never interacted with us before. Its whole job is honest
+// re-introduction, not selling: name the store they actually bought from,
+// say plainly who we are and why we're emailing, then a real, prominent
+// opt-out -- separate from (and above) the small print in the footer --
+// so "not interested" is at least as easy to find as "shop now".
+function introductionTemplate(opts: {
+  headline: string;
+  subheadline?: string;
+  products: CampaignProduct[];
+  categories: CampaignCategory[];
+  ctaUrl: string;
+  sourceStoreName?: string;
+}) {
+  const sourceLine = opts.sourceStoreName
+    ? `you previously shopped at <strong>${opts.sourceStoreName}</strong>`
+    : 'you previously shopped with one of our partner stores';
+  return wrapDocument(`
+    ${header()}
+    <tr>
+      <td style="padding: 32px 28px 4px; text-align:center;">
+        <h1 style="margin: 0 0 12px; font-size: 22px; font-weight:normal; color:#2b2320;">${opts.headline}</h1>
+        <p style="margin:0 0 18px; font-size:14px; color:#6b5f57; line-height:1.7;">
+          We're reaching out because ${sourceLine}. ${SITE_NAME} is a separate,
+          new store${opts.sourceStoreName ? ` — not ${opts.sourceStoreName}` : ''} — and this is the only email
+          you'll get introducing us.
+          ${opts.subheadline ? opts.subheadline : ''}
+        </p>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding: 0 24px 24px; text-align:center;">
+        <a href="${opts.ctaUrl}" style="display:inline-block; background:${BRAND_COLOR}; color:#fff; padding:12px 32px; text-decoration:none; border-radius:4px; font-size:14px; font-weight:bold; margin-right:10px;">Take A Look</a>
+        <a href="${UNSUBSCRIBE_LINK_PLACEHOLDER}" style="display:inline-block; border:1px solid #9a8f87; color:#6b5f57; padding:11px 24px; text-decoration:none; border-radius:4px; font-size:13px;">Not Interested</a>
+      </td>
+    </tr>
+    ${categorySection(opts.categories)}
+    <tr>
+      <td style="padding: 8px 16px 20px;">
+        ${productGrid(opts.products)}
+      </td>
+    </tr>
+    ${unsubscribeFooter(opts.sourceStoreName)}
   `);
 }
 
@@ -263,12 +332,15 @@ export function buildPremiumCampaignHtml(opts: {
   products: CampaignProduct[];
   categories?: CampaignCategory[];
   heroImage?: string | null;
+  sourceStoreName?: string;
 }): string {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';
   const ctaUrl = `${siteUrl}/shop`;
   const categories = opts.categories ?? [];
 
   switch (opts.templateId) {
+    case 'introduction':
+      return introductionTemplate({ ...opts, categories, ctaUrl });
     case 'festive':
       return festiveTemplate({ ...opts, categories, ctaUrl });
     case 'new-arrivals':

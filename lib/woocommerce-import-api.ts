@@ -24,6 +24,8 @@ export interface ImportedCustomer {
   phone: string | null;
   source: string;
   imported_at: string;
+  opted_out: boolean;
+  opted_out_at: string | null;
 }
 
 export interface ImportResult {

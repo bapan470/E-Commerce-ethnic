@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { sendEmail } from '@/lib/email';
-import { TRACKING_PIXEL_PLACEHOLDER } from '@/lib/campaign-templates';
+import { TRACKING_PIXEL_PLACEHOLDER, UNSUBSCRIBE_LINK_PLACEHOLDER } from '@/lib/campaign-templates';
 
 async function requireAdmin() {
   const cookie = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? null;
@@ -36,10 +36,15 @@ export async function POST(req: NextRequest) {
 
   const supabase = getSupabaseAdmin();
 
+  // opted_out = false is enforced here, in the query, not just filtered out
+  // in the admin UI — someone who unsubscribed can never be re-included in
+  // a send, even if an old customerIds list (e.g. a saved selection) still
+  // has them in it.
   const { data: customers, error } = await supabase
     .from('woocommerce_customers')
     .select('id, email')
-    .in('id', customerIds);
+    .in('id', customerIds)
+    .eq('opted_out', false);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -71,12 +76,28 @@ export async function POST(req: NextRequest) {
     // copy of the email (a shared/static pixel would only tell us "someone
     // opened one of the emails", not who).
     const sendId = randomUUID();
-    const perRecipientHtml = hasPixelPlaceholder
-      ? html.replace(
-          TRACKING_PIXEL_PLACEHOLDER,
-          `<img src="${siteUrl}/api/track/open/${sendId}" width="1" height="1" alt="" style="display:block; border:0;" />`
-        )
-      : html;
+
+    // Insert the row *before* sending: the unsubscribe link embedded in
+    // this email points at /api/unsubscribe/<sendId>, so that row has to
+    // exist first, or a recipient who clicks it within the first moments
+    // after the email lands could hit a "link expired" page instead of
+    // actually being unsubscribed.
+    await supabase.from('woocommerce_campaign_sends').insert({
+      id: sendId,
+      customer_id: c.id,
+      email: c.email,
+      subject,
+      status: 'sending',
+    });
+
+    let perRecipientHtml = html;
+    if (hasPixelPlaceholder) {
+      perRecipientHtml = perRecipientHtml.replace(
+        TRACKING_PIXEL_PLACEHOLDER,
+        `<img src="${siteUrl}/api/track/open/${sendId}" width="1" height="1" alt="" style="display:block; border:0;" />`
+      );
+    }
+    perRecipientHtml = perRecipientHtml.split(UNSUBSCRIBE_LINK_PLACEHOLDER).join(`${siteUrl}/api/unsubscribe/${sendId}`);
 
     const result = await sendEmail({ to: c.email, subject, html: perRecipientHtml });
     const status = result.success ? 'sent' : 'skipped' in result && result.skipped ? 'skipped' : 'failed';
@@ -84,14 +105,13 @@ export async function POST(req: NextRequest) {
     else if (status === 'failed') failed += 1;
     else skipped += 1;
 
-    await supabase.from('woocommerce_campaign_sends').insert({
-      id: sendId,
-      customer_id: c.id,
-      email: c.email,
-      subject,
-      status,
-      error: result.success ? null : String((result as any).error ?? ''),
-    });
+    await supabase
+      .from('woocommerce_campaign_sends')
+      .update({
+        status,
+        error: result.success ? null : String((result as any).error ?? ''),
+      })
+      .eq('id', sendId);
 
     // Gentle pacing so we don't hammer the email provider's rate limit.
     await new Promise((resolve) => setTimeout(resolve, 150));
