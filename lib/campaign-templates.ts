@@ -77,12 +77,19 @@ function unsubscribeFooter(sourceStoreName?: string) {
     </tr>`;
 }
 
+// Matches the site's actual logo styling (components/header.tsx): "Aruhi" in
+// gold/amber, "Handlooms" in maroon, serif, on a light background — not a
+// solid brown banner with plain white caps text, which didn't match the
+// real site at all.
+const LOGO_GOLD = '#e3a840';
+const LOGO_MAROON = '#7b1832';
+
 function header() {
   return `
     <tr>
-      <td style="background:${BRAND_COLOR}; padding: 26px 24px; text-align: center;">
-        <span style="color:#fff; font-family: Georgia, 'Times New Roman', serif; font-size: 24px; letter-spacing: 0.08em; text-transform: uppercase;">
-          ${SITE_NAME}
+      <td style="background:#fffaf5; padding: 22px 24px; text-align: center; border-bottom: 1px solid #eee2d8;">
+        <span style="font-family: Georgia, 'Times New Roman', serif; font-size: 26px; font-weight: bold; letter-spacing: 0.01em;">
+          <span style="color:${LOGO_GOLD};">Aruhi</span><span style="color:${LOGO_MAROON};">Handlooms</span>
         </span>
       </td>
     </tr>`;
