@@ -129,7 +129,7 @@ function resellerPromoBanner(ctaBaseUrl: string) {
 // cells, wrapped so it naturally goes to a new line every 4 categories.
 function categorySection(categories: CampaignCategory[]) {
   if (!categories.length) return '';
-  const shown = categories.slice(0, 8);
+  const shown = categories;
 
   // 4 categories per row (mirrors the homepage's 4-per-row mobile grid).
   const rows: string[] = [];
