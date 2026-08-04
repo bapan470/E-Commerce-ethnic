@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { Package } from 'lucide-react';
 import { getSupabaseServer, getCurrentUser } from '@/lib/supabase-server-auth';
 import { formatINR } from '@/lib/format';
@@ -60,9 +61,32 @@ export default async function OrdersPage() {
                 </Badge>
               </div>
               <div className="mt-3 flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">
-                  {Array.isArray(order.items) ? order.items.length : 0} item(s)
-                </span>
+                <div className="flex items-center gap-3">
+                  <div className="flex -space-x-2">
+                    {(Array.isArray(order.items) ? order.items : []).slice(0, 3).map((item: any, i: number) => (
+                      <div
+                        key={i}
+                        className="relative h-10 w-10 shrink-0 overflow-hidden rounded-md border-2 border-background bg-muted"
+                      >
+                        <Image
+                          src={item.image_url || 'https://placehold.co/80x80?text=No+Image'}
+                          alt={item.product_name || 'Product'}
+                          fill
+                          sizes="40px"
+                          className="object-cover"
+                        />
+                      </div>
+                    ))}
+                    {Array.isArray(order.items) && order.items.length > 3 && (
+                      <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-md border-2 border-background bg-muted text-xs font-medium text-muted-foreground">
+                        +{order.items.length - 3}
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-muted-foreground">
+                    {Array.isArray(order.items) ? order.items.length : 0} item(s)
+                  </span>
+                </div>
                 <span className="font-semibold text-primary">
                   {formatINR(order.total_amount)}
                 </span>
