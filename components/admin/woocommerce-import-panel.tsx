@@ -228,7 +228,7 @@ export default function WooCommerceImportPanel() {
         : `<div style="font-family:sans-serif;font-size:15px;line-height:1.6">${message.replace(
             /\n/g,
             '<br/>'
-          )}<hr style="margin-top:24px"/><p style="font-size:12px;color:#888">Aapko ye email isliye mili hai kyunki aapne hamare store se pehle kharidari ki thi. Agar aage aisi emails nahi chahiye, to reply karke bata dijiye.${TRACKING_PIXEL_PLACEHOLDER}</p></div>`;
+          )}<hr style="margin-top:24px"/><p style="font-size:12px;color:#888">You're receiving this email because you previously purchased from one of our partner stores. If you'd rather not get emails like this, just reply and let us know and we'll remove you.${TRACKING_PIXEL_PLACEHOLDER}</p></div>`;
       const result = await sendWooCommerceCampaign({
         customerIds: Array.from(selected),
         subject,

@@ -50,8 +50,8 @@ function unsubscribeFooter() {
   return `
     <tr>
       <td style="padding: 20px 24px; text-align: center; font-size: 11px; color: #9a8f87; background:#fffaf5;">
-        Aapko ye email isliye mili hai kyunki aapne hamare ek partner store se pehle kharidari ki thi.
-        Agar aage aisi emails nahi chahiye, to reply karke bata dijiye.
+        You're receiving this email because you previously purchased from one of our partner stores.
+        If you'd rather not get emails like this, just reply and let us know and we'll remove you.
         ${TRACKING_PIXEL_PLACEHOLDER}
       </td>
     </tr>`;
