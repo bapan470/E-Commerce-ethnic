@@ -35,7 +35,13 @@ const WEBP_QUALITY = 82;
  * conversion the "converted to WebP" toast talks about, not just a label.
  */
 async function cropToProductFrame(buffer: Buffer): Promise<{ buffer: Buffer; contentType: string; ext: string }> {
-  const image = sharp(buffer);
+  // `failOn: 'none'` -- sharp's default hard-throws on non-fatal decode
+  // warnings (e.g. the non-standard EXIF/APP metadata phone camera and
+  // watermark apps commonly write), even though those files open fine in
+  // every browser. Without this, a real-looking image can silently fail
+  // conversion and fall back to being stored in its original format. See
+  // the matching comment in app/api/upload-image/route.ts.
+  const image = sharp(buffer, { failOn: 'none' }).rotate();
   const metadata = await image.metadata();
   const w = metadata.width;
   const h = metadata.height;
@@ -61,7 +67,11 @@ async function cropToProductFrame(buffer: Buffer): Promise<{ buffer: Buffer; con
  * downloaded and only the crop path touched sharp at all.
  */
 async function convertToWebp(buffer: Buffer): Promise<{ buffer: Buffer; contentType: string; ext: string }> {
-  const out = await sharp(buffer).webp({ quality: WEBP_QUALITY }).toBuffer();
+  // Same failOn: 'none' + rotate() reasoning as cropToProductFrame() above.
+  const out = await sharp(buffer, { failOn: 'none' })
+    .rotate()
+    .webp({ quality: WEBP_QUALITY })
+    .toBuffer();
   return { buffer: out, contentType: 'image/webp', ext: 'webp' };
 }
 

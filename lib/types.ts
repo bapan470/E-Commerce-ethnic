@@ -111,6 +111,15 @@ export interface Product {
   /** First image of the default colour variant, used as the card thumbnail
    *  in place of the base product's own photos when variants exist. */
   default_variant_image?: string | null;
+  /** Colour of the default variant (if any). The card shows
+   *  `default_variant_image`, which may belong to a different colour than
+   *  the base product's own name/first photo -- this lets the card swap
+   *  the displayed name/alt text to match the photo actually being shown,
+   *  the same way the product detail page already does via
+   *  getVariantDisplayName(). Without this, a "Maroon ..." base product
+   *  whose default variant is "Blue" would show a blue photo captioned
+   *  "Maroon ...". */
+  default_variant_color?: string | null;
   /**
    * Every photo this product has anywhere -- the base product's own
    * `images` plus every image on every `product_variants` row,

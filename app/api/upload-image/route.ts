@@ -70,11 +70,24 @@ export async function POST(req: Request) {
     let uploadContentType = file.type || 'application/octet-stream';
     let ext = 'webp';
 
-    // Real WebP conversion via sharp. Falls back to uploading the original
-    // bytes/format if sharp can't decode the source, so an unusual file
-    // never hard-fails the whole upload.
+    // Real WebP conversion via sharp. `failOn: 'none'` is important here --
+    // sharp's default (`'warning'`) hard-throws on any non-fatal decode
+    // warning, and phone-camera/watermark apps very commonly write
+    // non-standard EXIF/APP metadata that trips this even though the file
+    // opens completely fine in every browser. Without this, conversion
+    // would silently fail for exactly those photos and the original file
+    // (wrong extension, no real compression) would get uploaded instead --
+    // which is what was happening. `.rotate()` with no args auto-applies
+    // the EXIF orientation before re-encoding, so photos taken in portrait
+    // don't come out sideways once the EXIF tag is dropped by the webp
+    // re-encode. Still falls back to uploading the original bytes/format
+    // if sharp genuinely can't decode the source (e.g. a truly corrupt
+    // file), so an unusual file never hard-fails the whole upload.
     try {
-      uploadBuffer = await sharp(uploadBuffer).webp({ quality: WEBP_QUALITY }).toBuffer();
+      uploadBuffer = await sharp(uploadBuffer, { failOn: 'none' })
+        .rotate()
+        .webp({ quality: WEBP_QUALITY })
+        .toBuffer();
       uploadContentType = 'image/webp';
       ext = 'webp';
     } catch (convErr) {

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ShoppingBag, Star } from 'lucide-react';
 import { Product } from '@/lib/types';
 import { formatINR, discountPct } from '@/lib/format';
+import { getVariantDisplayName } from '@/lib/variant-display-name';
 import { useCart, getVisibleBogoPromotion, formatBogoLabel } from '@/lib/cart-context';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -76,7 +77,14 @@ export default function ProductCard({
   const img =
     imageOverride || product.default_variant_image || product.images[0] || 'https://placehold.co/800x1000?text=No+Image';
   const hoverImg = product.images[1];
-  const altText = `${product.name} - ${product.fabric} ${product.category} from ${product.origin}`;
+  // The card's photo (`img` above) can be the default variant's photo,
+  // which may be a different colour than the base product's own name/first
+  // photo (e.g. base "Maroon Handloom Kurti" with a "Blue" default variant).
+  // Swap the base colour for the variant's colour the same way the product
+  // detail page does, so the name/alt text shown always matches the photo
+  // actually on screen instead of contradicting it.
+  const displayName = getVariantDisplayName(product.name, product.colors?.[0], product.default_variant_color);
+  const altText = `${displayName} - ${product.fabric} ${product.category} from ${product.origin}`;
 
   return (
     <Link
@@ -179,7 +187,7 @@ export default function ProductCard({
           </span>
         </div>
         <h3 className={`line-clamp-2 font-serif font-semibold leading-snug text-foreground ${compact ? 'text-xs' : 'text-sm'}`}>
-          {product.name}
+          {displayName}
         </h3>
         {product.reviews > 0 && (
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
