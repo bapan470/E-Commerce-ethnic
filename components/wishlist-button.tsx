@@ -5,6 +5,7 @@ import { Heart } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { addToWishlist, removeFromWishlist, fetchWishlistProductIds } from '@/lib/wishlist-api';
+import { trackEvent } from '@/lib/track-api';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -51,6 +52,10 @@ export default function WishlistButton({
         await addToWishlist(productId);
         setSaved(true);
         toast.success('Saved to wishlist');
+        // Best-effort — lets Admin > WooCommerce Import show a "Wishlist"
+        // audience segment (customers who clicked in from a campaign email
+        // and then saved something), same mechanism as add_to_cart/purchase.
+        trackEvent('wishlist', { productId, userId: user?.id ?? null });
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Something went wrong');

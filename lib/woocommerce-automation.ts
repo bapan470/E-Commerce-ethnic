@@ -49,6 +49,8 @@ export interface WooCommerceDripSettings {
   enabled: boolean;
   dailySendCap: number; // e.g. 50 -- max campaign emails (manual-scheduled + welcome + followup combined) per cron run/day
   followupDelayDays: number; // e.g. 3 -- days after the welcome email is SENT before the followup queues
+  followupRequiresOpen: boolean; // if true (default), skip the follow-up entirely for anyone who never opened the welcome email
+  sendHourIST: number; // 0-23, preferred IST hour to actually send in. See runWooCommerceDripJob's isWithinPreferredSendWindow.
   sourceStoreName: string;
   welcome: DripStepSettings;
   followup: DripStepSettings;
@@ -58,6 +60,8 @@ export const DEFAULT_WOOCOMMERCE_DRIP_SETTINGS: WooCommerceDripSettings = {
   enabled: false,
   dailySendCap: 50,
   followupDelayDays: 3,
+  followupRequiresOpen: true,
+  sendHourIST: 10, // 10 AM IST by default
   sourceStoreName: '',
   welcome: {
     templateId: 'introduction',
@@ -219,9 +223,33 @@ async function sendQueuedEmail(
 }
 
 // ---------------------------------------------------------------------
-// Main job, called once/day from lib/cron-jobs.ts -> runWooCommerceDripJob.
+// Is "now" within +/-1 hour (IST) of the admin's chosen send hour?
+//
+// Vercel's own cron only guarantees firing SOMEWHERE inside the scheduled
+// UTC hour (Hobby plan), never to the minute -- so a tight window here
+// would fight the platform. +/-1hr absorbs that slack while still keeping
+// sends roughly anchored to the hour the admin picked (e.g. 10 AM IST),
+// instead of whatever time vercel.json's cron happens to be set to.
+//
+// `force` bypasses this (used by the "Run Now" button in admin, where the
+// person explicitly asked for it to send immediately regardless of hour).
 // ---------------------------------------------------------------------
-export async function runWooCommerceDripJob() {
+function isWithinPreferredSendWindow(sendHourIST: number): boolean {
+  const istNow = new Date(Date.now() + 5.5 * 60 * 60 * 1000); // UTC -> IST (UTC+5:30)
+  const currentHour = istNow.getUTCHours();
+  const diff = Math.min(
+    Math.abs(currentHour - sendHourIST),
+    24 - Math.abs(currentHour - sendHourIST) // wrap around midnight
+  );
+  return diff <= 1;
+}
+
+// ---------------------------------------------------------------------
+// Main job, called once/day from lib/cron-jobs.ts -> runWooCommerceDripJob.
+// `force`: skip the preferred-send-hour check (used by the admin's "Run
+// Now" button, which means "send immediately, I know what I'm doing").
+// ---------------------------------------------------------------------
+export async function runWooCommerceDripJob(force = false) {
   const supabase = getSupabaseAdmin();
   const settings = await fetchDripSettings(supabase);
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || '').replace(/\/$/, '');
@@ -284,15 +312,25 @@ export async function runWooCommerceDripJob() {
   }
 
   // --- 2. Enqueue follow-ups for customers whose welcome was sent long enough ago ---
+  // Only for people who actually OPENED the welcome email (settings.followupRequiresOpen,
+  // on by default) — blindly following up with non-openers is what drives spam
+  // complaints/unsubscribes. Anyone who hasn't opened by the cutoff simply never
+  // gets a follow-up queued; they still show up in the admin's "Not Opened"
+  // audience filter (computed live in the segments endpoint from opened_at) so
+  // they can be re-targeted manually with a different subject/channel instead.
   const delayMs = Math.max(0, Number(settings.followupDelayDays) || 0) * 24 * 60 * 60 * 1000;
   const cutoffIso = new Date(Date.now() - delayMs).toISOString();
-  const { data: dueWelcomeSends } = await supabase
+  let dueWelcomeQuery = supabase
     .from('woocommerce_campaign_sends')
-    .select('customer_id, sent_at, email')
+    .select('customer_id, sent_at, email, opened_at')
     .eq('automation_step', 'welcome')
     .eq('status', 'sent')
     .lte('sent_at', cutoffIso)
     .limit(5000);
+  if (settings.followupRequiresOpen) {
+    dueWelcomeQuery = dueWelcomeQuery.not('opened_at', 'is', null);
+  }
+  const { data: dueWelcomeSends } = await dueWelcomeQuery;
 
   let followupQueued = 0;
   if (dueWelcomeSends && dueWelcomeSends.length > 0) {
@@ -353,6 +391,21 @@ export async function runWooCommerceDripJob() {
   let remaining = dailyCap - (sentToday ?? 0);
   if (remaining <= 0) {
     return { welcomeQueued, followupQueued, sent: 0, failed: 0, skipped: 0, reason: 'daily cap already reached' };
+  }
+
+  // Enqueueing above always runs (so the queue keeps filling up correctly
+  // no matter when cron fires) -- but actually SENDING only happens near
+  // the admin's chosen IST hour, unless this is a forced "Run Now".
+  const preferredHour = Math.min(23, Math.max(0, Math.round(Number(settings.sendHourIST) ?? 10)));
+  if (!force && !isWithinPreferredSendWindow(preferredHour)) {
+    return {
+      welcomeQueued,
+      followupQueued,
+      sent: 0,
+      failed: 0,
+      skipped: 0,
+      reason: `waiting for preferred send hour (${preferredHour}:00 IST, +/-1hr window)`,
+    };
   }
 
   // --- 4. Work the queue, oldest-scheduled-first ("top of the list"), due rows only ---

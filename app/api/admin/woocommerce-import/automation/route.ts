@@ -32,18 +32,40 @@ export async function GET() {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
-  const [{ count: sentToday }, { count: queuedWelcome }, { count: queuedFollowup }, { count: sentWelcomeTotal }, { count: sentFollowupTotal }] =
-    await Promise.all([
-      supabase
-        .from('woocommerce_campaign_sends')
-        .select('id', { count: 'exact', head: true })
-        .gte('sent_at', todayStart.toISOString())
-        .in('status', ['sent', 'failed']),
-      supabase.from('woocommerce_send_queue').select('id', { count: 'exact', head: true }).eq('campaign_type', 'welcome').eq('status', 'queued'),
-      supabase.from('woocommerce_send_queue').select('id', { count: 'exact', head: true }).eq('campaign_type', 'followup').eq('status', 'queued'),
-      supabase.from('woocommerce_campaign_sends').select('id', { count: 'exact', head: true }).eq('automation_step', 'welcome').eq('status', 'sent'),
-      supabase.from('woocommerce_campaign_sends').select('id', { count: 'exact', head: true }).eq('automation_step', 'followup').eq('status', 'sent'),
-    ]);
+  // "Not opened" = welcome was sent at least followupDelayDays ago and still
+  // has no opened_at -- these are exactly the people the follow-up step now
+  // skips (see followupRequiresOpen in lib/woocommerce-automation.ts), so
+  // the admin can see and manually re-target them instead of them just
+  // silently never hearing from us again.
+  const followupCutoffIso = new Date(
+    Date.now() - Math.max(0, Number(settings.followupDelayDays) || 0) * 24 * 60 * 60 * 1000
+  ).toISOString();
+
+  const [
+    { count: sentToday },
+    { count: queuedWelcome },
+    { count: queuedFollowup },
+    { count: sentWelcomeTotal },
+    { count: sentFollowupTotal },
+    { count: notOpenedWelcome },
+  ] = await Promise.all([
+    supabase
+      .from('woocommerce_campaign_sends')
+      .select('id', { count: 'exact', head: true })
+      .gte('sent_at', todayStart.toISOString())
+      .in('status', ['sent', 'failed']),
+    supabase.from('woocommerce_send_queue').select('id', { count: 'exact', head: true }).eq('campaign_type', 'welcome').eq('status', 'queued'),
+    supabase.from('woocommerce_send_queue').select('id', { count: 'exact', head: true }).eq('campaign_type', 'followup').eq('status', 'queued'),
+    supabase.from('woocommerce_campaign_sends').select('id', { count: 'exact', head: true }).eq('automation_step', 'welcome').eq('status', 'sent'),
+    supabase.from('woocommerce_campaign_sends').select('id', { count: 'exact', head: true }).eq('automation_step', 'followup').eq('status', 'sent'),
+    supabase
+      .from('woocommerce_campaign_sends')
+      .select('id', { count: 'exact', head: true })
+      .eq('automation_step', 'welcome')
+      .eq('status', 'sent')
+      .lte('sent_at', followupCutoffIso)
+      .is('opened_at', null),
+  ]);
 
   return NextResponse.json({
     settings,
@@ -54,6 +76,7 @@ export async function GET() {
       queuedFollowup: queuedFollowup ?? 0,
       sentWelcomeTotal: sentWelcomeTotal ?? 0,
       sentFollowupTotal: sentFollowupTotal ?? 0,
+      notOpenedWelcome: notOpenedWelcome ?? 0,
     },
   });
 }
@@ -86,6 +109,10 @@ export async function POST(req: NextRequest) {
     followup: { ...DEFAULT_WOOCOMMERCE_DRIP_SETTINGS.followup, ...(body.settings.followup ?? {}) },
     dailySendCap: Math.max(1, Number(body.settings.dailySendCap) || DEFAULT_WOOCOMMERCE_DRIP_SETTINGS.dailySendCap),
     followupDelayDays: Math.max(0, Number(body.settings.followupDelayDays) ?? DEFAULT_WOOCOMMERCE_DRIP_SETTINGS.followupDelayDays),
+    sendHourIST: Math.min(
+      23,
+      Math.max(0, Math.round(Number(body.settings.sendHourIST) ?? DEFAULT_WOOCOMMERCE_DRIP_SETTINGS.sendHourIST))
+    ),
   };
 
   try {
@@ -97,7 +124,9 @@ export async function POST(req: NextRequest) {
   let runResult: any = null;
   if (body.runNow) {
     try {
-      runResult = await runWooCommerceDripJob();
+      // force=true: "Run Now" means send immediately, ignore the preferred
+      // send-hour window.
+      runResult = await runWooCommerceDripJob(true);
     } catch (err) {
       runResult = { error: err instanceof Error ? err.message : 'Failed to run' };
     }

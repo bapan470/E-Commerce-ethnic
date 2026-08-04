@@ -234,6 +234,7 @@ export type ActivityEventType =
   | 'page_view'
   | 'product_view'
   | 'add_to_cart'
+  | 'wishlist'
   | 'checkout_start'
   | 'purchase';
 

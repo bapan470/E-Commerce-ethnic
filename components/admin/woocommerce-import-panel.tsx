@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { Flame, ThermometerSnowflake, Waves } from 'lucide-react';
+import { Flame, ThermometerSnowflake, Waves, ShoppingCart, Heart, ShoppingBag, MailX } from 'lucide-react';
 import {
   fetchImportedCustomers,
   importWooCommerceCustomersChunk,
@@ -25,6 +25,8 @@ import {
   type CampaignCategoryOption,
   type AudienceSegment,
   type SegmentCounts,
+  type BehaviorFlags,
+  type BehaviorCounts,
   type WooCommerceDripSettings,
   type DripProgress,
 } from '@/lib/woocommerce-import-api';
@@ -91,7 +93,18 @@ export default function WooCommerceImportPanel() {
   // Cold / warm / hot audience segmentation
   const [segments, setSegments] = useState<Record<string, AudienceSegment>>({});
   const [segmentCounts, setSegmentCounts] = useState<SegmentCounts>({ cold: 0, warm: 0, hot: 0, total: 0 });
-  const [segmentFilter, setSegmentFilter] = useState<'all' | AudienceSegment>('all');
+  // Behaviour tags — separate from cold/warm/hot, a customer can match more
+  // than one (e.g. addedToCart AND purchased), so these are their own filter.
+  const [behaviorFlags, setBehaviorFlags] = useState<Record<string, BehaviorFlags>>({});
+  const [behaviorCounts, setBehaviorCounts] = useState<BehaviorCounts>({
+    purchased: 0,
+    addedToCart: 0,
+    wishlisted: 0,
+    cartAbandoner: 0,
+    notOpenedWelcome: 0,
+  });
+  type BehaviorFilterKey = keyof BehaviorCounts;
+  const [segmentFilter, setSegmentFilter] = useState<'all' | AudienceSegment | BehaviorFilterKey>('all');
   const [segmentsLoading, setSegmentsLoading] = useState(true);
 
   // Manual send scheduling ("send now" vs "send after N hours")
@@ -106,9 +119,11 @@ export default function WooCommerceImportPanel() {
 
   const loadSegments = () =>
     fetchAudienceSegments()
-      .then(({ segments: s, counts }) => {
+      .then(({ segments: s, counts, behaviorFlags: bf, behaviorCounts: bc }) => {
         setSegments(s);
         setSegmentCounts(counts);
+        setBehaviorFlags(bf);
+        setBehaviorCounts(bc);
       })
       .catch(() => {})
       .finally(() => setSegmentsLoading(false));
@@ -154,15 +169,24 @@ export default function WooCommerceImportPanel() {
   // mirrors the hard exclusion send-campaign already does server-side
   // (`.eq('opted_out', false)`), so there's no UI path that lets them get
   // selected for a future campaign even by accident.
+  const BEHAVIOR_FILTER_KEYS = new Set<BehaviorFilterKey>([
+    'purchased',
+    'addedToCart',
+    'wishlisted',
+    'cartAbandoner',
+    'notOpenedWelcome',
+  ]);
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return customers.filter(
-      (c) =>
-        !c.opted_out &&
-        matchesSearch(c, q) &&
-        (segmentFilter === 'all' || (segments[c.id] ?? 'cold') === segmentFilter)
-    );
-  }, [customers, search, segmentFilter, segments]);
+    return customers.filter((c) => {
+      if (c.opted_out || !matchesSearch(c, q)) return false;
+      if (segmentFilter === 'all') return true;
+      if (BEHAVIOR_FILTER_KEYS.has(segmentFilter as BehaviorFilterKey)) {
+        return !!behaviorFlags[c.id]?.[segmentFilter as BehaviorFilterKey];
+      }
+      return (segments[c.id] ?? 'cold') === segmentFilter;
+    });
+  }, [customers, search, segmentFilter, segments, behaviorFlags]);
 
   const optedOut = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -457,6 +481,57 @@ export default function WooCommerceImportPanel() {
             title="Kharida, ya click karke 2+ pages dekhe"
           >
             <Flame className="h-3.5 w-3.5" /> Hot ({segmentCounts.hot})
+          </Button>
+          <span className="mx-1 h-4 w-px bg-border" />
+          <Button
+            type="button"
+            variant={segmentFilter === 'purchased' ? 'default' : 'outline'}
+            size="sm"
+            className="gap-1"
+            onClick={() => setSegmentFilter('purchased')}
+            title="Campaign email se click karke aakar kharida"
+          >
+            <ShoppingBag className="h-3.5 w-3.5" /> Purchased ({behaviorCounts.purchased})
+          </Button>
+          <Button
+            type="button"
+            variant={segmentFilter === 'cartAbandoner' ? 'default' : 'outline'}
+            size="sm"
+            className="gap-1"
+            onClick={() => setSegmentFilter('cartAbandoner')}
+            title="Checkout shuru kiya par kharida nahi — cart abandoners"
+          >
+            <ShoppingCart className="h-3.5 w-3.5" /> Cart abandoners ({behaviorCounts.cartAbandoner})
+          </Button>
+          <Button
+            type="button"
+            variant={segmentFilter === 'addedToCart' ? 'default' : 'outline'}
+            size="sm"
+            className="gap-1"
+            onClick={() => setSegmentFilter('addedToCart')}
+            title="Cart me item daala"
+          >
+            <ShoppingCart className="h-3.5 w-3.5" /> Added to cart ({behaviorCounts.addedToCart})
+          </Button>
+          <Button
+            type="button"
+            variant={segmentFilter === 'wishlisted' ? 'default' : 'outline'}
+            size="sm"
+            className="gap-1"
+            onClick={() => setSegmentFilter('wishlisted')}
+            title="Wishlist me kuch save kiya"
+          >
+            <Heart className="h-3.5 w-3.5" /> Wishlist ({behaviorCounts.wishlisted})
+          </Button>
+          <Button
+            type="button"
+            variant={segmentFilter === 'notOpenedWelcome' ? 'default' : 'outline'}
+            size="sm"
+            className="gap-1"
+            onClick={() => setSegmentFilter('notOpenedWelcome')}
+            title="Welcome email bheje ko follow-up delay se zyada din ho gaye, par abhi tak open nahi kiya — inhe follow-up nahi jaata"
+          >
+            <MailX className="h-3.5 w-3.5" /> Not opened ({behaviorCounts.notOpenedWelcome})
           </Button>
           {segmentsLoading && <span className="text-xs text-muted-foreground">Audience calculate ho raha hai...</span>}
           <Button type="button" variant="ghost" size="sm" onClick={loadSegments} className="ml-auto text-xs">
@@ -771,6 +846,72 @@ export default function WooCommerceImportPanel() {
                   value={dripSettings.followupDelayDays}
                   onChange={(e) => setDripSettings({ ...dripSettings, followupDelayDays: Number(e.target.value) || 0 })}
                 />
+              </div>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-1">
+                <label className="text-xs font-medium">Daily send time (IST)</label>
+                <div className="flex gap-2">
+                  <Select
+                    value={String(((dripSettings.sendHourIST + 11) % 12) + 1)}
+                    onValueChange={(v) => {
+                      const hour12 = Number(v);
+                      const isPM = dripSettings.sendHourIST >= 12;
+                      const hour24 = (hour12 % 12) + (isPM ? 12 : 0);
+                      setDripSettings({ ...dripSettings, sendHourIST: hour24 });
+                    }}
+                  >
+                    <SelectTrigger className="w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map((h) => (
+                        <SelectItem key={h} value={String(h)}>
+                          {h}:00
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={dripSettings.sendHourIST >= 12 ? 'PM' : 'AM'}
+                    onValueChange={(v) => {
+                      const hour12 = ((dripSettings.sendHourIST + 11) % 12) + 1;
+                      const hour24 = (hour12 % 12) + (v === 'PM' ? 12 : 0);
+                      setDripSettings({ ...dripSettings, sendHourIST: hour24 });
+                    }}
+                  >
+                    <SelectTrigger className="w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="AM">AM</SelectItem>
+                      <SelectItem value="PM">PM</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  Cron sirf isi ghante ke ±1 ghante mein bhejega. Vercel Hobby ka cron abhi bhi ek fixed UTC time pe
+                  chalta hai (vercel.json) — agar wo iss window se bahar hai to koi email nahi jayega jab tak ya to
+                  vercel.json ka time update na karo, ya kisi external scheduler (jaise cron-job.org) se isi time pe
+                  /api/cron/daily-jobs ko CRON_SECRET header ke saath hit na karo.
+                </p>
+              </div>
+              <div className="grid gap-1">
+                <label className="text-xs font-medium">Follow-up sirf openers ko</label>
+                <label className="flex items-center gap-2 text-sm rounded-md border px-3 py-2">
+                  <Checkbox
+                    checked={dripSettings.followupRequiresOpen}
+                    onCheckedChange={(checked) =>
+                      setDripSettings({ ...dripSettings, followupRequiresOpen: checked === true })
+                    }
+                  />
+                  Welcome open na karne walon ko follow-up mat bhejo
+                </label>
+                <p className="text-[11px] text-muted-foreground">
+                  ON rahega to "Not opened" audience chip mein wo log dikhenge, taaki unhe manually alag se target kar
+                  sako — spam complaints kam karta hai.
+                </p>
               </div>
             </div>
 

@@ -73,9 +73,17 @@ export async function GET() {
     }
   }
 
+  // Behaviour flags (separate from cold/warm/hot) -- these power the extra
+  // "Purchased" / "Added to cart" / "Wishlist" / "Cart abandoners" audience
+  // filters. A customer can be in more than one at once (e.g. added to
+  // cart AND purchased), so this is a flags object, not another single label.
+  const purchasedCustomers = new Set<string>();
+  const addedToCartCustomers = new Set<string>();
+  const wishlistedCustomers = new Set<string>();
+  const beganCheckoutCustomers = new Set<string>();
+
   if (clickedSendIds.length > 0) {
     const pageCounts = new Map<string, Set<string>>(); // customer_id -> distinct page_path
-    const purchasedCustomers = new Set<string>();
 
     for (let i = 0; i < clickedSendIds.length; i += CHUNK) {
       const slice = clickedSendIds.slice(i, i + CHUNK);
@@ -87,9 +95,10 @@ export async function GET() {
       for (const ev of data ?? []) {
         const customerId = sendIdToCustomer.get(ev.campaign_send_id as string);
         if (!customerId) continue;
-        if (ev.event_type === 'purchase') {
-          purchasedCustomers.add(customerId);
-        }
+        if (ev.event_type === 'purchase') purchasedCustomers.add(customerId);
+        if (ev.event_type === 'add_to_cart') addedToCartCustomers.add(customerId);
+        if (ev.event_type === 'wishlist') wishlistedCustomers.add(customerId);
+        if (ev.event_type === 'checkout_start') beganCheckoutCustomers.add(customerId);
         if (ev.event_type === 'page_view' && ev.page_path) {
           if (!pageCounts.has(customerId)) pageCounts.set(customerId, new Set());
           pageCounts.get(customerId)!.add(ev.page_path as string);
@@ -107,8 +116,56 @@ export async function GET() {
     }
   }
 
+  // Cart abandoners: started checkout (from a tracked campaign click) but
+  // never completed a purchase — the classic "email them a nudge" audience.
+  const cartAbandonerCustomers = new Set<string>();
+  for (const customerId of beganCheckoutCustomers) {
+    if (!purchasedCustomers.has(customerId)) cartAbandonerCustomers.add(customerId);
+  }
+
+  // "Not opened" welcome email in the last followupDelayDays -- same
+  // people the follow-up automation now skips (see followupRequiresOpen).
+  // Independent of clicks, so computed straight from campaign_sends.
+  const { data: dripSettingsRow } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'woocommerce_drip_automation_settings')
+    .maybeSingle();
+  const followupDelayDays = Math.max(0, Number((dripSettingsRow?.value as any)?.followupDelayDays) || 3);
+  const cutoffIso = new Date(Date.now() - followupDelayDays * 24 * 60 * 60 * 1000).toISOString();
+  const { data: notOpenedRows } = await supabase
+    .from('woocommerce_campaign_sends')
+    .select('customer_id')
+    .eq('automation_step', 'welcome')
+    .eq('status', 'sent')
+    .lte('sent_at', cutoffIso)
+    .is('opened_at', null)
+    .in('customer_id', allIds);
+  const notOpenedCustomers = new Set((notOpenedRows ?? []).map((r) => r.customer_id as string));
+
+  const behaviorFlags: Record<
+    string,
+    { purchased: boolean; addedToCart: boolean; wishlisted: boolean; cartAbandoner: boolean; notOpenedWelcome: boolean }
+  > = {};
+  for (const id of allIds) {
+    behaviorFlags[id] = {
+      purchased: purchasedCustomers.has(id),
+      addedToCart: addedToCartCustomers.has(id),
+      wishlisted: wishlistedCustomers.has(id),
+      cartAbandoner: cartAbandonerCustomers.has(id),
+      notOpenedWelcome: notOpenedCustomers.has(id),
+    };
+  }
+
   const counts = { cold: 0, warm: 0, hot: 0, total: allIds.length };
   for (const s of Object.values(segments)) counts[s] += 1;
+  const behaviorCounts = {
+    purchased: purchasedCustomers.size,
+    addedToCart: addedToCartCustomers.size,
+    wishlisted: wishlistedCustomers.size,
+    cartAbandoner: cartAbandonerCustomers.size,
+    notOpenedWelcome: notOpenedCustomers.size,
+  };
 
-  return NextResponse.json({ segments, counts });
+  return NextResponse.json({ segments, counts, behaviorFlags, behaviorCounts });
 }

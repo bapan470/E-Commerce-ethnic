@@ -168,15 +168,35 @@ export interface SegmentCounts {
   total: number;
 }
 
+export interface BehaviorFlags {
+  purchased: boolean;
+  addedToCart: boolean;
+  wishlisted: boolean;
+  cartAbandoner: boolean; // began checkout (from a tracked campaign click) but never purchased
+  notOpenedWelcome: boolean; // welcome sent >= followupDelayDays ago, still not opened
+}
+
+export interface BehaviorCounts {
+  purchased: number;
+  addedToCart: number;
+  wishlisted: number;
+  cartAbandoner: number;
+  notOpenedWelcome: number;
+}
+
 export interface SegmentsResult {
   segments: Record<string, AudienceSegment>;
   counts: SegmentCounts;
+  behaviorFlags: Record<string, BehaviorFlags>;
+  behaviorCounts: BehaviorCounts;
 }
 
 // GET /api/admin/woocommerce-import/segments
 // cold = kabhi email open nahi kiya (ya open kiya par link click nahi kiya)
 // warm = email ka link click kiya, site pe aaya, par kharida nahi (sirf 1 page dekha)
 // hot  = kharida, YA email click karke 2+ pages dekhe
+// behaviorFlags = extra, non-exclusive tags (purchased/addedToCart/wishlisted/
+// cartAbandoner/notOpenedWelcome) — a customer can match more than one.
 export async function fetchAudienceSegments(): Promise<SegmentsResult> {
   const res = await fetch('/api/admin/woocommerce-import/segments');
   const json = await res.json().catch(() => ({}));
@@ -204,6 +224,8 @@ export interface WooCommerceDripSettings {
   enabled: boolean;
   dailySendCap: number;
   followupDelayDays: number;
+  followupRequiresOpen: boolean;
+  sendHourIST: number; // 0-23
   sourceStoreName: string;
   welcome: DripStepSettings;
   followup: DripStepSettings;
@@ -216,6 +238,7 @@ export interface DripProgress {
   queuedFollowup: number;
   sentWelcomeTotal: number;
   sentFollowupTotal: number;
+  notOpenedWelcome: number;
 }
 
 export async function fetchDripAutomationSettings(): Promise<{
