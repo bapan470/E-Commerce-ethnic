@@ -231,13 +231,22 @@ export async function deleteVariantSize(id: string): Promise<void> {
 }
 
 export async function uploadVariantImage(file: File): Promise<string> {
-  const supabase = getSupabaseBrowser();
-  const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-  const path = `variants/${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
-  const { error } = await supabase.storage
-    .from('product-images')
-    .upload(path, file, { cacheControl: '3600', upsert: false });
-  if (error) throw error;
-  const { data } = supabase.storage.from('product-images').getPublicUrl(path);
-  return data.publicUrl;
+  // Routed through the server /api/upload-image route (instead of uploading
+  // the raw File straight to Supabase Storage from the browser with the
+  // anon client) so the image actually gets run through sharp and
+  // converted to real WebP before it's stored. This used to upload
+  // whatever format the browser handed it (see the old implementation --
+  // `file.name.split('.').pop()` -- which is exactly why variant images
+  // added from the "Add colour"/"Add variation" panels were showing up as
+  // .jpeg/.jpg instead of .webp even after the main product-image upload
+  // path was fixed). See app/api/upload-image/route.ts for the actual
+  // sharp conversion.
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('folder', 'variants');
+
+  const res = await fetch('/api/upload-image', { method: 'POST', body: formData });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Image upload failed');
+  return json.url as string;
 }
