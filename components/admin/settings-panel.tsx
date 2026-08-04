@@ -86,6 +86,10 @@ export default function SettingsPanel() {
   const [savingBanner, setSavingBanner] = useState(false);
   const [uploadingBanner, setUploadingBanner] = useState(false);
 
+  const [webpRunning, setWebpRunning] = useState(false);
+  const [webpDone, setWebpDone] = useState(false);
+  const [webpStats, setWebpStats] = useState({ total: 0, converted: 0, skipped: 0, remaining: 0 });
+
   const [aiChatForm, setAiChatForm] = useState<AiChatSettings | null>(null);
   const [savingAiChat, setSavingAiChat] = useState(false);
   const [testingAiChat, setTestingAiChat] = useState(false);
@@ -451,6 +455,57 @@ export default function SettingsPanel() {
   const removeBanner = () => {
     if (!bannerForm) return;
     saveBanner({ ...bannerForm, image_url: '' });
+  };
+
+  const runWebpConversion = async () => {
+    setWebpRunning(true);
+    setWebpDone(false);
+    setWebpStats({ total: 0, converted: 0, skipped: 0, remaining: 0 });
+    const excludeUrls: string[] = [];
+    let convertedTotal = 0;
+    let skippedTotal = 0;
+    let firstTotal: number | null = null;
+
+    try {
+      // Keeps calling the batch endpoint until it reports `done`. Each call
+      // converts a handful of images server-side (sharp can't run in the
+      // browser) and reports back what it did, so the counters below update
+      // live instead of the button just spinning with no feedback.
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const res = await fetch('/api/admin/convert-images-webp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ excludeUrls }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || 'Conversion batch failed');
+
+        if (firstTotal === null) firstTotal = data.totalRemainingBeforeBatch ?? 0;
+        convertedTotal += data.converted ?? 0;
+        skippedTotal += data.skipped ?? 0;
+        excludeUrls.push(...((data.attemptedUrls as string[]) ?? []));
+
+        setWebpStats({
+          total: firstTotal ?? 0,
+          converted: convertedTotal,
+          skipped: skippedTotal,
+          remaining: data.remainingAfterBatch ?? 0,
+        });
+
+        if (data.done) break;
+      }
+      setWebpDone(true);
+      if (convertedTotal === 0 && skippedTotal === 0) {
+        toast.success('Nothing to convert — every image is already WebP');
+      } else {
+        toast.success(`Done — ${convertedTotal} converted, ${skippedTotal} skipped`);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Conversion failed');
+    } finally {
+      setWebpRunning(false);
+    }
   };
 
   const onSendTestEmail = async () => {
@@ -824,6 +879,75 @@ export default function SettingsPanel() {
           </div>
         </div>
       )}
+
+      <div className="mt-8">
+        <h2 className="font-serif text-2xl font-bold text-primary">Bulk Image Optimization</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Converts every product and variant image still stored as JPEG/PNG into WebP, and gives
+          it a descriptive filename (product/colour name instead of a random hash) for better
+          image SEO. Old files are deleted after each one converts successfully. Each image's{' '}
+          <span className="italic">alt</span> text is already generated automatically from the
+          product's name, fabric and category wherever it's shown — there's nothing separate to
+          fix there.
+        </p>
+      </div>
+
+      <div className="mt-4 grid max-w-xl gap-3 rounded-lg border border-border/60 bg-card p-5">
+        <Button
+          type="button"
+          onClick={runWebpConversion}
+          disabled={webpRunning}
+          className="w-fit gap-1.5"
+        >
+          {webpRunning ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          {webpRunning
+            ? 'Converting…'
+            : webpDone
+              ? 'Run again'
+              : 'Convert all images to WebP'}
+        </Button>
+
+        {(webpRunning || webpDone) && (
+          <div className="grid gap-2">
+            {webpStats.total > 0 && (
+              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full bg-primary transition-all"
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      Math.round(((webpStats.converted + webpStats.skipped) / webpStats.total) * 100)
+                    )}%`,
+                  }}
+                />
+              </div>
+            )}
+            <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-muted-foreground">
+              <span>
+                Found: <span className="font-medium text-foreground">{webpStats.total}</span>
+              </span>
+              <span>
+                Converted:{' '}
+                <span className="font-medium text-green-600">{webpStats.converted}</span>
+              </span>
+              <span>
+                Skipped: <span className="font-medium text-amber-600">{webpStats.skipped}</span>
+              </span>
+              {webpRunning && (
+                <span>
+                  Remaining: <span className="font-medium text-foreground">{webpStats.remaining}</span>
+                </span>
+              )}
+            </div>
+            {webpDone && webpStats.skipped > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Skipped images failed to download or convert (check server logs for details) —
+                they were left untouched, nothing was lost.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="mt-8">
         <h2 className="font-serif text-2xl font-bold text-primary">GST & Shipping</h2>
