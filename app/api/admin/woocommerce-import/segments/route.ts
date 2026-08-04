@@ -119,7 +119,7 @@ export async function GET() {
   // Cart abandoners: started checkout (from a tracked campaign click) but
   // never completed a purchase — the classic "email them a nudge" audience.
   const cartAbandonerCustomers = new Set<string>();
-  for (const customerId of beganCheckoutCustomers) {
+  for (const customerId of Array.from(beganCheckoutCustomers)) {
     if (!purchasedCustomers.has(customerId)) cartAbandonerCustomers.add(customerId);
   }
 
