@@ -106,6 +106,13 @@ export default function WooCommerceImportPanel() {
   type BehaviorFilterKey = keyof BehaviorCounts;
   const [segmentFilter, setSegmentFilter] = useState<'all' | AudienceSegment | BehaviorFilterKey>('all');
   const [segmentsLoading, setSegmentsLoading] = useState(true);
+  // Rendering thousands of <tr> rows at once (e.g. "Sabhi"/"Cold" with 6800+
+  // customers) is what was making those tabs slow, while "Hot" (2 rows) felt
+  // instant — it's a DOM size problem, not a data-fetch problem. So we only
+  // render a window of rows and let the user load more, instead of dumping
+  // the whole filtered list into the table in one go.
+  const ROWS_PER_PAGE = 200;
+  const [visibleCount, setVisibleCount] = useState(ROWS_PER_PAGE);
 
   // Manual send scheduling ("send now" vs "send after N hours")
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
@@ -192,6 +199,12 @@ export default function WooCommerceImportPanel() {
     const q = search.trim().toLowerCase();
     return customers.filter((c) => c.opted_out && matchesSearch(c, q));
   }, [customers, search]);
+
+  useEffect(() => {
+    setVisibleCount(ROWS_PER_PAGE);
+  }, [segmentFilter, search]);
+
+  const visibleRows = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
 
   const allFilteredSelected = filtered.length > 0 && filtered.every((c) => selected.has(c.id));
 
@@ -559,7 +572,7 @@ export default function WooCommerceImportPanel() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((c) => (
+                {visibleRows.map((c) => (
                   <tr key={c.id} className="border-t">
                     <td className="p-2">
                       <Checkbox checked={selected.has(c.id)} onCheckedChange={() => toggleOne(c.id)} />
@@ -579,6 +592,24 @@ export default function WooCommerceImportPanel() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {filtered.length > 0 && (
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>
+              Showing {Math.min(visibleCount, filtered.length)} of {filtered.length}
+            </span>
+            {visibleCount < filtered.length && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setVisibleCount((v) => v + ROWS_PER_PAGE)}
+              >
+                Load more
+              </Button>
+            )}
           </div>
         )}
 
