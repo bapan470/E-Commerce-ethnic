@@ -106,6 +106,23 @@ export default function WooCommerceImportPanel() {
   type BehaviorFilterKey = keyof BehaviorCounts;
   const [segmentFilter, setSegmentFilter] = useState<'all' | AudienceSegment | BehaviorFilterKey>('all');
   const [segmentsLoading, setSegmentsLoading] = useState(true);
+  // Lets the admin narrow the list to customers imported from one specific
+  // WooCommerce store, now that each customer records which store they
+  // actually came from (source_store_url) instead of that only being
+  // tracked globally.
+  const [storeFilter, setStoreFilter] = useState<string>('__all__');
+  const storeOptions = useMemo(() => {
+    const urls = new Set<string>();
+    for (const c of customers) if (c.source_store_url) urls.add(c.source_store_url);
+    return Array.from(urls).sort();
+  }, [customers]);
+  const storeDisplayName = (url: string) => {
+    try {
+      return new URL(url).hostname.replace(/^www\./, '');
+    } catch {
+      return url;
+    }
+  };
   // Rendering thousands of <tr> rows at once (e.g. "Sabhi"/"Cold" with 6800+
   // customers) is what was making those tabs slow, while "Hot" (2 rows) felt
   // instant — it's a DOM size problem, not a data-fetch problem. So we only
@@ -187,13 +204,14 @@ export default function WooCommerceImportPanel() {
     const q = search.trim().toLowerCase();
     return customers.filter((c) => {
       if (c.opted_out || !matchesSearch(c, q)) return false;
+      if (storeFilter !== '__all__' && c.source_store_url !== storeFilter) return false;
       if (segmentFilter === 'all') return true;
       if (BEHAVIOR_FILTER_KEYS.has(segmentFilter as BehaviorFilterKey)) {
         return !!behaviorFlags[c.id]?.[segmentFilter as BehaviorFilterKey];
       }
       return (segments[c.id] ?? 'cold') === segmentFilter;
     });
-  }, [customers, search, segmentFilter, segments, behaviorFlags]);
+  }, [customers, search, segmentFilter, segments, behaviorFlags, storeFilter]);
 
   const optedOut = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -202,7 +220,7 @@ export default function WooCommerceImportPanel() {
 
   useEffect(() => {
     setVisibleCount(ROWS_PER_PAGE);
-  }, [segmentFilter, search]);
+  }, [segmentFilter, search, storeFilter]);
 
   const visibleRows = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
 
@@ -444,14 +462,31 @@ export default function WooCommerceImportPanel() {
       <div className="rounded-lg border p-4 grid gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-medium">2. Imported customers ({customers.length})</h2>
-          <div className="relative w-64">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              className="pl-8"
-              placeholder="Search name/email/phone"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+          <div className="flex items-center gap-2">
+            {storeOptions.length > 1 && (
+              <Select value={storeFilter} onValueChange={setStoreFilter}>
+                <SelectTrigger className="w-44">
+                  <SelectValue placeholder="Sabhi stores" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">Sabhi stores</SelectItem>
+                  {storeOptions.map((url) => (
+                    <SelectItem key={url} value={url}>
+                      {storeDisplayName(url)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <div className="relative w-64">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                className="pl-8"
+                placeholder="Search name/email/phone"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
           </div>
         </div>
 
@@ -567,6 +602,7 @@ export default function WooCommerceImportPanel() {
                   <th className="p-2 text-left">Name</th>
                   <th className="p-2 text-left">Email</th>
                   <th className="p-2 text-left">Phone</th>
+                  {storeOptions.length > 1 && <th className="p-2 text-left">Store</th>}
                   <th className="p-2 text-left">Audience</th>
                   <th className="p-2" />
                 </tr>
@@ -580,6 +616,11 @@ export default function WooCommerceImportPanel() {
                     <td className="p-2">{c.name || '—'}</td>
                     <td className="p-2">{c.email || '—'}</td>
                     <td className="p-2">{c.phone || '—'}</td>
+                    {storeOptions.length > 1 && (
+                      <td className="p-2 text-muted-foreground">
+                        {c.source_store_url ? storeDisplayName(c.source_store_url) : '—'}
+                      </td>
+                    )}
                     <td className="p-2">
                       <SegmentBadge segment={segments[c.id] ?? 'cold'} />
                     </td>

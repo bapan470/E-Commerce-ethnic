@@ -226,12 +226,39 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const normalizedStoreUrl = normalizeUrl(storeUrl);
+
+    // A customer's source_store_url should reflect the store they were
+    // FIRST imported from, not whichever store happens to be imported
+    // most recently. Without this, re-importing Store A after Store B
+    // (e.g. the admin re-syncing Store A) would silently flip a Store B
+    // customer's attributed store back to A if the same email somehow
+    // exists in both -- and even for the normal case (re-importing the
+    // same store), it avoids an unnecessary write. So: look up which of
+    // this batch's emails already have a store on file, and only fill in
+    // source_store_url for emails that don't yet have one.
+    const emails = Array.from(byEmail.keys());
+    const existingStoreByEmail = new Map<string, string | null>();
+    const LOOKUP_BATCH = 500;
+    for (let i = 0; i < emails.length; i += LOOKUP_BATCH) {
+      const chunk = emails.slice(i, i + LOOKUP_BATCH);
+      const { data: existingRows, error: lookupErr } = await supabase
+        .from('woocommerce_customers')
+        .select('email, source_store_url')
+        .in('email', chunk);
+      if (lookupErr) throw lookupErr;
+      for (const row of existingRows ?? []) {
+        existingStoreByEmail.set(row.email as string, (row.source_store_url as string | null) ?? null);
+      }
+    }
+
     const rows = Array.from(byEmail.values()).map((r) => ({
       wc_customer_id: `order:${r.latestOrderId}`,
       name: r.name,
       email: r.email,
       phone: r.phone,
       source: 'woocommerce',
+      source_store_url: existingStoreByEmail.get(r.email) || normalizedStoreUrl,
       updated_at: new Date().toISOString(),
     }));
 

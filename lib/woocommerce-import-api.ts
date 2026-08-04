@@ -23,6 +23,7 @@ export interface ImportedCustomer {
   email: string | null;
   phone: string | null;
   source: string;
+  source_store_url: string | null;
   imported_at: string;
   opted_out: boolean;
   opted_out_at: string | null;

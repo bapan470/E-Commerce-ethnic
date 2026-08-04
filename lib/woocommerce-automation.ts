@@ -176,6 +176,48 @@ export async function fetchCampaignProductsAndCategories(
 // Mirrors app/api/admin/woocommerce-import/send-campaign/route.ts's
 // per-recipient logic.
 // ---------------------------------------------------------------------
+// Turns a saved store URL (e.g. "https://mishaboutique.com") into a clean
+// display name for the email disclosure line ("you previously purchased
+// from mishaboutique.com"). Falls back to the raw string if it isn't a
+// valid URL for some reason.
+function storeDisplayName(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
+
+// Groups customer ids by the store each was actually imported from (see
+// the source_store_url migration), builds ONE html per distinct store
+// (falling back to the global sourceStoreName setting, then to no name at
+// all, only when a customer's own store is unknown), and returns a lookup
+// so each queued row gets the html matching where that specific customer
+// really came from -- instead of every customer getting whichever store
+// name a single global setting happened to hold.
+function buildHtmlPerSourceStore(
+  customerIds: string[],
+  storeUrlById: Map<string, string | null>,
+  globalFallbackStoreName: string,
+  buildHtml: (sourceStoreName: string | undefined) => string
+): (customerId: string) => string {
+  const groupKeyById = new Map<string, string>();
+  const htmlByGroupKey = new Map<string, string>();
+  for (const id of customerIds) {
+    const storeUrl = storeUrlById.get(id) ?? null;
+    // groupKey is just the raw store url (or '' for "unknown") -- distinct
+    // urls always get distinct groups/html, no need to display-format the key itself.
+    const groupKey = storeUrl ?? '';
+    groupKeyById.set(id, groupKey);
+    if (!htmlByGroupKey.has(groupKey)) {
+      const sourceStoreName = storeDisplayName(storeUrl) || globalFallbackStoreName || undefined;
+      htmlByGroupKey.set(groupKey, buildHtml(sourceStoreName));
+    }
+  }
+  return (customerId: string) => htmlByGroupKey.get(groupKeyById.get(customerId) ?? '') ?? buildHtml(undefined);
+}
+
 async function sendQueuedEmail(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   queueRow: { id: string; customer_id: string; subject: string; html: string | null; campaign_type: string },
@@ -263,12 +305,15 @@ export async function runWooCommerceDripJob(force = false) {
   // --- 1. Enqueue welcome emails for customers who don't have one yet ---
   const { data: candidates } = await supabase
     .from('woocommerce_customers')
-    .select('id')
+    .select('id, source_store_url')
     .eq('opted_out', false)
     .order('imported_at', { ascending: true })
     .limit(5000);
 
   const candidateIds = (candidates ?? []).map((c) => c.id);
+  const candidateStoreById = new Map<string, string | null>(
+    (candidates ?? []).map((c: any) => [c.id, c.source_store_url ?? null])
+  );
   let welcomeQueued = 0;
   if (candidateIds.length > 0) {
     const { data: alreadySent } = await supabase
@@ -287,19 +332,26 @@ export async function runWooCommerceDripJob(force = false) {
 
     if (needWelcome.length > 0) {
       const { products, categories } = await fetchCampaignProductsAndCategories(supabase, siteUrl, 6);
-      const html = buildPremiumCampaignHtml({
-        templateId: settings.welcome.templateId,
-        headline: settings.welcome.headline,
-        subheadline: settings.welcome.subheadline || undefined,
-        products,
-        categories,
-        sourceStoreName: settings.sourceStoreName || undefined,
-      });
+      // Group by the store each customer actually came from (rather than
+      // building one html for everyone from the single global
+      // sourceStoreName setting) -- see the source_store_url migration's
+      // comment for why a global setting gave every customer the wrong
+      // store name whenever more than one store had been imported.
+      const getHtmlFor = buildHtmlPerSourceStore(needWelcome, candidateStoreById, settings.sourceStoreName, (sourceStoreName) =>
+        buildPremiumCampaignHtml({
+          templateId: settings.welcome.templateId,
+          headline: settings.welcome.headline,
+          subheadline: settings.welcome.subheadline || undefined,
+          products,
+          categories,
+          sourceStoreName,
+        })
+      );
       const rows = needWelcome.map((customer_id) => ({
         customer_id,
         campaign_type: 'welcome',
         subject: settings.welcome.subject,
-        html,
+        html: getHtmlFor(customer_id),
         scheduled_at: new Date().toISOString(),
         status: 'queued',
       }));
@@ -356,19 +408,29 @@ export async function runWooCommerceDripJob(force = false) {
 
     if (needFollowup.length > 0) {
       const { products, categories } = await fetchCampaignProductsAndCategories(supabase, siteUrl, 6);
-      const html = buildPremiumCampaignHtml({
-        templateId: settings.followup.templateId,
-        headline: settings.followup.headline,
-        subheadline: settings.followup.subheadline || undefined,
-        products,
-        categories,
-        sourceStoreName: settings.sourceStoreName || undefined,
-      });
+      const needFollowupIds = needFollowup.map((r) => r.customer_id);
+      const { data: followupCustomerRows } = await supabase
+        .from('woocommerce_customers')
+        .select('id, source_store_url')
+        .in('id', needFollowupIds);
+      const followupStoreById = new Map<string, string | null>(
+        (followupCustomerRows ?? []).map((c: any) => [c.id, c.source_store_url ?? null])
+      );
+      const getHtmlFor = buildHtmlPerSourceStore(needFollowupIds, followupStoreById, settings.sourceStoreName, (sourceStoreName) =>
+        buildPremiumCampaignHtml({
+          templateId: settings.followup.templateId,
+          headline: settings.followup.headline,
+          subheadline: settings.followup.subheadline || undefined,
+          products,
+          categories,
+          sourceStoreName,
+        })
+      );
       const rows = needFollowup.map((r) => ({
         customer_id: r.customer_id,
         campaign_type: 'followup',
         subject: settings.followup.subject,
-        html,
+        html: getHtmlFor(r.customer_id),
         scheduled_at: new Date().toISOString(),
         status: 'queued',
       }));
