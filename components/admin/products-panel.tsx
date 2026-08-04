@@ -632,6 +632,13 @@ export default function ProductsPanel() {
   // opens its "Add Variant" form the moment it mounts -- lets the row's
   // "Add Variation" button jump straight there without an extra click.
   const [autoOpenVariantAdd, setAutoOpenVariantAdd] = useState(false);
+  // Lightweight "Add colour" shortcut from the products list row -- opens
+  // just the colour-add form in its own small dialog, skipping the full
+  // Add/Edit Product dialog (with all its fields + the sourcing-info
+  // fetch) entirely. Reuses the exact same ProductVariantsManager the big
+  // dialog uses, just fed straight from the row's already-loaded data.
+  const [quickVariantProduct, setQuickVariantProduct] = useState<Product | null>(null);
+  const [quickVariantPending, setQuickVariantPending] = useState<PendingVariant[]>([]);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -1686,10 +1693,7 @@ export default function ProductsPanel() {
                   <Button
                     size="icon"
                     variant="ghost"
-                    onClick={() => {
-                      openEdit(p);
-                      setAutoOpenVariantAdd(true);
-                    }}
+                    onClick={() => setQuickVariantProduct(p)}
                     aria-label="Add colour variation"
                     title="Add a new colour variation directly"
                   >
@@ -2689,6 +2693,48 @@ export default function ProductsPanel() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Quick "Add colour" dialog -- launched straight from the row's Plus
+          icon. Deliberately just this component in a small dialog, not the
+          full Add/Edit Product dialog: no extra fields to scroll past, no
+          sourcing-info fetch, nothing else to load. Fed directly from the
+          row's already-loaded product data. */}
+      <Dialog
+        open={!!quickVariantProduct}
+        onOpenChange={(o) => {
+          if (!o) {
+            setQuickVariantProduct(null);
+            setQuickVariantPending([]);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-serif text-xl text-primary">
+              Add colour — {quickVariantProduct?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Adds a new colour/size variant to this product without opening the full product form.
+            </DialogDescription>
+          </DialogHeader>
+          {quickVariantProduct && (
+            <ProductVariantsManager
+              productId={quickVariantProduct.id}
+              productName={quickVariantProduct.name}
+              productSku={quickVariantProduct.sku || ''}
+              productFabric={quickVariantProduct.fabric}
+              productCategory={quickVariantProduct.category}
+              baseImage={quickVariantProduct.images[0]}
+              productColors={quickVariantProduct.colors.join(', ')}
+              productSizes={quickVariantProduct.sizes.join(', ')}
+              autoOpenAdd
+              onAutoOpenAddHandled={() => {}}
+              pendingVariants={quickVariantPending}
+              setPendingVariants={setQuickVariantPending}
+            />
+          )}
         </DialogContent>
       </Dialog>
 
