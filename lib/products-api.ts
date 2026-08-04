@@ -307,22 +307,18 @@ export async function deleteProduct(id: string): Promise<void> {
   }
 }
 
-export async function uploadProductImage(file: File, seoName?: string): Promise<string> {
-  const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-  // Slugify the product name (if we have one yet) into the filename itself,
-  // e.g. "womens-traditional-bengal-solid-saree-....jpg" instead of a bare
-  // random string or a leftover upload name like "whatsapp-image-....jpg".
-  const slug = (seoName || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
-  const path = `${slug ? `${slug}-` : ''}${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
-  const { error } = await supabase.storage
-    .from('product-images')
-    .upload(path, file, { cacheControl: '3600', upsert: false });
-  if (error) throw error;
-  const { data } = supabase.storage.from('product-images').getPublicUrl(path);
-  return data.publicUrl;
+export async function uploadProductImage(file: File, seoName?: string, folder?: 'products' | 'variants'): Promise<string> {
+  // Routed through a server API route (instead of uploading the raw File
+  // straight to Supabase Storage from the browser) so the image can be
+  // run through sharp and actually converted to WebP -- sharp is a native
+  // binary and can't run client-side. See app/api/upload-image/route.ts.
+  const formData = new FormData();
+  formData.append('file', file);
+  if (seoName) formData.append('seoName', seoName);
+  if (folder) formData.append('folder', folder);
+
+  const res = await fetch('/api/upload-image', { method: 'POST', body: formData });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Image upload failed');
+  return json.url as string;
 }

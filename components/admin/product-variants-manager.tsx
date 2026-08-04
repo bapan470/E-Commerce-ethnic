@@ -431,7 +431,7 @@ export default function ProductVariantsManager({
       const isFirstImage = form.images.length === 0;
       setForm((f) => ({ ...f, images: [...f.images, data.url] }));
       setImportUrl('');
-      toast.success(cropOnImport ? 'Image imported and bottom 10% trimmed' : 'Image imported and converted to WebP');
+      toast.success(cropOnImport ? 'Image imported, cropped and converted to WebP' : 'Image imported and converted to WebP');
       if (isFirstImage && !form.color.trim()) {
         detectColorFromImage(data.url, { silent: true });
       }

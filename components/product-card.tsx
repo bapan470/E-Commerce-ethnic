@@ -105,7 +105,7 @@ export default function ProductCard({
         {hoverImg && (
           <Image
             src={hoverImg}
-            alt={`${altText} - alternate view`}
+            alt={`${altText} - back view`}
             fill
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
             quality={70}

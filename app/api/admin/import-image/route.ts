@@ -20,6 +20,10 @@ const EXT_BY_MIME: Record<string, string> = {
   'image/avif': 'avif',
 };
 
+// Quality passed to sharp's webp encoder. 82 is a good balance between file
+// size and visual quality for product photography.
+const WEBP_QUALITY = 82;
+
 /**
  * Trims the bottom BOTTOM_TRIM_FRACTION of the image's height, no matter
  * what size or aspect ratio the source image is. Full width is always kept;
@@ -27,8 +31,8 @@ const EXT_BY_MIME: Record<string, string> = {
  * Uses sharp so JPEG, PNG, WebP, AVIF, GIF, and TIFF sources all work --
  * jimp (the previous implementation) silently failed on WebP/AVIF, which is
  * what most modern image CDNs (Pexels, Unsplash, etc.) serve by default.
- * Re-encodes as JPEG regardless of source format; that's fine for photos and
- * keeps the crop path simple.
+ * Re-encodes as real WebP regardless of source format -- this is the actual
+ * conversion the "converted to WebP" toast talks about, not just a label.
  */
 async function cropToProductFrame(buffer: Buffer): Promise<{ buffer: Buffer; contentType: string; ext: string }> {
   const image = sharp(buffer);
@@ -44,9 +48,21 @@ async function cropToProductFrame(buffer: Buffer): Promise<{ buffer: Buffer; con
 
   const out = await image
     .extract({ left: 0, top: 0, width: w, height: cropHeight })
-    .jpeg()
+    .webp({ quality: WEBP_QUALITY })
     .toBuffer();
-  return { buffer: out, contentType: 'image/jpeg', ext: 'jpg' };
+  return { buffer: out, contentType: 'image/webp', ext: 'webp' };
+}
+
+/**
+ * Re-encodes any supported source format (JPEG, PNG, GIF, AVIF, and
+ * already-WebP sources too) as WebP via sharp, with no crop/resize.
+ * This is what actually makes the "Image imported and converted to WebP"
+ * toast true -- previously the image was re-hosted byte-for-byte as
+ * downloaded and only the crop path touched sharp at all.
+ */
+async function convertToWebp(buffer: Buffer): Promise<{ buffer: Buffer; contentType: string; ext: string }> {
+  const out = await sharp(buffer).webp({ quality: WEBP_QUALITY }).toBuffer();
+  return { buffer: out, contentType: 'image/webp', ext: 'webp' };
 }
 
 export async function POST(req: Request) {
@@ -101,13 +117,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Image is too large (max 15MB).' }, { status: 400 });
     }
 
-    // By default we re-host the image exactly as downloaded (no conversion)
-    // — this avoids native-binary image libraries, which are unreliable to
-    // run in serverless functions, while still fixing the main problem: the
-    // image keeps working even if the original site removes it or blocks
-    // hotlinking. When the "Crop" toggle is on, we additionally center-crop
-    // to the storefront's 4:5 frame using jimp (pure JS, so this stays safe
-    // on serverless too) before uploading.
+    // Every imported image is actually re-encoded to WebP via sharp before
+    // it's stored -- this is real conversion, not just a filename/label
+    // change. When the "Crop" toggle is on we additionally center-crop to
+    // the storefront's 4:5 frame first (cropToProductFrame already returns
+    // WebP too), otherwise we just re-encode the source as-is.
     let uploadBuffer = Buffer.from(arrayBuffer);
     let uploadContentType = contentType;
     let ext = EXT_BY_MIME[contentType] || 'jpg';
@@ -120,7 +134,24 @@ export async function POST(req: Request) {
         ext = cropped.ext;
       } catch (cropErr) {
         console.error('[import-image] crop error, falling back to uncropped:', cropErr);
-        // fall through and upload the original, uncropped image instead of failing the whole import
+        // fall through and try a plain (uncropped) WebP conversion instead
+      }
+    }
+
+    // If we didn't crop (either the toggle was off, or cropping failed
+    // above and we're still holding the original bytes), convert to WebP
+    // now. Falls back to uploading the original bytes/format untouched if
+    // sharp can't decode the source for some reason, so the import never
+    // hard-fails just because of the conversion step.
+    if (uploadContentType !== 'image/webp') {
+      try {
+        const converted = await convertToWebp(uploadBuffer);
+        uploadBuffer = converted.buffer;
+        uploadContentType = converted.contentType;
+        ext = converted.ext;
+      } catch (convErr) {
+        console.error('[import-image] webp conversion error, falling back to original format:', convErr);
+        // fall through and upload the original bytes instead of failing the whole import
       }
     }
 

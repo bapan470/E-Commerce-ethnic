@@ -1056,7 +1056,7 @@ export default function ProductsPanel() {
       }
       setForm((f) => ({ ...f, images: [...f.images, data.url] }));
       setImportUrl('');
-      toast.success(cropOnImport ? 'Image imported and bottom 10% trimmed' : 'Image imported and converted to WebP');
+      toast.success(cropOnImport ? 'Image imported, cropped and converted to WebP' : 'Image imported and converted to WebP');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Image import failed');
     } finally {

@@ -14,6 +14,27 @@ interface ProductGalleryProps {
 
 const PLACEHOLDER = 'https://placehold.co/800x1000?text=No+Image';
 
+// Product photo sets are typically shot in a rough front/back/detail/style
+// rotation, so cycling through these labels gives each image its own
+// distinct alt text (front view, back view, close-up, ...) instead of every
+// photo repeating the exact same string with only a number appended -- more
+// useful for screen readers and much better for image-search SEO than
+// "Product name - image 1", "Product name - image 2", etc.
+const ANGLE_LABELS = [
+  'front view',
+  'back view',
+  'close-up detail',
+  'styled look',
+  'side view',
+  'draping detail',
+  'fabric texture close-up',
+  'full outfit view',
+];
+
+function angleLabel(idx: number): string {
+  return ANGLE_LABELS[idx % ANGLE_LABELS.length];
+}
+
 /**
  * Product image gallery — main stage + thumbnail rail + full-screen zoom.
  *
@@ -145,7 +166,7 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
                 >
                   <Image
                     src={img}
-                    alt={`${alt} thumbnail ${idx + 1}`}
+                    alt={`${alt} - ${angleLabel(idx)} thumbnail`}
                     fill
                     draggable={false}
                     sizes="72px"
@@ -205,7 +226,7 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
                   >
                     <Image
                       src={img}
-                      alt={`${alt} - image ${idx + 1}`}
+                      alt={`${alt} - ${angleLabel(idx)}`}
                       fill
                       priority={idx === 0}
                       draggable={false}
@@ -482,7 +503,7 @@ function Lightbox({
                 >
                   <Image
                     src={img}
-                    alt={`${alt} - full view ${idx + 1}`}
+                    alt={`${alt} - ${angleLabel(idx)}, full view`}
                     fill
                     draggable={false}
                     sizes="100vw"
@@ -530,7 +551,15 @@ function Lightbox({
                 active === idx ? 'border-white' : 'border-transparent opacity-60'
               )}
             >
-              <Image src={img} alt="" fill draggable={false} sizes="56px" quality={50} className="select-none object-cover" />
+              <Image
+                src={img}
+                alt={`${alt} - ${angleLabel(idx)} thumbnail`}
+                fill
+                draggable={false}
+                sizes="56px"
+                quality={50}
+                className="select-none object-cover"
+              />
             </button>
           ))}
         </div>

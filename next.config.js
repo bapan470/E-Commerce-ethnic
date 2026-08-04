@@ -14,10 +14,14 @@ const nextConfig = {
     // `unoptimized: true` makes next/image render the ORIGINAL file URL
     // directly instead of routing it through /_next/image, so it no
     // longer touches that paid quota at all -- images just work again.
-    // Trade-off: no automatic resize/WebP/AVIF conversion, so pages are
-    // a bit heavier. If/when the Vercel plan is upgraded (or usage-based
-    // pricing is enabled) for Image Optimization, this can be set back
-    // to `false` (or removed) to restore automatic optimization.
+    // Keep this `true` even if/when the Vercel quota isn't an issue
+    // (upgraded plan, usage-based billing enabled, etc.): product images
+    // are now actually converted to WebP server-side at upload/import
+    // time (see app/api/upload-image/route.ts and
+    // app/api/admin/import-image/route.ts), so the /_next/image
+    // resize+reformat step is mostly redundant for this site's own
+    // images. Only flip this back to `false` if you specifically want
+    // Vercel's automatic responsive resizing on top of that.
     unoptimized: true,
     formats: ['image/avif', 'image/webp'],
     remotePatterns: [
