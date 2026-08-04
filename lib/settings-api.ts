@@ -392,6 +392,40 @@ export async function saveRefundAutomationSettings(settings: RefundAutomationSet
 }
 
 // ---------------------------------------------------------------------
+// Order notifications — alerts YOU (the store owner), not the customer,
+// the moment a new order comes in. Independent of `support_email` in
+// StoreInfo because that address is shown publicly (footer/contact/about
+// pages) — this lets you use a different, private inbox for order alerts
+// if you want, or just leave `email` blank to reuse support_email.
+// ---------------------------------------------------------------------
+export interface OrderNotificationSettings {
+  enabled: boolean;
+  email: string; // if blank, order-confirm falls back to StoreInfo.support_email
+}
+
+export const DEFAULT_ORDER_NOTIFICATION_SETTINGS: OrderNotificationSettings = {
+  enabled: true,
+  email: '',
+};
+
+export async function fetchOrderNotificationSettings(): Promise<OrderNotificationSettings> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'order_notifications')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_ORDER_NOTIFICATION_SETTINGS;
+  return { ...DEFAULT_ORDER_NOTIFICATION_SETTINGS, ...(data.value as Partial<OrderNotificationSettings>) };
+}
+
+export async function saveOrderNotificationSettings(settings: OrderNotificationSettings) {
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ key: 'order_notifications', value: settings }, { onConflict: 'key' });
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------
 // Return automation — single master toggle for the whole return flow:
 // 'automatic' auto-schedules the Delhivery reverse pickup as soon as an
 // admin approves a return, and auto-fires the Razorpay refund once

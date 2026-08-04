@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { sendEmail } from '@/lib/email';
-import { orderConfirmationEmail } from '@/lib/email-templates';
+import { orderConfirmationEmail, newOrderAdminNotification } from '@/lib/email-templates';
 import { DEFAULT_LOYALTY_SETTINGS, type LoyaltySettings } from '@/lib/loyalty-api';
 import { DEFAULT_REFERRAL_SETTINGS, type ReferralSettings } from '@/lib/referrals-api';
 
@@ -46,6 +46,48 @@ export async function POST(req: Request) {
         .update({ recovered: true })
         .eq('email', order.customer_email)
         .eq('recovered', false);
+    }
+
+    // Best-effort: alert the store owner/admin so they don't have to keep
+    // the admin dashboard open to know a new order came in. Controlled
+    // from Admin -> Settings -> Order Notifications (on/off + optional
+    // dedicated email; falls back to the public support_email if left
+    // blank). Never blocks order confirmation.
+    try {
+      const { data: orderNotifRow } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'order_notifications')
+        .maybeSingle();
+      const orderNotif = orderNotifRow?.value as { enabled?: boolean; email?: string } | null;
+      const notifEnabled = orderNotif?.enabled !== false; // default ON if never configured
+
+      if (notifEnabled) {
+        let adminEmail = orderNotif?.email?.trim();
+        if (!adminEmail) {
+          const { data: storeInfoRow } = await supabase
+            .from('settings')
+            .select('value')
+            .eq('key', 'store_info')
+            .maybeSingle();
+          adminEmail = (storeInfoRow?.value as { support_email?: string } | null)?.support_email;
+        }
+
+        if (adminEmail) {
+          const notice = newOrderAdminNotification({
+            id: order.id,
+            customer_name: order.customer_name,
+            customer_email: order.customer_email,
+            customer_phone: order.customer_phone,
+            items: Array.isArray(order.items) ? order.items : [],
+            total_amount: order.total_amount,
+            payment_method: order.payment_method,
+          });
+          await sendEmail({ to: adminEmail, subject: notice.subject, html: notice.html });
+        }
+      }
+    } catch (adminEmailErr) {
+      console.error('[order-confirm] admin notification email failed:', adminEmailErr);
     }
 
     // Gift card redemption — works for guest checkouts too (unlike loyalty),

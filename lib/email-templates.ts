@@ -20,16 +20,21 @@ function wrapper(bodyHtml: string) {
 
 function itemsTable(items: any[]) {
   const rows = (items || [])
-    .map(
-      (it) => `
+    .map((it) => {
+      const img = it.image_url || it.image || it.images?.[0] || '';
+      const thumb = img
+        ? `<img src="${img}" alt="" width="48" height="48" style="width:48px; height:48px; object-fit:cover; border-radius:6px; border:1px solid #eee; display:block;" />`
+        : `<div style="width:48px; height:48px; border-radius:6px; background:#f1e9e2;"></div>`;
+      return `
       <tr>
+        <td style="padding: 8px 8px 8px 0; border-bottom: 1px solid #eee; width:48px;">${thumb}</td>
         <td style="padding: 8px 0; border-bottom: 1px solid #eee;">
           ${it.product_name || it.name || 'Item'}${it.size ? ` <span style="color:#9a8f87;">(Size: ${it.size})</span>` : ''}
         </td>
         <td style="padding: 8px 0; border-bottom: 1px solid #eee; text-align: center;">x${it.quantity || 1}</td>
         <td style="padding: 8px 0; border-bottom: 1px solid #eee; text-align: right;">${formatINR((it.price || 0) * (it.quantity || 1))}</td>
-      </tr>`
-    )
+      </tr>`;
+    })
     .join('');
   return `<table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">${rows}</table>`;
 }
@@ -96,6 +101,32 @@ export function orderConfirmationEmail(order: {
       Payment method: ${order.payment_method === 'cod' ? 'Cash on Delivery' : 'Paid Online'}
     </p>
     <p>You can track your order anytime from your account's Order History page.</p>
+  `);
+  return { subject, html };
+}
+
+export function newOrderAdminNotification(order: {
+  id: string;
+  customer_name?: string;
+  customer_email?: string;
+  customer_phone?: string;
+  items: any[];
+  total_amount: number;
+  payment_method?: string;
+}) {
+  const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
+  const subject = `New order ${shortId} — ${formatINR(order.total_amount)}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">You've got a new order!</h2>
+    <div style="margin:16px 0; padding:14px 16px; background:#fff; border-left:3px solid ${BRAND_COLOR}; border-radius:4px;">
+      <p style="margin:0 0 6px;"><strong>Order:</strong> ${shortId}</p>
+      <p style="margin:0 0 6px;"><strong>Customer:</strong> ${order.customer_name || 'Guest'}${order.customer_email ? ` (${order.customer_email})` : ''}</p>
+      ${order.customer_phone ? `<p style="margin:0 0 6px;"><strong>Phone:</strong> ${order.customer_phone}</p>` : ''}
+      <p style="margin:0 0 6px;"><strong>Payment:</strong> ${order.payment_method === 'cod' ? 'Cash on Delivery' : 'Paid Online'}</p>
+    </div>
+    ${itemsTable(order.items)}
+    <p style="text-align:right; font-size:16px; font-weight:bold;">Total: ${formatINR(order.total_amount)}</p>
+    <p style="font-size:13px; color:#6b5f57;">View full details from Admin &gt; Orders.</p>
   `);
   return { subject, html };
 }

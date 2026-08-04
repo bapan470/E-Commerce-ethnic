@@ -31,6 +31,9 @@ import {
   RefundAutomationSettings,
   fetchRefundAutomationSettings,
   saveRefundAutomationSettings,
+  OrderNotificationSettings,
+  fetchOrderNotificationSettings,
+  saveOrderNotificationSettings,
   HandlingFeeSettings,
   fetchHandlingFeeSettings,
   saveHandlingFeeSettings,
@@ -100,6 +103,8 @@ export default function SettingsPanel() {
   const [savingPaymentDiscount, setSavingPaymentDiscount] = useState(false);
   const [refundAutomationForm, setRefundAutomationForm] = useState<RefundAutomationSettings | null>(null);
   const [savingRefundAutomation, setSavingRefundAutomation] = useState(false);
+  const [orderNotifForm, setOrderNotifForm] = useState<OrderNotificationSettings | null>(null);
+  const [savingOrderNotif, setSavingOrderNotif] = useState(false);
   const [handlingFeeForm, setHandlingFeeForm] = useState<HandlingFeeSettings | null>(null);
   const [savingHandlingFee, setSavingHandlingFee] = useState(false);
 
@@ -152,6 +157,10 @@ export default function SettingsPanel() {
     fetchRefundAutomationSettings()
       .then(setRefundAutomationForm)
       .catch(() => toast.error('Failed to load refund automation settings'));
+
+    fetchOrderNotificationSettings()
+      .then(setOrderNotifForm)
+      .catch(() => toast.error('Failed to load order notification settings'));
 
     fetchHandlingFeeSettings()
       .then(setHandlingFeeForm)
@@ -301,6 +310,36 @@ export default function SettingsPanel() {
       toast.error(err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setSavingRefundAutomation(false);
+    }
+  };
+
+  const onToggleOrderNotif = async (checked: boolean) => {
+    if (!orderNotifForm) return;
+    const next = { ...orderNotifForm, enabled: checked };
+    setOrderNotifForm(next);
+    setSavingOrderNotif(true);
+    try {
+      await saveOrderNotificationSettings(next);
+      toast.success(checked ? 'New-order email alerts turned on' : 'New-order email alerts turned off');
+    } catch (err) {
+      setOrderNotifForm(orderNotifForm);
+      toast.error(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSavingOrderNotif(false);
+    }
+  };
+
+  const onSubmitOrderNotif = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!orderNotifForm) return;
+    setSavingOrderNotif(true);
+    try {
+      await saveOrderNotificationSettings(orderNotifForm);
+      toast.success('Order notification email saved');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSavingOrderNotif(false);
     }
   };
 
@@ -943,6 +982,55 @@ export default function SettingsPanel() {
             {savingPaymentDiscount ? 'Saving…' : 'Save Payment Discount'}
           </Button>
         </form>
+      )}
+
+      <div className="mt-8">
+        <h2 className="font-serif text-2xl font-bold text-primary">New Order Notifications</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Get an email the moment a new order comes in, so you don't have to keep the admin
+          dashboard open to know. Leave the email blank to use your Support Email above.
+        </p>
+      </div>
+
+      {!orderNotifForm ? (
+        <p className="py-4 text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <div className="mt-4 max-w-xl space-y-4 rounded-lg border border-border/60 bg-card p-5">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <Label htmlFor="order-notif-enabled">
+                {orderNotifForm.enabled ? 'Alerts on' : 'Alerts off'}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {orderNotifForm.enabled
+                  ? 'On: every new order sends you an email notification.'
+                  : 'Off: no email is sent to you for new orders (customer still gets their confirmation).'}
+              </p>
+            </div>
+            <Switch
+              id="order-notif-enabled"
+              checked={orderNotifForm.enabled}
+              disabled={savingOrderNotif}
+              onCheckedChange={onToggleOrderNotif}
+            />
+          </div>
+
+          <form onSubmit={onSubmitOrderNotif} className="flex flex-col gap-2 border-t border-border/60 pt-4">
+            <Label htmlFor="order-notif-email">Notification email (optional)</Label>
+            <div className="flex gap-2">
+              <Input
+                id="order-notif-email"
+                type="email"
+                placeholder="you@example.com (defaults to Support Email)"
+                value={orderNotifForm.email}
+                onChange={(e) => setOrderNotifForm((f) => f && { ...f, email: e.target.value })}
+              />
+              <Button type="submit" disabled={savingOrderNotif} className="shrink-0 bg-primary">
+                <Save className="mr-1.5 h-4 w-4" /> {savingOrderNotif ? 'Saving…' : 'Save'}
+              </Button>
+            </div>
+          </form>
+        </div>
       )}
 
       <div className="mt-8">
