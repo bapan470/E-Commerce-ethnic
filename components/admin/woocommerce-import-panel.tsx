@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
 import { Flame, ThermometerSnowflake, Waves, ShoppingCart, Heart, ShoppingBag, MailX } from 'lucide-react';
 import {
@@ -20,6 +21,7 @@ import {
   fetchAudienceSegments,
   fetchDripAutomationSettings,
   saveDripAutomationSettings,
+  fetchCampaignRecipients,
   type ImportedCustomer,
   type CampaignHistoryEntry,
   type CampaignCategoryOption,
@@ -29,6 +31,8 @@ import {
   type BehaviorCounts,
   type WooCommerceDripSettings,
   type DripProgress,
+  type CampaignRecipientStatus,
+  type CampaignRecipient,
 } from '@/lib/woocommerce-import-api';
 import { fetchProductPageCoupons, pickBestCoupon } from '@/lib/coupons-api';
 import {
@@ -220,6 +224,29 @@ export default function WooCommerceImportPanel() {
     const openRate = sent > 0 ? Math.round((opened / sent) * 100) : 0;
     return { sent, opened, clicked, failed, openRate };
   }, [history]);
+
+  // Name/email breakdown behind the Sent/Opened/Clicked/Failed cards --
+  // same idea as the Purchased/Cart abandoners/etc audience chips below,
+  // just for delivery/engagement status instead of shopping behaviour.
+  const [recipientsModal, setRecipientsModal] = useState<CampaignRecipientStatus | null>(null);
+  const [recipients, setRecipients] = useState<CampaignRecipient[]>([]);
+  const [recipientsLoading, setRecipientsLoading] = useState(false);
+
+  const RECIPIENT_STATUS_LABELS: Record<CampaignRecipientStatus, string> = {
+    sent: 'Sent',
+    opened: 'Opened',
+    clicked: 'Clicked',
+    failed: 'Failed',
+  };
+
+  const openRecipientsModal = (status: CampaignRecipientStatus) => {
+    setRecipientsModal(status);
+    setRecipientsLoading(true);
+    fetchCampaignRecipients(status)
+      .then(setRecipients)
+      .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load recipients'))
+      .finally(() => setRecipientsLoading(false));
+  };
 
   useEffect(() => {
     setVisibleCount(ROWS_PER_PAGE);
@@ -509,26 +536,42 @@ export default function WooCommerceImportPanel() {
             so you don't have to scroll down to check them. */}
         {!historyLoading && history.length > 0 && (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-            <div className="rounded-md border bg-muted/20 p-2.5">
+            <button
+              type="button"
+              onClick={() => openRecipientsModal('sent')}
+              className="rounded-md border bg-muted/20 p-2.5 text-left transition hover:border-primary/50 hover:bg-muted/40"
+            >
               <p className="text-[11px] text-muted-foreground">Sent</p>
               <p className="text-lg font-semibold">{campaignTotals.sent}</p>
-            </div>
-            <div className="rounded-md border bg-muted/20 p-2.5">
+            </button>
+            <button
+              type="button"
+              onClick={() => openRecipientsModal('opened')}
+              className="rounded-md border bg-muted/20 p-2.5 text-left transition hover:border-primary/50 hover:bg-muted/40"
+            >
               <p className="text-[11px] text-muted-foreground">Opened</p>
               <p className="text-lg font-semibold">{campaignTotals.opened}</p>
-            </div>
+            </button>
             <div className="rounded-md border bg-muted/20 p-2.5">
               <p className="text-[11px] text-muted-foreground">Open rate</p>
               <p className="text-lg font-semibold">{campaignTotals.openRate}%</p>
             </div>
-            <div className="rounded-md border bg-muted/20 p-2.5">
+            <button
+              type="button"
+              onClick={() => openRecipientsModal('clicked')}
+              className="rounded-md border bg-muted/20 p-2.5 text-left transition hover:border-primary/50 hover:bg-muted/40"
+            >
               <p className="text-[11px] text-muted-foreground">Clicked</p>
               <p className="text-lg font-semibold">{campaignTotals.clicked}</p>
-            </div>
-            <div className="rounded-md border bg-muted/20 p-2.5">
+            </button>
+            <button
+              type="button"
+              onClick={() => openRecipientsModal('failed')}
+              className="rounded-md border bg-muted/20 p-2.5 text-left transition hover:border-primary/50 hover:bg-muted/40"
+            >
               <p className="text-[11px] text-muted-foreground">Failed</p>
               <p className="text-lg font-semibold">{campaignTotals.failed}</p>
-            </div>
+            </button>
           </div>
         )}
 
@@ -1101,6 +1144,55 @@ export default function WooCommerceImportPanel() {
           </>
         )}
       </div>
+
+      {/* Name/email list behind the Sent/Opened/Clicked/Failed cards above */}
+      <Dialog open={recipientsModal !== null} onOpenChange={(open) => !open && setRecipientsModal(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {recipientsModal ? RECIPIENT_STATUS_LABELS[recipientsModal] : ''} ({recipients.length})
+            </DialogTitle>
+          </DialogHeader>
+          {recipientsLoading ? (
+            <p className="text-sm text-muted-foreground">Loading...</p>
+          ) : recipients.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Koi record nahi mila.</p>
+          ) : (
+            <div className="max-h-96 overflow-auto rounded border">
+              <table className="w-full text-sm">
+                <thead className="bg-muted sticky top-0">
+                  <tr>
+                    <th className="p-2 text-left">Name</th>
+                    <th className="p-2 text-left">Email</th>
+                    <th className="p-2 text-left">Phone</th>
+                    <th className="p-2 text-left">Campaign</th>
+                    <th className="p-2 text-left">Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recipients.map((r) => (
+                    <tr key={r.id} className="border-t">
+                      <td className="p-2">{r.name || '—'}</td>
+                      <td className="p-2">{r.email}</td>
+                      <td className="p-2">{r.phone || '—'}</td>
+                      <td className="p-2">{r.subject}</td>
+                      <td className="p-2 whitespace-nowrap">
+                        {new Date(
+                          recipientsModal === 'opened'
+                            ? r.openedAt || r.sentAt
+                            : recipientsModal === 'clicked'
+                              ? r.clickedAt || r.sentAt
+                              : r.sentAt
+                        ).toLocaleString('en-IN')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

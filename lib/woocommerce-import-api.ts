@@ -126,6 +126,31 @@ export async function fetchCampaignHistory(): Promise<CampaignHistoryEntry[]> {
   return json.campaigns as CampaignHistoryEntry[];
 }
 
+export type CampaignRecipientStatus = 'sent' | 'opened' | 'clicked' | 'failed';
+
+export interface CampaignRecipient {
+  id: string;
+  name: string | null;
+  email: string;
+  phone: string | null;
+  subject: string;
+  status: string;
+  sentAt: string;
+  openedAt: string | null;
+  clickedAt: string | null;
+}
+
+// Powers the clickable Sent/Opened/Clicked/Failed cards -- name/email list
+// behind each of those aggregate numbers, across every campaign ever sent.
+export async function fetchCampaignRecipients(
+  status: CampaignRecipientStatus
+): Promise<CampaignRecipient[]> {
+  const res = await fetch(`/api/admin/woocommerce-import/send-campaign/recipients?status=${status}`);
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Failed to load recipients');
+  return json.recipients as CampaignRecipient[];
+}
+
 export interface FeaturedProduct {
   id: string;
   name: string;
