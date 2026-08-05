@@ -15,11 +15,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 // fabric, category and angle at render time -- see
 // components/product/product-gallery.tsx and components/product-card.tsx
 // -- so there's no separate per-image alt text stored in the database
-// to "fix") and updates the DB row to point at the new file. The old
-// file is intentionally left in storage (not deleted) -- past orders
-// store a snapshot of the product image URL at checkout time, so
-// deleting the old file would break thumbnails on old orders even
-// though the product itself now looks fine.
+// to "fix"), updates the DB row, and deletes the old file.
 //
 // Called repeatedly by the admin UI (components/admin/settings-panel.tsx)
 // in a client-side loop, one small batch per request, so:
@@ -182,14 +178,14 @@ export async function POST(req: Request) {
       }
       byRow.get(rowKey)!.edits.set(c.index, newUrl);
 
-      // NOTE: we deliberately do NOT delete the old file here anymore.
-      // Past orders store a snapshot of the image URL at checkout time
-      // (see app/checkout/page.tsx). If we delete the old file, every
-      // order placed before the conversion loses its product thumbnail
-      // (broken image on the admin Orders page / customer order history)
-      // even though the product page itself still looks fine. Keeping
-      // the old file around costs a bit of extra storage but nothing
-      // that already links to it ever breaks.
+      // Best-effort cleanup of the old file. Never lets a delete failure
+      // undo a successful conversion -- the row already points at the new
+      // file either way.
+      admin.storage
+        .from(BUCKET)
+        .remove([c.path])
+        .catch((e) => console.error('[convert-images-webp] old file cleanup failed:', c.path, e));
+
       converted++;
     } catch (err) {
       console.error('[convert-images-webp] skipped', c.url, err);
