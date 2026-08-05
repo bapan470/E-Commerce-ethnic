@@ -1,5 +1,5 @@
 diff --git a/app/checkout/page.tsx b/app/checkout/page.tsx
-index 4e17e48..471a161 100644
+index 4e17e48..1733ba1 100644
 --- a/app/checkout/page.tsx
 +++ b/app/checkout/page.tsx
 @@ -147,6 +147,12 @@ export default function CheckoutPage() {
@@ -95,7 +95,7 @@ index 4e17e48..471a161 100644
                    required
                    placeholder="12, MG Road, Apt 304"
                    value={addressLine1}
-@@ -1158,6 +1189,7 @@ export default function CheckoutPage() {
+@@ -1158,59 +1189,77 @@ export default function CheckoutPage() {
                  <Input
                    id="address2"
                    name="address2"
@@ -103,41 +103,35 @@ index 4e17e48..471a161 100644
                    placeholder="Bandra West"
                    value={addressLine2}
                    onChange={(e) => setAddressLine2(e.target.value)}
-@@ -1169,10 +1201,16 @@ export default function CheckoutPage() {
-                   <Input
-                     id="city"
-                     name="city"
-+                    autoComplete="address-level2"
-                     required
-                     placeholder="Mumbai"
-                     value={city}
--                    onChange={(e) => setCity(e.target.value)}
-+                    onChange={(e) => {
-+                      // Shopper is typing city by hand — stop treating it as
-+                      // ours to overwrite on the next pincode lookup.
-+                      cityAutoFilledRef.current = false;
-+                      setCity(e.target.value);
-+                    }}
-                   />
-                 </div>
-                 <div className="grid gap-1.5">
-@@ -1180,10 +1218,14 @@ export default function CheckoutPage() {
-                   <Input
-                     id="state"
-                     name="state"
-+                    autoComplete="address-level1"
-                     required
-                     placeholder="Maharashtra"
-                     value={stateName}
--                    onChange={(e) => setStateName(e.target.value)}
-+                    onChange={(e) => {
-+                      stateAutoFilledRef.current = false;
-+                      setStateName(e.target.value);
-+                    }}
-                   />
-                 </div>
+                 />
                </div>
-@@ -1193,18 +1235,25 @@ export default function CheckoutPage() {
+-              <div className="grid gap-4 sm:grid-cols-2">
+-                <div className="grid gap-1.5">
+-                  <Label htmlFor="city">City *</Label>
+-                  <Input
+-                    id="city"
+-                    name="city"
+-                    required
+-                    placeholder="Mumbai"
+-                    value={city}
+-                    onChange={(e) => setCity(e.target.value)}
+-                  />
+-                </div>
+-                <div className="grid gap-1.5">
+-                  <Label htmlFor="state">State *</Label>
+-                  <Input
+-                    id="state"
+-                    name="state"
+-                    required
+-                    placeholder="Maharashtra"
+-                    value={stateName}
+-                    onChange={(e) => setStateName(e.target.value)}
+-                  />
+-                </div>
+-              </div>
+               <div className="grid gap-4 sm:grid-cols-2">
+                 <div className="grid gap-1.5">
+                   <Label htmlFor="pincode">PIN code *</Label>
                    <Input
                      id="pincode"
                      name="pincode"
@@ -150,7 +144,7 @@ index 4e17e48..471a161 100644
                    />
 +                  {deliveryEstimate?.serviceable && (city || stateName) && (
 +                    <p className="text-[11px] text-muted-foreground">
-+                      Auto-filled from pincode — you can edit City/State if needed.
++                      Auto-filled City/State below — you can edit if needed.
 +                    </p>
 +                  )}
                  </div>
@@ -163,3 +157,43 @@ index 4e17e48..471a161 100644
                      required
                      value={country}
                      onChange={(e) => setCountry(e.target.value)}
+                   />
+                 </div>
+               </div>
++              <div className="grid gap-4 sm:grid-cols-2">
++                <div className="grid gap-1.5">
++                  <Label htmlFor="city">City *</Label>
++                  <Input
++                    id="city"
++                    name="city"
++                    autoComplete="address-level2"
++                    required
++                    placeholder="Mumbai"
++                    value={city}
++                    onChange={(e) => {
++                      // Shopper is typing city by hand — stop treating it as
++                      // ours to overwrite on the next pincode lookup.
++                      cityAutoFilledRef.current = false;
++                      setCity(e.target.value);
++                    }}
++                  />
++                </div>
++                <div className="grid gap-1.5">
++                  <Label htmlFor="state">State *</Label>
++                  <Input
++                    id="state"
++                    name="state"
++                    autoComplete="address-level1"
++                    required
++                    placeholder="Maharashtra"
++                    value={stateName}
++                    onChange={(e) => {
++                      stateAutoFilledRef.current = false;
++                      setStateName(e.target.value);
++                    }}
++                  />
++                </div>
++              </div>
+             </div>
+           </section>
+             </>

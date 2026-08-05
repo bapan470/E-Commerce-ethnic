@@ -1197,6 +1197,37 @@ export default function CheckoutPage() {
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="grid gap-1.5">
+                  <Label htmlFor="pincode">PIN code *</Label>
+                  <Input
+                    id="pincode"
+                    name="pincode"
+                    autoComplete="postal-code"
+                    required
+                    placeholder="400050"
+                    inputMode="numeric"
+                    value={pincode}
+                    onChange={(e) => setPincode(e.target.value)}
+                  />
+                  {deliveryEstimate?.serviceable && (city || stateName) && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Auto-filled City/State below — you can edit if needed.
+                    </p>
+                  )}
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="country">Country *</Label>
+                  <Input
+                    id="country"
+                    name="country"
+                    autoComplete="country-name"
+                    required
+                    value={country}
+                    onChange={(e) => setCountry(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-1.5">
                   <Label htmlFor="city">City *</Label>
                   <Input
                     id="city"
@@ -1226,37 +1257,6 @@ export default function CheckoutPage() {
                       stateAutoFilledRef.current = false;
                       setStateName(e.target.value);
                     }}
-                  />
-                </div>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="pincode">PIN code *</Label>
-                  <Input
-                    id="pincode"
-                    name="pincode"
-                    autoComplete="postal-code"
-                    required
-                    placeholder="400050"
-                    inputMode="numeric"
-                    value={pincode}
-                    onChange={(e) => setPincode(e.target.value)}
-                  />
-                  {deliveryEstimate?.serviceable && (city || stateName) && (
-                    <p className="text-[11px] text-muted-foreground">
-                      Auto-filled from pincode — you can edit City/State if needed.
-                    </p>
-                  )}
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="country">Country *</Label>
-                  <Input
-                    id="country"
-                    name="country"
-                    autoComplete="country-name"
-                    required
-                    value={country}
-                    onChange={(e) => setCountry(e.target.value)}
                   />
                 </div>
               </div>
