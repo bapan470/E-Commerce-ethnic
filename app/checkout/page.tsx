@@ -36,7 +36,6 @@ import {
   PincodeResult,
 } from '@/lib/pincode-api';
 import { trackEvent, getSessionId } from '@/lib/track-api';
-import { fetchAddressSuggestions, AddressSuggestion } from '@/lib/address-suggest';
 import {
   CheckoutBumpSettings,
   DEFAULT_CHECKOUT_BUMP_SETTINGS,
@@ -205,19 +204,6 @@ export default function CheckoutPage() {
   // false the moment the shopper edits either field themselves.
   const cityAutoFilledRef = useRef(false);
   const stateAutoFilledRef = useRef(false);
-  // Free street-address autosuggest (OpenStreetMap Nominatim) — shows a
-  // dropdown of matching addresses under the Street address field as the
-  // shopper types, so they can tap one instead of typing the whole thing
-  // and re-typing city/state/pincode by hand.
-  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
-  const [showAddressSuggestions, setShowAddressSuggestions] = useState(false);
-  const [suggestLoading, setSuggestLoading] = useState(false);
-  // True once a search has actually run and come back empty, so we can show
-  // a "no matches — type it in manually" hint instead of just nothing.
-  const [suggestSearchedEmpty, setSuggestSearchedEmpty] = useState(false);
-  // True right after the shopper picks a suggestion, so the debounce effect
-  // below doesn't immediately re-query and reopen the dropdown.
-  const suggestionJustPickedRef = useRef(false);
 
   // Bug fix: clicking "Log In" / "Create Account" from the resell prompt used
   // to send the shopper to /login or /signup and back, which remounts this
@@ -536,57 +522,6 @@ export default function CheckoutPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pincode]);
-
-  // Debounced free address-autosuggest as the shopper types the street
-  // address (see lib/address-suggest.ts). Waits 400ms after typing stops,
-  // then queries OpenStreetMap Nominatim — no API key needed.
-  useEffect(() => {
-    if (suggestionJustPickedRef.current) {
-      suggestionJustPickedRef.current = false;
-      return;
-    }
-    if (addressLine1.trim().length < 3) {
-      setAddressSuggestions([]);
-      setShowAddressSuggestions(false);
-      setSuggestSearchedEmpty(false);
-      return;
-    }
-    const controller = new AbortController();
-    setSuggestLoading(true);
-    const timer = setTimeout(() => {
-      fetchAddressSuggestions(addressLine1, controller.signal)
-        .then((results) => {
-          setAddressSuggestions(results);
-          setShowAddressSuggestions(results.length > 0);
-          setSuggestSearchedEmpty(results.length === 0);
-        })
-        .finally(() => setSuggestLoading(false));
-    }, 400);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-      setSuggestLoading(false);
-    };
-  }, [addressLine1]);
-
-  const pickAddressSuggestion = (s: AddressSuggestion) => {
-    suggestionJustPickedRef.current = true;
-    setAddressLine1(s.line1);
-    setShowAddressSuggestions(false);
-    setAddressSuggestions([]);
-    setSuggestSearchedEmpty(false);
-    if (s.city) {
-      cityAutoFilledRef.current = true;
-      setCity(s.city);
-    }
-    if (s.state) {
-      stateAutoFilledRef.current = true;
-      setStateName(s.state);
-    }
-    if (s.pincode) {
-      setPincode(s.pincode);
-    }
-  };
 
   useEffect(() => {
     fetchLoyaltySettings().then(setLoyaltySettings).catch(() => {
@@ -1382,48 +1317,17 @@ export default function CheckoutPage() {
               <h2 className="font-serif text-lg font-bold text-primary">Shipping Address</h2>
             </div>
             <div className="grid gap-4">
-              <div className="relative grid gap-1.5">
+              <div className="grid gap-1.5">
                 <Label htmlFor="address">Street address *</Label>
                 <Input
                   id="address"
                   name="address"
-                  autoComplete="off"
+                  autoComplete="address-line1"
                   required
                   placeholder="12, MG Road, Apt 304"
                   value={addressLine1}
                   onChange={(e) => setAddressLine1(e.target.value)}
-                  onFocus={() => {
-                    if (addressSuggestions.length > 0) setShowAddressSuggestions(true);
-                  }}
-                  onBlur={() => {
-                    // Slight delay so a click on a suggestion registers
-                    // before the dropdown unmounts.
-                    setTimeout(() => setShowAddressSuggestions(false), 150);
-                  }}
                 />
-                {suggestLoading && (
-                  <p className="text-[11px] text-muted-foreground">Searching addresses…</p>
-                )}
-                {!suggestLoading && suggestSearchedEmpty && (
-                  <p className="text-[11px] text-muted-foreground">
-                    No matches found — you can type your full address in manually.
-                  </p>
-                )}
-                {showAddressSuggestions && addressSuggestions.length > 0 && (
-                  <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-auto rounded-md border border-border bg-popover shadow-md">
-                    {addressSuggestions.map((s, i) => (
-                      <li key={i}>
-                        <button
-                          type="button"
-                          onClick={() => pickAddressSuggestion(s)}
-                          className="block w-full px-3 py-2 text-left text-sm hover:bg-muted"
-                        >
-                          {s.label}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="address2">Apartment, suite, etc. (optional)</Label>

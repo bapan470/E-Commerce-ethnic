@@ -1,43 +1,23 @@
-FREE ADDRESS AUTOSUGGEST — HOW TO APPLY (v2 fix)
-===================================================
+REVERT — ADDRESS AUTOSUGGEST REMOVED
+======================================
 
-This fixes 2 issues reported after the first version:
-  1. Picking a suggestion sometimes wiped the address down to just the
-     town name (e.g. selecting a "Naihati" result left Street address
-     as only "Naihati"). Line 1 is now built more carefully: it prefers
-     house number + road + locality, and when OSM has no street-level
-     data, it now pulls the next-best distinguishing part of the address
-     instead of collapsing to something identical to the City field.
-  2. Some real addresses were returning literally 0 suggestions with no
-     feedback, which looked broken. There's now a small "No matches
-     found — you can type your full address in manually" note when a
-     search comes back empty, so it's clear it's not stuck/broken.
+The free address-autosuggest feature has been removed since it wasn't
+working reliably for real addresses.
 
-Important — please read
--------------------------
-This uses OpenStreetMap's free Nominatim database. It's genuinely free
-(no key, no cost) but its coverage of exact house-level addresses in
-smaller Indian towns is patchy — it's good for localities/areas/known
-places, not guaranteed for every specific house number. That's a limit
-of the free data itself, not a bug: when there's no good match, the
-field just stays a normal text box the shopper can fill in by hand
-(exactly like before this feature existed). If you need guaranteed
-house-level coverage, that requires a paid provider (Google Places API
-etc.) — happy to wire that in instead if you'd rather have that.
+What's included
+-----------------
+  app/checkout/page.tsx             (reverted to original — no autosuggest)
+  app/account/addresses/page.tsx    (reverted to original — no autosuggest)
 
-Files changed / added
-----------------------
-  lib/address-suggest.ts            (MODIFIED — better line1 + no-match handling)
-  app/checkout/page.tsx             (MODIFIED)
-  app/account/addresses/page.tsx    (MODIFIED)
+The original PIN-code -> City/State autofill (unrelated to the suggestion
+dropdown, and already working before) is untouched and still there.
 
 How to apply
 -------------
-Copy these 3 files into your local clone, overwriting the existing
+Copy these 2 files into your local clone, overwriting the current
 app/checkout/page.tsx and app/account/addresses/page.tsx, then:
 
-    git add lib/address-suggest.ts app/checkout/page.tsx app/account/addresses/page.tsx
-    git commit -m "Improve free address autosuggest: fix line1 collapsing + empty-result feedback"
+    git add app/checkout/page.tsx app/account/addresses/page.tsx
+    git rm lib/address-suggest.ts   (if it exists in your repo)
+    git commit -m "Revert address autosuggest — unreliable for real addresses"
     git push
-
-Or apply CHANGES.diff directly with: git apply CHANGES.diff
