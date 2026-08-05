@@ -522,7 +522,14 @@ function OrderRow({
                 src={order.items[0].image_url}
                 alt={order.items[0].product_name}
                 className="h-9 w-9 flex-shrink-0 rounded-md border border-border/60 object-cover"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                  e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                }}
               />
+            ) : null}
+            {order.items[0]?.image_url ? (
+              <div className="hidden h-9 w-9 flex-shrink-0 rounded-md border border-border/60 bg-muted" />
             ) : (
               <div className="h-9 w-9 flex-shrink-0 rounded-md border border-border/60 bg-muted" />
             )}
@@ -607,7 +614,14 @@ function OrderRow({
                           src={it.image_url}
                           alt={it.product_name}
                           className="h-12 w-12 flex-shrink-0 rounded-md border border-border/60 object-cover"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).style.display = 'none';
+                            e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                          }}
                         />
+                      ) : null}
+                      {it.image_url ? (
+                        <div className="hidden h-12 w-12 flex-shrink-0 rounded-md border border-border/60 bg-muted" />
                       ) : (
                         <div className="h-12 w-12 flex-shrink-0 rounded-md border border-border/60 bg-muted" />
                       )}
