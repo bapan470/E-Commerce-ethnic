@@ -212,6 +212,9 @@ export default function CheckoutPage() {
   const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
   const [showAddressSuggestions, setShowAddressSuggestions] = useState(false);
   const [suggestLoading, setSuggestLoading] = useState(false);
+  // True once a search has actually run and come back empty, so we can show
+  // a "no matches — type it in manually" hint instead of just nothing.
+  const [suggestSearchedEmpty, setSuggestSearchedEmpty] = useState(false);
   // True right after the shopper picks a suggestion, so the debounce effect
   // below doesn't immediately re-query and reopen the dropdown.
   const suggestionJustPickedRef = useRef(false);
@@ -542,9 +545,10 @@ export default function CheckoutPage() {
       suggestionJustPickedRef.current = false;
       return;
     }
-    if (addressLine1.trim().length < 4) {
+    if (addressLine1.trim().length < 3) {
       setAddressSuggestions([]);
       setShowAddressSuggestions(false);
+      setSuggestSearchedEmpty(false);
       return;
     }
     const controller = new AbortController();
@@ -554,6 +558,7 @@ export default function CheckoutPage() {
         .then((results) => {
           setAddressSuggestions(results);
           setShowAddressSuggestions(results.length > 0);
+          setSuggestSearchedEmpty(results.length === 0);
         })
         .finally(() => setSuggestLoading(false));
     }, 400);
@@ -569,6 +574,7 @@ export default function CheckoutPage() {
     setAddressLine1(s.line1);
     setShowAddressSuggestions(false);
     setAddressSuggestions([]);
+    setSuggestSearchedEmpty(false);
     if (s.city) {
       cityAutoFilledRef.current = true;
       setCity(s.city);
@@ -1397,6 +1403,11 @@ export default function CheckoutPage() {
                 />
                 {suggestLoading && (
                   <p className="text-[11px] text-muted-foreground">Searching addresses…</p>
+                )}
+                {!suggestLoading && suggestSearchedEmpty && (
+                  <p className="text-[11px] text-muted-foreground">
+                    No matches found — you can type your full address in manually.
+                  </p>
                 )}
                 {showAddressSuggestions && addressSuggestions.length > 0 && (
                   <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-auto rounded-md border border-border bg-popover shadow-md">

@@ -41,6 +41,7 @@ export default function AddressesPage() {
   // "Address line 1" field — no API key needed, see lib/address-suggest.ts.
   const [line1Suggestions, setLine1Suggestions] = useState<AddressSuggestion[]>([]);
   const [showLine1Suggestions, setShowLine1Suggestions] = useState(false);
+  const [line1SearchedEmpty, setLine1SearchedEmpty] = useState(false);
   const suggestionJustPickedRef = useRef(false);
 
   const load = async () => {
@@ -64,9 +65,10 @@ export default function AddressesPage() {
       suggestionJustPickedRef.current = false;
       return;
     }
-    if (form.line1.trim().length < 4) {
+    if (form.line1.trim().length < 3) {
       setLine1Suggestions([]);
       setShowLine1Suggestions(false);
+      setLine1SearchedEmpty(false);
       return;
     }
     const controller = new AbortController();
@@ -74,6 +76,7 @@ export default function AddressesPage() {
       fetchAddressSuggestions(form.line1, controller.signal).then((results) => {
         setLine1Suggestions(results);
         setShowLine1Suggestions(results.length > 0);
+        setLine1SearchedEmpty(results.length === 0);
       });
     }, 400);
     return () => {
@@ -86,6 +89,7 @@ export default function AddressesPage() {
     suggestionJustPickedRef.current = true;
     setShowLine1Suggestions(false);
     setLine1Suggestions([]);
+    setLine1SearchedEmpty(false);
     setForm((f) => ({
       ...f,
       line1: s.line1,
@@ -231,6 +235,11 @@ export default function AddressesPage() {
                     </li>
                   ))}
                 </ul>
+              )}
+              {!showLine1Suggestions && line1SearchedEmpty && (
+                <p className="text-[11px] text-muted-foreground">
+                  No matches found — you can type your full address in manually.
+                </p>
               )}
             </div>
             <div className="space-y-1.5 sm:col-span-2">

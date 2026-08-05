@@ -1,46 +1,43 @@
-FREE ADDRESS AUTOSUGGEST — HOW TO APPLY
-========================================
+FREE ADDRESS AUTOSUGGEST — HOW TO APPLY (v2 fix)
+===================================================
 
-What this adds
----------------
-A free, no-API-key address autosuggest dropdown under the "Street address"
-field, on both:
-  - the Checkout page shipping address form
-  - the Account > Saved Addresses form
+This fixes 2 issues reported after the first version:
+  1. Picking a suggestion sometimes wiped the address down to just the
+     town name (e.g. selecting a "Naihati" result left Street address
+     as only "Naihati"). Line 1 is now built more carefully: it prefers
+     house number + road + locality, and when OSM has no street-level
+     data, it now pulls the next-best distinguishing part of the address
+     instead of collapsing to something identical to the City field.
+  2. Some real addresses were returning literally 0 suggestions with no
+     feedback, which looked broken. There's now a small "No matches
+     found — you can type your full address in manually" note when a
+     search comes back empty, so it's clear it's not stuck/broken.
 
-As the shopper types 4+ characters, it queries OpenStreetMap's free
-Nominatim search API (restricted to India) and shows matching addresses.
-Picking one fills Street address + City + State + Pincode automatically.
-No signup, no API key, no cost.
-
-This is on top of (does not replace) the existing PIN-code -> City/State
-autofill already in the checkout page.
+Important — please read
+-------------------------
+This uses OpenStreetMap's free Nominatim database. It's genuinely free
+(no key, no cost) but its coverage of exact house-level addresses in
+smaller Indian towns is patchy — it's good for localities/areas/known
+places, not guaranteed for every specific house number. That's a limit
+of the free data itself, not a bug: when there's no good match, the
+field just stays a normal text box the shopper can fill in by hand
+(exactly like before this feature existed). If you need guaranteed
+house-level coverage, that requires a paid provider (Google Places API
+etc.) — happy to wire that in instead if you'd rather have that.
 
 Files changed / added
 ----------------------
-  lib/address-suggest.ts            (NEW) - the free suggestion helper
+  lib/address-suggest.ts            (MODIFIED — better line1 + no-match handling)
   app/checkout/page.tsx             (MODIFIED)
   app/account/addresses/page.tsx    (MODIFIED)
 
 How to apply
 -------------
-Option A (recommended) — just copy these 3 files into your local clone,
-overwriting the existing app/checkout/page.tsx and
-app/account/addresses/page.tsx, then:
+Copy these 3 files into your local clone, overwriting the existing
+app/checkout/page.tsx and app/account/addresses/page.tsx, then:
 
     git add lib/address-suggest.ts app/checkout/page.tsx app/account/addresses/page.tsx
-    git commit -m "Add free address autosuggest to checkout & saved addresses"
+    git commit -m "Improve free address autosuggest: fix line1 collapsing + empty-result feedback"
     git push
 
-Option B — apply the included CHANGES.diff instead:
-
-    git apply CHANGES.diff
-    git add lib/address-suggest.ts
-    git commit -m "Add free address autosuggest to checkout & saved addresses"
-    git push
-
-Notes
-------
-- No .env changes needed, no new dependencies.
-- If OpenStreetMap's API is ever slow/unavailable, suggestions just don't
-  show up — checkout is never blocked by it.
+Or apply CHANGES.diff directly with: git apply CHANGES.diff

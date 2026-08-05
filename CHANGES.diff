@@ -1,5 +1,5 @@
 diff --git a/app/account/addresses/page.tsx b/app/account/addresses/page.tsx
-index ce6a6c5..bec7aa2 100644
+index ce6a6c5..1a05533 100644
 --- a/app/account/addresses/page.tsx
 +++ b/app/account/addresses/page.tsx
 @@ -1,6 +1,6 @@
@@ -18,7 +18,7 @@ index ce6a6c5..bec7aa2 100644
  
  const emptyForm = {
    full_name: '',
-@@ -36,6 +37,11 @@ export default function AddressesPage() {
+@@ -36,6 +37,12 @@ export default function AddressesPage() {
    const [editing, setEditing] = useState<Address | null>(null);
    const [form, setForm] = useState(emptyForm);
    const [saving, setSaving] = useState(false);
@@ -26,11 +26,12 @@ index ce6a6c5..bec7aa2 100644
 +  // "Address line 1" field — no API key needed, see lib/address-suggest.ts.
 +  const [line1Suggestions, setLine1Suggestions] = useState<AddressSuggestion[]>([]);
 +  const [showLine1Suggestions, setShowLine1Suggestions] = useState(false);
++  const [line1SearchedEmpty, setLine1SearchedEmpty] = useState(false);
 +  const suggestionJustPickedRef = useRef(false);
  
    const load = async () => {
      setLoading(true);
-@@ -52,6 +58,43 @@ export default function AddressesPage() {
+@@ -52,6 +59,46 @@ export default function AddressesPage() {
      load();
    }, []);
  
@@ -40,9 +41,10 @@ index ce6a6c5..bec7aa2 100644
 +      suggestionJustPickedRef.current = false;
 +      return;
 +    }
-+    if (form.line1.trim().length < 4) {
++    if (form.line1.trim().length < 3) {
 +      setLine1Suggestions([]);
 +      setShowLine1Suggestions(false);
++      setLine1SearchedEmpty(false);
 +      return;
 +    }
 +    const controller = new AbortController();
@@ -50,6 +52,7 @@ index ce6a6c5..bec7aa2 100644
 +      fetchAddressSuggestions(form.line1, controller.signal).then((results) => {
 +        setLine1Suggestions(results);
 +        setShowLine1Suggestions(results.length > 0);
++        setLine1SearchedEmpty(results.length === 0);
 +      });
 +    }, 400);
 +    return () => {
@@ -62,6 +65,7 @@ index ce6a6c5..bec7aa2 100644
 +    suggestionJustPickedRef.current = true;
 +    setShowLine1Suggestions(false);
 +    setLine1Suggestions([]);
++    setLine1SearchedEmpty(false);
 +    setForm((f) => ({
 +      ...f,
 +      line1: s.line1,
@@ -74,7 +78,7 @@ index ce6a6c5..bec7aa2 100644
    const openNew = () => {
      setEditing(null);
      setForm(emptyForm);
-@@ -163,12 +206,32 @@ export default function AddressesPage() {
+@@ -163,12 +210,37 @@ export default function AddressesPage() {
                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
                />
              </div>
@@ -105,11 +109,16 @@ index ce6a6c5..bec7aa2 100644
 +                  ))}
 +                </ul>
 +              )}
++              {!showLine1Suggestions && line1SearchedEmpty && (
++                <p className="text-[11px] text-muted-foreground">
++                  No matches found — you can type your full address in manually.
++                </p>
++              )}
              </div>
              <div className="space-y-1.5 sm:col-span-2">
                <Label>Address line 2 (optional)</Label>
 diff --git a/app/checkout/page.tsx b/app/checkout/page.tsx
-index 91074f0..bdad917 100644
+index 91074f0..7bacdb8 100644
 --- a/app/checkout/page.tsx
 +++ b/app/checkout/page.tsx
 @@ -36,6 +36,7 @@ import {
@@ -120,7 +129,7 @@ index 91074f0..bdad917 100644
  import {
    CheckoutBumpSettings,
    DEFAULT_CHECKOUT_BUMP_SETTINGS,
-@@ -204,6 +205,16 @@ export default function CheckoutPage() {
+@@ -204,6 +205,19 @@ export default function CheckoutPage() {
    // false the moment the shopper edits either field themselves.
    const cityAutoFilledRef = useRef(false);
    const stateAutoFilledRef = useRef(false);
@@ -131,13 +140,16 @@ index 91074f0..bdad917 100644
 +  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
 +  const [showAddressSuggestions, setShowAddressSuggestions] = useState(false);
 +  const [suggestLoading, setSuggestLoading] = useState(false);
++  // True once a search has actually run and come back empty, so we can show
++  // a "no matches — type it in manually" hint instead of just nothing.
++  const [suggestSearchedEmpty, setSuggestSearchedEmpty] = useState(false);
 +  // True right after the shopper picks a suggestion, so the debounce effect
 +  // below doesn't immediately re-query and reopen the dropdown.
 +  const suggestionJustPickedRef = useRef(false);
  
    // Bug fix: clicking "Log In" / "Create Account" from the resell prompt used
    // to send the shopper to /login or /signup and back, which remounts this
-@@ -523,6 +534,54 @@ export default function CheckoutPage() {
+@@ -523,6 +537,57 @@ export default function CheckoutPage() {
      // eslint-disable-next-line react-hooks/exhaustive-deps
    }, [pincode]);
  
@@ -149,9 +161,10 @@ index 91074f0..bdad917 100644
 +      suggestionJustPickedRef.current = false;
 +      return;
 +    }
-+    if (addressLine1.trim().length < 4) {
++    if (addressLine1.trim().length < 3) {
 +      setAddressSuggestions([]);
 +      setShowAddressSuggestions(false);
++      setSuggestSearchedEmpty(false);
 +      return;
 +    }
 +    const controller = new AbortController();
@@ -161,6 +174,7 @@ index 91074f0..bdad917 100644
 +        .then((results) => {
 +          setAddressSuggestions(results);
 +          setShowAddressSuggestions(results.length > 0);
++          setSuggestSearchedEmpty(results.length === 0);
 +        })
 +        .finally(() => setSuggestLoading(false));
 +    }, 400);
@@ -176,6 +190,7 @@ index 91074f0..bdad917 100644
 +    setAddressLine1(s.line1);
 +    setShowAddressSuggestions(false);
 +    setAddressSuggestions([]);
++    setSuggestSearchedEmpty(false);
 +    if (s.city) {
 +      cityAutoFilledRef.current = true;
 +      setCity(s.city);
@@ -192,7 +207,7 @@ index 91074f0..bdad917 100644
    useEffect(() => {
      fetchLoyaltySettings().then(setLoyaltySettings).catch(() => {
        // fall back to defaults already set above
-@@ -1317,17 +1376,43 @@ export default function CheckoutPage() {
+@@ -1317,17 +1382,48 @@ export default function CheckoutPage() {
                <h2 className="font-serif text-lg font-bold text-primary">Shipping Address</h2>
              </div>
              <div className="grid gap-4">
@@ -219,6 +234,11 @@ index 91074f0..bdad917 100644
                  />
 +                {suggestLoading && (
 +                  <p className="text-[11px] text-muted-foreground">Searching addresses…</p>
++                )}
++                {!suggestLoading && suggestSearchedEmpty && (
++                  <p className="text-[11px] text-muted-foreground">
++                    No matches found — you can type your full address in manually.
++                  </p>
 +                )}
 +                {showAddressSuggestions && addressSuggestions.length > 0 && (
 +                  <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-auto rounded-md border border-border bg-popover shadow-md">
