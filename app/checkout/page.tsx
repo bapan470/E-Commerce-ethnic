@@ -165,8 +165,19 @@ export default function CheckoutPage() {
   // effect below (which normally auto-fills the customer's default address
   // once we know who they are) doesn't clobber it.
   const draftRestoredRef = useRef(false);
+  // See preserveExisting above — true unless the restored draft was saved
+  // by the deliberate "Log in" link, in which case we let a saved address
+  // apply on top of it once the account is known.
+  const suppressSavedAddressAutoApplyRef = useRef(false);
 
-  const saveAddressDraft = () => {
+  // preserveExisting=true means "never let a saved address silently
+  // override this draft" (used for accidental-refresh protection and the
+  // resale login flow, where we must keep exactly what the shopper typed).
+  // preserveExisting=false means "this login was explicitly to fetch a
+  // saved address" (our Contact Information "Log in" link) — in that case
+  // we WANT the account's default address to apply once we know who they
+  // are, instead of leaving the guest draft in place.
+  const saveAddressDraft = (preserveExisting: boolean = true) => {
     if (typeof window === 'undefined') return;
     try {
       sessionStorage.setItem(
@@ -182,6 +193,7 @@ export default function CheckoutPage() {
           stateName,
           pincode,
           country,
+          preserveExisting,
         })
       );
     } catch {
@@ -232,6 +244,7 @@ export default function CheckoutPage() {
         stateName: string;
         pincode: string;
         country: string;
+        preserveExisting: boolean;
       }>;
       setEmail(draft.email || '');
       setFirstName(draft.firstName || '');
@@ -246,6 +259,10 @@ export default function CheckoutPage() {
       setSelectedAddressId('new');
       setShowAddressForm(true);
       draftRestoredRef.current = true;
+      // Older drafts (saved before this flag existed) default to true —
+      // safer to preserve them than risk silently swapping in a saved
+      // address on an old, already-in-flight draft.
+      suppressSavedAddressAutoApplyRef.current = draft.preserveExisting !== false;
     } catch {
       // Corrupt/unreadable draft — ignore and fall back to normal behaviour.
     }
@@ -328,14 +345,19 @@ export default function CheckoutPage() {
     fetchAddresses()
       .then((list) => {
         setSavedAddresses(list);
-        // If we just restored an in-progress address draft (shopper logged
-        // in / signed up mid-checkout), keep what they typed instead of
-        // silently swapping in their saved default address.
-        if (draftRestoredRef.current) return;
+        // If we just restored an in-progress address draft that must be
+        // preserved (resale login, or refresh/back-button recovery), keep
+        // what the shopper typed instead of silently swapping in their
+        // saved default address.
+        if (suppressSavedAddressAutoApplyRef.current) return;
         const preferred = list.find((a) => a.is_default) || list[0];
         if (preferred) {
           setSelectedAddressId(preferred.id);
           applySavedAddress(preferred);
+          // They either arrived fresh (no draft) or explicitly used the
+          // "Log in" link to fetch this address — either way, show the
+          // compact saved-address summary instead of the editable form.
+          setShowAddressForm(false);
         }
       })
       .catch(() => {});
@@ -644,11 +666,13 @@ export default function CheckoutPage() {
 
   // Lets a guest who's mid-checkout decide to log in (e.g. to use a saved
   // address or loyalty points) without losing whatever they've already
-  // typed — same draft-save-and-restore trick used for the resale login
-  // flow above, just reachable directly from Contact Information instead
-  // of being hidden behind the "Resell this product" checkbox.
+  // typed if their account turns out to have no saved address — same
+  // draft-save-and-restore trick as the resale login flow above, just
+  // reachable directly from Contact Information. Unlike the resale flow,
+  // this one explicitly wants their saved default address applied once
+  // we know who they are, so we pass preserveExisting=false.
   const goToLoginFromCheckout = () => {
-    saveAddressDraft();
+    saveAddressDraft(false);
     router.push('/login?next=/checkout');
   };
 
@@ -1146,7 +1170,11 @@ export default function CheckoutPage() {
                   <h2 className="font-serif text-lg font-bold text-primary">
                     Contact Information
                   </h2>
-                  {!user && (
+                  {user ? (
+                    <span className="shrink-0 text-sm font-medium text-green-600">
+                      ✓ Logged in as {user.email}
+                    </span>
+                  ) : (
                     <button
                       type="button"
                       onClick={goToLoginFromCheckout}

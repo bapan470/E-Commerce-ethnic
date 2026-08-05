@@ -1,5 +1,5 @@
 diff --git a/app/checkout/page.tsx b/app/checkout/page.tsx
-index 4e17e48..8728221 100644
+index 4e17e48..07198ae 100644
 --- a/app/checkout/page.tsx
 +++ b/app/checkout/page.tsx
 @@ -147,6 +147,12 @@ export default function CheckoutPage() {
@@ -15,7 +15,37 @@ index 4e17e48..8728221 100644
  
    // Bug fix: clicking "Log In" / "Create Account" from the resell prompt used
    // to send the shopper to /login or /signup and back, which remounts this
-@@ -184,6 +190,29 @@ export default function CheckoutPage() {
+@@ -159,8 +165,19 @@ export default function CheckoutPage() {
+   // effect below (which normally auto-fills the customer's default address
+   // once we know who they are) doesn't clobber it.
+   const draftRestoredRef = useRef(false);
+-
+-  const saveAddressDraft = () => {
++  // See preserveExisting above — true unless the restored draft was saved
++  // by the deliberate "Log in" link, in which case we let a saved address
++  // apply on top of it once the account is known.
++  const suppressSavedAddressAutoApplyRef = useRef(false);
++
++  // preserveExisting=true means "never let a saved address silently
++  // override this draft" (used for accidental-refresh protection and the
++  // resale login flow, where we must keep exactly what the shopper typed).
++  // preserveExisting=false means "this login was explicitly to fetch a
++  // saved address" (our Contact Information "Log in" link) — in that case
++  // we WANT the account's default address to apply once we know who they
++  // are, instead of leaving the guest draft in place.
++  const saveAddressDraft = (preserveExisting: boolean = true) => {
+     if (typeof window === 'undefined') return;
+     try {
+       sessionStorage.setItem(
+@@ -176,6 +193,7 @@ export default function CheckoutPage() {
+           stateName,
+           pincode,
+           country,
++          preserveExisting,
+         })
+       );
+     } catch {
+@@ -184,6 +202,29 @@ export default function CheckoutPage() {
      }
    };
  
@@ -45,7 +75,26 @@ index 4e17e48..8728221 100644
    // Runs once on mount, before we know whether the shopper is logged in, so
    // it always wins over the saved-address auto-fill below.
    useEffect(() => {
-@@ -230,6 +259,11 @@ export default function CheckoutPage() {
+@@ -203,6 +244,7 @@ export default function CheckoutPage() {
+         stateName: string;
+         pincode: string;
+         country: string;
++        preserveExisting: boolean;
+       }>;
+       setEmail(draft.email || '');
+       setFirstName(draft.firstName || '');
+@@ -217,6 +259,10 @@ export default function CheckoutPage() {
+       setSelectedAddressId('new');
+       setShowAddressForm(true);
+       draftRestoredRef.current = true;
++      // Older drafts (saved before this flag existed) default to true —
++      // safer to preserve them than risk silently swapping in a saved
++      // address on an old, already-in-flight draft.
++      suppressSavedAddressAutoApplyRef.current = draft.preserveExisting !== false;
+     } catch {
+       // Corrupt/unreadable draft — ignore and fall back to normal behaviour.
+     }
+@@ -230,6 +276,11 @@ export default function CheckoutPage() {
      setShipPhone(addr.phone || '');
      setAddressLine1(addr.line1 || '');
      setAddressLine2(addr.line2 || '');
@@ -57,7 +106,31 @@ index 4e17e48..8728221 100644
      setCity(addr.city || '');
      setStateName(addr.state || '');
      setPincode(addr.pincode || '');
-@@ -387,11 +421,26 @@ export default function CheckoutPage() {
+@@ -294,14 +345,19 @@ export default function CheckoutPage() {
+     fetchAddresses()
+       .then((list) => {
+         setSavedAddresses(list);
+-        // If we just restored an in-progress address draft (shopper logged
+-        // in / signed up mid-checkout), keep what they typed instead of
+-        // silently swapping in their saved default address.
+-        if (draftRestoredRef.current) return;
++        // If we just restored an in-progress address draft that must be
++        // preserved (resale login, or refresh/back-button recovery), keep
++        // what the shopper typed instead of silently swapping in their
++        // saved default address.
++        if (suppressSavedAddressAutoApplyRef.current) return;
+         const preferred = list.find((a) => a.is_default) || list[0];
+         if (preferred) {
+           setSelectedAddressId(preferred.id);
+           applySavedAddress(preferred);
++          // They either arrived fresh (no draft) or explicitly used the
++          // "Log in" link to fetch this address — either way, show the
++          // compact saved-address summary instead of the editable form.
++          setShowAddressForm(false);
+         }
+       })
+       .catch(() => {});
+@@ -387,11 +443,26 @@ export default function CheckoutPage() {
      }
      let cancelled = false;
      checkPincodeServiceability(pincode).then((res) => {
@@ -85,7 +158,7 @@ index 4e17e48..8728221 100644
    }, [pincode]);
  
    useEffect(() => {
-@@ -454,7 +503,9 @@ export default function CheckoutPage() {
+@@ -454,7 +525,9 @@ export default function CheckoutPage() {
    };
  
    // Clears whichever mode produced this order — the single Buy Now item, or
@@ -96,7 +169,7 @@ index 4e17e48..8728221 100644
    const clearOrderedItems = () => {
      if (isBuyNow) {
        clearBuyNow();
-@@ -462,6 +513,7 @@ export default function CheckoutPage() {
+@@ -462,6 +535,7 @@ export default function CheckoutPage() {
      } else {
        clearCart();
      }
@@ -104,24 +177,26 @@ index 4e17e48..8728221 100644
    };
  
    // +/- stepper in the order summary. Routes to whichever store actually
-@@ -590,6 +642,16 @@ export default function CheckoutPage() {
+@@ -590,6 +664,18 @@ export default function CheckoutPage() {
      router.push('/login?next=/checkout');
    };
  
 +  // Lets a guest who's mid-checkout decide to log in (e.g. to use a saved
 +  // address or loyalty points) without losing whatever they've already
-+  // typed — same draft-save-and-restore trick used for the resale login
-+  // flow above, just reachable directly from Contact Information instead
-+  // of being hidden behind the "Resell this product" checkbox.
++  // typed if their account turns out to have no saved address — same
++  // draft-save-and-restore trick as the resale login flow above, just
++  // reachable directly from Contact Information. Unlike the resale flow,
++  // this one explicitly wants their saved default address applied once
++  // we know who they are, so we pass preserveExisting=false.
 +  const goToLoginFromCheckout = () => {
-+    saveAddressDraft();
++    saveAddressDraft(false);
 +    router.push('/login?next=/checkout');
 +  };
 +
    const goToResaleSignup = () => {
      saveAddressDraft();
      setShowResaleLoginPrompt(false);
-@@ -1080,15 +1142,27 @@ export default function CheckoutPage() {
+@@ -1080,15 +1166,31 @@ export default function CheckoutPage() {
              <>
                {/* Contact */}
                <section className="rounded-lg border border-border/60 bg-card p-5">
@@ -132,7 +207,11 @@ index 4e17e48..8728221 100644
 +                  <h2 className="font-serif text-lg font-bold text-primary">
 +                    Contact Information
 +                  </h2>
-+                  {!user && (
++                  {user ? (
++                    <span className="shrink-0 text-sm font-medium text-green-600">
++                      ✓ Logged in as {user.email}
++                    </span>
++                  ) : (
 +                    <button
 +                      type="button"
 +                      onClick={goToLoginFromCheckout}
@@ -152,7 +231,7 @@ index 4e17e48..8728221 100644
                    required
                    placeholder="Aanya"
                    value={firstName}
-@@ -1100,6 +1174,7 @@ export default function CheckoutPage() {
+@@ -1100,6 +1202,7 @@ export default function CheckoutPage() {
                  <Input
                    id="lastName"
                    name="lastName"
@@ -160,7 +239,7 @@ index 4e17e48..8728221 100644
                    required
                    placeholder="Sharma"
                    value={lastName}
-@@ -1112,6 +1187,7 @@ export default function CheckoutPage() {
+@@ -1112,6 +1215,7 @@ export default function CheckoutPage() {
                    id="email"
                    name="email"
                    type="email"
@@ -168,7 +247,7 @@ index 4e17e48..8728221 100644
                    required
                    placeholder="aanya@example.com"
                    value={email}
-@@ -1127,6 +1203,7 @@ export default function CheckoutPage() {
+@@ -1127,6 +1231,7 @@ export default function CheckoutPage() {
                    id="phone"
                    name="phone"
                    type="tel"
@@ -176,7 +255,7 @@ index 4e17e48..8728221 100644
                    required
                    placeholder="+91 98765 43210"
                    value={shipPhone}
-@@ -1147,6 +1224,7 @@ export default function CheckoutPage() {
+@@ -1147,6 +1252,7 @@ export default function CheckoutPage() {
                  <Input
                    id="address"
                    name="address"
@@ -184,7 +263,7 @@ index 4e17e48..8728221 100644
                    required
                    placeholder="12, MG Road, Apt 304"
                    value={addressLine1}
-@@ -1158,21 +1236,46 @@ export default function CheckoutPage() {
+@@ -1158,21 +1264,46 @@ export default function CheckoutPage() {
                  <Input
                    id="address2"
                    name="address2"
@@ -232,7 +311,7 @@ index 4e17e48..8728221 100644
                    />
                  </div>
                  <div className="grid gap-1.5">
-@@ -1180,36 +1283,27 @@ export default function CheckoutPage() {
+@@ -1180,36 +1311,27 @@ export default function CheckoutPage() {
                    <Input
                      id="state"
                      name="state"
