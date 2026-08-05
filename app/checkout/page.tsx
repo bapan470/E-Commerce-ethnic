@@ -1167,17 +1167,21 @@ export default function CheckoutPage() {
             </section>
           ) : (
             <>
-              {/* Contact */}
-              <section className="rounded-lg border border-border/60 bg-card p-5">
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <h2 className="font-serif text-lg font-bold text-primary">
-                    Contact Information
-                  </h2>
-                  {user ? (
-                    <span className="shrink-0 text-sm font-medium text-green-600">
-                      ✓ Logged in as {user.email}
+              {/* Login status — separate box above Contact Information */}
+              <section
+                className={`mb-4 flex items-center justify-between gap-3 rounded-lg border p-4 ${
+                  user ? 'border-green-200 bg-green-50' : 'border-border/60 bg-card'
+                }`}
+              >
+                {user ? (
+                  <span className="text-sm font-medium text-green-700">
+                    ✓ Logged in as {user.email}
+                  </span>
+                ) : (
+                  <>
+                    <span className="text-sm text-muted-foreground">
+                      Checking out as a guest.
                     </span>
-                  ) : (
                     <button
                       type="button"
                       onClick={goToLoginFromCheckout}
@@ -1185,8 +1189,15 @@ export default function CheckoutPage() {
                     >
                       Already have an account? Log in
                     </button>
-                  )}
-                </div>
+                  </>
+                )}
+              </section>
+
+              {/* Contact */}
+              <section className="rounded-lg border border-border/60 bg-card p-5">
+                <h2 className="mb-4 font-serif text-lg font-bold text-primary">
+                  Contact Information
+                </h2>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-1.5">
                 <Label htmlFor="firstName">First name *</Label>

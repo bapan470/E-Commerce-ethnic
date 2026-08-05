@@ -1,5 +1,5 @@
 diff --git a/app/checkout/page.tsx b/app/checkout/page.tsx
-index 4e17e48..c4c88f8 100644
+index 4e17e48..19cf41a 100644
 --- a/app/checkout/page.tsx
 +++ b/app/checkout/page.tsx
 @@ -147,6 +147,12 @@ export default function CheckoutPage() {
@@ -200,22 +200,25 @@ index 4e17e48..c4c88f8 100644
    const goToResaleSignup = () => {
      saveAddressDraft();
      setShowResaleLoginPrompt(false);
-@@ -1080,15 +1169,31 @@ export default function CheckoutPage() {
+@@ -1078,6 +1167,32 @@ export default function CheckoutPage() {
+             </section>
+           ) : (
              <>
-               {/* Contact */}
-               <section className="rounded-lg border border-border/60 bg-card p-5">
--                <h2 className="mb-4 font-serif text-lg font-bold text-primary">
--                  Contact Information
--                </h2>
-+                <div className="mb-4 flex items-center justify-between gap-3">
-+                  <h2 className="font-serif text-lg font-bold text-primary">
-+                    Contact Information
-+                  </h2>
-+                  {user ? (
-+                    <span className="shrink-0 text-sm font-medium text-green-600">
-+                      ✓ Logged in as {user.email}
++              {/* Login status — separate box above Contact Information */}
++              <section
++                className={`mb-4 flex items-center justify-between gap-3 rounded-lg border p-4 ${
++                  user ? 'border-green-200 bg-green-50' : 'border-border/60 bg-card'
++                }`}
++              >
++                {user ? (
++                  <span className="text-sm font-medium text-green-700">
++                    ✓ Logged in as {user.email}
++                  </span>
++                ) : (
++                  <>
++                    <span className="text-sm text-muted-foreground">
++                      Checking out as a guest.
 +                    </span>
-+                  ) : (
 +                    <button
 +                      type="button"
 +                      onClick={goToLoginFromCheckout}
@@ -223,11 +226,14 @@ index 4e17e48..c4c88f8 100644
 +                    >
 +                      Already have an account? Log in
 +                    </button>
-+                  )}
-+                </div>
-             <div className="grid gap-4 sm:grid-cols-2">
-               <div className="grid gap-1.5">
-                 <Label htmlFor="firstName">First name *</Label>
++                  </>
++                )}
++              </section>
++
+               {/* Contact */}
+               <section className="rounded-lg border border-border/60 bg-card p-5">
+                 <h2 className="mb-4 font-serif text-lg font-bold text-primary">
+@@ -1089,6 +1204,7 @@ export default function CheckoutPage() {
                  <Input
                    id="firstName"
                    name="firstName"
@@ -235,7 +241,7 @@ index 4e17e48..c4c88f8 100644
                    required
                    placeholder="Aanya"
                    value={firstName}
-@@ -1100,6 +1205,7 @@ export default function CheckoutPage() {
+@@ -1100,6 +1216,7 @@ export default function CheckoutPage() {
                  <Input
                    id="lastName"
                    name="lastName"
@@ -243,7 +249,7 @@ index 4e17e48..c4c88f8 100644
                    required
                    placeholder="Sharma"
                    value={lastName}
-@@ -1112,6 +1218,7 @@ export default function CheckoutPage() {
+@@ -1112,6 +1229,7 @@ export default function CheckoutPage() {
                    id="email"
                    name="email"
                    type="email"
@@ -251,7 +257,7 @@ index 4e17e48..c4c88f8 100644
                    required
                    placeholder="aanya@example.com"
                    value={email}
-@@ -1127,6 +1234,7 @@ export default function CheckoutPage() {
+@@ -1127,6 +1245,7 @@ export default function CheckoutPage() {
                    id="phone"
                    name="phone"
                    type="tel"
@@ -259,7 +265,7 @@ index 4e17e48..c4c88f8 100644
                    required
                    placeholder="+91 98765 43210"
                    value={shipPhone}
-@@ -1147,6 +1255,7 @@ export default function CheckoutPage() {
+@@ -1147,6 +1266,7 @@ export default function CheckoutPage() {
                  <Input
                    id="address"
                    name="address"
@@ -267,7 +273,7 @@ index 4e17e48..c4c88f8 100644
                    required
                    placeholder="12, MG Road, Apt 304"
                    value={addressLine1}
-@@ -1158,21 +1267,46 @@ export default function CheckoutPage() {
+@@ -1158,21 +1278,46 @@ export default function CheckoutPage() {
                  <Input
                    id="address2"
                    name="address2"
@@ -315,7 +321,7 @@ index 4e17e48..c4c88f8 100644
                    />
                  </div>
                  <div className="grid gap-1.5">
-@@ -1180,36 +1314,27 @@ export default function CheckoutPage() {
+@@ -1180,36 +1325,27 @@ export default function CheckoutPage() {
                    <Input
                      id="state"
                      name="state"
