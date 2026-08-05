@@ -287,6 +287,10 @@ export default function CheckoutPage() {
     setCity(addr.city || '');
     setStateName(addr.state || '');
     setPincode(addr.pincode || '');
+    // A real saved address is now in place — any leftover guest draft from
+    // earlier in this tab's session (e.g. typed before logging in) is now
+    // stale and must not survive to confuse a later reload/remount.
+    clearAddressDraft();
   };
 
   const handleSelectSavedAddress = (id: string) => {
