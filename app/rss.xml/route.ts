@@ -14,6 +14,11 @@
 // same product instead of treating them as unrelated duplicates. This
 // mirrors the variant logic already used in app/api/merchant-feed/route.ts
 // for Google Merchant Center.
+//
+// FIX (2026-08-05): Added <enclosure> and <media:content> tags so Pinterest
+// can find images in the feed. Pinterest's RSS crawler requires these standard
+// image tags -- <g:image_link> alone is not picked up by the Pinterest RSS
+// feed parser even though it works for Google Merchant Center.
 
 import { fetchProductsServer } from "@/lib/products-api-server";
 import { resolveGoogleProductCategory } from "@/lib/google-category";
@@ -93,12 +98,21 @@ export async function GET() {
     const { id, itemGroupId, title, link, description, image, inStock, price, color, size, category, productName } =
       opts;
 
+    // Build image tags only when we actually have a URL.
+    // Pinterest requires <enclosure> and/or <media:content> to detect images;
+    // <g:image_link> alone is ignored by the Pinterest RSS crawler.
+    const imageXml = image
+      ? `
+      <enclosure url="${image}" type="image/webp" />
+      <media:content url="${image}" medium="image" type="image/webp" />`
+      : "";
+
     return `
     <item>
       <title>${escapeXml(title)}</title>
       <link>${link}</link>
       <description>${escapeXml(description)}</description>
-      <guid isPermaLink="false">${escapeXml(id)}</guid>
+      <guid isPermaLink="false">${escapeXml(id)}</guid>${imageXml}
       <g:id>${escapeXml(id)}</g:id>
       <g:item_group_id>${escapeXml(itemGroupId)}</g:item_group_id>
       <g:title>${escapeXml(title)}</g:title>
@@ -197,7 +211,9 @@ export async function GET() {
     .join("");
 
   const rss = `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">
+<rss version="2.0"
+  xmlns:g="http://base.google.com/ns/1.0"
+  xmlns:media="http://search.yahoo.com/mrss/">
   <channel>
     <title>AruhiHandlooms</title>
     <link>${SITE_URL}</link>
