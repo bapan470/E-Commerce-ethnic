@@ -616,6 +616,16 @@ export default function CheckoutPage() {
     router.push('/login?next=/checkout');
   };
 
+  // Lets a guest who's mid-checkout decide to log in (e.g. to use a saved
+  // address or loyalty points) without losing whatever they've already
+  // typed — same draft-save-and-restore trick used for the resale login
+  // flow above, just reachable directly from Contact Information instead
+  // of being hidden behind the "Resell this product" checkbox.
+  const goToLoginFromCheckout = () => {
+    saveAddressDraft();
+    router.push('/login?next=/checkout');
+  };
+
   const goToResaleSignup = () => {
     saveAddressDraft();
     setShowResaleLoginPrompt(false);
@@ -1106,9 +1116,20 @@ export default function CheckoutPage() {
             <>
               {/* Contact */}
               <section className="rounded-lg border border-border/60 bg-card p-5">
-                <h2 className="mb-4 font-serif text-lg font-bold text-primary">
-                  Contact Information
-                </h2>
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <h2 className="font-serif text-lg font-bold text-primary">
+                    Contact Information
+                  </h2>
+                  {!user && (
+                    <button
+                      type="button"
+                      onClick={goToLoginFromCheckout}
+                      className="shrink-0 text-sm font-medium text-secondary underline-offset-2 hover:underline"
+                    >
+                      Already have an account? Log in
+                    </button>
+                  )}
+                </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-1.5">
                 <Label htmlFor="firstName">First name *</Label>
