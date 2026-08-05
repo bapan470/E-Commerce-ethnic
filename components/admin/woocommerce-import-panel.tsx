@@ -209,6 +209,18 @@ export default function WooCommerceImportPanel() {
     return customers.filter((c) => c.opted_out && matchesSearch(c, q));
   }, [customers, search]);
 
+  // Totals across every campaign ever sent, for the quick-glance summary
+  // cards next to the Audience filters (section 2) -- the full per-campaign
+  // breakdown still lives in the "4. Pehle bheji gayi campaigns" table below.
+  const campaignTotals = useMemo(() => {
+    const sent = history.reduce((sum, h) => sum + h.sent, 0);
+    const opened = history.reduce((sum, h) => sum + h.opened, 0);
+    const clicked = history.reduce((sum, h) => sum + h.clicked, 0);
+    const failed = history.reduce((sum, h) => sum + h.failed, 0);
+    const openRate = sent > 0 ? Math.round((opened / sent) * 100) : 0;
+    return { sent, opened, clicked, failed, openRate };
+  }, [history]);
+
   useEffect(() => {
     setVisibleCount(ROWS_PER_PAGE);
   }, [segmentFilter, search, storeFilter]);
@@ -491,6 +503,34 @@ export default function WooCommerceImportPanel() {
             </div>
           </div>
         </div>
+
+        {/* Quick-glance campaign stats -- same numbers as the "Pehle bheji
+            gayi campaigns" table below, just totalled across every campaign
+            so you don't have to scroll down to check them. */}
+        {!historyLoading && history.length > 0 && (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            <div className="rounded-md border bg-muted/20 p-2.5">
+              <p className="text-[11px] text-muted-foreground">Sent</p>
+              <p className="text-lg font-semibold">{campaignTotals.sent}</p>
+            </div>
+            <div className="rounded-md border bg-muted/20 p-2.5">
+              <p className="text-[11px] text-muted-foreground">Opened</p>
+              <p className="text-lg font-semibold">{campaignTotals.opened}</p>
+            </div>
+            <div className="rounded-md border bg-muted/20 p-2.5">
+              <p className="text-[11px] text-muted-foreground">Open rate</p>
+              <p className="text-lg font-semibold">{campaignTotals.openRate}%</p>
+            </div>
+            <div className="rounded-md border bg-muted/20 p-2.5">
+              <p className="text-[11px] text-muted-foreground">Clicked</p>
+              <p className="text-lg font-semibold">{campaignTotals.clicked}</p>
+            </div>
+            <div className="rounded-md border bg-muted/20 p-2.5">
+              <p className="text-[11px] text-muted-foreground">Failed</p>
+              <p className="text-lg font-semibold">{campaignTotals.failed}</p>
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted-foreground">Audience:</span>
