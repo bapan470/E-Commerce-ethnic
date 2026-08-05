@@ -1142,6 +1142,33 @@ export default function CheckoutPage() {
 
       <form onSubmit={onSubmit} className="grid gap-8 lg:grid-cols-3">
         <div className="lg:col-span-2">
+          {/* Login status — always shown, whether the saved-address summary
+              or the editable guest form is what's displayed below it. */}
+          <section
+            className={`mb-4 flex items-center justify-between gap-3 rounded-lg border p-4 ${
+              user ? 'border-green-200 bg-green-50' : 'border-border/60 bg-card'
+            }`}
+          >
+            {user ? (
+              <span className="text-sm font-medium text-green-700">
+                ✓ Logged in as {user.email}
+              </span>
+            ) : (
+              <>
+                <span className="text-sm text-muted-foreground">
+                  Checking out as a guest.
+                </span>
+                <button
+                  type="button"
+                  onClick={goToLoginFromCheckout}
+                  className="shrink-0 text-sm font-medium text-secondary underline-offset-2 hover:underline"
+                >
+                  Already have an account? Log in
+                </button>
+              </>
+            )}
+          </section>
+
           {hasSavedAddressSummary ? (
             <section className="rounded-lg border border-border/60 bg-card p-5">
               <div className="mb-3 flex items-center justify-between gap-3">
@@ -1171,32 +1198,6 @@ export default function CheckoutPage() {
             </section>
           ) : (
             <>
-              {/* Login status — separate box above Contact Information */}
-              <section
-                className={`mb-4 flex items-center justify-between gap-3 rounded-lg border p-4 ${
-                  user ? 'border-green-200 bg-green-50' : 'border-border/60 bg-card'
-                }`}
-              >
-                {user ? (
-                  <span className="text-sm font-medium text-green-700">
-                    ✓ Logged in as {user.email}
-                  </span>
-                ) : (
-                  <>
-                    <span className="text-sm text-muted-foreground">
-                      Checking out as a guest.
-                    </span>
-                    <button
-                      type="button"
-                      onClick={goToLoginFromCheckout}
-                      className="shrink-0 text-sm font-medium text-secondary underline-offset-2 hover:underline"
-                    >
-                      Already have an account? Log in
-                    </button>
-                  </>
-                )}
-              </section>
-
               {/* Contact */}
               <section className="rounded-lg border border-border/60 bg-card p-5">
                 <h2 className="mb-4 font-serif text-lg font-bold text-primary">
