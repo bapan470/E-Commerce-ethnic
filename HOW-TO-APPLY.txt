@@ -1,41 +1,46 @@
-Admin Orders me "select karke delete" option
-==============================================
+FREE ADDRESS AUTOSUGGEST — HOW TO APPLY
+========================================
 
-Kya add hua
-------------
-Admin -> Orders panel me ab checkbox se orders select karke ek saath
-delete kar sakte ho — header me "select all", har row me checkbox,
-selection hote hi "Delete Selected" wala laal bar, aur confirm popup
-(galti se delete na ho jaaye isliye).
+What this adds
+---------------
+A free, no-API-key address autosuggest dropdown under the "Street address"
+field, on both:
+  - the Checkout page shipping address form
+  - the Account > Saved Addresses form
 
-Files (isi zip me, same path pe)
----------------------------------
-  lib/orders-api.ts                        (MODIFIED)
-  app/api/admin/orders/route.ts            (MODIFIED)
-  components/admin/orders-panel.tsx        (MODIFIED)
+As the shopper types 4+ characters, it queries OpenStreetMap's free
+Nominatim search API (restricted to India) and shows matching addresses.
+Picking one fills Street address + City + State + Pincode automatically.
+No signup, no API key, no cost.
 
-Apply kaise karein (Windows)
-------------------------------
-1. Is zip ko extract karo.
-2. Extract karne se jo "app", "components", "lib" folders bane hain,
-   unhe seedha apne project folder me copy-paste kar do:
-     C:\Users\bapan\E-Commerce-ethnic\
-   Windows puchega "Replace the files in the destination?" -- Yes /
-   Replace pe click kar dena. Sirf 3 files replace hongi, baaki sab
-   (node_modules, .env, supabase, other components, etc.) untouched
-   rahega.
-3. Us folder me terminal (Git Bash / PowerShell / VS Code terminal)
-   kholke:
-     git add -A
-     git commit -m "Add select + bulk delete to admin orders"
-     git push
+This is on top of (does not replace) the existing PIN-code -> City/State
+autofill already in the checkout page.
 
-Bas itna hi -- push hote hi tumhari hosting (Netlify) apne aap
-redeploy kar degi.
+Files changed / added
+----------------------
+  lib/address-suggest.ts            (NEW) - the free suggestion helper
+  app/checkout/page.tsx             (MODIFIED)
+  app/account/addresses/page.tsx    (MODIFIED)
 
-Note
------
-Database side pehle hi safe hai (returns, tracking, reviews, loyalty
-wagera tables me ON DELETE CASCADE/SET NULL already set hai), isliye
-koi migration run karne ki zaroorat nahi -- sirf ye 3 files replace
-karni hai.
+How to apply
+-------------
+Option A (recommended) — just copy these 3 files into your local clone,
+overwriting the existing app/checkout/page.tsx and
+app/account/addresses/page.tsx, then:
+
+    git add lib/address-suggest.ts app/checkout/page.tsx app/account/addresses/page.tsx
+    git commit -m "Add free address autosuggest to checkout & saved addresses"
+    git push
+
+Option B — apply the included CHANGES.diff instead:
+
+    git apply CHANGES.diff
+    git add lib/address-suggest.ts
+    git commit -m "Add free address autosuggest to checkout & saved addresses"
+    git push
+
+Notes
+------
+- No .env changes needed, no new dependencies.
+- If OpenStreetMap's API is ever slow/unavailable, suggestions just don't
+  show up — checkout is never blocked by it.

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus, Loader2, Trash2, Pencil, Star } from 'lucide-react';
 import { fetchAddresses, upsertAddress, deleteAddress } from '@/lib/addresses-api';
 import type { Address } from '@/lib/types';
@@ -17,6 +17,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { fetchAddressSuggestions, AddressSuggestion } from '@/lib/address-suggest';
 
 const emptyForm = {
   full_name: '',
@@ -36,6 +37,11 @@ export default function AddressesPage() {
   const [editing, setEditing] = useState<Address | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  // Free street-address autosuggest (OpenStreetMap Nominatim) for the
+  // "Address line 1" field — no API key needed, see lib/address-suggest.ts.
+  const [line1Suggestions, setLine1Suggestions] = useState<AddressSuggestion[]>([]);
+  const [showLine1Suggestions, setShowLine1Suggestions] = useState(false);
+  const suggestionJustPickedRef = useRef(false);
 
   const load = async () => {
     setLoading(true);
@@ -51,6 +57,43 @@ export default function AddressesPage() {
   useEffect(() => {
     load();
   }, []);
+
+  // Debounced free address-autosuggest as the user types Address line 1.
+  useEffect(() => {
+    if (suggestionJustPickedRef.current) {
+      suggestionJustPickedRef.current = false;
+      return;
+    }
+    if (form.line1.trim().length < 4) {
+      setLine1Suggestions([]);
+      setShowLine1Suggestions(false);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      fetchAddressSuggestions(form.line1, controller.signal).then((results) => {
+        setLine1Suggestions(results);
+        setShowLine1Suggestions(results.length > 0);
+      });
+    }, 400);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [form.line1]);
+
+  const pickLine1Suggestion = (s: AddressSuggestion) => {
+    suggestionJustPickedRef.current = true;
+    setShowLine1Suggestions(false);
+    setLine1Suggestions([]);
+    setForm((f) => ({
+      ...f,
+      line1: s.line1,
+      city: s.city || f.city,
+      state: s.state || f.state,
+      pincode: s.pincode || f.pincode,
+    }));
+  };
 
   const openNew = () => {
     setEditing(null);
@@ -163,12 +206,32 @@ export default function AddressesPage() {
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
               />
             </div>
-            <div className="space-y-1.5 sm:col-span-2">
+            <div className="relative space-y-1.5 sm:col-span-2">
               <Label>Address line 1</Label>
               <Input
+                autoComplete="off"
                 value={form.line1}
                 onChange={(e) => setForm({ ...form, line1: e.target.value })}
+                onFocus={() => {
+                  if (line1Suggestions.length > 0) setShowLine1Suggestions(true);
+                }}
+                onBlur={() => setTimeout(() => setShowLine1Suggestions(false), 150)}
               />
+              {showLine1Suggestions && line1Suggestions.length > 0 && (
+                <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-auto rounded-md border border-border bg-popover shadow-md">
+                  {line1Suggestions.map((s, i) => (
+                    <li key={i}>
+                      <button
+                        type="button"
+                        onClick={() => pickLine1Suggestion(s)}
+                        className="block w-full px-3 py-2 text-left text-sm hover:bg-muted"
+                      >
+                        {s.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label>Address line 2 (optional)</Label>

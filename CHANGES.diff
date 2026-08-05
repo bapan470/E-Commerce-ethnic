@@ -1,516 +1,240 @@
-diff --git a/components/admin/product-variants-manager.tsx b/components/admin/product-variants-manager.tsx
-index a36e66c..11291e8 100644
---- a/components/admin/product-variants-manager.tsx
-+++ b/components/admin/product-variants-manager.tsx
+diff --git a/app/account/addresses/page.tsx b/app/account/addresses/page.tsx
+index ce6a6c5..bec7aa2 100644
+--- a/app/account/addresses/page.tsx
++++ b/app/account/addresses/page.tsx
 @@ -1,6 +1,6 @@
  'use client';
  
--import { useEffect, useState, FormEvent } from 'react';
-+import { useEffect, useState, FormEvent, Dispatch, SetStateAction } from 'react';
- import Image from 'next/image';
- import { Plus, Pencil, Trash2, Upload, Loader2, Star, Link2, Wand2, Video, Check, Sparkles } from 'lucide-react';
- import {
-@@ -71,6 +71,18 @@ interface VariantFormState {
-   sizes: { size: string; stockQuantity: string; priceOverride: string; sku: string }[];
- }
+-import { useEffect, useState } from 'react';
++import { useEffect, useRef, useState } from 'react';
+ import { Plus, Loader2, Trash2, Pencil, Star } from 'lucide-react';
+ import { fetchAddresses, upsertAddress, deleteAddress } from '@/lib/addresses-api';
+ import type { Address } from '@/lib/types';
+@@ -17,6 +17,7 @@ import {
+   DialogFooter,
+ } from '@/components/ui/dialog';
+ import { toast } from 'sonner';
++import { fetchAddressSuggestions, AddressSuggestion } from '@/lib/address-suggest';
  
-+/**
-+ * A colour variant added while the *product itself* hasn't been saved yet
-+ * (brand-new "Add New Product" form -- there's no real productId to attach
-+ * a `product_variants` row to). Staged entirely in memory here and lifted
-+ * up to the parent (products-panel.tsx) via `pendingVariants`/
-+ * `setPendingVariants`; the parent creates the real rows through the same
-+ * `createVariant` API call, one per staged entry, right after the product
-+ * save succeeds and a real productId exists. See onSubmit below for the
-+ * staging logic and products-panel.tsx's onSubmit for the flush.
-+ */
-+export type PendingVariant = VariantFormState & { localId: string };
-+
- // Builds the starting size rows for a brand-new variant from the sizes
- // ticked on the main product form (e.g. "Free Size, S, M, L"). Falls back
- // to "Free Size" if the product has none selected yet.
-@@ -127,6 +139,13 @@ interface Props {
-   // extra click once the edit dialog is open.
-   autoOpenAdd?: boolean;
-   onAutoOpenAddHandled?: () => void;
-+  // Staged colour variants for a brand-new product that hasn't been saved
-+  // yet (productId is null). Lifted up to the parent so it can create the
-+  // real rows right after the product itself is created. Once productId
-+  // is real, this component ignores these and talks to the API directly
-+  // like it always has.
-+  pendingVariants: PendingVariant[];
-+  setPendingVariants: Dispatch<SetStateAction<PendingVariant[]>>;
- }
- 
- /**
-@@ -146,12 +165,17 @@ export default function ProductVariantsManager({
-   productSizes,
-   autoOpenAdd,
-   onAutoOpenAddHandled,
-+  pendingVariants,
-+  setPendingVariants,
- }: Props) {
-   const [variants, setVariants] = useState<VariantWithSizes[]>([]);
-   const [loading, setLoading] = useState(false);
- 
-   const [open, setOpen] = useState(false);
-   const [editing, setEditing] = useState<VariantWithSizes | null>(null);
-+  // Set instead of `editing` when the form is editing a *staged* (pending)
-+  // variant rather than one already saved to the database.
-+  const [editingPendingId, setEditingPendingId] = useState<string | null>(null);
-   const [form, setForm] = useState<VariantFormState>(emptyVariantForm(productSizes));
+ const emptyForm = {
+   full_name: '',
+@@ -36,6 +37,11 @@ export default function AddressesPage() {
+   const [editing, setEditing] = useState<Address | null>(null);
+   const [form, setForm] = useState(emptyForm);
    const [saving, setSaving] = useState(false);
-   const [uploading, setUploading] = useState(false);
-@@ -160,6 +184,7 @@ export default function ProductVariantsManager({
-   const [cropOnImport, setCropOnImport] = useState(false);
-   const [detectingColor, setDetectingColor] = useState(false);
-   const [confirmVariant, setConfirmVariant] = useState<VariantWithSizes | null>(null);
-+  const [confirmPendingId, setConfirmPendingId] = useState<string | null>(null);
-   const [colorSuggestions, setColorSuggestions] = useState<ColorPreset[]>([]);
-   const [showColorSuggestions, setShowColorSuggestions] = useState(false);
-   const [activeSuggestion, setActiveSuggestion] = useState(-1);
-@@ -183,6 +208,7 @@ export default function ProductVariantsManager({
++  // Free street-address autosuggest (OpenStreetMap Nominatim) for the
++  // "Address line 1" field — no API key needed, see lib/address-suggest.ts.
++  const [line1Suggestions, setLine1Suggestions] = useState<AddressSuggestion[]>([]);
++  const [showLine1Suggestions, setShowLine1Suggestions] = useState(false);
++  const suggestionJustPickedRef = useRef(false);
  
+   const load = async () => {
+     setLoading(true);
+@@ -52,6 +58,43 @@ export default function AddressesPage() {
+     load();
+   }, []);
+ 
++  // Debounced free address-autosuggest as the user types Address line 1.
++  useEffect(() => {
++    if (suggestionJustPickedRef.current) {
++      suggestionJustPickedRef.current = false;
++      return;
++    }
++    if (form.line1.trim().length < 4) {
++      setLine1Suggestions([]);
++      setShowLine1Suggestions(false);
++      return;
++    }
++    const controller = new AbortController();
++    const timer = setTimeout(() => {
++      fetchAddressSuggestions(form.line1, controller.signal).then((results) => {
++        setLine1Suggestions(results);
++        setShowLine1Suggestions(results.length > 0);
++      });
++    }, 400);
++    return () => {
++      clearTimeout(timer);
++      controller.abort();
++    };
++  }, [form.line1]);
++
++  const pickLine1Suggestion = (s: AddressSuggestion) => {
++    suggestionJustPickedRef.current = true;
++    setShowLine1Suggestions(false);
++    setLine1Suggestions([]);
++    setForm((f) => ({
++      ...f,
++      line1: s.line1,
++      city: s.city || f.city,
++      state: s.state || f.state,
++      pincode: s.pincode || f.pincode,
++    }));
++  };
++
    const openNew = () => {
      setEditing(null);
-+    setEditingPendingId(null);
-     setForm({
-       ...emptyVariantForm(productSizes),
-       images: baseImage ? [baseImage] : [],
-@@ -201,8 +227,11 @@ export default function ProductVariantsManager({
-     .map((s) => s.trim())
-     .filter(Boolean);
-   const hasMultipleSizes = productSizeList.length > 1;
-+  // Once a product is saved, "existing colours" comes from the API
-+  // (`variants`); before that, it comes from what's staged in memory.
-+  const effectiveColorNames = productId ? variants.map((v) => v.color) : pendingVariants.map((p) => p.color);
-   const baseColorAlreadyVariant = baseColorName
--    ? variants.some((v) => v.color.trim().toLowerCase() === baseColorName.toLowerCase())
-+    ? effectiveColorNames.some((c) => c.trim().toLowerCase() === baseColorName.toLowerCase())
-     : false;
-   const showConvertBaseColorButton = !!baseColorName && hasMultipleSizes && !baseColorAlreadyVariant;
- 
-@@ -211,6 +240,7 @@ export default function ProductVariantsManager({
-   // price/stock per size and hits "Add Variant".
-   const openNewFromBaseColour = () => {
-     setEditing(null);
-+    setEditingPendingId(null);
-     setForm({
-       ...emptyVariantForm(productSizes),
-       color: baseColorName,
-@@ -232,8 +262,29 @@ export default function ProductVariantsManager({
-     // eslint-disable-next-line react-hooks/exhaustive-deps
-   }, [autoOpenAdd, productId]);
- 
-+  // Single-size products (the common "Free Size only" case) still use the
-+  // same manual "Add ... as variant" button as multi-size products -- see
-+  // showConvertBaseColorButton below (an earlier version of this made the
-+  // base colour auto-become a variant for single-size products, but that
-+  // surprised admins who hadn't asked for the colour to become its own
-+  // priced/stocked variant yet, so it was reverted).
-+
-+  // Opens the same form dialog pre-filled with a staged (not-yet-saved)
-+  // variant's data, so it can be edited/removed before the product itself
-+  // is saved.
-+  const openEditPending = (localId: string) => {
-+    const p = pendingVariants.find((pv) => pv.localId === localId);
-+    if (!p) return;
-+    const { localId: _drop, ...formState } = p;
-+    setEditing(null);
-+    setEditingPendingId(localId);
-+    setForm(formState);
-+    setOpen(true);
-+  };
-+
-   const openEdit = (v: VariantWithSizes) => {
-     setEditing(v);
-+    setEditingPendingId(null);
-     setForm({
-       color: v.color,
-       colorHex: v.color_hex ?? findPresetByName(v.color)?.hex ?? '',
-@@ -315,7 +366,9 @@ export default function ProductVariantsManager({
-     }
-     setDetectingColor(true);
-     try {
--      const existingColors = variants.filter((v) => v.id !== editing?.id).map((v) => v.color);
-+      const existingColors = productId
-+        ? variants.filter((v) => v.id !== editing?.id).map((v) => v.color)
-+        : pendingVariants.filter((p) => p.localId !== editingPendingId).map((p) => p.color);
-       const res = await fetch('/api/admin/detect-variant-color', {
-         method: 'POST',
-         headers: { 'Content-Type': 'application/json' },
-@@ -406,16 +459,15 @@ export default function ProductVariantsManager({
- 
-   const onSubmit = async (e: FormEvent) => {
-     e.preventDefault();
--    if (!productId) {
--      toast.error('Save the product first');
--      return;
--    }
-     if (!form.color.trim()) {
-       toast.error('Colour name is required');
-       return;
-     }
--    const nameTaken = variants.some(
--      (v) => v.id !== editing?.id && v.color.trim().toLowerCase() === form.color.trim().toLowerCase()
-+    const existingColorNames = productId
-+      ? variants.filter((v) => v.id !== editing?.id).map((v) => v.color)
-+      : pendingVariants.filter((p) => p.localId !== editingPendingId).map((p) => p.color);
-+    const nameTaken = existingColorNames.some(
-+      (c) => c.trim().toLowerCase() === form.color.trim().toLowerCase()
-     );
-     if (nameTaken) {
-       toast.error(
-@@ -433,6 +485,35 @@ export default function ProductVariantsManager({
-       return;
-     }
- 
-+    // Product hasn't been saved yet -- stage this variant in memory instead
-+    // of calling the API. products-panel.tsx creates the real rows right
-+    // after the product itself is created (see its onSubmit).
-+    if (!productId) {
-+      const cleanForm: VariantFormState = { ...form, sizes: validSizes };
-+      if (editingPendingId) {
-+        setPendingVariants((prev) =>
-+          prev.map((p) =>
-+            p.localId === editingPendingId
-+              ? { ...cleanForm, localId: editingPendingId }
-+              : cleanForm.isDefault
-+                ? { ...p, isDefault: false }
-+                : p
-+          )
-+        );
-+        toast.success('Variant updated');
-+      } else {
-+        const localId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-+        setPendingVariants((prev) => [
-+          ...(cleanForm.isDefault ? prev.map((p) => ({ ...p, isDefault: false })) : prev),
-+          { ...cleanForm, localId },
-+        ]);
-+        toast.success('Colour variant added — it will be saved once you save the product');
-+      }
-+      setOpen(false);
-+      setEditingPendingId(null);
-+      return;
-+    }
-+
-     setSaving(true);
-     try {
-       const slug = form.slug.trim() || slugify(`${productName}-${form.color}`);
-@@ -527,6 +608,12 @@ export default function ProductVariantsManager({
-   };
- 
-   const confirmDelete = async () => {
-+    if (confirmPendingId) {
-+      setPendingVariants((prev) => prev.filter((p) => p.localId !== confirmPendingId));
-+      toast.success('Variant removed');
-+      setConfirmPendingId(null);
-+      return;
-+    }
-     if (!confirmVariant || !productId) return;
-     try {
-       await deleteVariant(confirmVariant.id);
-@@ -550,21 +637,64 @@ export default function ProductVariantsManager({
-     }
-   };
- 
--  if (!productId) {
-+  const makePendingDefault = (localId: string) => {
-+    setPendingVariants((prev) => prev.map((p) => ({ ...p, isDefault: p.localId === localId })));
-+  };
-+
-+  // A brand-new product has no productId yet, so colour variants can't be
-+  // saved to the database until the product itself is saved -- but the
-+  // admin can still stage them here the moment at least one colour has
-+  // been typed into the main "Colors" field above. They're held in
-+  // `pendingVariants` and flushed to the API by products-panel.tsx right
-+  // after the product save succeeds.
-+  const hasBaseColor = (productColors ?? '').split(',').map((s) => s.trim()).filter(Boolean).length > 0;
-+  if (!productId && !hasBaseColor) {
-     return (
-       <div className="rounded-lg border border-dashed border-border/60 bg-muted/30 p-4 text-sm text-muted-foreground">
--        Save this product first — colour/size variants can be added right here once it exists.
-+        Add at least one colour above (in the &quot;Colors&quot; field) — colour/size variants can then be added
-+        right here, even before you save the product.
-       </div>
-     );
-   }
- 
-+  // Unified list the JSX below renders from -- backed by the API
-+  // (`variants`) once the product is saved, or by the in-memory staged
-+  // list (`pendingVariants`) before that.
-+  const rows = productId
-+    ? variants.map((v) => ({
-+        id: v.id,
-+        color: v.color,
-+        color_hex: v.color_hex,
-+        images: v.images,
-+        sku: v.sku,
-+        is_default: v.is_default,
-+        video: v.video,
-+        sizes: v.sizes.map((s) => ({ id: s.id, size: s.size, stock_quantity: s.stock_quantity })),
-+        pending: false as const,
-+      }))
-+    : pendingVariants.map((p) => ({
-+        id: p.localId,
-+        color: p.color,
-+        color_hex: p.colorHex || null,
-+        images: p.images,
-+        sku: p.sku || null,
-+        is_default: p.isDefault,
-+        video: p.video || null,
-+        sizes: p.sizes
-+          .filter((s) => s.size.trim())
-+          .map((s, i) => ({ id: `${p.localId}-${i}`, size: s.size, stock_quantity: Number(s.stockQuantity) || 0 })),
-+        pending: true as const,
-+      }));
-+
-   return (
-     <div className="grid gap-3 rounded-lg border border-border/60 p-3">
-       <div className="flex items-center justify-between gap-2">
-         <div>
-           <p className="text-sm font-medium">Colour &amp; size variants</p>
-           <p className="text-xs text-muted-foreground">
--            Each colour gets its own photos, SKU and per-size stock — managed right here.
-+            {productId
-+              ? 'Each colour gets its own photos, SKU and per-size stock — managed right here.'
-+              : 'Staged for now — these are created for real as soon as you save the product below.'}
-           </p>
-         </div>
-         <div className="flex shrink-0 gap-1.5">
-@@ -591,13 +721,13 @@ export default function ProductVariantsManager({
-           <Skeleton className="h-20 rounded-lg" />
-           <Skeleton className="h-20 rounded-lg" />
-         </div>
--      ) : variants.length === 0 ? (
-+      ) : rows.length === 0 ? (
-         <p className="text-xs text-muted-foreground">
-           No colour variants yet. Click &quot;Add colour&quot; to create the first one (e.g. Maroon, Green).
-         </p>
-       ) : (
-         <div className="grid gap-2 sm:grid-cols-2">
--          {variants.map((v) => (
-+          {rows.map((v) => (
-             <div
-               key={v.id}
-               className={`flex items-start gap-2 rounded-md border p-2 ${
-@@ -625,6 +755,11 @@ export default function ProductVariantsManager({
-                       <Star className="mr-0.5 h-2.5 w-2.5 fill-current" /> Default
-                     </Badge>
-                   )}
-+                  {v.pending && (
-+                    <Badge variant="outline" className="px-1 py-0 text-[10px]" title="Saved once you save the product">
-+                      Staged
-+                    </Badge>
-+                  )}
-                 </div>
-                 <p className="truncate text-[11px] text-muted-foreground">
-                   SKU: {v.sku || <span className="italic">not set</span>}
-@@ -637,7 +772,15 @@ export default function ProductVariantsManager({
-                   ))}
-                 </div>
-                 <div className="mt-1.5 flex flex-wrap gap-1">
--                  <Button type="button" size="sm" variant="outline" className="h-6 px-1.5 text-[11px]" onClick={() => openEdit(v)}>
-+                  <Button
-+                    type="button"
-+                    size="sm"
-+                    variant="outline"
-+                    className="h-6 px-1.5 text-[11px]"
-+                    onClick={() =>
-+                      v.pending ? openEditPending(v.id) : openEdit(variants.find((x) => x.id === v.id)!)
-+                    }
-+                  >
-                     <Pencil className="mr-1 h-3 w-3" /> Edit
-                   </Button>
-                   {!v.is_default && (
-@@ -646,7 +789,9 @@ export default function ProductVariantsManager({
-                       size="sm"
-                       variant="outline"
-                       className="h-6 px-1.5 text-[11px]"
--                      onClick={() => makeDefault(v)}
-+                      onClick={() =>
-+                        v.pending ? makePendingDefault(v.id) : makeDefault(variants.find((x) => x.id === v.id)!)
-+                      }
-                     >
-                       <Star className="mr-1 h-3 w-3" /> Default
-                     </Button>
-@@ -656,7 +801,9 @@ export default function ProductVariantsManager({
-                     size="sm"
-                     variant="outline"
-                     className="h-6 px-1.5 text-[11px] text-destructive hover:bg-destructive/10"
--                    onClick={() => setConfirmVariant(v)}
-+                    onClick={() =>
-+                      v.pending ? setConfirmPendingId(v.id) : setConfirmVariant(variants.find((x) => x.id === v.id)!)
-+                    }
-                   >
-                     <Trash2 className="h-3 w-3" />
-                   </Button>
-@@ -672,7 +819,7 @@ export default function ProductVariantsManager({
-         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
-           <DialogHeader>
-             <DialogTitle className="font-serif text-xl text-primary">
--              {editing ? 'Edit Variant' : 'Add Colour Variant'}
-+              {editing || editingPendingId ? 'Edit Variant' : 'Add Colour Variant'}
-             </DialogTitle>
-             <DialogDescription>For &quot;{productName || 'this product'}&quot;</DialogDescription>
-           </DialogHeader>
-@@ -1101,20 +1248,29 @@ export default function ProductVariantsManager({
-                 </Button>
-               </DialogClose>
-               <Button type="submit" disabled={saving} className="bg-primary">
--                {saving ? 'Saving…' : editing ? 'Save Changes' : 'Add Variant'}
-+                {saving ? 'Saving…' : editing || editingPendingId ? 'Save Changes' : 'Add Variant'}
-               </Button>
-             </DialogFooter>
-           </form>
-         </DialogContent>
-       </Dialog>
- 
--      <Dialog open={!!confirmVariant} onOpenChange={(o) => !o && setConfirmVariant(null)}>
-+      <Dialog
-+        open={!!confirmVariant || !!confirmPendingId}
-+        onOpenChange={(o) => {
-+          if (!o) {
-+            setConfirmVariant(null);
-+            setConfirmPendingId(null);
-+          }
-+        }}
-+      >
-         <DialogContent className="sm:max-w-md">
-           <DialogHeader>
-             <DialogTitle className="font-serif text-xl text-primary">Delete this variant?</DialogTitle>
-             <DialogDescription>
--              This removes the &quot;{confirmVariant?.color}&quot; colour option and its SEO page. This action cannot be
--              undone.
-+              This removes the &quot;
-+              {confirmVariant?.color ?? pendingVariants.find((p) => p.localId === confirmPendingId)?.color}&quot;
-+              colour option{confirmVariant ? ' and its SEO page' : ''}. This action cannot be undone.
-             </DialogDescription>
-           </DialogHeader>
-           <DialogFooter>
-diff --git a/components/admin/products-panel.tsx b/components/admin/products-panel.tsx
-index 8ae5e79..7bbfd13 100644
---- a/components/admin/products-panel.tsx
-+++ b/components/admin/products-panel.tsx
-@@ -13,11 +13,12 @@ import {
-   extractErrorMessage,
- } from '@/lib/products-api';
- import { generateSlideshowVideo } from '@/lib/slideshow-video-generator';
--import { generateProductSku } from '@/lib/sku';
-+import { generateProductSku, generateVariantSku, generateSizeSku } from '@/lib/sku';
-+import { createVariant, setDefaultVariant } from '@/lib/variants-api';
- import { searchPresets, ColorPreset } from '@/lib/color-presets';
- import { Product, CategoryRow, ProductHighlights } from '@/lib/types';
- import { STANDARD_SIZES } from '@/lib/size-chart';
--import ProductVariantsManager from '@/components/admin/product-variants-manager';
-+import ProductVariantsManager, { PendingVariant } from '@/components/admin/product-variants-manager';
- import VendorSubmissionsPanel from '@/components/admin/vendor-submissions-panel';
+     setForm(emptyForm);
+@@ -163,12 +206,32 @@ export default function AddressesPage() {
+                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
+               />
+             </div>
+-            <div className="space-y-1.5 sm:col-span-2">
++            <div className="relative space-y-1.5 sm:col-span-2">
+               <Label>Address line 1</Label>
+               <Input
++                autoComplete="off"
+                 value={form.line1}
+                 onChange={(e) => setForm({ ...form, line1: e.target.value })}
++                onFocus={() => {
++                  if (line1Suggestions.length > 0) setShowLine1Suggestions(true);
++                }}
++                onBlur={() => setTimeout(() => setShowLine1Suggestions(false), 150)}
+               />
++              {showLine1Suggestions && line1Suggestions.length > 0 && (
++                <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-auto rounded-md border border-border bg-popover shadow-md">
++                  {line1Suggestions.map((s, i) => (
++                    <li key={i}>
++                      <button
++                        type="button"
++                        onClick={() => pickLine1Suggestion(s)}
++                        className="block w-full px-3 py-2 text-left text-sm hover:bg-muted"
++                      >
++                        {s.label}
++                      </button>
++                    </li>
++                  ))}
++                </ul>
++              )}
+             </div>
+             <div className="space-y-1.5 sm:col-span-2">
+               <Label>Address line 2 (optional)</Label>
+diff --git a/app/checkout/page.tsx b/app/checkout/page.tsx
+index 91074f0..bdad917 100644
+--- a/app/checkout/page.tsx
++++ b/app/checkout/page.tsx
+@@ -36,6 +36,7 @@ import {
+   PincodeResult,
+ } from '@/lib/pincode-api';
+ import { trackEvent, getSessionId } from '@/lib/track-api';
++import { fetchAddressSuggestions, AddressSuggestion } from '@/lib/address-suggest';
  import {
-   fetchAdminVendorProducts,
-@@ -583,6 +584,11 @@ export default function ProductsPanel() {
-   const [open, setOpen] = useState(false);
-   const [editing, setEditing] = useState<Product | null>(null);
-   const [form, setForm] = useState<FormState>(emptyForm());
-+  // Colour variants added inside the "Add New Product" dialog before the
-+  // product itself has been saved (no real productId to attach them to
-+  // yet). Flushed to the API right after the product is created — see
-+  // onSubmit below.
-+  const [pendingVariants, setPendingVariants] = useState<PendingVariant[]>([]);
-   // Cost price is only used to compute the Safe Profit preview below the
-   // Price field — deliberately NOT saved to the products table (margins
-   // are sensitive, and that table is read via the customer-safe product
-@@ -904,6 +910,7 @@ export default function ProductsPanel() {
-     setBuyPrice('');
-     setAiHint('');
-     setAiNeedsReview(null);
-+    setPendingVariants([]);
-     setOpen(true);
-   };
+   CheckoutBumpSettings,
+   DEFAULT_CHECKOUT_BUMP_SETTINGS,
+@@ -204,6 +205,16 @@ export default function CheckoutPage() {
+   // false the moment the shopper edits either field themselves.
+   const cityAutoFilledRef = useRef(false);
+   const stateAutoFilledRef = useRef(false);
++  // Free street-address autosuggest (OpenStreetMap Nominatim) — shows a
++  // dropdown of matching addresses under the Street address field as the
++  // shopper types, so they can tap one instead of typing the whole thing
++  // and re-typing city/state/pincode by hand.
++  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
++  const [showAddressSuggestions, setShowAddressSuggestions] = useState(false);
++  const [suggestLoading, setSuggestLoading] = useState(false);
++  // True right after the shopper picks a suggestion, so the debounce effect
++  // below doesn't immediately re-query and reopen the dropdown.
++  const suggestionJustPickedRef = useRef(false);
  
-@@ -915,6 +922,7 @@ export default function ProductsPanel() {
-     setBuyPrice('');
-     setAiHint('');
-     setAiNeedsReview(null);
-+    setPendingVariants([]);
-     setOpen(true);
-     setSourcingLoading(true);
-     fetchProductSourcing(p.id)
-@@ -1129,7 +1137,60 @@ export default function ProductsPanel() {
-             toast.error('Product added, but the source/buy price failed to save');
-           });
-         }
--        toast.success('Product added — now add colour variants below, or close to finish.');
-+
-+        // Create the real product_variants rows for anything the admin
-+        // staged in-form before the product had an id (see
-+        // ProductVariantsManager's pending-variant mode). Best-effort per
-+        // variant -- one failing shouldn't hide that the product itself,
-+        // and any variants that DID succeed, are saved.
-+        if (pendingVariants.length > 0) {
-+          let defaultVariantId: string | null = null;
-+          let failedCount = 0;
-+          for (const pv of pendingVariants) {
-+            try {
-+              const vSku = pv.sku.trim() || generateVariantSku(payload.sku, pv.color);
-+              const createdVariant = await createVariant({
-+                productId: created.id,
-+                color: pv.color.trim(),
-+                colorHex: pv.colorHex.trim() || null,
-+                slug: pv.slug.trim() || slugify(`${payload.name}-${pv.color}`),
-+                images: pv.images,
-+                video: pv.video.trim() || null,
-+                priceOverride: pv.priceOverride ? Number(pv.priceOverride) : null,
-+                metaTitle: pv.metaTitle.trim() || undefined,
-+                metaDescription: pv.metaDescription.trim() || undefined,
-+                styleNote: pv.styleNote.trim() || undefined,
-+                isDefault: pv.isDefault,
-+                sku: vSku,
-+                rating: pv.rating.trim() ? Number(pv.rating) : null,
-+                reviews: pv.reviews.trim() ? Number(pv.reviews) : null,
-+                sizes: pv.sizes
-+                  .filter((s) => s.size.trim())
-+                  .map((s) => ({
-+                    size: s.size.trim(),
-+                    stockQuantity: Number(s.stockQuantity) || 0,
-+                    priceOverride: s.priceOverride.trim() ? Number(s.priceOverride) : null,
-+                    sku: s.sku.trim() || generateSizeSku(vSku, s.size),
-+                  })),
-+              });
-+              if (pv.isDefault) defaultVariantId = createdVariant.id;
-+            } catch {
-+              failedCount += 1;
-+            }
-+          }
-+          if (defaultVariantId) {
-+            await setDefaultVariant(created.id, defaultVariantId).catch(() => {});
-+          }
-+          setPendingVariants([]);
-+          if (failedCount > 0) {
-+            toast.error(`Product added, but ${failedCount} colour variant(s) failed to save — add ${failedCount === 1 ? 'it' : 'them'} again below.`);
-+          } else {
-+            toast.success('Product and colour variants added.');
-+          }
-+        } else {
-+          toast.success('Product added — now add colour variants below, or close to finish.');
-+        }
-+
-         // No auto-post here — social sharing only happens when the admin
-         // clicks the Share button on this product's row (see shareProduct()).
-         // Keep the dialog open, switched into "edit" mode for the product we
-@@ -1676,6 +1737,7 @@ export default function ProductsPanel() {
-           if (!o) {
-             setAutoOpenVariantAdd(false);
-             setAiNeedsReview(null);
-+            setPendingVariants([]);
-           }
-         }}
-       >
-@@ -2522,6 +2584,8 @@ export default function ProductsPanel() {
-               productSizes={form.sizes}
-               autoOpenAdd={autoOpenVariantAdd}
-               onAutoOpenAddHandled={() => setAutoOpenVariantAdd(false)}
-+              pendingVariants={pendingVariants}
-+              setPendingVariants={setPendingVariants}
-             />
+   // Bug fix: clicking "Log In" / "Create Account" from the resell prompt used
+   // to send the shopper to /login or /signup and back, which remounts this
+@@ -523,6 +534,54 @@ export default function CheckoutPage() {
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [pincode]);
  
-             {/* Product video (shows as the first slide in the gallery, before photos) */}
++  // Debounced free address-autosuggest as the shopper types the street
++  // address (see lib/address-suggest.ts). Waits 400ms after typing stops,
++  // then queries OpenStreetMap Nominatim — no API key needed.
++  useEffect(() => {
++    if (suggestionJustPickedRef.current) {
++      suggestionJustPickedRef.current = false;
++      return;
++    }
++    if (addressLine1.trim().length < 4) {
++      setAddressSuggestions([]);
++      setShowAddressSuggestions(false);
++      return;
++    }
++    const controller = new AbortController();
++    setSuggestLoading(true);
++    const timer = setTimeout(() => {
++      fetchAddressSuggestions(addressLine1, controller.signal)
++        .then((results) => {
++          setAddressSuggestions(results);
++          setShowAddressSuggestions(results.length > 0);
++        })
++        .finally(() => setSuggestLoading(false));
++    }, 400);
++    return () => {
++      clearTimeout(timer);
++      controller.abort();
++      setSuggestLoading(false);
++    };
++  }, [addressLine1]);
++
++  const pickAddressSuggestion = (s: AddressSuggestion) => {
++    suggestionJustPickedRef.current = true;
++    setAddressLine1(s.line1);
++    setShowAddressSuggestions(false);
++    setAddressSuggestions([]);
++    if (s.city) {
++      cityAutoFilledRef.current = true;
++      setCity(s.city);
++    }
++    if (s.state) {
++      stateAutoFilledRef.current = true;
++      setStateName(s.state);
++    }
++    if (s.pincode) {
++      setPincode(s.pincode);
++    }
++  };
++
+   useEffect(() => {
+     fetchLoyaltySettings().then(setLoyaltySettings).catch(() => {
+       // fall back to defaults already set above
+@@ -1317,17 +1376,43 @@ export default function CheckoutPage() {
+               <h2 className="font-serif text-lg font-bold text-primary">Shipping Address</h2>
+             </div>
+             <div className="grid gap-4">
+-              <div className="grid gap-1.5">
++              <div className="relative grid gap-1.5">
+                 <Label htmlFor="address">Street address *</Label>
+                 <Input
+                   id="address"
+                   name="address"
+-                  autoComplete="address-line1"
++                  autoComplete="off"
+                   required
+                   placeholder="12, MG Road, Apt 304"
+                   value={addressLine1}
+                   onChange={(e) => setAddressLine1(e.target.value)}
++                  onFocus={() => {
++                    if (addressSuggestions.length > 0) setShowAddressSuggestions(true);
++                  }}
++                  onBlur={() => {
++                    // Slight delay so a click on a suggestion registers
++                    // before the dropdown unmounts.
++                    setTimeout(() => setShowAddressSuggestions(false), 150);
++                  }}
+                 />
++                {suggestLoading && (
++                  <p className="text-[11px] text-muted-foreground">Searching addresses…</p>
++                )}
++                {showAddressSuggestions && addressSuggestions.length > 0 && (
++                  <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-auto rounded-md border border-border bg-popover shadow-md">
++                    {addressSuggestions.map((s, i) => (
++                      <li key={i}>
++                        <button
++                          type="button"
++                          onClick={() => pickAddressSuggestion(s)}
++                          className="block w-full px-3 py-2 text-left text-sm hover:bg-muted"
++                        >
++                          {s.label}
++                        </button>
++                      </li>
++                    ))}
++                  </ul>
++                )}
+               </div>
+               <div className="grid gap-1.5">
+                 <Label htmlFor="address2">Apartment, suite, etc. (optional)</Label>
