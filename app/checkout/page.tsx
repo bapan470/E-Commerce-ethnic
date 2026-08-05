@@ -1385,7 +1385,7 @@ export default function CheckoutPage() {
                       setStateName(v);
                     }}
                   >
-                    <SelectTrigger id="state" name="state" autoComplete="address-level1">
+                    <SelectTrigger id="state">
                       <SelectValue placeholder="Select state" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1407,7 +1407,7 @@ export default function CheckoutPage() {
               <div className="grid gap-1.5">
                 <Label htmlFor="country">Country *</Label>
                 <Select value={country || 'India'} onValueChange={setCountry}>
-                  <SelectTrigger id="country" name="country" autoComplete="country-name">
+                  <SelectTrigger id="country">
                     <SelectValue placeholder="Select country" />
                   </SelectTrigger>
                   <SelectContent>
