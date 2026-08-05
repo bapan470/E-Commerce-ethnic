@@ -1,0 +1,165 @@
+diff --git a/app/checkout/page.tsx b/app/checkout/page.tsx
+index 4e17e48..471a161 100644
+--- a/app/checkout/page.tsx
++++ b/app/checkout/page.tsx
+@@ -147,6 +147,12 @@ export default function CheckoutPage() {
+   const [pincode, setPincode] = useState('');
+   const [country, setCountry] = useState('India');
+   const [deliveryEstimate, setDeliveryEstimate] = useState<PincodeResult | null>(null);
++  // Tracks whether the current city/state values were filled in by us (from
++  // the pincode lookup) rather than typed by the shopper, so the auto-fill
++  // effect below never clobbers something they entered by hand. Reset to
++  // false the moment the shopper edits either field themselves.
++  const cityAutoFilledRef = useRef(false);
++  const stateAutoFilledRef = useRef(false);
+ 
+   // Bug fix: clicking "Log In" / "Create Account" from the resell prompt used
+   // to send the shopper to /login or /signup and back, which remounts this
+@@ -230,6 +236,11 @@ export default function CheckoutPage() {
+     setShipPhone(addr.phone || '');
+     setAddressLine1(addr.line1 || '');
+     setAddressLine2(addr.line2 || '');
++    // These are the customer's own saved values, not a pincode-lookup guess
++    // — mark them as "manual" so the pincode auto-fill effect doesn't
++    // silently swap them out.
++    cityAutoFilledRef.current = false;
++    stateAutoFilledRef.current = false;
+     setCity(addr.city || '');
+     setStateName(addr.state || '');
+     setPincode(addr.pincode || '');
+@@ -387,11 +398,26 @@ export default function CheckoutPage() {
+     }
+     let cancelled = false;
+     checkPincodeServiceability(pincode).then((res) => {
+-      if (!cancelled) setDeliveryEstimate(res);
++      if (cancelled) return;
++      setDeliveryEstimate(res);
++      // Auto-fill City & State from the pincode — free, via the same India
++      // Post lookup (api.postalpincode.in) already used for the delivery
++      // estimate above, no extra API/key needed. Only overwrite a field if
++      // it's empty or still holds a value we auto-filled ourselves, so we
++      // never stomp on something the shopper typed in by hand.
++      if (res.serviceable && res.city && (!city || cityAutoFilledRef.current)) {
++        setCity(res.city);
++        cityAutoFilledRef.current = true;
++      }
++      if (res.serviceable && res.state && (!stateName || stateAutoFilledRef.current)) {
++        setStateName(res.state);
++        stateAutoFilledRef.current = true;
++      }
+     });
+     return () => {
+       cancelled = true;
+     };
++    // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [pincode]);
+ 
+   useEffect(() => {
+@@ -1089,6 +1115,7 @@ export default function CheckoutPage() {
+                 <Input
+                   id="firstName"
+                   name="firstName"
++                  autoComplete="given-name"
+                   required
+                   placeholder="Aanya"
+                   value={firstName}
+@@ -1100,6 +1127,7 @@ export default function CheckoutPage() {
+                 <Input
+                   id="lastName"
+                   name="lastName"
++                  autoComplete="family-name"
+                   required
+                   placeholder="Sharma"
+                   value={lastName}
+@@ -1112,6 +1140,7 @@ export default function CheckoutPage() {
+                   id="email"
+                   name="email"
+                   type="email"
++                  autoComplete="email"
+                   required
+                   placeholder="aanya@example.com"
+                   value={email}
+@@ -1127,6 +1156,7 @@ export default function CheckoutPage() {
+                   id="phone"
+                   name="phone"
+                   type="tel"
++                  autoComplete="tel"
+                   required
+                   placeholder="+91 98765 43210"
+                   value={shipPhone}
+@@ -1147,6 +1177,7 @@ export default function CheckoutPage() {
+                 <Input
+                   id="address"
+                   name="address"
++                  autoComplete="address-line1"
+                   required
+                   placeholder="12, MG Road, Apt 304"
+                   value={addressLine1}
+@@ -1158,6 +1189,7 @@ export default function CheckoutPage() {
+                 <Input
+                   id="address2"
+                   name="address2"
++                  autoComplete="address-line2"
+                   placeholder="Bandra West"
+                   value={addressLine2}
+                   onChange={(e) => setAddressLine2(e.target.value)}
+@@ -1169,10 +1201,16 @@ export default function CheckoutPage() {
+                   <Input
+                     id="city"
+                     name="city"
++                    autoComplete="address-level2"
+                     required
+                     placeholder="Mumbai"
+                     value={city}
+-                    onChange={(e) => setCity(e.target.value)}
++                    onChange={(e) => {
++                      // Shopper is typing city by hand — stop treating it as
++                      // ours to overwrite on the next pincode lookup.
++                      cityAutoFilledRef.current = false;
++                      setCity(e.target.value);
++                    }}
+                   />
+                 </div>
+                 <div className="grid gap-1.5">
+@@ -1180,10 +1218,14 @@ export default function CheckoutPage() {
+                   <Input
+                     id="state"
+                     name="state"
++                    autoComplete="address-level1"
+                     required
+                     placeholder="Maharashtra"
+                     value={stateName}
+-                    onChange={(e) => setStateName(e.target.value)}
++                    onChange={(e) => {
++                      stateAutoFilledRef.current = false;
++                      setStateName(e.target.value);
++                    }}
+                   />
+                 </div>
+               </div>
+@@ -1193,18 +1235,25 @@ export default function CheckoutPage() {
+                   <Input
+                     id="pincode"
+                     name="pincode"
++                    autoComplete="postal-code"
+                     required
+                     placeholder="400050"
+                     inputMode="numeric"
+                     value={pincode}
+                     onChange={(e) => setPincode(e.target.value)}
+                   />
++                  {deliveryEstimate?.serviceable && (city || stateName) && (
++                    <p className="text-[11px] text-muted-foreground">
++                      Auto-filled from pincode — you can edit City/State if needed.
++                    </p>
++                  )}
+                 </div>
+                 <div className="grid gap-1.5">
+                   <Label htmlFor="country">Country *</Label>
+                   <Input
+                     id="country"
+                     name="country"
++                    autoComplete="country-name"
+                     required
+                     value={country}
+                     onChange={(e) => setCountry(e.target.value)}
