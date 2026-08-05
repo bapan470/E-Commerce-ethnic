@@ -1350,7 +1350,16 @@ export default function CheckoutPage() {
                   placeholder="400050"
                   inputMode="numeric"
                   value={pincode}
-                  onChange={(e) => setPincode(e.target.value)}
+                  onChange={(e) => {
+                    // Typing a new pincode is a clear signal the shopper
+                    // wants fresh City/State for THIS pincode — so let the
+                    // lookup below overwrite both, even if City/State were
+                    // holding an older value (from a saved draft or an
+                    // earlier manual edit) that would otherwise block it.
+                    cityAutoFilledRef.current = true;
+                    stateAutoFilledRef.current = true;
+                    setPincode(e.target.value);
+                  }}
                 />
                 {deliveryEstimate?.serviceable && (city || stateName) && (
                   <p className="text-[11px] text-muted-foreground">

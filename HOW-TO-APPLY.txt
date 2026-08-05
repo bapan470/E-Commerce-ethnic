@@ -1,23 +1,29 @@
-REVERT — ADDRESS AUTOSUGGEST REMOVED
-======================================
+FIX — STATE NOT UPDATING WHEN PIN CODE CHANGES
+=================================================
 
-The free address-autosuggest feature has been removed since it wasn't
-working reliably for real addresses.
+Bug: City auto-filled correctly on a new PIN code, but State stayed
+stuck on whatever it was before (e.g. always "Goa").
 
-What's included
------------------
-  app/checkout/page.tsx             (reverted to original — no autosuggest)
-  app/account/addresses/page.tsx    (reverted to original — no autosuggest)
+Cause: once City/State held a value from a saved draft (or an earlier
+manual pick), the code treated that as "the shopper's own value" and
+refused to let a new pincode overwrite it — City happened to keep
+updating in your test because its draft value was empty, State did not
+because it had a leftover value.
 
-The original PIN-code -> City/State autofill (unrelated to the suggestion
-dropdown, and already working before) is untouched and still there.
+Fix: typing a new PIN code now always lets the lookup refresh both City
+and State for that pincode, no matter what they held before. If you
+edit City or State by hand afterwards, that still sticks (won't get
+overwritten) — this only resets on typing a new PIN code.
+
+File changed
+-------------
+  app/checkout/page.tsx
 
 How to apply
 -------------
-Copy these 2 files into your local clone, overwriting the current
-app/checkout/page.tsx and app/account/addresses/page.tsx, then:
+Copy this file into your local clone, overwriting the existing
+app/checkout/page.tsx, then:
 
-    git add app/checkout/page.tsx app/account/addresses/page.tsx
-    git rm lib/address-suggest.ts   (if it exists in your repo)
-    git commit -m "Revert address autosuggest — unreliable for real addresses"
+    git add app/checkout/page.tsx
+    git commit -m "Fix: State field wasn't updating when PIN code changed"
     git push
