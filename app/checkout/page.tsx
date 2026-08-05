@@ -190,6 +190,29 @@ export default function CheckoutPage() {
     }
   };
 
+  const clearAddressDraft = () => {
+    if (typeof window === 'undefined') return;
+    try {
+      sessionStorage.removeItem(CHECKOUT_ADDRESS_DRAFT_KEY);
+    } catch {
+      // ignore
+    }
+  };
+
+  // Auto-save the in-progress address on every keystroke (not just before
+  // navigating to login) so an accidental refresh/back-button/tab-close
+  // doesn't wipe out what the shopper already typed — the mount effect
+  // below restores it. Skipped while showing the compact saved-address
+  // summary, since there's nothing being freshly typed in that view.
+  useEffect(() => {
+    if (showAddressForm === false && selectedAddressId !== 'new') return;
+    const hasAnyInput =
+      email || firstName || lastName || shipPhone || addressLine1 || addressLine2 || city || stateName || pincode;
+    if (!hasAnyInput) return;
+    saveAddressDraft();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [email, firstName, lastName, shipPhone, addressLine1, addressLine2, city, stateName, pincode, country]);
+
   // Runs once on mount, before we know whether the shopper is logged in, so
   // it always wins over the saved-address auto-fill below.
   useEffect(() => {
@@ -480,7 +503,9 @@ export default function CheckoutPage() {
   };
 
   // Clears whichever mode produced this order — the single Buy Now item, or
-  // the full persistent cart — without touching the other.
+  // the full persistent cart — without touching the other. Also drops the
+  // in-progress address draft, so a completed order doesn't leave stale
+  // address data sitting around for the shopper's next checkout.
   const clearOrderedItems = () => {
     if (isBuyNow) {
       clearBuyNow();
@@ -488,6 +513,7 @@ export default function CheckoutPage() {
     } else {
       clearCart();
     }
+    clearAddressDraft();
   };
 
   // +/- stepper in the order summary. Routes to whichever store actually
@@ -1216,36 +1242,23 @@ export default function CheckoutPage() {
                   onChange={(e) => setAddressLine2(e.target.value)}
                 />
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="pincode">PIN code *</Label>
-                  <Input
-                    id="pincode"
-                    name="pincode"
-                    autoComplete="postal-code"
-                    required
-                    placeholder="400050"
-                    inputMode="numeric"
-                    value={pincode}
-                    onChange={(e) => setPincode(e.target.value)}
-                  />
-                  {deliveryEstimate?.serviceable && (city || stateName) && (
-                    <p className="text-[11px] text-muted-foreground">
-                      Auto-filled City/State below — you can edit if needed.
-                    </p>
-                  )}
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="country">Country *</Label>
-                  <Input
-                    id="country"
-                    name="country"
-                    autoComplete="country-name"
-                    required
-                    value={country}
-                    onChange={(e) => setCountry(e.target.value)}
-                  />
-                </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="pincode">PIN code *</Label>
+                <Input
+                  id="pincode"
+                  name="pincode"
+                  autoComplete="postal-code"
+                  required
+                  placeholder="400050"
+                  inputMode="numeric"
+                  value={pincode}
+                  onChange={(e) => setPincode(e.target.value)}
+                />
+                {deliveryEstimate?.serviceable && (city || stateName) && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Auto-filled City/State below — you can edit if needed.
+                  </p>
+                )}
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="grid gap-1.5">
@@ -1280,6 +1293,17 @@ export default function CheckoutPage() {
                     }}
                   />
                 </div>
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="country">Country *</Label>
+                <Input
+                  id="country"
+                  name="country"
+                  autoComplete="country-name"
+                  required
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                />
               </div>
             </div>
           </section>
