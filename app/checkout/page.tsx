@@ -59,6 +59,13 @@ import {
 } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   AlertDialog,
   AlertDialogContent,
   AlertDialogHeader,
@@ -70,6 +77,50 @@ import {
 } from '@/components/ui/alert-dialog';
 import TrustBadges from '@/components/checkout/trust-badges';
 import { toast } from 'sonner';
+
+// All Indian states & union territories, for the Shipping Address "State"
+// dropdown. Pincode auto-fill (via India Post's API) sets this field to
+// whatever it returns — if that ever doesn't exactly match an entry here,
+// we add it in on the fly (see the `stateOptions` list below) so the
+// dropdown never silently loses/blanks out a real value.
+const INDIAN_STATES = [
+  'Andhra Pradesh',
+  'Arunachal Pradesh',
+  'Assam',
+  'Bihar',
+  'Chhattisgarh',
+  'Goa',
+  'Gujarat',
+  'Haryana',
+  'Himachal Pradesh',
+  'Jharkhand',
+  'Karnataka',
+  'Kerala',
+  'Madhya Pradesh',
+  'Maharashtra',
+  'Manipur',
+  'Meghalaya',
+  'Mizoram',
+  'Nagaland',
+  'Odisha',
+  'Punjab',
+  'Rajasthan',
+  'Sikkim',
+  'Tamil Nadu',
+  'Telangana',
+  'Tripura',
+  'Uttar Pradesh',
+  'Uttarakhand',
+  'West Bengal',
+  'Andaman and Nicobar Islands',
+  'Chandigarh',
+  'Dadra and Nagar Haveli and Daman and Diu',
+  'Delhi',
+  'Jammu and Kashmir',
+  'Ladakh',
+  'Lakshadweep',
+  'Puducherry',
+];
 
 declare global {
   interface Window {
@@ -1327,30 +1378,44 @@ export default function CheckoutPage() {
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="state">State *</Label>
-                  <Input
-                    id="state"
-                    name="state"
-                    autoComplete="address-level1"
-                    required
-                    placeholder="Maharashtra"
-                    value={stateName}
-                    onChange={(e) => {
+                  <Select
+                    value={stateName || undefined}
+                    onValueChange={(v) => {
                       stateAutoFilledRef.current = false;
-                      setStateName(e.target.value);
+                      setStateName(v);
                     }}
-                  />
+                  >
+                    <SelectTrigger id="state" name="state" autoComplete="address-level1">
+                      <SelectValue placeholder="Select state" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {/* If pincode auto-fill or a saved address ever returns
+                          a state name that doesn't exactly match our list,
+                          add it in so the real value is never lost/blanked. */}
+                      {(INDIAN_STATES.includes(stateName) || !stateName
+                        ? INDIAN_STATES
+                        : [stateName, ...INDIAN_STATES]
+                      ).map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {s}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="country">Country *</Label>
-                <Input
-                  id="country"
-                  name="country"
-                  autoComplete="country-name"
-                  required
-                  value={country}
-                  onChange={(e) => setCountry(e.target.value)}
-                />
+                <Select value={country || 'India'} onValueChange={setCountry}>
+                  <SelectTrigger id="country" name="country" autoComplete="country-name">
+                    <SelectValue placeholder="Select country" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {/* Only India for now — more countries can be added here
+                        later without changing how this field works. */}
+                    <SelectItem value="India">India</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </section>

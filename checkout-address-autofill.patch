@@ -1,8 +1,73 @@
 diff --git a/app/checkout/page.tsx b/app/checkout/page.tsx
-index 4e17e48..c3cac52 100644
+index 4e17e48..3bd2de4 100644
 --- a/app/checkout/page.tsx
 +++ b/app/checkout/page.tsx
-@@ -147,6 +147,12 @@ export default function CheckoutPage() {
+@@ -58,6 +58,13 @@ import {
+   DialogTitle,
+ } from '@/components/ui/dialog';
+ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
++import {
++  Select,
++  SelectContent,
++  SelectItem,
++  SelectTrigger,
++  SelectValue,
++} from '@/components/ui/select';
+ import {
+   AlertDialog,
+   AlertDialogContent,
+@@ -71,6 +78,50 @@ import {
+ import TrustBadges from '@/components/checkout/trust-badges';
+ import { toast } from 'sonner';
+ 
++// All Indian states & union territories, for the Shipping Address "State"
++// dropdown. Pincode auto-fill (via India Post's API) sets this field to
++// whatever it returns — if that ever doesn't exactly match an entry here,
++// we add it in on the fly (see the `stateOptions` list below) so the
++// dropdown never silently loses/blanks out a real value.
++const INDIAN_STATES = [
++  'Andhra Pradesh',
++  'Arunachal Pradesh',
++  'Assam',
++  'Bihar',
++  'Chhattisgarh',
++  'Goa',
++  'Gujarat',
++  'Haryana',
++  'Himachal Pradesh',
++  'Jharkhand',
++  'Karnataka',
++  'Kerala',
++  'Madhya Pradesh',
++  'Maharashtra',
++  'Manipur',
++  'Meghalaya',
++  'Mizoram',
++  'Nagaland',
++  'Odisha',
++  'Punjab',
++  'Rajasthan',
++  'Sikkim',
++  'Tamil Nadu',
++  'Telangana',
++  'Tripura',
++  'Uttar Pradesh',
++  'Uttarakhand',
++  'West Bengal',
++  'Andaman and Nicobar Islands',
++  'Chandigarh',
++  'Dadra and Nagar Haveli and Daman and Diu',
++  'Delhi',
++  'Jammu and Kashmir',
++  'Ladakh',
++  'Lakshadweep',
++  'Puducherry',
++];
++
+ declare global {
+   interface Window {
+     Razorpay: any;
+@@ -147,6 +198,12 @@ export default function CheckoutPage() {
    const [pincode, setPincode] = useState('');
    const [country, setCountry] = useState('India');
    const [deliveryEstimate, setDeliveryEstimate] = useState<PincodeResult | null>(null);
@@ -15,7 +80,7 @@ index 4e17e48..c3cac52 100644
  
    // Bug fix: clicking "Log In" / "Create Account" from the resell prompt used
    // to send the shopper to /login or /signup and back, which remounts this
-@@ -159,8 +165,19 @@ export default function CheckoutPage() {
+@@ -159,8 +216,19 @@ export default function CheckoutPage() {
    // effect below (which normally auto-fills the customer's default address
    // once we know who they are) doesn't clobber it.
    const draftRestoredRef = useRef(false);
@@ -37,7 +102,7 @@ index 4e17e48..c3cac52 100644
      if (typeof window === 'undefined') return;
      try {
        sessionStorage.setItem(
-@@ -176,6 +193,7 @@ export default function CheckoutPage() {
+@@ -176,6 +244,7 @@ export default function CheckoutPage() {
            stateName,
            pincode,
            country,
@@ -45,7 +110,7 @@ index 4e17e48..c3cac52 100644
          })
        );
      } catch {
-@@ -184,6 +202,29 @@ export default function CheckoutPage() {
+@@ -184,6 +253,29 @@ export default function CheckoutPage() {
      }
    };
  
@@ -75,7 +140,7 @@ index 4e17e48..c3cac52 100644
    // Runs once on mount, before we know whether the shopper is logged in, so
    // it always wins over the saved-address auto-fill below.
    useEffect(() => {
-@@ -203,7 +244,14 @@ export default function CheckoutPage() {
+@@ -203,7 +295,14 @@ export default function CheckoutPage() {
          stateName: string;
          pincode: string;
          country: string;
@@ -90,7 +155,7 @@ index 4e17e48..c3cac52 100644
        setEmail(draft.email || '');
        setFirstName(draft.firstName || '');
        setLastName(draft.lastName || '');
-@@ -217,6 +265,7 @@ export default function CheckoutPage() {
+@@ -217,6 +316,7 @@ export default function CheckoutPage() {
        setSelectedAddressId('new');
        setShowAddressForm(true);
        draftRestoredRef.current = true;
@@ -98,7 +163,7 @@ index 4e17e48..c3cac52 100644
      } catch {
        // Corrupt/unreadable draft — ignore and fall back to normal behaviour.
      }
-@@ -230,9 +279,18 @@ export default function CheckoutPage() {
+@@ -230,9 +330,18 @@ export default function CheckoutPage() {
      setShipPhone(addr.phone || '');
      setAddressLine1(addr.line1 || '');
      setAddressLine2(addr.line2 || '');
@@ -117,7 +182,7 @@ index 4e17e48..c3cac52 100644
    };
  
    const handleSelectSavedAddress = (id: string) => {
-@@ -294,14 +352,19 @@ export default function CheckoutPage() {
+@@ -294,14 +403,19 @@ export default function CheckoutPage() {
      fetchAddresses()
        .then((list) => {
          setSavedAddresses(list);
@@ -141,7 +206,7 @@ index 4e17e48..c3cac52 100644
          }
        })
        .catch(() => {});
-@@ -387,11 +450,26 @@ export default function CheckoutPage() {
+@@ -387,11 +501,26 @@ export default function CheckoutPage() {
      }
      let cancelled = false;
      checkPincodeServiceability(pincode).then((res) => {
@@ -169,7 +234,7 @@ index 4e17e48..c3cac52 100644
    }, [pincode]);
  
    useEffect(() => {
-@@ -454,7 +532,9 @@ export default function CheckoutPage() {
+@@ -454,7 +583,9 @@ export default function CheckoutPage() {
    };
  
    // Clears whichever mode produced this order — the single Buy Now item, or
@@ -180,7 +245,7 @@ index 4e17e48..c3cac52 100644
    const clearOrderedItems = () => {
      if (isBuyNow) {
        clearBuyNow();
-@@ -462,6 +542,7 @@ export default function CheckoutPage() {
+@@ -462,6 +593,7 @@ export default function CheckoutPage() {
      } else {
        clearCart();
      }
@@ -188,7 +253,7 @@ index 4e17e48..c3cac52 100644
    };
  
    // +/- stepper in the order summary. Routes to whichever store actually
-@@ -590,6 +671,18 @@ export default function CheckoutPage() {
+@@ -590,6 +722,18 @@ export default function CheckoutPage() {
      router.push('/login?next=/checkout');
    };
  
@@ -207,7 +272,7 @@ index 4e17e48..c3cac52 100644
    const goToResaleSignup = () => {
      saveAddressDraft();
      setShowResaleLoginPrompt(false);
-@@ -1049,6 +1142,33 @@ export default function CheckoutPage() {
+@@ -1049,6 +1193,33 @@ export default function CheckoutPage() {
  
        <form onSubmit={onSubmit} className="grid gap-8 lg:grid-cols-3">
          <div className="lg:col-span-2">
@@ -241,7 +306,7 @@ index 4e17e48..c3cac52 100644
            {hasSavedAddressSummary ? (
              <section className="rounded-lg border border-border/60 bg-card p-5">
                <div className="mb-3 flex items-center justify-between gap-3">
-@@ -1089,6 +1209,7 @@ export default function CheckoutPage() {
+@@ -1089,6 +1260,7 @@ export default function CheckoutPage() {
                  <Input
                    id="firstName"
                    name="firstName"
@@ -249,7 +314,7 @@ index 4e17e48..c3cac52 100644
                    required
                    placeholder="Aanya"
                    value={firstName}
-@@ -1100,6 +1221,7 @@ export default function CheckoutPage() {
+@@ -1100,6 +1272,7 @@ export default function CheckoutPage() {
                  <Input
                    id="lastName"
                    name="lastName"
@@ -257,7 +322,7 @@ index 4e17e48..c3cac52 100644
                    required
                    placeholder="Sharma"
                    value={lastName}
-@@ -1112,6 +1234,7 @@ export default function CheckoutPage() {
+@@ -1112,6 +1285,7 @@ export default function CheckoutPage() {
                    id="email"
                    name="email"
                    type="email"
@@ -265,7 +330,7 @@ index 4e17e48..c3cac52 100644
                    required
                    placeholder="aanya@example.com"
                    value={email}
-@@ -1127,6 +1250,7 @@ export default function CheckoutPage() {
+@@ -1127,6 +1301,7 @@ export default function CheckoutPage() {
                    id="phone"
                    name="phone"
                    type="tel"
@@ -273,7 +338,7 @@ index 4e17e48..c3cac52 100644
                    required
                    placeholder="+91 98765 43210"
                    value={shipPhone}
-@@ -1147,6 +1271,7 @@ export default function CheckoutPage() {
+@@ -1147,6 +1322,7 @@ export default function CheckoutPage() {
                  <Input
                    id="address"
                    name="address"
@@ -281,7 +346,7 @@ index 4e17e48..c3cac52 100644
                    required
                    placeholder="12, MG Road, Apt 304"
                    value={addressLine1}
-@@ -1158,21 +1283,46 @@ export default function CheckoutPage() {
+@@ -1158,58 +1334,88 @@ export default function CheckoutPage() {
                  <Input
                    id="address2"
                    name="address2"
@@ -329,20 +394,39 @@ index 4e17e48..c3cac52 100644
                    />
                  </div>
                  <div className="grid gap-1.5">
-@@ -1180,36 +1330,27 @@ export default function CheckoutPage() {
-                   <Input
-                     id="state"
-                     name="state"
-+                    autoComplete="address-level1"
-                     required
-                     placeholder="Maharashtra"
-                     value={stateName}
+                   <Label htmlFor="state">State *</Label>
+-                  <Input
+-                    id="state"
+-                    name="state"
+-                    required
+-                    placeholder="Maharashtra"
+-                    value={stateName}
 -                    onChange={(e) => setStateName(e.target.value)}
-+                    onChange={(e) => {
+-                  />
++                  <Select
++                    value={stateName || undefined}
++                    onValueChange={(v) => {
 +                      stateAutoFilledRef.current = false;
-+                      setStateName(e.target.value);
++                      setStateName(v);
 +                    }}
-                   />
++                  >
++                    <SelectTrigger id="state" name="state" autoComplete="address-level1">
++                      <SelectValue placeholder="Select state" />
++                    </SelectTrigger>
++                    <SelectContent>
++                      {/* If pincode auto-fill or a saved address ever returns
++                          a state name that doesn't exactly match our list,
++                          add it in so the real value is never lost/blanked. */}
++                      {(INDIAN_STATES.includes(stateName) || !stateName
++                        ? INDIAN_STATES
++                        : [stateName, ...INDIAN_STATES]
++                      ).map((s) => (
++                        <SelectItem key={s} value={s}>
++                          {s}
++                        </SelectItem>
++                      ))}
++                    </SelectContent>
++                  </Select>
                  </div>
                </div>
 -              <div className="grid gap-4 sm:grid-cols-2">
@@ -370,14 +454,16 @@ index 4e17e48..c3cac52 100644
 -                </div>
 +              <div className="grid gap-1.5">
 +                <Label htmlFor="country">Country *</Label>
-+                <Input
-+                  id="country"
-+                  name="country"
-+                  autoComplete="country-name"
-+                  required
-+                  value={country}
-+                  onChange={(e) => setCountry(e.target.value)}
-+                />
++                <Select value={country || 'India'} onValueChange={setCountry}>
++                  <SelectTrigger id="country" name="country" autoComplete="country-name">
++                    <SelectValue placeholder="Select country" />
++                  </SelectTrigger>
++                  <SelectContent>
++                    {/* Only India for now — more countries can be added here
++                        later without changing how this field works. */}
++                    <SelectItem value="India">India</SelectItem>
++                  </SelectContent>
++                </Select>
                </div>
              </div>
            </section>
