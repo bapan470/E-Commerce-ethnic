@@ -200,6 +200,10 @@ export interface BehaviorFlags {
   wishlisted: boolean;
   cartAbandoner: boolean; // began checkout (from a tracked campaign click) but never purchased
   notOpenedWelcome: boolean; // welcome sent >= followupDelayDays ago, still not opened
+  emailSent: boolean; // received at least one campaign email, ever
+  emailOpened: boolean; // opened at least one campaign email, ever
+  emailClicked: boolean; // clicked a link in at least one campaign email, ever
+  emailFailed: boolean; // at least one campaign send failed for this customer
 }
 
 export interface BehaviorCounts {
@@ -208,6 +212,10 @@ export interface BehaviorCounts {
   wishlisted: number;
   cartAbandoner: number;
   notOpenedWelcome: number;
+  emailSent: number;
+  emailOpened: number;
+  emailClicked: number;
+  emailFailed: number;
 }
 
 export interface SegmentsResult {

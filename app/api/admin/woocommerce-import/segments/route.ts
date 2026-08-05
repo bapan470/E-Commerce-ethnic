@@ -47,20 +47,43 @@ export async function GET() {
 
   // Every send this batch of customers has ever received, in chunks (the
   // customer list can run into the thousands and `.in()` has a practical
-  // URL-length limit).
+  // URL-length limit). Pulled without a status filter (unlike before) so
+  // the emailSent/emailOpened/emailClicked/emailFailed flags below can be
+  // derived from the same rows instead of a second round-trip.
   const CHUNK = 400;
-  const sendRows: { id: string; customer_id: string; clicked_at: string | null }[] = [];
+  const allSendRows: {
+    id: string;
+    customer_id: string;
+    status: string;
+    opened_at: string | null;
+    clicked_at: string | null;
+  }[] = [];
   for (let i = 0; i < allIds.length; i += CHUNK) {
     const slice = allIds.slice(i, i + CHUNK);
     const { data, error } = await supabase
       .from('woocommerce_campaign_sends')
-      .select('id, customer_id, clicked_at')
-      .in('customer_id', slice)
-      .eq('status', 'sent');
+      .select('id, customer_id, status, opened_at, clicked_at')
+      .in('customer_id', slice);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    sendRows.push(...((data ?? []) as any));
+    allSendRows.push(...((data ?? []) as any));
   }
 
+  // emailSent/emailOpened/emailClicked/emailFailed audience chips -- same
+  // delivery/engagement status as the Sent/Opened/Clicked/Failed cards
+  // above, just as a per-customer flag so it can filter the customer table
+  // the way Purchased/Cart abandoners/etc already do.
+  const emailSentCustomers = new Set<string>();
+  const emailOpenedCustomers = new Set<string>();
+  const emailClickedCustomers = new Set<string>();
+  const emailFailedCustomers = new Set<string>();
+  for (const row of allSendRows) {
+    if (row.status === 'sent') emailSentCustomers.add(row.customer_id);
+    if (row.status === 'failed') emailFailedCustomers.add(row.customer_id);
+    if (row.opened_at) emailOpenedCustomers.add(row.customer_id);
+    if (row.clicked_at) emailClickedCustomers.add(row.customer_id);
+  }
+
+  const sendRows = allSendRows.filter((r) => r.status === 'sent');
   const clickedSendIds: string[] = [];
   const sendIdToCustomer = new Map<string, string>();
   for (const row of sendRows) {
@@ -145,7 +168,17 @@ export async function GET() {
 
   const behaviorFlags: Record<
     string,
-    { purchased: boolean; addedToCart: boolean; wishlisted: boolean; cartAbandoner: boolean; notOpenedWelcome: boolean }
+    {
+      purchased: boolean;
+      addedToCart: boolean;
+      wishlisted: boolean;
+      cartAbandoner: boolean;
+      notOpenedWelcome: boolean;
+      emailSent: boolean;
+      emailOpened: boolean;
+      emailClicked: boolean;
+      emailFailed: boolean;
+    }
   > = {};
   for (const id of allIds) {
     behaviorFlags[id] = {
@@ -154,6 +187,10 @@ export async function GET() {
       wishlisted: wishlistedCustomers.has(id),
       cartAbandoner: cartAbandonerCustomers.has(id),
       notOpenedWelcome: notOpenedCustomers.has(id),
+      emailSent: emailSentCustomers.has(id),
+      emailOpened: emailOpenedCustomers.has(id),
+      emailClicked: emailClickedCustomers.has(id),
+      emailFailed: emailFailedCustomers.has(id),
     };
   }
 
@@ -165,6 +202,10 @@ export async function GET() {
     wishlisted: wishlistedCustomers.size,
     cartAbandoner: cartAbandonerCustomers.size,
     notOpenedWelcome: notOpenedCustomers.size,
+    emailSent: emailSentCustomers.size,
+    emailOpened: emailOpenedCustomers.size,
+    emailClicked: emailClickedCustomers.size,
+    emailFailed: emailFailedCustomers.size,
   };
 
   return NextResponse.json({ segments, counts, behaviorFlags, behaviorCounts });

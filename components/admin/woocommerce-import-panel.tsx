@@ -10,7 +10,19 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
-import { Flame, ThermometerSnowflake, Waves, ShoppingCart, Heart, ShoppingBag, MailX } from 'lucide-react';
+import {
+  Flame,
+  ThermometerSnowflake,
+  Waves,
+  ShoppingCart,
+  Heart,
+  ShoppingBag,
+  MailX,
+  MailCheck,
+  MailOpen,
+  MousePointerClick,
+  MailWarning,
+} from 'lucide-react';
 import {
   fetchImportedCustomers,
   importWooCommerceCustomersChunk,
@@ -104,6 +116,10 @@ export default function WooCommerceImportPanel() {
     wishlisted: 0,
     cartAbandoner: 0,
     notOpenedWelcome: 0,
+    emailSent: 0,
+    emailOpened: 0,
+    emailClicked: 0,
+    emailFailed: 0,
   });
   type BehaviorFilterKey = keyof BehaviorCounts;
   const [segmentFilter, setSegmentFilter] = useState<'all' | AudienceSegment | BehaviorFilterKey>('all');
@@ -194,6 +210,10 @@ export default function WooCommerceImportPanel() {
     'wishlisted',
     'cartAbandoner',
     'notOpenedWelcome',
+    'emailSent',
+    'emailOpened',
+    'emailClicked',
+    'emailFailed',
   ]);
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -665,6 +685,47 @@ export default function WooCommerceImportPanel() {
             title="Welcome email bheje ko follow-up delay se zyada din ho gaye, par abhi tak open nahi kiya — inhe follow-up nahi jaata"
           >
             <MailX className="h-3.5 w-3.5" /> Not opened ({behaviorCounts.notOpenedWelcome})
+          </Button>
+          <span className="mx-1 h-4 w-px bg-border" />
+          <Button
+            type="button"
+            variant={segmentFilter === 'emailSent' ? 'default' : 'outline'}
+            size="sm"
+            className="gap-1"
+            onClick={() => setSegmentFilter('emailSent')}
+            title="Kisi bhi campaign email inhe successfully bheji gayi"
+          >
+            <MailCheck className="h-3.5 w-3.5" /> Sent ({behaviorCounts.emailSent})
+          </Button>
+          <Button
+            type="button"
+            variant={segmentFilter === 'emailOpened' ? 'default' : 'outline'}
+            size="sm"
+            className="gap-1"
+            onClick={() => setSegmentFilter('emailOpened')}
+            title="Kisi bhi campaign email ko open kiya"
+          >
+            <MailOpen className="h-3.5 w-3.5" /> Opened ({behaviorCounts.emailOpened})
+          </Button>
+          <Button
+            type="button"
+            variant={segmentFilter === 'emailClicked' ? 'default' : 'outline'}
+            size="sm"
+            className="gap-1"
+            onClick={() => setSegmentFilter('emailClicked')}
+            title="Kisi bhi campaign email ke andar link pe click kiya"
+          >
+            <MousePointerClick className="h-3.5 w-3.5" /> Clicked ({behaviorCounts.emailClicked})
+          </Button>
+          <Button
+            type="button"
+            variant={segmentFilter === 'emailFailed' ? 'default' : 'outline'}
+            size="sm"
+            className="gap-1"
+            onClick={() => setSegmentFilter('emailFailed')}
+            title="Inko kam se kam ek campaign email bhejne me fail hui"
+          >
+            <MailWarning className="h-3.5 w-3.5" /> Failed ({behaviorCounts.emailFailed})
           </Button>
           {segmentsLoading && <span className="text-xs text-muted-foreground">Audience calculate ho raha hai...</span>}
           <Button type="button" variant="ghost" size="sm" onClick={loadSegments} className="ml-auto text-xs">
