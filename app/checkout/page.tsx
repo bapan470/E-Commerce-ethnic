@@ -246,6 +246,12 @@ export default function CheckoutPage() {
         country: string;
         preserveExisting: boolean;
       }>;
+      // A draft with no preserveExisting field at all was written by an
+      // older version of this page (before that flag existed) — rather
+      // than guess, we discard it and let the shopper's account/session
+      // resolve normally. Only ever matters for one draft, right after a
+      // deploy, for a tab that was already mid-checkout.
+      if (!('preserveExisting' in draft)) return;
       setEmail(draft.email || '');
       setFirstName(draft.firstName || '');
       setLastName(draft.lastName || '');
@@ -259,9 +265,6 @@ export default function CheckoutPage() {
       setSelectedAddressId('new');
       setShowAddressForm(true);
       draftRestoredRef.current = true;
-      // Older drafts (saved before this flag existed) default to true —
-      // safer to preserve them than risk silently swapping in a saved
-      // address on an old, already-in-flight draft.
       suppressSavedAddressAutoApplyRef.current = draft.preserveExisting !== false;
     } catch {
       // Corrupt/unreadable draft — ignore and fall back to normal behaviour.
