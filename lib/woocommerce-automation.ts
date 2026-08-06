@@ -24,7 +24,7 @@
 // ---------------------------------------------------------------------
 
 import { getSupabaseAdmin } from './supabase-admin';
-import { sendEmail } from './email';
+import { sendEmail, resolveEmailConfig } from './email';
 import {
   buildPremiumCampaignHtml,
   wrapCampaignLinksForClickTracking,
@@ -214,7 +214,8 @@ async function sendQueuedEmail(
   customerEmail: string,
   siteUrl: string,
   sourceStoreUrl: string | null,
-  globalFallbackStoreName: string
+  globalFallbackStoreName: string,
+  emailConfig: Awaited<ReturnType<typeof resolveEmailConfig>>
 ): Promise<'sent' | 'failed' | 'skipped'> {
   const sendId = randomUUID();
   const automationStep = queueRow.campaign_type === 'manual' ? null : queueRow.campaign_type;
@@ -240,7 +241,7 @@ async function sendQueuedEmail(
   html = wrapCampaignLinksForClickTracking(html, sendId, siteUrl);
   html = html.split(UNSUBSCRIBE_LINK_PLACEHOLDER).join(`${siteUrl}/api/unsubscribe/${sendId}`);
 
-  const result = await sendEmail({ to: customerEmail, subject: queueRow.subject, html });
+  const result = await sendEmail({ to: customerEmail, subject: queueRow.subject, html }, emailConfig);
   const status: 'sent' | 'failed' | 'skipped' = result.success
     ? 'sent'
     : 'skipped' in result && result.skipped
@@ -457,55 +458,65 @@ export async function runWooCommerceDripJob(force = false) {
   // --- 4. Work the queue, oldest-scheduled-first ("top of the list"), due rows only ---
   // Cap how many emails a SINGLE invocation sends, regardless of how large
   // `remaining` (the full daily cap minus what's already gone out today) is.
-  // This route is hit every 15 min by an external cron (cron-job.org) with
-  // a hard 30s request timeout, and Vercel's own function budget is 60s.
-  // Each send does a DB lookup + actual email send + a 150ms pacing delay,
-  // so trying to clear the whole daily cap (e.g. 300) in one run could take
-  // 100+ seconds and time out every time. Sending a small batch per run and
-  // letting the next 15-min run pick up where this one left off keeps each
-  // request fast and still clears the full daily cap over the sending
-  // window (~1hr around the preferred hour = ~5 runs).
-  const MAX_SEND_PER_RUN = 25;
-  const { data: due } = await supabase
-    .from('woocommerce_send_queue')
-    .select('id, customer_id, subject, html, campaign_type')
-    .eq('status', 'queued')
-    .lte('scheduled_at', new Date().toISOString())
-    .order('scheduled_at', { ascending: true })
-    .order('created_at', { ascending: true })
-    .limit(Math.min(remaining, MAX_SEND_PER_RUN));
+  // This route is hit every 15 min by an external cron (cron-job.org), and
+  // Vercel's own function budget is 60s. Each send does 4-5 sequential DB
+  // round-trips + the actual email-provider API call, so this needs real
+  // headroom -- 25/run was measured to regularly blow past 30-40s once you
+  // add real network latency, which is what was timing the cron-job.org
+  // trigger out. Trimmed to 12/run (still clears the full daily cap over
+  // the ~1hr sending window = ~5 runs) and the email-provider config is now
+  // resolved ONCE per run instead of once per recipient (see lib/email.ts).
+  const MAX_SEND_PER_RUN = 12;
+  const sendBudget = Math.min(remaining, MAX_SEND_PER_RUN);
+  const { data: due } = sendBudget > 0
+    ? await supabase
+        .from('woocommerce_send_queue')
+        .select('id, customer_id, subject, html, campaign_type')
+        .eq('status', 'queued')
+        .lte('scheduled_at', new Date().toISOString())
+        .order('scheduled_at', { ascending: true })
+        .order('created_at', { ascending: true })
+        .limit(sendBudget)
+    : { data: [] as any[] };
 
   let sent = 0;
   let failed = 0;
   let skipped = 0;
 
-  for (const row of due ?? []) {
-    const { data: customer } = await supabase
-      .from('woocommerce_customers')
-      .select('email, opted_out, source_store_url')
-      .eq('id', row.customer_id)
-      .maybeSingle();
+  if (due && due.length > 0) {
+    // Resolved once for the whole batch -- was previously re-fetched from
+    // the `settings` table inside sendEmail() for every single recipient.
+    const emailConfig = await resolveEmailConfig();
 
-    if (!customer?.email || customer.opted_out) {
-      await supabase.from('woocommerce_send_queue').update({ status: 'skipped' }).eq('id', row.id);
-      skipped += 1;
-      continue;
+    for (const row of due) {
+      const { data: customer } = await supabase
+        .from('woocommerce_customers')
+        .select('email, opted_out, source_store_url')
+        .eq('id', row.customer_id)
+        .maybeSingle();
+
+      if (!customer?.email || customer.opted_out) {
+        await supabase.from('woocommerce_send_queue').update({ status: 'skipped' }).eq('id', row.id);
+        skipped += 1;
+        continue;
+      }
+
+      const status = await sendQueuedEmail(
+        supabase,
+        row as any,
+        customer.email,
+        siteUrl,
+        customer.source_store_url ?? null,
+        settings.sourceStoreName,
+        emailConfig
+      );
+      if (status === 'sent') sent += 1;
+      else if (status === 'failed') failed += 1;
+      else skipped += 1;
+
+      // Gentle pacing, same as the manual send-campaign route.
+      await new Promise((resolve) => setTimeout(resolve, 150));
     }
-
-    const status = await sendQueuedEmail(
-      supabase,
-      row as any,
-      customer.email,
-      siteUrl,
-      customer.source_store_url ?? null,
-      settings.sourceStoreName
-    );
-    if (status === 'sent') sent += 1;
-    else if (status === 'failed') failed += 1;
-    else skipped += 1;
-
-    // Gentle pacing, same as the manual send-campaign route.
-    await new Promise((resolve) => setTimeout(resolve, 150));
   }
 
   return { welcomeQueued, followupQueued, sent, failed, skipped };

@@ -37,7 +37,17 @@ interface ResolvedEmailConfig {
   zeptomailRegion: 'in' | 'com';
 }
 
-async function resolveEmailConfig(): Promise<ResolvedEmailConfig> {
+// PERF: this used to be called fresh from inside every single sendEmail()
+// call -- fine for one-off sends, but the WooCommerce drip job's send loop
+// (lib/woocommerce-automation.ts) calls sendEmail() up to MAX_SEND_PER_RUN
+// times per cron tick, so it was doing one extra `settings` table round-trip
+// PER RECIPIENT for a value that's identical for the whole run. That extra
+// latency, multiplied across a batch, was a meaningful chunk of why the
+// cron-job.org-triggered request was timing out. Callers that already know
+// the config for a whole batch (like the drip job) should call
+// resolveEmailConfig() ONCE themselves and pass it via sendEmail's optional
+// second arg instead of relying on this internal re-fetch every time.
+export async function resolveEmailConfig(): Promise<ResolvedEmailConfig> {
   let dbConfig: any = null;
   try {
     const supabase = getSupabaseAdmin();
@@ -124,12 +134,18 @@ async function sendViaZeptoMail(cfg: ResolvedEmailConfig, args: SendEmailArgs) {
   return { success: true as const, data };
 }
 
-export async function sendEmail({ to, subject, html }: SendEmailArgs): Promise<SendEmailResult> {
+export async function sendEmail(
+  { to, subject, html }: SendEmailArgs,
+  preResolvedConfig?: ResolvedEmailConfig
+): Promise<SendEmailResult> {
   if (!to) {
     return { success: false, skipped: true, error: 'No recipient email address' };
   }
 
-  const cfg = await resolveEmailConfig();
+  // Batch callers (e.g. the WooCommerce drip job) pass their own
+  // already-resolved config to skip the settings-table round-trip on
+  // every recipient. Everyone else keeps the old one-off behavior.
+  const cfg = preResolvedConfig ?? (await resolveEmailConfig());
 
   if (!cfg.provider || !cfg.apiKey) {
     console.warn(
