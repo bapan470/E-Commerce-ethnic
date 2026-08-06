@@ -392,6 +392,55 @@ export async function saveRefundAutomationSettings(settings: RefundAutomationSet
 }
 
 // ---------------------------------------------------------------------
+// Media delivery mode — controls whether the /media/[...path] proxy
+// (see lib/media-url.ts + app/media/[...path]/route.ts) actually streams
+// files through Vercel, or just 302-redirects the browser/crawler
+// straight to the underlying Supabase Storage URL.
+//
+// Every page/feed still LINKS to aruhihandlooms.com/media/... either way
+// -- nothing about URL generation changes -- only what the proxy route
+// does with that request changes. This means the toggle takes effect
+// instantly, site-wide, with no rebuild and no other code touched.
+//
+// "Redirect" mode exists specifically so that if Vercel's Fast Data
+// Transfer / Fast Origin Transfer quota is close to running out near the
+// end of a billing cycle, this can be flipped off from the admin panel:
+// the browser/crawler gets redirected to the raw Supabase URL and fetches
+// the actual image/video bytes directly, so Vercel stops paying that
+// bandwidth cost for media. The tradeoff is that the storage host
+// becomes visible again (in the browser network tab, and to crawlers
+// that record the final redirected URL) until it's switched back on.
+// ---------------------------------------------------------------------
+export interface MediaDeliverySettings {
+  /** true = proxy streams the file through Vercel under our own domain
+   *  (default; keeps aruhihandlooms.com in front of every media URL).
+   *  false = proxy 302-redirects straight to Supabase Storage instead,
+   *  to save Vercel bandwidth quota. */
+  proxy_enabled: boolean;
+}
+
+export const DEFAULT_MEDIA_DELIVERY_SETTINGS: MediaDeliverySettings = {
+  proxy_enabled: true,
+};
+
+export async function fetchMediaDeliverySettings(): Promise<MediaDeliverySettings> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'media_delivery')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_MEDIA_DELIVERY_SETTINGS;
+  return { ...DEFAULT_MEDIA_DELIVERY_SETTINGS, ...(data.value as Partial<MediaDeliverySettings>) };
+}
+
+export async function saveMediaDeliverySettings(settings: MediaDeliverySettings) {
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ key: 'media_delivery', value: settings }, { onConflict: 'key' });
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------
 // Order notifications — alerts YOU (the store owner), not the customer,
 // the moment a new order comes in. Independent of `support_email` in
 // StoreInfo because that address is shown publicly (footer/contact/about

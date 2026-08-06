@@ -37,6 +37,9 @@ import {
   HandlingFeeSettings,
   fetchHandlingFeeSettings,
   saveHandlingFeeSettings,
+  MediaDeliverySettings,
+  fetchMediaDeliverySettings,
+  saveMediaDeliverySettings,
 } from '@/lib/settings-api';
 import { uploadProductImage } from '@/lib/products-api';
 import {
@@ -107,6 +110,8 @@ export default function SettingsPanel() {
   const [savingPaymentDiscount, setSavingPaymentDiscount] = useState(false);
   const [refundAutomationForm, setRefundAutomationForm] = useState<RefundAutomationSettings | null>(null);
   const [savingRefundAutomation, setSavingRefundAutomation] = useState(false);
+  const [mediaDeliveryForm, setMediaDeliveryForm] = useState<MediaDeliverySettings | null>(null);
+  const [savingMediaDelivery, setSavingMediaDelivery] = useState(false);
   const [orderNotifForm, setOrderNotifForm] = useState<OrderNotificationSettings | null>(null);
   const [savingOrderNotif, setSavingOrderNotif] = useState(false);
   const [handlingFeeForm, setHandlingFeeForm] = useState<HandlingFeeSettings | null>(null);
@@ -161,6 +166,10 @@ export default function SettingsPanel() {
     fetchRefundAutomationSettings()
       .then(setRefundAutomationForm)
       .catch(() => toast.error('Failed to load refund automation settings'));
+
+    fetchMediaDeliverySettings()
+      .then(setMediaDeliveryForm)
+      .catch(() => toast.error('Failed to load media delivery settings'));
 
     fetchOrderNotificationSettings()
       .then(setOrderNotifForm)
@@ -314,6 +323,26 @@ export default function SettingsPanel() {
       toast.error(err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setSavingRefundAutomation(false);
+    }
+  };
+
+  const onToggleMediaDelivery = async (checked: boolean) => {
+    if (!mediaDeliveryForm) return;
+    const next = { ...mediaDeliveryForm, proxy_enabled: checked };
+    setMediaDeliveryForm(next); // update immediately so the switch feels responsive
+    setSavingMediaDelivery(true);
+    try {
+      await saveMediaDeliverySettings(next);
+      toast.success(
+        checked
+          ? 'Media now served from your domain (uses Vercel bandwidth)'
+          : 'Media now redirects to Supabase directly (saves Vercel bandwidth)'
+      );
+    } catch (err) {
+      setMediaDeliveryForm(mediaDeliveryForm); // revert the switch on failure
+      toast.error(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSavingMediaDelivery(false);
     }
   };
 
@@ -1184,6 +1213,37 @@ export default function SettingsPanel() {
             checked={refundAutomationForm.auto_refund_enabled}
             disabled={savingRefundAutomation}
             onCheckedChange={onToggleRefundAutomation}
+          />
+        </div>
+      )}
+
+      <div className="mt-8">
+        <h2 className="font-serif text-2xl font-bold text-primary">Media Delivery</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Controls how product/blog images and videos are served. Doesn't change any URL on the
+          site — only what happens when that URL is requested.
+        </p>
+      </div>
+
+      {!mediaDeliveryForm ? (
+        <p className="py-4 text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <div className="mt-4 flex max-w-xl items-center justify-between gap-4 rounded-lg border border-border/60 bg-card p-5">
+          <div>
+            <Label htmlFor="media-delivery-proxy-enabled">
+              {mediaDeliveryForm.proxy_enabled ? 'Serving from your domain' : 'Redirecting to Supabase'}
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              {mediaDeliveryForm.proxy_enabled
+                ? 'On (default): images/videos stream through aruhihandlooms.com, so your domain shows everywhere — but every byte counts against your Vercel bandwidth quota.'
+                : 'Off: aruhihandlooms.com/media links redirect straight to Supabase, so Vercel stops paying the bandwidth cost. Use this if your Vercel Fast Data/Origin Transfer quota is close to running out — switch back on once it resets.'}
+            </p>
+          </div>
+          <Switch
+            id="media-delivery-proxy-enabled"
+            checked={mediaDeliveryForm.proxy_enabled}
+            disabled={savingMediaDelivery}
+            onCheckedChange={onToggleMediaDelivery}
           />
         </div>
       )}

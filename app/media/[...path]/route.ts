@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSupabase } from '@/lib/supabase-server';
 
 // Public media proxy: serves storage files (currently Supabase) under our
 // own domain, so every place that surfaces a media URL externally --
@@ -15,12 +16,66 @@ import { NextRequest, NextResponse } from 'next/server';
 const SUPABASE_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/$/, '');
 const BACKEND_BASE = `${SUPABASE_URL}/storage/v1/object/public`;
 
+// Admin > Settings > Media Delivery (see lib/settings-api.ts,
+// MediaDeliverySettings) can flip this route from "stream" to "redirect"
+// mode without touching any other code or URL on the site, because every
+// page/feed always links to aruhihandlooms.com/media/... regardless --
+// only what THIS route does with that request changes:
+//   - proxy_enabled: true  (default) -> fetch the file and stream it back,
+//     so the response comes from our own domain with zero visible
+//     third-party host. Costs Vercel Fast Data Transfer + Fast Origin
+//     Transfer for every byte served.
+//   - proxy_enabled: false -> 302-redirect straight to the Supabase URL.
+//     The browser/crawler then downloads the actual bytes directly from
+//     Supabase, so Vercel only pays for a tiny redirect response (counted
+//     against the much larger Edge Requests quota, not the bandwidth
+//     quotas). Meant as an "end of billing cycle" safety valve when
+//     Vercel's bandwidth quota is close to running out -- flip it back to
+//     true once the quota resets.
+//
+// Cached in-memory for 60s per server instance so a toggle flip is felt
+// within a minute, without adding a Supabase read to every single image
+// request (which would otherwise run once per <img>/<video> load, site-
+// wide, all day).
+let proxyEnabledCache: { value: boolean; expiresAt: number } | null = null;
+
+async function isProxyEnabled(): Promise<boolean> {
+  const now = Date.now();
+  if (proxyEnabledCache && proxyEnabledCache.expiresAt > now) {
+    return proxyEnabledCache.value;
+  }
+  let value = true; // fail open: if settings can't be read, keep current (proxy) behavior
+  try {
+    const supabase = getServerSupabase();
+    const { data } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'media_delivery')
+      .maybeSingle();
+    const stored = data?.value as { proxy_enabled?: boolean } | undefined;
+    if (typeof stored?.proxy_enabled === 'boolean') value = stored.proxy_enabled;
+  } catch {
+    // Supabase unreachable -- keep the fail-open default above.
+  }
+  proxyEnabledCache = { value, expiresAt: now + 60_000 };
+  return value;
+}
+
 export async function GET(_req: NextRequest, { params }: { params: { path: string[] } }) {
   if (!SUPABASE_URL || !params.path || params.path.length === 0) {
     return new NextResponse('Not found', { status: 404 });
   }
 
   const upstreamUrl = `${BACKEND_BASE}/${params.path.map(encodeURIComponent).join('/')}`;
+
+  if (!(await isProxyEnabled())) {
+    // Quota-saving mode: hand the browser/crawler off to Supabase directly
+    // instead of streaming bytes through Vercel. 307 (not 301/302) so
+    // clients preserve the GET method and this is never cached as a
+    // *permanent* redirect -- once proxy_enabled flips back to true,
+    // clients should come straight back through this route again.
+    return NextResponse.redirect(upstreamUrl, 307);
+  }
 
   let upstream: Response;
   try {
