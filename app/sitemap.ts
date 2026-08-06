@@ -60,6 +60,27 @@ function toAbsoluteImageUrls(images: string[] | null | undefined): string[] {
     );
 }
 
+// The installed Next.js version's MetadataRoute.Sitemap type only has
+// url/lastModified/changeFrequency/priority -- it doesn't model the
+// `images`/`videos` sitemap extensions at all, so we can't derive this type
+// from MetadataRoute.Sitemap like `MetadataRoute.Sitemap[number]['videos']`.
+// Next.js itself doesn't validate these extra fields against the type at
+// runtime (it just serializes whatever is on the object), so we define our
+// own shape here matching Google's video sitemap spec.
+type SitemapVideoEntry = {
+  title: string;
+  thumbnail_loc: string;
+  description: string;
+  content_loc: string;
+};
+
+// A sitemap entry augmented with the `images`/`videos` extensions that this
+// Next.js version's built-in type doesn't know about.
+type ExtendedSitemapEntry = MetadataRoute.Sitemap[number] & {
+  images?: string[];
+  videos?: SitemapVideoEntry[];
+};
+
 // Builds the `videos` sitemap-extension entry for a product/variant that has
 // a video_url set. Without this, a page's video is invisible to Google as
 // "video content" -- it just sees on-page UI, never something eligible for
@@ -71,7 +92,7 @@ function buildVideoEntry(
   title: string,
   description: string | null | undefined,
   images: string[]
-): MetadataRoute.Sitemap[number]['videos'] {
+): SitemapVideoEntry[] | undefined {
   if (!videoUrl) return undefined;
   const absoluteVideoUrl = videoUrl.startsWith('http://') || videoUrl.startsWith('https://')
     ? videoUrl
@@ -196,7 +217,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.2,
   }));
 
-  const productPages: MetadataRoute.Sitemap = products.map((p) => {
+  const productPages: ExtendedSitemapEntry[] = products.map((p) => {
     const images = toAbsoluteImageUrls(p.images);
     const videos = buildVideoEntry(p.video_url, p.name, p.description, p.images || []);
     return {
@@ -209,7 +230,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     };
   });
 
-  const variantPages: MetadataRoute.Sitemap = variants.map((v) => {
+  const variantPages: ExtendedSitemapEntry[] = variants.map((v) => {
     const images = toAbsoluteImageUrls(v.images);
     // Variants don't carry their own product name, so fall back to the
     // colour and their own meta title/description (same source used for
