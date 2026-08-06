@@ -167,6 +167,16 @@ export default async function ProductPage({ params, searchParams }: Params) {
       : product.name
     : '';
 
+  // A colour variant's own video (if set) takes priority over the base
+  // product's, matching the fallback used on the storefront itself (see
+  // `video_url: variant.video || baseProduct.video_url` in product-detail.tsx).
+  // Surfacing it as a VideoObject here is what lets Google treat this as
+  // indexable video content (Search Console "Video" report / video search
+  // results) -- without it, the <video> element is just on-page UI Google
+  // has no structured signal for.
+  const videoUrl = variant?.video || product?.video_url || null;
+  const videoThumbnails = (variant?.images.length ? variant.images : product?.images) || [];
+
   const jsonLd = product
     ? {
         '@context': 'https://schema.org',
@@ -254,6 +264,16 @@ export default async function ProductPage({ params, searchParams }: Params) {
         material: product.material || product.fabric || undefined,
         pattern: product.pattern || undefined,
         productionDate: product.created_at,
+        video: videoUrl
+          ? {
+              '@type': 'VideoObject',
+              name: `${displayName} - Video`,
+              description: jsonLdDescription || `Video showcase of ${displayName}`,
+              thumbnailUrl: videoThumbnails.length > 0 ? videoThumbnails.slice(0, 1) : undefined,
+              uploadDate: product.created_at,
+              contentUrl: videoUrl,
+            }
+          : undefined,
       }
     : null;
 

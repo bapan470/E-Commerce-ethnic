@@ -60,18 +60,56 @@ function toAbsoluteImageUrls(images: string[] | null | undefined): string[] {
     );
 }
 
+// Builds the `videos` sitemap-extension entry for a product/variant that has
+// a video_url set. Without this, a page's video is invisible to Google as
+// "video content" -- it just sees on-page UI, never something eligible for
+// the Search Console "Video" report or video search results. thumbnail_loc
+// is required by Google's video sitemap spec, so entries without any usable
+// image are skipped entirely rather than emitted with a missing thumbnail.
+function buildVideoEntry(
+  videoUrl: string | null | undefined,
+  title: string,
+  description: string | null | undefined,
+  images: string[]
+): MetadataRoute.Sitemap[number]['videos'] {
+  if (!videoUrl) return undefined;
+  const absoluteVideoUrl = videoUrl.startsWith('http://') || videoUrl.startsWith('https://')
+    ? videoUrl
+    : `${SITE_URL}${videoUrl.startsWith('/') ? '' : '/'}${videoUrl}`;
+  const thumbnails = toAbsoluteImageUrls(images);
+  if (thumbnails.length === 0) return undefined;
+
+  return [
+    {
+      title,
+      thumbnail_loc: thumbnails[0],
+      description: (description || title).slice(0, 2048),
+      content_loc: absoluteVideoUrl,
+    },
+  ];
+}
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [products, categories, variants, blogPosts] = await Promise.all([
-    fetchAllRows<Pick<ProductRow, 'slug' | 'updated_at' | 'images'> & { category_name: string }>(
+    fetchAllRows<
+      Pick<ProductRow, 'slug' | 'updated_at' | 'images' | 'name' | 'description' | 'video_url'> & {
+        category_name: string;
+      }
+    >(
       'products',
-      'slug, updated_at, images, category_name',
+      'slug, updated_at, images, category_name, name, description, video_url',
       (q) => q.eq('approval_status', 'live')
     ),
     fetchAllRows<Pick<CategoryRow, 'slug' | 'name'>>('categories', 'slug, name'),
-    fetchAllRows<{ slug: string; created_at: string; images: string[] | null }>(
-      'product_variants',
-      'slug, created_at, images'
-    ),
+    fetchAllRows<{
+      slug: string;
+      created_at: string;
+      images: string[] | null;
+      video: string | null;
+      color: string | null;
+      meta_title: string | null;
+      meta_description: string | null;
+    }>('product_variants', 'slug, created_at, images, video, color, meta_title, meta_description'),
     fetchPublishedBlogPostsServer(),
   ]);
 
@@ -160,23 +198,36 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const productPages: MetadataRoute.Sitemap = products.map((p) => {
     const images = toAbsoluteImageUrls(p.images);
+    const videos = buildVideoEntry(p.video_url, p.name, p.description, p.images || []);
     return {
       url: `${SITE_URL}/product/${p.slug}`,
       lastModified: p.updated_at ? new Date(p.updated_at) : new Date(),
       changeFrequency: 'weekly' as const,
       priority: 0.8,
       ...(images.length > 0 ? { images } : {}),
+      ...(videos ? { videos } : {}),
     };
   });
 
   const variantPages: MetadataRoute.Sitemap = variants.map((v) => {
     const images = toAbsoluteImageUrls(v.images);
+    // Variants don't carry their own product name, so fall back to the
+    // colour and their own meta title/description (same source used for
+    // <title>/<meta name="description"> on the variant page itself) rather
+    // than leaving the video sitemap entry untitled.
+    const videos = buildVideoEntry(
+      v.video,
+      v.meta_title || [v.color, 'video'].filter(Boolean).join(' '),
+      v.meta_description,
+      v.images || []
+    );
     return {
       url: `${SITE_URL}/product/${v.slug}`,
       lastModified: v.created_at ? new Date(v.created_at) : new Date(),
       changeFrequency: 'weekly' as const,
       priority: 0.6,
       ...(images.length > 0 ? { images } : {}),
+      ...(videos ? { videos } : {}),
     };
   });
 
