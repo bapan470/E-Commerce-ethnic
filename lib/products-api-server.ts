@@ -9,7 +9,7 @@ export const CUSTOMER_SAFE_PRODUCT_COLUMNS = [
   'id', 'name', 'slug', 'description', 'price', 'mrp',
   'category_id', 'category_name', 'fabric', 'origin', 'colors', 'sizes',
   'occasion', 'gender', 'age_group', 'material', 'pattern', 'images',
-  'video_url', 'sku', 'highlights', 'stock_quantity', 'low_stock_threshold',
+  'video_url', 'autoplay_video_in_catalog', 'sku', 'highlights', 'stock_quantity', 'low_stock_threshold',
   'rating', 'reviews', 'featured', 'in_stock', 'created_at', 'updated_at',
 ].join(', ');
 
@@ -74,6 +74,7 @@ export function mapRowToProduct(row: ProductRow): Product {
     pattern: row.pattern ?? null,
     images: row.images ?? [],
     video_url: row.video_url ?? null,
+    autoplay_video_in_catalog: row.autoplay_video_in_catalog ?? false,
     sku: row.sku ?? null,
     highlights: row.highlights ?? null,
     default_variant_slug: defaultVariant?.slug ?? null,

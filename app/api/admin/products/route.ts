@@ -56,6 +56,7 @@ export async function POST(req: Request) {
     pattern: input.pattern ?? null,
     images: input.images ?? [],
     video_url: input.video_url ?? null,
+    autoplay_video_in_catalog: input.autoplay_video_in_catalog ?? false,
     sku: input.sku ?? null,
     highlights: input.highlights ?? {},
     stock_quantity: input.stock_quantity ?? 0,

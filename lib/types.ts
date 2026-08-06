@@ -90,6 +90,10 @@ export interface Product {
   pattern: string | null;
   images: string[];
   video_url?: string | null;
+  /** When true (and video_url is set), the storefront catalog grid shows a
+   *  silently-autoplaying, looping video in this product's thumbnail slot
+   *  instead of its first image. */
+  autoplay_video_in_catalog?: boolean;
   sku?: string | null;
   highlights?: ProductHighlights | null;
   /**
@@ -289,6 +293,7 @@ export interface ProductRow {
   pattern: string | null;
   images: string[] | null;
   video_url: string | null;
+  autoplay_video_in_catalog: boolean | null;
   sku: string | null;
   highlights: ProductHighlights | null;
   /** Embedded via `product_variants(slug, images, is_default, color)` in the

@@ -17,7 +17,7 @@ const CUSTOMER_SAFE_PRODUCT_COLUMNS = [
   'id', 'name', 'slug', 'description', 'price', 'mrp',
   'category_id', 'category_name', 'fabric', 'origin', 'colors', 'sizes',
   'occasion', 'gender', 'age_group', 'material', 'pattern', 'images',
-  'video_url', 'sku', 'highlights', 'stock_quantity', 'low_stock_threshold',
+  'video_url', 'autoplay_video_in_catalog', 'sku', 'highlights', 'stock_quantity', 'low_stock_threshold',
   'rating', 'reviews', 'featured', 'in_stock', 'created_at', 'updated_at',
 ].join(', ');
 
@@ -109,6 +109,7 @@ export function mapRowToProduct(row: ProductRow): Product {
     images: row.images ?? [],
     all_images: resolveAllImages(row),
     video_url: row.video_url ?? null,
+    autoplay_video_in_catalog: row.autoplay_video_in_catalog ?? false,
     sku: row.sku ?? null,
     highlights: row.highlights ?? null,
     default_variant_slug: defaultVariant?.slug ?? null,
@@ -321,5 +322,20 @@ export async function uploadProductImage(file: File, seoName?: string, folder?: 
   const res = await fetch('/api/upload-image', { method: 'POST', body: formData });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.error || 'Image upload failed');
+  return json.url as string;
+}
+
+export async function uploadProductVideo(file: File, seoName?: string): Promise<string> {
+  // Same pattern as uploadProductImage() above -- routed through a server
+  // route (app/api/upload-video/route.ts) rather than uploading straight
+  // to Supabase Storage from the browser, so the admin session can be
+  // checked server-side before writing to the product-videos bucket.
+  const formData = new FormData();
+  formData.append('file', file);
+  if (seoName) formData.append('seoName', seoName);
+
+  const res = await fetch('/api/upload-video', { method: 'POST', body: formData });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Video upload failed');
   return json.url as string;
 }
