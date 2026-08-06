@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { ShoppingBag, Star } from 'lucide-react';
 import { Product } from '@/lib/types';
@@ -11,7 +10,7 @@ import { useCart, getVisibleBogoPromotion, formatBogoLabel } from '@/lib/cart-co
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import WishlistButton from '@/components/wishlist-button';
-import { blurDataURL } from '@/lib/utils';
+import CatalogCardMedia from '@/components/catalog-card-media';
 import { Truck } from 'lucide-react';
 
 export default function ProductCard({
@@ -91,36 +90,16 @@ export default function ProductCard({
       href={href}
       className="group relative flex flex-col overflow-hidden rounded-2xl bg-card shadow-sm transition-shadow duration-300 hover:shadow-lg product-card-hover"
     >
-      <div className="relative aspect-[4/5] overflow-hidden bg-muted">
-        <Image
-          src={img}
-          alt={altText}
-          fill
-          sizes={compact ? '(max-width: 640px) 38vw, 176px' : '(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw'}
-          quality={78}
+      <div className="relative overflow-hidden">
+        <CatalogCardMedia
+          img={img}
+          hoverImg={hoverImg}
+          altText={altText}
+          videoUrl={product.video_url}
+          autoplayVideo={!!product.autoplay_video_in_catalog}
           priority={priority}
-          loading={priority ? undefined : 'lazy'}
-          placeholder="blur"
-          blurDataURL={blurDataURL(32, 40)}
-          className={`object-cover transition-opacity duration-300 ease-out ${
-            hoverImg ? 'group-hover:opacity-0' : 'group-hover:scale-105 transition-transform duration-500'
-          }`}
+          compact={compact}
         />
-        {/* Shopify-style hover swap: shows the second product photo on hover
-            instead of a plain zoom, giving a peek at another angle without
-            an extra click. Falls back to a simple scale zoom if there's
-            only one image. Lazy — only loads once the card is in view. */}
-        {hoverImg && (
-          <Image
-            src={hoverImg}
-            alt={`${altText} - back view`}
-            fill
-            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-            quality={70}
-            loading="lazy"
-            className="absolute inset-0 object-cover opacity-0 transition-opacity duration-300 ease-out group-hover:opacity-100"
-          />
-        )}
         <div className="absolute left-3 top-3 flex flex-col items-start gap-1.5">
           {/* Admin toggles "Featured" per product in the dashboard — shown
               here as a Bestseller tag, so it updates the moment they flip it. */}
