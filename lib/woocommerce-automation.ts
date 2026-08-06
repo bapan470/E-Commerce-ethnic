@@ -455,6 +455,17 @@ export async function runWooCommerceDripJob(force = false) {
   }
 
   // --- 4. Work the queue, oldest-scheduled-first ("top of the list"), due rows only ---
+  // Cap how many emails a SINGLE invocation sends, regardless of how large
+  // `remaining` (the full daily cap minus what's already gone out today) is.
+  // This route is hit every 15 min by an external cron (cron-job.org) with
+  // a hard 30s request timeout, and Vercel's own function budget is 60s.
+  // Each send does a DB lookup + actual email send + a 150ms pacing delay,
+  // so trying to clear the whole daily cap (e.g. 300) in one run could take
+  // 100+ seconds and time out every time. Sending a small batch per run and
+  // letting the next 15-min run pick up where this one left off keeps each
+  // request fast and still clears the full daily cap over the sending
+  // window (~1hr around the preferred hour = ~5 runs).
+  const MAX_SEND_PER_RUN = 25;
   const { data: due } = await supabase
     .from('woocommerce_send_queue')
     .select('id, customer_id, subject, html, campaign_type')
@@ -462,7 +473,7 @@ export async function runWooCommerceDripJob(force = false) {
     .lte('scheduled_at', new Date().toISOString())
     .order('scheduled_at', { ascending: true })
     .order('created_at', { ascending: true })
-    .limit(remaining);
+    .limit(Math.min(remaining, MAX_SEND_PER_RUN));
 
   let sent = 0;
   let failed = 0;
