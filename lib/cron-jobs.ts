@@ -337,7 +337,13 @@ export async function runVendorStockHoldScanJob() {
 // gets a bare publish so nothing is ever left stuck indefinitely — it
 // will simply get the AI treatment on the NEXT run instead (oldest-first).
 const STUCK_MINUTES = 10;
-const STUCK_AI_BATCH_LIMIT = 3;
+// Lowered from 3 to 1: cron-job.org (the external scheduler hitting
+// /api/cron/daily-jobs every 15 min) has a hard 30s request timeout that
+// can't be raised. Each AI recovery call can take up to ~50s, so even one
+// call risks a timeout there — 3 sequential calls made it near-certain.
+// The job itself still isn't lossy: anything beyond this batch falls back
+// to a bare publish and gets AI treatment on a later run (oldest-first).
+const STUCK_AI_BATCH_LIMIT = 1;
 
 export async function runStuckVendorListingsJob() {
   const supabase = getSupabaseAdmin();
