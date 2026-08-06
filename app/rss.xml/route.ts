@@ -23,6 +23,7 @@
 import { fetchProductsServer } from "@/lib/products-api-server";
 import { resolveGoogleProductCategory } from "@/lib/google-category";
 import { getServerSupabase } from "@/lib/supabase-server";
+import { toPublicMediaUrl } from "@/lib/media-url";
 
 export const dynamic = "force-dynamic"; // always fetch fresh data on each request
 
@@ -143,7 +144,7 @@ export async function GET() {
           title: p.name,
           link: `${SITE_URL}/product/${p.slug}`,
           description,
-          image: p.images?.[0] || "",
+          image: toPublicMediaUrl(p.images?.[0]) || "",
           inStock: p.inStock && p.stock_quantity > 0,
           price: p.price,
           color: (p.colors || []).slice(0, 3).join("/") || "Multicolor",
@@ -160,7 +161,7 @@ export async function GET() {
         .flatMap((v) => {
           const sizes = v.product_variant_sizes ?? [];
           const images = v.images && v.images.length > 0 ? v.images : p.images || [];
-          const image = images[0] || "";
+          const image = toPublicMediaUrl(images[0]) || "";
 
           if (sizes.length === 0) {
             const price = v.price_override ?? p.price;

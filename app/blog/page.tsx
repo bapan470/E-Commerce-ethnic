@@ -3,6 +3,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { fetchPublishedBlogPostsServer } from '@/lib/blog-api-server';
 import { blurDataURL } from '@/lib/utils';
+import { toPublicMediaUrl } from '@/lib/media-url';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
@@ -57,7 +58,7 @@ export default async function BlogIndexPage() {
           >
             <div className="relative aspect-[16/10] w-full overflow-hidden bg-muted">
               <Image
-                src={post.cover_image}
+                src={toPublicMediaUrl(post.cover_image) || post.cover_image}
                 alt={post.title}
                 fill
                 sizes="(max-width: 768px) 100vw, 33vw"

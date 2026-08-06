@@ -10,6 +10,7 @@ import { fetchCategoriesServer, fetchProductBySlugServer } from '@/lib/products-
 import { blurDataURL } from '@/lib/utils';
 import { safeJsonLd } from '@/lib/json-ld';
 import BlogProductCard from '@/components/blog/blog-product-card';
+import { toPublicMediaUrl } from '@/lib/media-url';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
@@ -79,6 +80,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 
   const url = `${SITE_URL}/blog/${post.slug}`;
   const title = `${post.title} | AruhiHandlooms`;
+  const coverImage = toPublicMediaUrl(post.cover_image) || post.cover_image;
 
   return {
     title,
@@ -91,7 +93,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
       url,
       siteName: 'AruhiHandlooms',
       type: 'article',
-      images: [{ url: post.cover_image, width: 1200, height: 630, alt: post.title }],
+      images: [{ url: coverImage, width: 1200, height: 630, alt: post.title }],
       publishedTime: post.published_at,
       modifiedTime: post.updated_at || post.published_at,
     },
@@ -99,7 +101,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
       card: 'summary_large_image',
       title,
       description: post.excerpt,
-      images: [post.cover_image],
+      images: [coverImage],
     },
     robots: {
       index: true,
@@ -151,7 +153,7 @@ export default async function BlogPostPage({ params }: Params) {
     '@type': 'Article',
     headline: post.title,
     description: post.excerpt,
-    image: post.cover_image,
+    image: toPublicMediaUrl(post.cover_image) || post.cover_image,
     datePublished: post.published_at,
     dateModified: post.updated_at || post.published_at,
     author: { '@type': 'Organization', name: 'AruhiHandlooms' },
@@ -189,7 +191,7 @@ export default async function BlogPostPage({ params }: Params) {
 
       <div className="relative mt-6 aspect-[16/9] w-full overflow-hidden rounded-2xl bg-muted">
         <Image
-          src={post.cover_image}
+          src={toPublicMediaUrl(post.cover_image) || post.cover_image}
           alt={post.title}
           fill
           sizes="(max-width: 768px) 100vw, 768px"
