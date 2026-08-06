@@ -10,6 +10,7 @@ import {
   updateProduct,
   deleteProduct,
   uploadProductImage,
+  uploadProductVideo,
   extractErrorMessage,
 } from '@/lib/products-api';
 import { generateSlideshowVideo } from '@/lib/slideshow-video-generator';
@@ -200,6 +201,7 @@ interface FormState {
   pattern: string;
   images: string[];
   video_url: string;
+  autoplay_video_in_catalog: boolean;
   sku: string;
   highlights: ProductHighlights;
   stock_quantity: string;
@@ -269,6 +271,7 @@ const emptyForm = (): FormState => ({
   pattern: '',
   images: [DEFAULT_IMAGE],
   video_url: '',
+  autoplay_video_in_catalog: false,
   sku: '',
   highlights: emptyHighlights(),
   stock_quantity: '0',
@@ -299,6 +302,7 @@ const fromProduct = (p: Product): FormState => ({
   pattern: p.pattern || '',
   images: p.images.length ? p.images : [DEFAULT_IMAGE],
   video_url: p.video_url || '',
+  autoplay_video_in_catalog: !!p.autoplay_video_in_catalog,
   sku: p.sku || '',
   highlights: { ...emptyHighlights(), ...(p.highlights || {}) },
   stock_quantity: String(p.stock_quantity),
@@ -628,6 +632,7 @@ export default function ProductsPanel() {
   const [importUrl, setImportUrl] = useState('');
   const [importing, setImporting] = useState(false);
   const [cropOnImport, setCropOnImport] = useState(false);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
   // When true, ProductVariantsManager (rendered inside the edit dialog)
   // opens its "Add Variant" form the moment it mounts -- lets the row's
   // "Add Variation" button jump straight there without an extra click.
@@ -1046,6 +1051,27 @@ export default function ProductsPanel() {
     setForm((f) => ({ ...f, images: f.images.filter((_, i) => i !== idx) }));
   };
 
+  const onUploadVideo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingVideo(true);
+    try {
+      const url = await uploadProductVideo(file, form.name);
+      setForm((f) => ({ ...f, video_url: url }));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Video upload failed');
+    } finally {
+      setUploadingVideo(false);
+      e.target.value = '';
+    }
+  };
+
+  const removeVideo = () => {
+    // Clearing the video also switches autoplay off -- there's nothing
+    // left for the catalog grid to autoplay.
+    setForm((f) => ({ ...f, video_url: '', autoplay_video_in_catalog: false }));
+  };
+
   const importFromUrl = async () => {
     const url = importUrl.trim();
     if (!url) return;
@@ -1104,6 +1130,9 @@ export default function ProductsPanel() {
       pattern: form.pattern.trim() || null,
       images,
       video_url: form.video_url.trim() || null,
+      // Can't be on without a video -- if the URL was cleared after the
+      // toggle was switched on, don't silently keep autoplay flagged.
+      autoplay_video_in_catalog: form.video_url.trim() ? form.autoplay_video_in_catalog : false,
       sku: form.sku.trim() || generateProductSku(form.name, form.category_name),
       highlights: form.highlights,
       stock_quantity: newStockQty,
@@ -2593,8 +2622,28 @@ export default function ProductsPanel() {
             />
 
             {/* Product video (shows as the first slide in the gallery, before photos) */}
-            <div className="grid gap-1.5">
-              <Label htmlFor="video_url">Product Video URL (optional)</Label>
+            <div className="grid gap-3">
+              <Label>Product Video (optional)</Label>
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border bg-muted/40 px-4 py-2 text-sm hover:border-primary/50">
+                  {uploadingVideo ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4" />
+                  )}
+                  <span>{uploadingVideo ? 'Uploading…' : 'Upload Video to Storage'}</span>
+                  <input
+                    type="file"
+                    accept="video/mp4,video/webm"
+                    className="hidden"
+                    onChange={onUploadVideo}
+                    disabled={uploadingVideo}
+                  />
+                </label>
+                <span className="text-xs text-muted-foreground">
+                  Or paste any public video URL below.
+                </span>
+              </div>
               <Input
                 id="video_url"
                 value={form.video_url}
@@ -2605,6 +2654,47 @@ export default function ProductsPanel() {
                 Short fabric/drape video. Shows as the first slide on the product page gallery,
                 before the photos — helps buyers see texture and movement.
               </p>
+
+              {form.video_url && (
+                <div className="flex items-start gap-3">
+                  <div className="relative h-28 w-20 overflow-hidden rounded-md border border-border bg-black">
+                    <video
+                      src={form.video_url}
+                      muted
+                      loop
+                      playsInline
+                      autoPlay
+                      className="h-full w-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={removeVideo}
+                      className="absolute right-0.5 top-0.5 rounded-full bg-background/90 p-0.5 text-destructive shadow-sm hover:bg-background"
+                      aria-label="Remove video"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                  <label className="flex flex-1 items-start gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs">
+                    <Switch
+                      checked={form.autoplay_video_in_catalog}
+                      onCheckedChange={(v) =>
+                        setForm((f) => ({ ...f, autoplay_video_in_catalog: v }))
+                      }
+                      className="mt-0.5 scale-90"
+                    />
+                    <span>
+                      <span className="block font-medium text-foreground">
+                        Autoplay video in catalog thumbnail (instead of image)
+                      </span>
+                      <span className="mt-0.5 block text-muted-foreground">
+                        When on, this video silently autoplays in the product card on the
+                        shop/category listing grid, instead of showing the first image.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              )}
             </div>
 
             <div className="grid gap-4 sm:grid-cols-4">
