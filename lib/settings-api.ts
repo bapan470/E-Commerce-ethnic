@@ -433,11 +433,27 @@ export async function fetchMediaDeliverySettings(): Promise<MediaDeliverySetting
   return { ...DEFAULT_MEDIA_DELIVERY_SETTINGS, ...(data.value as Partial<MediaDeliverySettings>) };
 }
 
+// Goes through /api/admin/media-delivery (server-side) instead of writing
+// to the `settings` table directly like other admin settings do, because
+// this one also needs to purge Cloudflare's edge cache for /media/* the
+// moment it's saved (see that route's comment for why) -- otherwise
+// already-cached images at Cloudflare's edge would keep ignoring the new
+// value until their 1-year cache naturally expires.
 export async function saveMediaDeliverySettings(settings: MediaDeliverySettings) {
-  const { error } = await supabase
-    .from('settings')
-    .upsert({ key: 'media_delivery', value: settings }, { onConflict: 'key' });
-  if (error) throw error;
+  const res = await fetch('/api/admin/media-delivery', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(json?.error || 'Failed to save media delivery settings');
+  }
+  return json as {
+    saved: true;
+    proxy_enabled: boolean;
+    cloudflare_purge: { attempted: boolean; ok: boolean; error?: string };
+  };
 }
 
 // ---------------------------------------------------------------------

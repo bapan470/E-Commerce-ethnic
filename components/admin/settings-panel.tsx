@@ -332,12 +332,19 @@ export default function SettingsPanel() {
     setMediaDeliveryForm(next); // update immediately so the switch feels responsive
     setSavingMediaDelivery(true);
     try {
-      await saveMediaDeliverySettings(next);
-      toast.success(
-        checked
-          ? 'Media now served from your domain (uses Vercel bandwidth)'
-          : 'Media now redirects to Supabase directly (saves Vercel bandwidth)'
-      );
+      const result = await saveMediaDeliverySettings(next);
+      const mode = checked ? 'domain (Vercel)' : 'Supabase directly';
+      if (result.cloudflare_purge.attempted && result.cloudflare_purge.ok) {
+        toast.success(`Now serving media from ${mode} — Cloudflare cache cleared, takes effect immediately.`);
+      } else if (result.cloudflare_purge.attempted && !result.cloudflare_purge.ok) {
+        toast.warning(
+          `Saved, but Cloudflare cache purge failed (${result.cloudflare_purge.error}). Already-viewed images may take up to a year to reflect this until their cache expires — new images are unaffected.`
+        );
+      } else {
+        toast.success(
+          `Saved (serving from ${mode}). Cloudflare purge isn't configured, so already-viewed images won't reflect this until their cache expires — new images will.`
+        );
+      }
     } catch (err) {
       setMediaDeliveryForm(mediaDeliveryForm); // revert the switch on failure
       toast.error(err instanceof Error ? err.message : 'Failed to save');
@@ -1221,7 +1228,9 @@ export default function SettingsPanel() {
         <h2 className="font-serif text-2xl font-bold text-primary">Media Delivery</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Controls how product/blog images and videos are served. Doesn't change any URL on the
-          site — only what happens when that URL is requested.
+          site — only what happens when that URL is requested. Flipping this also purges
+          Cloudflare's cache automatically, so it takes effect right away instead of waiting on
+          already-cached images to expire.
         </p>
       </div>
 
