@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { toPublicMediaUrl } from '@/lib/media-url';
 import {
   Minus,
   Plus,
@@ -396,7 +397,7 @@ export default function CartDrawer() {
                           className="relative h-20 w-16 shrink-0 overflow-hidden rounded-md bg-muted"
                         >
                           <Image
-                            src={item.product.images[0] || 'https://placehold.co/64x80?text=No+Image'}
+                            src={toPublicMediaUrl(item.product.images[0]) || 'https://placehold.co/64x80?text=No+Image'}
                             alt={`${item.product.name} - ${item.product.fabric} ${item.product.category}`}
                             fill
                             sizes="64px"

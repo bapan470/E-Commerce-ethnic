@@ -36,6 +36,7 @@ import ProductHighlights from '@/components/product/product-highlights';
 import BogoOfferSheet from '@/components/product/bogo-offer-sheet';
 import SizeChart from '@/components/product/size-chart';
 import ProductGallery from '@/components/product/product-gallery';
+import { toPublicMediaUrl, toPublicMediaUrls } from '@/lib/media-url';
 import ProductVideo from '@/components/product/product-video';
 import MobileStickyCartBar from '@/components/product/mobile-sticky-cart-bar';
 import RelatedProducts from '@/components/product/related-products';
@@ -573,13 +574,13 @@ export default function ProductDetail() {
       <div className="grid gap-4 lg:grid-cols-2 lg:gap-8 lg:items-start">
         <div className="flex flex-col gap-3 lg:sticky lg:top-24 lg:self-start">
           <div className="-mx-4 sm:mx-0">
-            <ProductGallery images={product.images} alt={seoAltText} discount={discount} />
+            <ProductGallery images={toPublicMediaUrls(product.images)} alt={seoAltText} discount={discount} />
           </div>
           {product.video_url && (
             <div className="px-4 sm:px-0">
               <ProductVideo
-                videoUrl={product.video_url}
-                posterUrl={product.images[0]}
+                videoUrl={toPublicMediaUrl(product.video_url) || product.video_url}
+                posterUrl={toPublicMediaUrl(product.images[0]) || product.images[0]}
                 alt={seoAltText}
               />
             </div>

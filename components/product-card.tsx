@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import WishlistButton from '@/components/wishlist-button';
 import CatalogCardMedia from '@/components/catalog-card-media';
+import { toPublicMediaUrl } from '@/lib/media-url';
 import { Truck } from 'lucide-react';
 
 export default function ProductCard({
@@ -73,9 +74,10 @@ export default function ProductCard({
   // the default one -- shoppers land straight on that colour, and clicking
   // through from shop/category always opens that exact variant.
   const href = `/product/${product.default_variant_slug || product.slug}`;
-  const img =
-    imageOverride || product.default_variant_image || product.images[0] || 'https://placehold.co/800x1000?text=No+Image';
-  const hoverImg = product.images[1];
+  const img = toPublicMediaUrl(
+    imageOverride || product.default_variant_image || product.images[0]
+  ) || 'https://placehold.co/800x1000?text=No+Image';
+  const hoverImg = toPublicMediaUrl(product.images[1]) || undefined;
   // The card's photo (`img` above) can be the default variant's photo,
   // which may be a different colour than the base product's own name/first
   // photo (e.g. base "Maroon Handloom Kurti" with a "Blue" default variant).
@@ -95,7 +97,7 @@ export default function ProductCard({
           img={img}
           hoverImg={hoverImg}
           altText={altText}
-          videoUrl={product.video_url}
+          videoUrl={toPublicMediaUrl(product.video_url) || undefined}
           autoplayVideo={!!product.autoplay_video_in_catalog}
           priority={priority}
           compact={compact}
