@@ -4,6 +4,7 @@ import { fetchProductsServer } from '@/lib/products-api-server';
 import { fetchFulfillmentSettings } from '@/lib/marketing-api';
 import { fetchShippingSettings } from '@/lib/pincode-api';
 import { resolveGoogleProductCategory } from '@/lib/google-category';
+import { toPublicMediaUrls } from '@/lib/media-url';
 import type { Product } from '@/lib/types';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
@@ -119,7 +120,11 @@ export async function GET() {
     size: string;
     product: Product;
   }) {
-    const { id, itemGroupId, title, link, images, inStock, price, mrp, color, size, product } = opts;
+    const { id, itemGroupId, title, link, images: rawImages, inStock, price, mrp, color, size, product } = opts;
+    // Rewrites Supabase Storage URLs to our own domain (see lib/media-url.ts)
+    // so Merchant Center and Pinterest's feed-derived catalog show
+    // aruhihandlooms.com image links instead of the storage provider's host.
+    const images = toPublicMediaUrls(rawImages);
     const image = images[0] || '';
     const extraImages = images
       .slice(1, 11)

@@ -3,6 +3,7 @@ import { getServerSupabase } from '@/lib/supabase-server';
 import { ProductRow, CategoryRow } from '@/lib/types';
 import { LEGAL_PAGE_TITLES } from '@/lib/marketing-api';
 import { fetchPublishedBlogPostsServer } from '@/lib/blog-api-server';
+import { toPublicMediaUrl, toPublicMediaUrls } from '@/lib/media-url';
 
 // This route replaces the app/sitemap.ts file-convention sitemap. The
 // installed Next.js version's built-in sitemap XML serializer
@@ -57,17 +58,22 @@ async function fetchAllRows<T>(
   return rows;
 }
 
-// Turns a raw images array (which may hold relative storage paths) into
-// absolute URLs, since Google's image sitemap extension requires full URLs.
+// Turns a raw images array (which may hold relative storage paths, or
+// absolute Supabase Storage URLs) into absolute own-domain URLs, since
+// Google's image sitemap extension requires full URLs. Routing Supabase
+// URLs through toPublicMediaUrl means the sitemap always advertises
+// aruhihandlooms.com URLs, not the storage provider's host -- see
+// lib/media-url.ts for why.
 function toAbsoluteImageUrls(images: string[] | null | undefined): string[] {
   if (!images || images.length === 0) return [];
-  return images
+  const absolute = images
     .filter((img): img is string => !!img)
     .map((img) =>
       img.startsWith('http://') || img.startsWith('https://')
         ? img
         : `${SITE_URL}${img.startsWith('/') ? '' : '/'}${img}`
     );
+  return toPublicMediaUrls(absolute);
 }
 
 type SitemapVideoEntry = {
@@ -93,6 +99,9 @@ function buildVideoEntry(
   const absoluteVideoUrl = videoUrl.startsWith('http://') || videoUrl.startsWith('https://')
     ? videoUrl
     : `${SITE_URL}${videoUrl.startsWith('/') ? '' : '/'}${videoUrl}`;
+  // toAbsoluteImageUrls already routes through toPublicMediaUrls for the
+  // thumbnail; the video file itself needs the same treatment here.
+  const publicVideoUrl = toPublicMediaUrl(absoluteVideoUrl) || absoluteVideoUrl;
   const thumbnails = toAbsoluteImageUrls(images);
   if (thumbnails.length === 0) return undefined;
 
@@ -101,7 +110,7 @@ function buildVideoEntry(
       title,
       thumbnail_loc: thumbnails[0],
       description: (description || title).slice(0, 2048),
-      content_loc: absoluteVideoUrl,
+      content_loc: publicVideoUrl,
     },
   ];
 }

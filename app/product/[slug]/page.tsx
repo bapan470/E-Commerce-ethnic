@@ -7,6 +7,7 @@ import { fetchFulfillmentSettings } from '@/lib/marketing-api';
 import { fetchShippingSettings } from '@/lib/pincode-api';
 import { generateVariantSeoContent } from '@/lib/variant-seo-content';
 import { getVariantDisplayName } from '@/lib/variant-display-name';
+import { toPublicMediaUrl, toPublicMediaUrls } from '@/lib/media-url';
 import ProductDetail from './product-detail';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
@@ -83,7 +84,10 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     product.description ||
     `Buy ${displayName} - ${product.fabric} from ${product.origin}. Handwoven ethnic wear from AruhiHandlooms.`;
   const url = `${SITE_URL}/product/${params.slug}`;
-  const images = variant?.images.length ? variant.images : product.images;
+  // Rewrites Supabase Storage URLs to aruhihandlooms.com (see
+  // lib/media-url.ts) so the OG/Twitter image -- what Google/social
+  // crawlers actually fetch and cite -- shows our own domain.
+  const images = toPublicMediaUrls(variant?.images.length ? variant.images : product.images);
   const image = images[0] || 'https://images.pexels.com/photos/1191349/pexels-photo-1191349.jpeg?auto=compress&cs=tinysrgb&w=1200&h=630&fit=crop';
 
   return {
@@ -174,8 +178,11 @@ export default async function ProductPage({ params, searchParams }: Params) {
   // indexable video content (Search Console "Video" report / video search
   // results) -- without it, the <video> element is just on-page UI Google
   // has no structured signal for.
-  const videoUrl = variant?.video || product?.video_url || null;
-  const videoThumbnails = (variant?.images.length ? variant.images : product?.images) || [];
+  // Rewritten to our own domain (see lib/media-url.ts) -- this is the
+  // VideoObject.contentUrl/thumbnailUrl Google reads for Search Console's
+  // "Video" report, so it should show aruhihandlooms.com, not Supabase.
+  const videoUrl = toPublicMediaUrl(variant?.video || product?.video_url || null);
+  const videoThumbnails = toPublicMediaUrls((variant?.images.length ? variant.images : product?.images) || []);
 
   const jsonLd = product
     ? {
@@ -188,9 +195,7 @@ export default async function ProductPage({ params, searchParams }: Params) {
         color: variant?.color || product.colors[0] || undefined,
         image:
           (variant?.images.length ? variant.images : product.images).length > 0
-            ? variant?.images.length
-              ? variant.images
-              : product.images
+            ? toPublicMediaUrls(variant?.images.length ? variant.images : product.images)
             : undefined,
         sku: variant?.sku || product.sku || variant?.id || product.id,
         brand: {
