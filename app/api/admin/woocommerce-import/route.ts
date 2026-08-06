@@ -40,7 +40,43 @@ export async function GET() {
       .order('imported_at', { ascending: false })
       .range(0, 19999);
     if (error) throw error;
-    return NextResponse.json({ customers: data ?? [] });
+
+    // Fetch latest email activity per customer from campaign sends table
+    const customerIds = (data ?? []).map((c) => c.id);
+    let emailMap = new Map<string, { lastSentAt: string | null; lastOpenedAt: string | null; lastClickedAt: string | null }>();
+    if (customerIds.length > 0) {
+      // Get the most recent send record per customer
+      const { data: sends } = await supabase
+        .from('woocommerce_campaign_sends')
+        .select('customer_id, sent_at, opened_at, clicked_at')
+        .in('customer_id', customerIds)
+        .order('sent_at', { ascending: false });
+
+      for (const row of sends ?? []) {
+        if (!row.customer_id) continue;
+        if (!emailMap.has(row.customer_id)) {
+          emailMap.set(row.customer_id, {
+            lastSentAt: row.sent_at ?? null,
+            lastOpenedAt: row.opened_at ?? null,
+            lastClickedAt: row.clicked_at ?? null,
+          });
+        } else {
+          // Already have a more recent sent_at; but check if this row has open/click we haven't captured
+          const existing = emailMap.get(row.customer_id)!;
+          if (!existing.lastOpenedAt && row.opened_at) existing.lastOpenedAt = row.opened_at;
+          if (!existing.lastClickedAt && row.clicked_at) existing.lastClickedAt = row.clicked_at;
+        }
+      }
+    }
+
+    const customers = (data ?? []).map((c) => ({
+      ...c,
+      last_sent_at: emailMap.get(c.id)?.lastSentAt ?? null,
+      last_opened_at: emailMap.get(c.id)?.lastOpenedAt ?? null,
+      last_clicked_at: emailMap.get(c.id)?.lastClickedAt ?? null,
+    }));
+
+    return NextResponse.json({ customers });
   } catch (err) {
     const message =
       err instanceof Error

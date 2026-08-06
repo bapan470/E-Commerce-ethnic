@@ -27,6 +27,9 @@ export interface ImportedCustomer {
   imported_at: string;
   opted_out: boolean;
   opted_out_at: string | null;
+  last_sent_at: string | null;
+  last_opened_at: string | null;
+  last_clicked_at: string | null;
 }
 
 export interface ImportResult {

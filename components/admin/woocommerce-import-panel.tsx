@@ -750,6 +750,9 @@ export default function WooCommerceImportPanel() {
                   <th className="p-2 text-left">Phone</th>
                   {storeOptions.length > 1 && <th className="p-2 text-left">Store</th>}
                   <th className="p-2 text-left">Audience</th>
+                  <th className="p-2 text-left text-muted-foreground">📤 Sent</th>
+                  <th className="p-2 text-left text-muted-foreground">📬 Opened</th>
+                  <th className="p-2 text-left text-muted-foreground">🖱️ Clicked</th>
                   <th className="p-2" />
                 </tr>
               </thead>
@@ -769,6 +772,21 @@ export default function WooCommerceImportPanel() {
                     )}
                     <td className="p-2">
                       <SegmentBadge segment={segments[c.id] ?? 'cold'} />
+                    </td>
+                    <td className="p-2 whitespace-nowrap text-xs text-muted-foreground">
+                      {c.last_sent_at
+                        ? new Date(c.last_sent_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+                        : <span className="text-muted-foreground/40">—</span>}
+                    </td>
+                    <td className="p-2 whitespace-nowrap text-xs text-muted-foreground">
+                      {c.last_opened_at
+                        ? <span className="text-green-600">{new Date(c.last_opened_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                        : <span className="text-muted-foreground/40">—</span>}
+                    </td>
+                    <td className="p-2 whitespace-nowrap text-xs text-muted-foreground">
+                      {c.last_clicked_at
+                        ? <span className="text-blue-600">{new Date(c.last_clicked_at).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                        : <span className="text-muted-foreground/40">—</span>}
                     </td>
                     <td className="p-2 text-right">
                       <Button variant="ghost" size="icon" onClick={() => handleDelete(c.id)}>
@@ -1227,7 +1245,9 @@ export default function WooCommerceImportPanel() {
                     <th className="p-2 text-left">Email</th>
                     <th className="p-2 text-left">Phone</th>
                     <th className="p-2 text-left">Campaign</th>
-                    <th className="p-2 text-left">Date</th>
+                    <th className="p-2 text-left">📤 Sent</th>
+                    <th className="p-2 text-left">📬 Opened</th>
+                    <th className="p-2 text-left">🖱️ Clicked</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1236,15 +1256,19 @@ export default function WooCommerceImportPanel() {
                       <td className="p-2">{r.name || '—'}</td>
                       <td className="p-2">{r.email}</td>
                       <td className="p-2">{r.phone || '—'}</td>
-                      <td className="p-2">{r.subject}</td>
-                      <td className="p-2 whitespace-nowrap">
-                        {new Date(
-                          recipientsModal === 'opened'
-                            ? r.openedAt || r.sentAt
-                            : recipientsModal === 'clicked'
-                              ? r.clickedAt || r.sentAt
-                              : r.sentAt
-                        ).toLocaleString('en-IN')}
+                      <td className="p-2 max-w-[160px] truncate" title={r.subject}>{r.subject}</td>
+                      <td className="p-2 whitespace-nowrap text-xs">
+                        {r.sentAt ? new Date(r.sentAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
+                      </td>
+                      <td className="p-2 whitespace-nowrap text-xs">
+                        {r.openedAt
+                          ? <span className="text-green-600">{new Date(r.openedAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                          : <span className="text-muted-foreground/40">—</span>}
+                      </td>
+                      <td className="p-2 whitespace-nowrap text-xs">
+                        {r.clickedAt
+                          ? <span className="text-blue-600">{new Date(r.clickedAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>
+                          : <span className="text-muted-foreground/40">—</span>}
                       </td>
                     </tr>
                   ))}
