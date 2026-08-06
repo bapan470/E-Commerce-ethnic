@@ -326,16 +326,38 @@ export async function uploadProductImage(file: File, seoName?: string, folder?: 
 }
 
 export async function uploadProductVideo(file: File, seoName?: string): Promise<string> {
-  // Same pattern as uploadProductImage() above -- routed through a server
-  // route (app/api/upload-video/route.ts) rather than uploading straight
-  // to Supabase Storage from the browser, so the admin session can be
-  // checked server-side before writing to the product-videos bucket.
-  const formData = new FormData();
-  formData.append('file', file);
-  if (seoName) formData.append('seoName', seoName);
+  // Videos upload DIRECTLY from the browser to Supabase Storage using a
+  // short-lived signed upload URL/token minted by /api/upload-video
+  // (admin-only, tiny JSON request/response). This deliberately does NOT
+  // route the actual video bytes through the Vercel serverless function
+  // the way uploadProductImage() above does for images -- Vercel's
+  // Node.js functions have a hard ~4.5MB request body limit on every
+  // plan, which can't be raised from app code. Product videos routinely
+  // exceed that, so sending the file body through a Vercel route (as
+  // this function previously did) failed with a generic "Video upload
+  // failed" for any video over ~4.5MB, even though this 45MB check
+  // below allowed it. Only the signed-token request (tiny) and the
+  // direct-to-storage upload (which goes straight to Supabase, not
+  // Vercel) happen now.
+  const MAX_BYTES = 45 * 1024 * 1024; // keep in sync with the product-videos bucket's 50MB cap
+  if (file.size > MAX_BYTES) {
+    throw new Error('Video is too large (max 45MB).');
+  }
 
-  const res = await fetch('/api/upload-video', { method: 'POST', body: formData });
+  const res = await fetch('/api/upload-video', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ seoName, contentType: file.type || 'video/mp4' }),
+  });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.error || 'Video upload failed');
-  return json.url as string;
+
+  const { path, token, url } = json as { path: string; token: string; url: string };
+
+  const { error: uploadError } = await supabase.storage
+    .from('product-videos')
+    .uploadToSignedUrl(path, token, file);
+  if (uploadError) throw new Error(uploadError.message || 'Video upload failed');
+
+  return url;
 }
