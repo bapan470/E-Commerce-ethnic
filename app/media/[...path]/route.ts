@@ -16,6 +16,17 @@ import { getServerSupabase } from '@/lib/supabase-server';
 const SUPABASE_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/$/, '');
 const BACKEND_BASE = `${SUPABASE_URL}/storage/v1/object/public`;
 
+// Next.js 13 caches fetch() calls by default (indefinitely, until the next
+// deploy) unless a route opts out. The Supabase client below calls fetch()
+// internally for the settings read in isProxyEnabled() -- without this,
+// that read gets cached on its first-ever invocation and never re-runs,
+// so the media_delivery toggle would appear to do nothing no matter how
+// many times it's flipped or how long you wait. force-dynamic makes both
+// that settings read and the upstream image fetch below run fresh on
+// every request.
+export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+
 // Admin > Settings > Media Delivery (see lib/settings-api.ts,
 // MediaDeliverySettings) can flip this route from "stream" to "redirect"
 // mode without touching any other code or URL on the site, because every
