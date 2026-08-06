@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useEffect, useRef, useState } from 'react';
 import type { HeroBanner } from '@/lib/hero-banners-api';
+import { toPublicMediaUrl } from '@/lib/media-url';
 
 const AUTOPLAY_MS = 5000;
 
@@ -69,7 +70,7 @@ export default function HeroBannerCarousel({ banners }: HeroBannerCarouselProps)
           const slide = (
             <div className="relative aspect-[4/5] w-full shrink-0 overflow-hidden sm:aspect-[16/6]">
               <Image
-                src={b.image_url}
+                src={toPublicMediaUrl(b.image_url) ?? b.image_url}
                 alt=""
                 fill
                 priority={i === 0}

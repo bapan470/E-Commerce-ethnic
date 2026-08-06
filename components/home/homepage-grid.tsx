@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { ImageOff } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { HomepageTile } from '@/lib/homepage-tiles-api';
+import { toPublicMediaUrl } from '@/lib/media-url';
 
 interface HomepageGridProps {
   tiles: HomepageTile[];
@@ -90,7 +91,7 @@ function TileCard({
       <div className="relative aspect-square w-full overflow-hidden bg-muted">
         {tile.image_url ? (
           <Image
-            src={tile.image_url}
+            src={toPublicMediaUrl(tile.image_url) ?? tile.image_url}
             alt={tile.title}
             fill
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"

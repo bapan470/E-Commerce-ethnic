@@ -15,6 +15,7 @@ import PromoSlider from '@/components/home/promo-slider';
 import HomepageGrid from '@/components/home/homepage-grid';
 import HeroBannerCarousel from '@/components/home/hero-banner-carousel';
 import { Button } from '@/components/ui/button';
+import { toPublicMediaUrl } from '@/lib/media-url';
 
 interface HomeClientProps {
   products: Product[];
@@ -87,7 +88,7 @@ export default function HomeClient({
               className="group relative block aspect-[4/5] w-full overflow-hidden sm:aspect-[16/6]"
             >
               <Image
-                src={banner.image_url}
+                src={toPublicMediaUrl(banner.image_url) ?? banner.image_url}
                 alt="Current promotion"
                 fill
                 priority
@@ -105,7 +106,7 @@ export default function HomeClient({
           ) : (
             <div className="group relative aspect-[4/5] w-full overflow-hidden sm:aspect-[16/6]">
               <Image
-                src={banner.image_url}
+                src={toPublicMediaUrl(banner.image_url) ?? banner.image_url}
                 alt="Current promotion"
                 fill
                 priority
