@@ -10,7 +10,6 @@ import {
   runForwardShipmentTrackingJob,
   runResellerPayoutWindowJob,
   runAffiliatePayoutWindowJob,
-  runWooCommerceDripJob,
 } from '@/lib/cron-jobs';
 
 export const dynamic = 'force-dynamic';
@@ -26,13 +25,13 @@ export const maxDuration = 60;
 // Vercel's Hobby (free) plan allows only 2 cron jobs, running once a
 // day each. This repo originally had 5 separate crons, so 4 of them
 // (all except vendor-order-timeout, which has its own daily cron) are
-// combined here and run one after another:
-//   1. abandoned-carts     (was: daily)
-//   2. email-automation    (was: daily)
-//   3. vendor-return-timers (was: daily)
-//   4. vendor-settlement   (was: weekly — only actually runs on Mondays
-//      here, so the cadence stays the same even though this route is
-//      hit every day)
+// combined here and run one after another.
+//
+// NOTE: WooCommerce Drip (welcome + follow-up emails) is intentionally
+// NOT included here. It is triggered separately every 15 min by
+// cron-job.org hitting /api/cron/woocommerce-drip. Keeping it out of
+// this route prevents the combined 10-job execution from timing out
+// cron-job.org's 30s hard limit.
 //
 // Each job is wrapped in try/catch so one failing job doesn't stop the
 // others from running. See vercel.json for the schedule and
@@ -101,12 +100,6 @@ export async function GET(req: Request) {
     results.affiliatePayoutWindow = await runAffiliatePayoutWindowJob();
   } catch (err: any) {
     results.affiliatePayoutWindow = { error: err?.message || 'Failed' };
-  }
-
-  try {
-    results.wooCommerceDrip = await runWooCommerceDripJob();
-  } catch (err: any) {
-    results.wooCommerceDrip = { error: err?.message || 'Failed' };
   }
 
   // Weekly settlement: only run it on Mondays so behaviour matches the

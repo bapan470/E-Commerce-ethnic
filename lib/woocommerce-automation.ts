@@ -458,15 +458,16 @@ export async function runWooCommerceDripJob(force = false) {
   // --- 4. Work the queue, oldest-scheduled-first ("top of the list"), due rows only ---
   // Cap how many emails a SINGLE invocation sends, regardless of how large
   // `remaining` (the full daily cap minus what's already gone out today) is.
-  // This route is hit every 15 min by an external cron (cron-job.org), and
-  // Vercel's own function budget is 60s. Each send does 4-5 sequential DB
-  // round-trips + the actual email-provider API call, so this needs real
-  // headroom -- 25/run was measured to regularly blow past 30-40s once you
-  // add real network latency, which is what was timing the cron-job.org
-  // trigger out. Trimmed to 12/run (still clears the full daily cap over
-  // the ~1hr sending window = ~5 runs) and the email-provider config is now
-  // resolved ONCE per run instead of once per recipient (see lib/email.ts).
-  const MAX_SEND_PER_RUN = 12;
+  // This route is hit every 15 min by cron-job.org which has a hard 30s
+  // timeout. The enqueue step (DB reads for 27k+ customers) takes ~5-15s,
+  // leaving ~15s for actual sends. At ~1.5s per send (DB lookup + email API
+  // + 150ms pacing), 8 sends = ~12s — safely under 30s even with cold-start.
+  // Over a 1hr send window (4 runs of 8 = 32 emails/hr) this easily clears
+  // a 300/day cap spread across multiple hours.
+  // Note: Vercel continues running even after cron-job.org closes the
+  // connection at 30s — emails in-flight will still complete. But keeping
+  // the run short means cron-job.org marks it "success" not "timeout".
+  const MAX_SEND_PER_RUN = 8;
   const sendBudget = Math.min(remaining, MAX_SEND_PER_RUN);
   const { data: due } = sendBudget > 0
     ? await supabase
