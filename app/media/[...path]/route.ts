@@ -33,17 +33,15 @@ const BACKEND_BASE = `${SUPABASE_URL}/storage/v1/object/public`;
 //     Vercel's bandwidth quota is close to running out -- flip it back to
 //     true once the quota resets.
 //
-// Cached in-memory for 60s per server instance so a toggle flip is felt
-// within a minute, without adding a Supabase read to every single image
-// request (which would otherwise run once per <img>/<video> load, site-
-// wide, all day).
-let proxyEnabledCache: { value: boolean; expiresAt: number } | null = null;
-
+// Checked fresh on every request (no in-memory caching here) so a toggle
+// flip takes effect immediately -- an in-memory per-instance cache was
+// tried before, but it raced with the Cloudflare purge in media-delivery/
+// route.ts: a request landing on a server instance with a stale cached
+// value could still stream a 200 right after a toggle flip, and Cloudflare
+// would then cache that wrong response for a full year (immutable). The
+// query below is a single indexed-row read, so the extra Supabase call per
+// image request is cheap enough not to matter.
 async function isProxyEnabled(): Promise<boolean> {
-  const now = Date.now();
-  if (proxyEnabledCache && proxyEnabledCache.expiresAt > now) {
-    return proxyEnabledCache.value;
-  }
   let value = true; // fail open: if settings can't be read, keep current (proxy) behavior
   try {
     const supabase = getServerSupabase();
@@ -57,7 +55,6 @@ async function isProxyEnabled(): Promise<boolean> {
   } catch {
     // Supabase unreachable -- keep the fail-open default above.
   }
-  proxyEnabledCache = { value, expiresAt: now + 60_000 };
   return value;
 }
 
