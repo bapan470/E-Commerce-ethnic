@@ -2,7 +2,9 @@
 
 import { useMemo, useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
-import { SlidersHorizontal, TrendingDown, Flame, Gift, Camera } from 'lucide-react';
+import Link from 'next/link';
+import Image from 'next/image';
+import { SlidersHorizontal, TrendingDown, Flame, Gift, Camera, ChevronRight, ImageOff } from 'lucide-react';
 import { Product, CategoryRow } from '@/lib/types';
 import ProductCard from '@/components/product-card';
 import { Button } from '@/components/ui/button';
@@ -27,9 +29,10 @@ import {
 } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { STANDARD_SIZES } from '@/lib/size-chart';
-import { productMatchesQuery, expandHindiQuery } from '@/lib/search-utils';
+import { productMatchesQuery, expandHindiQuery, fuzzyMatch } from '@/lib/search-utils';
 import { getColorSwatchHex } from '@/lib/color-swatch';
 import { trackEvent } from '@/lib/track-api';
+import { blurDataURL } from '@/lib/utils';
 
 const ALL_SIZES = [...STANDARD_SIZES];
 
@@ -451,6 +454,49 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
   const trimmedQuery = query.trim();
   const showingSearchHeading = isSearchPage && trimmedQuery.length > 0;
 
+  // "More options" suggestion for a narrow search: if the query names (or
+  // roughly names) an actual category -- e.g. "Yellow Cotton Sarees"
+  // contains "Cotton Sarees" -- but the search itself is narrowed further
+  // by a colour/word that isn't part of the category name, the shopper is
+  // usually seeing far fewer pieces than that category actually has (6
+  // yellow ones vs. 34 total cotton sarees). Surface a "browse the whole
+  // category" card so they can see everything else in it, not just the
+  // exact colour/word they typed.
+  const relatedCategory = useMemo(() => {
+    if (!showingSearchHeading) return null;
+    const queryTokens = trimmedQuery.toLowerCase().split(/\s+/).filter(Boolean);
+
+    // A category matches when every word in its own name appears
+    // somewhere in the typed query (fuzzy per-word, same tolerance as the
+    // product search itself) -- "Cotton Sarees" matches "Yellow Cotton
+    // Sarees" because both "cotton" and "sarees" are present.
+    const candidates = categoriesWithProducts.filter((c) => {
+      const nameWords = c.name.toLowerCase().split(/\s+/).filter(Boolean);
+      return nameWords.every((w) => queryTokens.some((t) => fuzzyMatch(t, w) || fuzzyMatch(w, t)));
+    });
+    if (candidates.length === 0) return null;
+
+    // Prefer the most specific (longest name / most words) match --
+    // "Cotton Sarees" over a broader "Sarees" if both happen to match.
+    candidates.sort((a, b) => b.name.length - a.name.length);
+    const category = candidates[0];
+
+    const inCat = products.filter((p) => p.category === category.name);
+    const count = inCat.reduce((sum, p) => sum + 1 + (p.variant_list?.length ?? 0), 0);
+    // Only worth showing if there's genuinely more to see than what the
+    // narrower search already returned.
+    if (count <= filtered.length) return null;
+
+    const thumbs = inCat
+      .slice()
+      .sort((a, b) => Number(!!b.featured) - Number(!!a.featured))
+      .slice(0, 3)
+      .map((p) => p.images[0])
+      .filter(Boolean) as string[];
+
+    return { ...category, count, thumbs };
+  }, [showingSearchHeading, trimmedQuery, categoriesWithProducts, products, filtered.length]);
+
   return (
     <div className="container-boutique py-8 pb-24 md:pb-8">
       <div className="mb-6">
@@ -467,6 +513,56 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
         <p className="mt-2 text-sm text-muted-foreground">
           {filtered.length} {filtered.length === 1 ? 'piece' : 'pieces'} found
         </p>
+
+        {relatedCategory && (
+          <Link
+            href={`/category/${relatedCategory.slug}`}
+            className="group mt-3 flex items-center justify-between gap-4 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 transition-colors hover:bg-primary/10"
+          >
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary">
+                More options
+              </p>
+              <p className="mt-0.5 truncate font-serif text-base font-semibold text-foreground">
+                See all {relatedCategory.name}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {relatedCategory.count} {relatedCategory.count === 1 ? 'piece' : 'pieces'} in this
+                category
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-3">
+              <div className="flex items-center -space-x-3">
+                {relatedCategory.thumbs.length > 0 ? (
+                  relatedCategory.thumbs.map((src, idx) => (
+                    <div
+                      key={idx}
+                      className="relative h-12 w-12 overflow-hidden rounded-full border-2 border-background bg-muted shadow-sm sm:h-14 sm:w-14"
+                      style={{ zIndex: relatedCategory.thumbs.length - idx }}
+                    >
+                      <Image
+                        src={src}
+                        alt={`${relatedCategory.name} product`}
+                        fill
+                        sizes="56px"
+                        quality={70}
+                        loading="lazy"
+                        placeholder="blur"
+                        blurDataURL={blurDataURL(32, 32)}
+                        className="object-cover"
+                      />
+                    </div>
+                  ))
+                ) : (
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full border-2 border-background bg-muted text-muted-foreground sm:h-14 sm:w-14">
+                    <ImageOff className="h-4 w-4" />
+                  </div>
+                )}
+              </div>
+              <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+            </div>
+          </Link>
+        )}
 
         {imageSearchIds && (
           <div className="mt-3 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
