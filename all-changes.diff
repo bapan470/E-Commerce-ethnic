@@ -109,18 +109,349 @@ index ab897ba..36bc345 100644
  
    const toggle = (list: string[], value: string) =>
 diff --git a/components/header.tsx b/components/header.tsx
-index a958562..83d4249 100644
+index a958562..7089823 100644
 --- a/components/header.tsx
 +++ b/components/header.tsx
-@@ -258,7 +258,7 @@ export default function Header() {
+@@ -1,18 +1,28 @@
+ 'use client';
+ 
+ import Link from 'next/link';
+-import Image from 'next/image';
+ import { useRouter, usePathname } from 'next/navigation';
+ import { useState, useMemo, useRef, useEffect, useCallback, FormEvent } from 'react';
+-import { Search, ShoppingBag, Menu, User, Heart, ArrowLeft, Camera, Loader2 } from 'lucide-react';
++import { Search, ShoppingBag, Menu, User, Heart, ArrowLeft, Camera, Loader2, Clock } from 'lucide-react';
+ import { useCart, useCategories } from '@/lib/cart-context';
+ import { useAuth } from '@/lib/auth-context';
+ import { getCheckoutReturnPath, isCheckoutReturnFromBuyNow, clearCheckoutReturnBuyNowFlag } from '@/lib/checkout-return';
+ import { rankProductIdsByImage, createSearchThumbnail } from '@/lib/image-search';
+-import { productMatchesQuery, expandHindiQuery } from '@/lib/search-utils';
++import { getKeywordSuggestions, fuzzyMatch } from '@/lib/search-utils';
+ 
+ const SEARCH_HISTORY_KEY = 'searchHistory';
+ const MAX_HISTORY = 6;
++// Per-shopper "preference" signal for keyword suggestions: every word from
++// a search they actually ran or a keyword they clicked gets its count
++// bumped here, so future dropdowns nudge phrases containing words this
++// shopper cares about (e.g. "cotton", "yellow") higher up the list --
++// not just an exact repeat of a past query. Purely additive/local; never
++// sent anywhere.
++const TOKEN_PREFS_KEY = 'searchTokenPrefs';
++// Common short connector words that would otherwise dominate every
++// preference score without meaning anything ("saree" itself is fine to
++// count, generic joiners aren't).
++const TOKEN_PREF_STOPWORDS = new Set(['and', 'the', 'for', 'with', 'aur', 'ka', 'ke', 'ki', 'ko', 'se', 'ek']);
+ 
+ function getSearchHistory(): string[] {
+   try { return JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY) || '[]'); } catch { return []; }
+@@ -26,10 +36,20 @@ function removeSearchHistory(q: string) {
+   const h = getSearchHistory().filter((s) => s !== q);
+   localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(h));
+ }
++function getTokenPrefs(): Record<string, number> {
++  try { return JSON.parse(localStorage.getItem(TOKEN_PREFS_KEY) || '{}'); } catch { return {}; }
++}
++/** Bump preference weight for every meaningful word in a searched/clicked phrase. */
++function bumpTokenPrefs(text: string) {
++  try {
++    const prefs = getTokenPrefs();
++    const words = text.toLowerCase().split(/\s+/).filter((w) => w.length >= 3 && !TOKEN_PREF_STOPWORDS.has(w));
++    for (const w of words) prefs[w] = (prefs[w] ?? 0) + 1;
++    localStorage.setItem(TOKEN_PREFS_KEY, JSON.stringify(prefs));
++  } catch { /* localStorage unavailable — preference personalisation just no-ops */ }
++}
+ import { fetchProducts } from '@/lib/products-api';
+ import { Product } from '@/lib/types';
+-import { formatINR } from '@/lib/format';
+-import { toPublicMediaUrl } from '@/lib/media-url';
+ import { Button } from '@/components/ui/button';
+ import { Input } from '@/components/ui/input';
+ import {
+@@ -212,30 +232,51 @@ export default function Header() {
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [pathname]);
+ 
+-  const suggestions = useMemo(() => {
++  // Keyword-phrase suggestions ("Yellow Sarees", "Mulmul Cotton Sarees") --
++  // NOT full product results. A shopper mid-type wants help finishing the
++  // word/phrase, not a product photo+price before they've even said what
++  // they mean. Two layers, in priority order:
++  //  1. This shopper's own past searches/clicks that relate to what
++  //     they're typing right now -- the strongest possible signal of
++  //     intent, so these always sit above anything else.
++  //  2. Phrases generated from the live catalog (colour+category,
++  //     fabric+category, etc.), ranked by how common they are and nudged
++  //     by this shopper's accumulated word-level preferences (see
++  //     bumpTokenPrefs) so their own habits shape future rankings too,
++  //     not just an exact repeat of one past query.
++  const keywordSuggestions = useMemo(() => {
+     const q = query.trim();
+     if (q.length < 2) return [];
+-    const results: Array<(typeof products)[0] & { matchedSlug: string; matchedImage: string | null }> = [];
+-    for (const p of products) {
+-      const { matched, matchedVariant } = productMatchesQuery(p, q);
+-      if (matched) {
+-        // If matched variant has no image, try to find any image from all_images
+-        // that belongs to this variant, else fall back to default
+-        const variantImage = matchedVariant?.image
+-          ?? (matchedVariant ? (p.all_images?.find(img => img) ?? p.default_variant_image ?? p.images?.[0]) : null)
+-          ?? p.default_variant_image
+-          ?? p.images?.[0]
+-          ?? null;
+-        results.push({
+-          ...p,
+-          matchedSlug: matchedVariant ? matchedVariant.slug : (p.default_variant_slug ?? p.slug),
+-          matchedImage: variantImage,
+-        });
+-      }
+-      if (results.length >= 6) break;
+-    }
+-    return results;
+-  }, [query, products]);
++
++    const historyMatches = searchHistory.filter(
++      (h) => h.toLowerCase() !== q.toLowerCase() && fuzzyMatch(h, q)
++    );
++
++    const prefWeights = getTokenPrefs();
++    const catalogPhrases = getKeywordSuggestions(products, q, prefWeights, 8);
++
++    const seen = new Set(historyMatches.map((h) => h.toLowerCase()));
++    const merged = [
++      ...historyMatches,
++      ...catalogPhrases.filter((p) => !seen.has(p.toLowerCase())),
++    ];
++    return merged.slice(0, 8);
++  }, [query, products, searchHistory]);
++
++  /** A shopper picked a suggested keyword (catalog phrase OR one of their
++   *  own recent searches) — search for it immediately, the same way
++   *  clicking a Google/Amazon autocomplete row does, and record it as a
++   *  preference signal for next time. */
++  const selectKeyword = (phrase: string) => {
++    saveSearchHistory(phrase);
++    setSearchHistory(getSearchHistory());
++    bumpTokenPrefs(phrase);
++    router.push(`/search?q=${encodeURIComponent(phrase)}`);
++    setQuery('');
++    setSuggestOpen(false);
++    setMobileOpen(false);
++    setMobileSearchOpen(false);
++  };
+ 
+   useEffect(() => {
+     const onClickOutside = (e: MouseEvent) => {
+@@ -258,7 +299,8 @@ export default function Header() {
      if (query.trim()) {
        saveSearchHistory(query.trim());
        setSearchHistory(getSearchHistory());
 -      router.push(`/shop?q=${encodeURIComponent(query.trim())}`);
++      bumpTokenPrefs(query.trim());
 +      router.push(`/search?q=${encodeURIComponent(query.trim())}`);
        setMobileOpen(false);
        setSuggestOpen(false);
        setMobileSearchOpen(false);
+@@ -411,18 +453,6 @@ export default function Header() {
+     }
+   };
+ 
+-  const goToProduct = (slug: string) => {
+-    if (query.trim()) {
+-      saveSearchHistory(query.trim());
+-      setSearchHistory(getSearchHistory());
+-    }
+-    router.push(`/product/${slug}`);
+-    setQuery('');
+-    setSuggestOpen(false);
+-    setMobileOpen(false);
+-    setMobileSearchOpen(false);
+-  };
+-
+   return (
+     <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/85 backdrop-blur-md">
+       <input
+@@ -583,10 +613,10 @@ export default function Header() {
+                   </div>
+                   {searchHistory.map((h) => (
+                     <div key={h} className="flex items-center gap-2 px-3 py-1.5 hover:bg-muted/60">
+-                      <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
++                      <Clock className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                       <button
+                         className="flex-1 text-left text-sm"
+-                        onClick={() => { setQuery(h); setSuggestOpen(true); }}
++                        onClick={() => selectKeyword(h)}
+                       >{h}</button>
+                       <button
+                         onClick={() => { removeSearchHistory(h); setSearchHistory(getSearchHistory()); }}
+@@ -597,42 +627,29 @@ export default function Header() {
+                 </>
+               )}
+ 
+-              {/* Product suggestions */}
+-              {suggestions.length > 0 && (
++              {/* Keyword suggestions — phrases like "Yellow Sarees" or
++                  "Mulmul Cotton Sarees", not full product cards. A shopper's
++                  own matching past searches/clicks are folded in here too,
++                  pinned first (see keywordSuggestions above). */}
++              {keywordSuggestions.length > 0 && (
+                 <>
+-                  {suggestions.map((p) => (
+-                    <button
+-                      key={p.id}
+-                      onClick={() => goToProduct(p.matchedSlug)}
+-                      className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-muted/60"
+-                    >
+-                      <div className="relative h-11 w-9 shrink-0 overflow-hidden rounded bg-muted">
+-                        {p.matchedImage && (
+-                          <Image src={toPublicMediaUrl(p.matchedImage) ?? p.matchedImage} alt={p.name} fill sizes="36px" className="object-cover" />
++                  {keywordSuggestions.map((phrase) => {
++                    const isRecent = searchHistory.some((h) => h.toLowerCase() === phrase.toLowerCase());
++                    return (
++                      <button
++                        key={phrase}
++                        onClick={() => selectKeyword(phrase)}
++                        className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-muted/60"
++                      >
++                        {isRecent ? (
++                          <Clock className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
++                        ) : (
++                          <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                         )}
+-                      </div>
+-                      <div className="min-w-0 flex-1">
+-                        <p className="truncate text-sm font-medium">{p.name}</p>
+-                        <div className="flex items-center gap-1.5">
+-                          <p className="text-xs text-muted-foreground">{p.category}</p>
+-                          {p.variant_list?.find((v) => {
+-                            const qs = expandHindiQuery(query.trim());
+-                            return qs.some((q) => v.color.toLowerCase().includes(q.toLowerCase()));
+-                          }) && (
+-                            <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary capitalize">
+-                              {p.variant_list?.find((v) => {
+-                                const qs = expandHindiQuery(query.trim());
+-                                return qs.some((q) => v.color.toLowerCase().includes(q.toLowerCase()));
+-                              })?.color}
+-                            </span>
+-                          )}
+-                        </div>
+-                      </div>
+-                      <span className="shrink-0 text-sm font-semibold text-primary">
+-                        {formatINR(p.price)}
+-                      </span>
+-                    </button>
+-                  ))}
++                        <span className="flex-1 truncate text-sm">{phrase}</span>
++                      </button>
++                    );
++                  })}
+                   <button
+                     onClick={onSearch as any}
+                     className="w-full border-t border-border/60 px-3 py-2 text-center text-xs font-medium text-primary hover:bg-muted/60"
+@@ -643,7 +660,7 @@ export default function Header() {
+               )}
+ 
+               {/* No results */}
+-              {query.trim().length >= 2 && suggestions.length === 0 && (
++              {query.trim().length >= 2 && keywordSuggestions.length === 0 && (
+                 <div className="px-4 py-5 text-center">
+                   <p className="text-sm font-medium text-foreground">No results for &quot;{query}&quot;</p>
+                   <p className="mt-0.5 text-xs text-muted-foreground">Try a different spelling or browse categories below</p>
+@@ -651,7 +668,7 @@ export default function Header() {
+                     {['Silk Sarees', 'Cotton', 'Lehenga', 'Kurti'].map((s) => (
+                       <button
+                         key={s}
+-                        onClick={() => setQuery(s)}
++                        onClick={() => selectKeyword(s)}
+                         className="rounded-full border border-border px-3 py-1 text-xs hover:border-primary hover:text-primary"
+                       >{s}</button>
+                     ))}
+@@ -745,8 +762,8 @@ export default function Header() {
+                 </div>
+                 {searchHistory.map((h) => (
+                   <div key={h} className="flex items-center gap-2 px-3 py-2 hover:bg-muted/60">
+-                    <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+-                    <button className="flex-1 text-left text-sm" onClick={() => { setQuery(h); }}>
++                    <Clock className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
++                    <button className="flex-1 text-left text-sm" onClick={() => selectKeyword(h)}>
+                       {h}
+                     </button>
+                     <button
+@@ -758,47 +775,31 @@ export default function Header() {
+               </div>
+             )}
+ 
+-            {/* Mobile: Product suggestions */}
+-            {suggestions.length > 0 && (
++            {/* Mobile: Keyword suggestions */}
++            {keywordSuggestions.length > 0 && (
+               <div className="mt-2 max-h-80 overflow-y-auto rounded-lg border border-border/60">
+-                {suggestions.map((p) => (
+-                  <button
+-                    key={p.id}
+-                    onClick={() => goToProduct(p.matchedSlug)}
+-                    className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-muted/60"
+-                  >
+-                    <div className="relative h-11 w-9 shrink-0 overflow-hidden rounded bg-muted">
+-                      {p.matchedImage && (
+-                        <Image src={toPublicMediaUrl(p.matchedImage) ?? p.matchedImage} alt={p.name} fill sizes="36px" className="object-cover" />
++                {keywordSuggestions.map((phrase) => {
++                  const isRecent = searchHistory.some((h) => h.toLowerCase() === phrase.toLowerCase());
++                  return (
++                    <button
++                      key={phrase}
++                      onClick={() => selectKeyword(phrase)}
++                      className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-muted/60"
++                    >
++                      {isRecent ? (
++                        <Clock className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
++                      ) : (
++                        <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                       )}
+-                    </div>
+-                    <div className="min-w-0 flex-1">
+-                      <p className="truncate text-sm font-medium">{p.name}</p>
+-                      <div className="flex items-center gap-1.5">
+-                        <p className="text-xs text-muted-foreground">{p.category}</p>
+-                        {p.variant_list?.find((v) => {
+-                          const qs = expandHindiQuery(query.trim());
+-                          return qs.some((q) => v.color.toLowerCase().includes(q.toLowerCase()));
+-                        }) && (
+-                          <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary capitalize">
+-                            {p.variant_list?.find((v) => {
+-                              const qs = expandHindiQuery(query.trim());
+-                              return qs.some((q) => v.color.toLowerCase().includes(q.toLowerCase()));
+-                            })?.color}
+-                          </span>
+-                        )}
+-                      </div>
+-                    </div>
+-                    <span className="shrink-0 text-sm font-semibold text-primary">
+-                      {formatINR(p.price)}
+-                    </span>
+-                  </button>
+-                ))}
++                      <span className="flex-1 truncate text-sm">{phrase}</span>
++                    </button>
++                  );
++                })}
+               </div>
+             )}
+ 
+             {/* Mobile: No results */}
+-            {query.trim().length >= 2 && suggestions.length === 0 && (
++            {query.trim().length >= 2 && keywordSuggestions.length === 0 && (
+               <div className="mt-2 rounded-lg border border-border/60 px-4 py-5 text-center">
+                 <p className="text-sm font-medium">No results for &quot;{query}&quot;</p>
+                 <p className="mt-0.5 text-xs text-muted-foreground">Try a different spelling or a category</p>
+@@ -806,7 +807,7 @@ export default function Header() {
+                   {['Silk Sarees', 'Cotton', 'Lehenga', 'Kurti'].map((s) => (
+                     <button
+                       key={s}
+-                      onClick={() => setQuery(s)}
++                      onClick={() => selectKeyword(s)}
+                       className="rounded-full border border-border px-3 py-1 text-xs hover:border-primary hover:text-primary"
+                     >{s}</button>
+                   ))}
 diff --git a/lib/products-api-server.ts b/lib/products-api-server.ts
 index 5875332..2cff6f3 100644
 --- a/lib/products-api-server.ts
@@ -181,3 +512,92 @@ index 5875332..2cff6f3 100644
  /**
   * Batch-attaches each product's vendor storefront collection (name + slug)
   * via the `product_collections` view -- kept in sync with the identical
+diff --git a/lib/search-utils.ts b/lib/search-utils.ts
+index d26d90e..a72a280 100644
+--- a/lib/search-utils.ts
++++ b/lib/search-utils.ts
+@@ -111,7 +111,7 @@ function variantColorFields(product: ProductLike): string[] {
+   return (product.variant_list ?? []).map((v) => v.color).filter(Boolean);
+ }
+ 
+-type ProductLike = {
++export type ProductLike = {
+   name: string;
+   category: string;
+   fabric: string;
+@@ -183,3 +183,75 @@ export function productMatchesQuery(
+   }
+   return { matched: false };
+ }
++
++/**
++ * Build ranked KEYWORD phrase suggestions for the search dropdown --
++ * "Yellow Sarees", "Mulmul Cotton Sarees", "Bridal Lehenga" -- instead of
++ * full product cards with photos and prices. This is the Amazon/Flipkart-
++ * style search-bar behaviour: the dropdown should help a shopper refine
++ * *what they're typing*, not jump straight to a specific product before
++ * they've even finished the word.
++ *
++ * Phrases are generated from the catalog itself (colour + category, fabric
++ * + category, occasion + category, plain category), so they only ever
++ * suggest combinations that actually exist -- no phrase is fabricated.
++ *
++ * Ranking combines two things:
++ *  - `count`: how many matching products a phrase covers -- common,
++ *    well-stocked phrases surface first.
++ *  - `tokenPrefWeights`: an optional per-shopper preference map (word ->
++ *    score) built from that shopper's own past searches/clicks (see
++ *    header.tsx's token-preference helpers). A shopper who often searches
++ *    "cotton" gets cotton-related phrases nudged upward across future
++ *    searches too, not just an exact repeat of the same query.
++ */
++export function getKeywordSuggestions(
++  products: ProductLike[],
++  rawQuery: string,
++  tokenPrefWeights: Record<string, number> = {},
++  limit = 8
++): string[] {
++  const q = rawQuery.trim();
++  if (!q) return [];
++  const tokens = q.toLowerCase().split(/\s+/).filter(Boolean);
++  if (tokens.length === 0) return [];
++
++  const countByKey = new Map<string, number>();
++  const displayByKey = new Map<string, string>();
++
++  const add = (phrase?: string | null) => {
++    if (!phrase) return;
++    const trimmed = phrase.trim();
++    if (!trimmed) return;
++    const key = trimmed.toLowerCase();
++    countByKey.set(key, (countByKey.get(key) ?? 0) + 1);
++    if (!displayByKey.has(key)) displayByKey.set(key, trimmed);
++  };
++
++  for (const product of products) {
++    const { matched } = productMatchesQuery(product, q);
++    if (!matched) continue;
++    const colors = product.all_colors?.length ? product.all_colors : (product.colors ?? []);
++    for (const c of colors) add(`${c} ${product.category}`);
++    if (product.fabric) add(`${product.fabric} ${product.category}`);
++    for (const o of product.occasion ?? []) add(`${o} ${product.category}`);
++    add(product.category);
++  }
++
++  // Only keep phrases that genuinely contain every typed word (fuzzy) --
++  // a phrase built off one matched product's fabric/category shouldn't
++  // surface if it doesn't actually relate to what was typed.
++  const candidates = Array.from(displayByKey.entries()).filter(([key]) =>
++    tokens.every((t) => fuzzyMatch(key, t))
++  );
++
++  const scored = candidates.map(([key, phrase]) => {
++    const prefScore = key
++      .split(/\s+/)
++      .reduce((sum: number, word: string) => sum + (tokenPrefWeights[word] ?? 0), 0);
++    return { phrase, score: (countByKey.get(key) ?? 0) + prefScore * 3 };
++  });
++
++  scored.sort((a, b) => b.score - a.score || a.phrase.localeCompare(b.phrase));
++  return scored.slice(0, limit).map((s) => s.phrase);
++}

@@ -111,7 +111,7 @@ function variantColorFields(product: ProductLike): string[] {
   return (product.variant_list ?? []).map((v) => v.color).filter(Boolean);
 }
 
-type ProductLike = {
+export type ProductLike = {
   name: string;
   category: string;
   fabric: string;
@@ -182,4 +182,76 @@ export function productMatchesQuery(
     if (result.matched) return result as any;
   }
   return { matched: false };
+}
+
+/**
+ * Build ranked KEYWORD phrase suggestions for the search dropdown --
+ * "Yellow Sarees", "Mulmul Cotton Sarees", "Bridal Lehenga" -- instead of
+ * full product cards with photos and prices. This is the Amazon/Flipkart-
+ * style search-bar behaviour: the dropdown should help a shopper refine
+ * *what they're typing*, not jump straight to a specific product before
+ * they've even finished the word.
+ *
+ * Phrases are generated from the catalog itself (colour + category, fabric
+ * + category, occasion + category, plain category), so they only ever
+ * suggest combinations that actually exist -- no phrase is fabricated.
+ *
+ * Ranking combines two things:
+ *  - `count`: how many matching products a phrase covers -- common,
+ *    well-stocked phrases surface first.
+ *  - `tokenPrefWeights`: an optional per-shopper preference map (word ->
+ *    score) built from that shopper's own past searches/clicks (see
+ *    header.tsx's token-preference helpers). A shopper who often searches
+ *    "cotton" gets cotton-related phrases nudged upward across future
+ *    searches too, not just an exact repeat of the same query.
+ */
+export function getKeywordSuggestions(
+  products: ProductLike[],
+  rawQuery: string,
+  tokenPrefWeights: Record<string, number> = {},
+  limit = 8
+): string[] {
+  const q = rawQuery.trim();
+  if (!q) return [];
+  const tokens = q.toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return [];
+
+  const countByKey = new Map<string, number>();
+  const displayByKey = new Map<string, string>();
+
+  const add = (phrase?: string | null) => {
+    if (!phrase) return;
+    const trimmed = phrase.trim();
+    if (!trimmed) return;
+    const key = trimmed.toLowerCase();
+    countByKey.set(key, (countByKey.get(key) ?? 0) + 1);
+    if (!displayByKey.has(key)) displayByKey.set(key, trimmed);
+  };
+
+  for (const product of products) {
+    const { matched } = productMatchesQuery(product, q);
+    if (!matched) continue;
+    const colors = product.all_colors?.length ? product.all_colors : (product.colors ?? []);
+    for (const c of colors) add(`${c} ${product.category}`);
+    if (product.fabric) add(`${product.fabric} ${product.category}`);
+    for (const o of product.occasion ?? []) add(`${o} ${product.category}`);
+    add(product.category);
+  }
+
+  // Only keep phrases that genuinely contain every typed word (fuzzy) --
+  // a phrase built off one matched product's fabric/category shouldn't
+  // surface if it doesn't actually relate to what was typed.
+  const candidates = Array.from(displayByKey.entries()).filter(([key]) =>
+    tokens.every((t) => fuzzyMatch(key, t))
+  );
+
+  const scored = candidates.map(([key, phrase]) => {
+    const prefScore = key
+      .split(/\s+/)
+      .reduce((sum: number, word: string) => sum + (tokenPrefWeights[word] ?? 0), 0);
+    return { phrase, score: (countByKey.get(key) ?? 0) + prefScore * 3 };
+  });
+
+  scored.sort((a, b) => b.score - a.score || a.phrase.localeCompare(b.phrase));
+  return scored.slice(0, limit).map((s) => s.phrase);
 }
