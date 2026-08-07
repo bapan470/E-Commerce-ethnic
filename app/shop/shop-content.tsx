@@ -409,14 +409,26 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
     </div>
   );
 
+  // On /search, once a query is present (typed + submitted, or picked from
+  // a suggestion), the heading should reflect exactly what was searched
+  // instead of the generic "Shop All Sarees" title -- so it's obvious at
+  // the top of the page which search actually ran.
+  const isSearchPage = pathname === '/search';
+  const trimmedQuery = query.trim();
+  const showingSearchHeading = isSearchPage && trimmedQuery.length > 0;
+
   return (
     <div className="container-boutique py-8 pb-24 md:pb-8">
       <div className="mb-6">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
-          The Collection
+          {showingSearchHeading ? 'Search Results' : 'The Collection'}
         </p>
         <h1 className="mt-1 font-serif text-3xl font-bold text-primary sm:text-4xl">
-          Shop All Sarees & Ethnic Wear
+          {showingSearchHeading ? (
+            <>&quot;{trimmedQuery}&quot;</>
+          ) : (
+            'Shop All Sarees & Ethnic Wear'
+          )}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
           {filtered.length} {filtered.length === 1 ? 'piece' : 'pieces'} found
@@ -545,7 +557,7 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
                   <p className="mb-3 text-sm font-semibold text-muted-foreground uppercase tracking-wider">You might like</p>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                     {products.filter((p) => p.featured).slice(0, 3).map((p, idx) => (
-                      <ProductCard key={p.id} product={p} priority={idx === 0} />
+                      <ProductCard key={p.id} product={p} priority={idx === 0} disableAutoplayVideo={isSearchPage} />
                     ))}
                   </div>
                 </div>
@@ -569,6 +581,11 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
                     priority={idx < 4}
                     imageOverride={imageSearchIds ? imageSearchMatches[p.id] : (colorMatchImage || undefined)}
                     slugOverride={colorMatchSlug}
+                    // Search results should always show a still photo (the
+                    // matched colour variant's photo when the query matched
+                    // one) instead of the autoplaying catalog video -- the
+                    // video preview stays on /shop, category pages, etc.
+                    disableAutoplayVideo={isSearchPage}
                   />
                 );
               })}

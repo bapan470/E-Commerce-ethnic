@@ -20,6 +20,7 @@ export default function ProductCard({
   compact = false,
   imageOverride,
   slugOverride,
+  disableAutoplayVideo = false,
 }: {
   product: Product;
   /** Set true for cards in the first visible row so their image gets
@@ -40,6 +41,15 @@ export default function ProductCard({
   /** When a search query matches a specific colour variant, pass that
    *  variant's slug so the card links directly to that colour. */
   slugOverride?: string;
+  /**
+   * Forces this card to show its still image even when the admin has
+   * "Autoplay video in catalog" switched on for the product. Used on the
+   * /search results grid so a shopper sees exactly the photo (colour
+   * variant match, etc.) that corresponds to their search instead of an
+   * autoplaying video -- /shop, category pages and everywhere else keep
+   * the autoplay video untouched.
+   */
+  disableAutoplayVideo?: boolean;
 }) {
   const { addItem, activePromotions } = useCart();
   const router = useRouter();
@@ -102,7 +112,7 @@ export default function ProductCard({
           hoverImg={hoverImg}
           altText={altText}
           videoUrl={toPublicMediaUrl(product.video_url) || undefined}
-          autoplayVideo={!!product.autoplay_video_in_catalog}
+          autoplayVideo={!disableAutoplayVideo && !!product.autoplay_video_in_catalog}
           priority={priority}
           compact={compact}
         />
