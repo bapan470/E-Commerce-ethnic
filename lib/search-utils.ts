@@ -38,6 +38,50 @@ const HINDI_COLOR_MAP: Record<string, string> = {
 };
 
 /**
+ * Occasion/festival query synonyms. Occasion tags are free text an admin
+ * types per product (see products-panel.tsx "Occasion tags"), so a shopper
+ * searching a specific festival name -- "durga puja", "navratri", "karva
+ * chauth" -- gets zero results if no product happens to be tagged with that
+ * exact festival, even though plenty of products are tagged with the
+ * broader occasion ("Puja", "Festive", "Wedding") that festival falls
+ * under. Each word here expands to the broader tag(s) it's shopped under,
+ * so matching tries both the literal word AND its broader occasion.
+ */
+const OCCASION_SYNONYMS: Record<string, string[]> = {
+  durga: ['puja', 'festive'],
+  kali: ['puja', 'festive'],
+  saraswati: ['puja', 'festive'],
+  lakshmi: ['puja', 'festive'],
+  laxmi: ['puja', 'festive'],
+  ganesh: ['puja', 'festive'],
+  ganpati: ['puja', 'festive'],
+  chaturthi: ['puja', 'festive'],
+  navratri: ['festive'],
+  navaratri: ['festive'],
+  dussehra: ['festive'],
+  dashami: ['festive'],
+  diwali: ['festive'],
+  deepavali: ['festive'],
+  holi: ['festive'],
+  eid: ['festive'],
+  rakhi: ['festive'],
+  raksha: ['festive'],
+  bandhan: ['festive'],
+  karva: ['festive'],
+  chauth: ['festive'],
+  pujo: ['puja', 'festive'],
+  ashtami: ['puja', 'festive'],
+  navami: ['puja', 'festive'],
+  mehendi: ['wedding'],
+  mehndi: ['wedding'],
+  sangeet: ['wedding', 'party'],
+  haldi: ['wedding'],
+  reception: ['wedding', 'party'],
+  engagement: ['wedding', 'party'],
+  bridal: ['wedding'],
+};
+
+/**
  * Translate Hindi words in a query to English.
  * Returns [original, translated] — or just [original] if nothing was mapped.
  */
@@ -142,9 +186,14 @@ function matchesSingleQuery(
   const fields = productFields(product);
   const variantColors = variantColorFields(product);
 
-  // Every token must match something
+  // Every token must match something -- either the token itself, or (for
+  // festival/occasion words like "durga" in "durga puja") one of its
+  // broader-occasion synonyms, since products are tagged with the broad
+  // occasion ("Puja", "Festive", "Wedding") rather than every specific
+  // festival name a shopper might type.
   for (const token of tokens) {
-    const fieldMatch = fields.some((f) => fuzzyMatch(f, token));
+    const candidates = [token, ...(OCCASION_SYNONYMS[token] ?? [])];
+    const fieldMatch = candidates.some((c) => fields.some((f) => fuzzyMatch(f, c)));
     const variantMatch = variantColors.some((c) => fuzzyMatch(c, token));
     if (!fieldMatch && !variantMatch) return { matched: false };
   }
