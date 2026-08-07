@@ -66,6 +66,15 @@ export function mapRowToProduct(row: ProductRow): Product {
     origin: row.origin ?? '',
     colors: row.colors ?? [],
     all_colors: resolveAllColors(row),
+    // Without this, productMatchesQuery() (lib/search-utils.ts) has no
+    // per-variant colour/slug/image to match against on server-rendered
+    // pages, so a search like "yellow saree" would find the product (via
+    // all_colors) but could never resolve *which* variant is yellow --
+    // silently falling back to the product's default variant image/slug
+    // instead of the one the shopper actually searched for.
+    variant_list: (row.product_variants ?? [])
+      .filter((v) => !!v.color)
+      .map((v) => ({ slug: v.slug, color: v.color as string, image: v.images?.[0] ?? null })),
     sizes: row.sizes ?? ['Free Size'],
     occasion: row.occasion ?? [],
     gender: row.gender || 'female',
@@ -73,6 +82,7 @@ export function mapRowToProduct(row: ProductRow): Product {
     material: row.material ?? null,
     pattern: row.pattern ?? null,
     images: row.images ?? [],
+    all_images: resolveAllImages(row),
     video_url: row.video_url ?? null,
     autoplay_video_in_catalog: row.autoplay_video_in_catalog ?? false,
     sku: row.sku ?? null,
@@ -90,6 +100,31 @@ export function mapRowToProduct(row: ProductRow): Product {
     inStock: row.in_stock,
     created_at: row.created_at,
   };
+}
+
+/**
+ * Every photo this product has anywhere: the base product's own `images`
+ * plus every image on every `product_variants` row, de-duplicated. Kept in
+ * sync with the identical helper in lib/products-api.ts. Without this, the
+ * server-rendered /shop and /category pages would have no way to show or
+ * link to a matched colour variant's own photo -- see `variant_list` below.
+ */
+function resolveAllImages(row: ProductRow): string[] {
+  const seen = new Set<string>();
+  const all: string[] = [];
+  for (const img of row.images ?? []) {
+    if (!img || seen.has(img)) continue;
+    seen.add(img);
+    all.push(img);
+  }
+  for (const v of row.product_variants ?? []) {
+    for (const img of v.images ?? []) {
+      if (!img || seen.has(img)) continue;
+      seen.add(img);
+      all.push(img);
+    }
+  }
+  return all;
 }
 
 /**
