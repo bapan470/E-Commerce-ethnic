@@ -249,7 +249,8 @@ export type ActivityEventType =
   | 'add_to_cart'
   | 'wishlist'
   | 'checkout_start'
-  | 'purchase';
+  | 'purchase'
+  | 'search';
 
 export interface ActivityEvent {
   id: string;

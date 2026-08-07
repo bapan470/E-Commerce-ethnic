@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect, Suspense } from 'react';
+import { useMemo, useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { SlidersHorizontal, TrendingDown, Flame, Gift, Camera } from 'lucide-react';
 import { Product, CategoryRow } from '@/lib/types';
@@ -29,6 +29,7 @@ import { Separator } from '@/components/ui/separator';
 import { STANDARD_SIZES } from '@/lib/size-chart';
 import { productMatchesQuery, expandHindiQuery } from '@/lib/search-utils';
 import { getColorSwatchHex } from '@/lib/color-swatch';
+import { trackEvent } from '@/lib/track-api';
 
 const ALL_SIZES = [...STANDARD_SIZES];
 
@@ -236,6 +237,31 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
     selectedFabrics.length +
     selectedOccasions.length +
     (priceRange[0] > 0 || priceRange[1] < 35000 ? 1 : 0);
+
+  // Log searches for Admin > Analytics > Search -- debounced so a shopper
+  // still typing doesn't fire an event per keystroke, and deduped so the
+  // same query text (e.g. re-rendering after an unrelated filter toggle)
+  // is only logged once. Best-effort: trackEvent never throws, so a failed
+  // log never breaks the actual search experience.
+  const filteredRef = useRef(filtered);
+  filteredRef.current = filtered;
+  const lastLoggedQueryRef = useRef('');
+  useEffect(() => {
+    const q = query.trim();
+    if (!q) {
+      lastLoggedQueryRef.current = '';
+      return;
+    }
+    if (q.toLowerCase() === lastLoggedQueryRef.current) return;
+    const timer = setTimeout(() => {
+      lastLoggedQueryRef.current = q.toLowerCase();
+      trackEvent('search', {
+        pagePath: pathname,
+        metadata: { query: q, resultsCount: filteredRef.current.length },
+      });
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [query, pathname]);
 
   const clearAll = () => {
     setSelectedCats([]);

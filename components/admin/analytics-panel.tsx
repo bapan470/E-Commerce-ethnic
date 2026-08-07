@@ -16,13 +16,14 @@ import {
   LabelList,
   Cell,
 } from 'recharts';
-import { AlertTriangle, TrendingUp, ShoppingBag, Percent, PackageX, BarChart3, Wifi, Receipt } from 'lucide-react';
+import { AlertTriangle, TrendingUp, ShoppingBag, Percent, PackageX, BarChart3, Wifi, Receipt, Search } from 'lucide-react';
 import { format, startOfDay, endOfDay, subDays } from 'date-fns';
 import { fetchAnalytics, AnalyticsData } from '@/lib/analytics-api';
 import { formatINR } from '@/lib/format';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import TrafficPanel from '@/components/admin/traffic-panel';
+import SearchInsightsPanel from '@/components/admin/search-insights-panel';
 import { DateRangePicker, SimpleRange } from '@/components/admin/date-range-picker';
 
 const FUNNEL_COLORS = ['#8b5e3c', '#a9744f', '#c68b5f', '#e0a374', '#f0b98a'];
@@ -31,7 +32,7 @@ const ORDER_DOT_COLOR = '#8b5e3c';
 
 // ── Tab bar ────────────────────────────────────────────────────────────────
 
-type Tab = 'sales' | 'traffic';
+type Tab = 'sales' | 'traffic' | 'search';
 
 function TabBar({
   active,
@@ -50,6 +51,9 @@ function TabBar({
         </TabButton>
         <TabButton value="traffic" active={active} onChange={onChange} icon={<Wifi className="h-4 w-4" />}>
           Traffic
+        </TabButton>
+        <TabButton value="search" active={active} onChange={onChange} icon={<Search className="h-4 w-4" />}>
+          Search
         </TabButton>
       </div>
       {active === 'sales' && right}
@@ -501,7 +505,13 @@ export default function AnalyticsPanel() {
         onChange={setActiveTab}
         right={<DateRangePicker value={range} onChange={setRange} />}
       />
-      {activeTab === 'sales' ? <SalesPanel range={range} onRangeChange={setRange} /> : <TrafficPanel />}
+      {activeTab === 'sales' ? (
+        <SalesPanel range={range} onRangeChange={setRange} />
+      ) : activeTab === 'traffic' ? (
+        <TrafficPanel />
+      ) : (
+        <SearchInsightsPanel />
+      )}
     </div>
   );
 }
