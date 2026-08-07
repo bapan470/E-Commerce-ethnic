@@ -1,68 +1,47 @@
-DROPSHIPPING SEO UPDATE — Reseller Registration Page
-=======================================================
+ORIGINAL FILES RESTORE — Revert Dropshipping SEO Changes
+============================================================
 
-Goal: /reseller-registration page ko "dropshipping" keyword ke liye
-optimize kiya — vendor page ko touch nahi kiya (wo supplier-intent ke
-liye already sahi hai).
+Ye zip aapko wapas PEHLE JAISA state me le jaayega — matlab wahi
+dropshipping-related changes jo humne reseller-registration page pe
+kiye the, sab hata diye gaye hain. Reseller page ab apne original
+text/wording pe wapas hai.
 
-FILES IN THIS ZIP → WAHAN COPY KARO (same path, overwrite):
+FILES → WAHAN COPY KARO (same path, overwrite):
 
-1. settings-api.ts
-   → lib/settings-api.ts
-   (Sirf "reseller_registration" section update hua hai — default
-   hero heading, subtext, cta button text, 4 steps, aur 3 FAQs — sab
-   me "dropshipping" keyword naturally add kiya gaya. Baaki poora file
-   (vendor_registration, vendor_login, reseller_login, aur neeche ka
-   saara code) bilkul waisa hi hai jaisa pehle tha.)
+1. lib/settings-api.ts
+   → E-Commerce-ethnic\lib\settings-api.ts
+   (IMPORTANT: lib FOLDER KE ANDAR daalna — root me NAHI. Pichli baar
+   yahi galti hui thi jisse build fail hui thi.)
 
 2. reseller-registration/page.tsx
-   → app/reseller-registration/page.tsx
-   (Page <title>, H2 headings, aur bullet list me "dropshipping" /
-   "dropshipper" keyword add kiya. Baaki layout/design/code same hai.)
+   → E-Commerce-ethnic\app\reseller-registration\page.tsx
 
 APPLY KAISE KARO
 -----------------
-1. In dono files ko apne local repo folder me same path pe copy-paste
-   karo, overwrite kar do:
-     C:\...\E-Commerce-ethnic\lib\settings-api.ts
-     C:\...\E-Commerce-ethnic\app\reseller-registration\page.tsx
-
+1. Dono files ko exact upar diye gaye paths pe copy-paste karke
+   overwrite karo.
 2. Git se push karo:
      git add lib/settings-api.ts app/reseller-registration/page.tsx
-     git commit -m "SEO: target dropshipping keyword on reseller registration page"
+     git commit -m "Revert: restore original reseller-registration wording"
      git push
+3. Deploy hone do.
 
-3. Deploy hone do (Netlify/Vercel auto-deploy ho jayega push pe).
+AGAR ADMIN PANEL SE BHI KABHI EDIT/SAVE KIYA THA
+---------------------------------------------------
+Agar aapne pehle Admin > Marketing > Partner Pages me jaake reseller
+page ka koi text manually edit karke Save kiya tha (dropshipping wale
+naye text ke saath), to wo text database me bhi saved hai — sirf ye
+file replace karne se wo apne aap nahi hategga (DB ka value priority
+leta hai). Us case me:
+  Admin panel > Marketing > Partner Pages > Reseller Registration tab
+  > "Reset to default text" button dabao > Save.
+Agar admin panel se kabhi edit nahi kiya tha, to ye step zaroori nahi.
 
-4. IMPORTANT — agar aapne pehle kabhi Admin > Marketing > Partner
-   Pages me jaake reseller page ka text manually edit/save kiya tha,
-   to database me wahi purana text already saved hai, aur naya default
-   text (jo is file me hai) show NAHI hoga — kyunki DB wala value
-   hamesha default se priority leta hai. Us case me:
-     Admin panel > Marketing > Partner Pages > Reseller Registration
-     tab me jaake "Reset to default text" button dabao — ab naya
-     dropshipping-focused text load ho jayega, phir Save karo.
-   (Agar aapne kabhi edit nahi kiya, to ye step zaroori nahi — naya
-   default text apne aap show ho jayega.)
-
-GOOGLE SEARCH CONSOLE ME RE-INDEX
------------------------------------
-1. Search Console kholo → apni property select karo.
-2. Top search bar me paste karo:
-     https://www.aruhihandlooms.com/reseller-registration
-   (apna actual domain daalna, ye sirf example hai)
-3. "URL Inspection" result aayega → "REQUEST INDEXING" button dabao.
-4. Sitemaps section me jaake sitemap.xml resubmit karo (agar already
-   submitted hai to sirf refresh/resubmit kar do).
-5. Indexing me kuch din se 1-2 hafte lag sakte hain. Ranking (top pe
-   dikhna) usse alag cheez hai — usme aur time lagega, competition pe
-   depend karta hai.
-
-KYA NAHI BADLA
-----------------
-- Vendor registration page (/vendor-registration) bilkul same hai —
-  usko dropshipping keyword ke liye touch nahi kiya, kyunki vendor =
-  supplier hai, dropshipper/reseller nahi.
-- Koi database migration nahi chahiye is change ke liye.
-- Koi naya file nahi bana — sirf 2 existing files ke andar text change
-  hua hai.
+AB KYA STATUS HAI
+-------------------
+- Reseller registration page ab apne original wording pe hai (koi
+  "dropshipping" keyword forced nahi hai).
+- Vendor page pehle se hi untouched tha, use kuch nahi karna.
+- Jab aap alag se dedicated dropshipping system banana chahoge, hum
+  usko poori tarah naye pages/flow ke saath bana sakte hain — reseller
+  system ko touch kiye bina.

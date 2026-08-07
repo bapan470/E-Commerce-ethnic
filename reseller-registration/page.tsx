@@ -27,7 +27,7 @@ async function getContent(): Promise<PartnerPagesContent> {
 export async function generateMetadata(): Promise<Metadata> {
   const content = await getContent();
   return {
-    title: 'Saree Dropshipping India — Become an AruhiHandlooms Reseller/Dropshipper',
+    title: 'Reseller Registration — Become an AruhiHandlooms Reseller',
     description: content.reseller_registration.hero_subtext,
     alternates: { canonical: '/reseller-registration' },
   };
@@ -86,7 +86,7 @@ export default async function ResellerRegistrationPage() {
 
       <div className="container-boutique max-w-4xl py-12 sm:py-16">
         <h2 className="font-serif text-2xl font-bold text-primary sm:text-3xl">
-          How saree dropshipping works with AruhiHandlooms
+          How reseller registration works
         </h2>
         <div className="mt-8 grid gap-6 sm:grid-cols-2">
           {c.steps.map((step, i) => {
@@ -102,14 +102,13 @@ export default async function ResellerRegistrationPage() {
         </div>
 
         <h2 className="mt-14 font-serif text-2xl font-bold text-primary sm:text-3xl">
-          Why dropship sarees with AruhiHandlooms
+          Why resell with AruhiHandlooms
         </h2>
         <ul className="mt-6 space-y-3 text-sm text-muted-foreground">
           {[
-            'Zero investment dropshipping — no upfront inventory, we hold and ship all stock',
+            'No upfront inventory — we hold and ship all stock',
             'Set and change your own markup any time',
-            'We pack and ship directly to your customer under your order — no handling needed',
-            'Track orders and earnings from your reseller/dropshipping dashboard',
+            'Track orders and earnings from your reseller dashboard',
             'No separate signup — use your existing AruhiHandlooms account',
           ].map((item) => (
             <li key={item} className="flex items-start gap-2">
@@ -132,9 +131,9 @@ export default async function ResellerRegistrationPage() {
         </div>
 
         <div className="mt-14 rounded-lg border border-border/60 bg-gradient-to-br from-primary/5 to-secondary/5 p-8 text-center">
-          <p className="font-serif text-xl font-semibold text-primary">Ready to start dropshipping sarees?</p>
+          <p className="font-serif text-xl font-semibold text-primary">Ready to start reselling?</p>
           <p className="mt-1 text-sm text-muted-foreground">
-            Join the reseller/dropshipping program in a single click from your account.
+            Join the program in a single click from your account.
           </p>
           <Link href="/login?next=/account/reseller">
             <Button className="mt-5 bg-primary">{c.cta_label}</Button>
