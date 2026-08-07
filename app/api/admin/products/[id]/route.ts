@@ -22,6 +22,7 @@ function revalidateStorefront(slug?: string | null) {
   // which single category this product belonged to.
   revalidatePath('/category/[slug]', 'page');
   revalidatePath('/shop');
+  revalidatePath('/search');
   if (slug) revalidatePath(`/product/${slug}`);
 }
 

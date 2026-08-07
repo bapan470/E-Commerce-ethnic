@@ -1,4 +1,5 @@
 import { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 import { fetchProductsServer } from '@/lib/products-api-server';
 import { fetchCategoriesServer } from '@/lib/products-api-server';
 import ShopContent from './shop-content';
@@ -17,7 +18,27 @@ export const metadata: Metadata = {
     'Browse our full collection of sarees and ethnic wear, sourced directly from master weavers across India.',
 };
 
-export default async function ShopPage() {
+export default async function ShopPage({
+  searchParams,
+}: {
+  searchParams: { [key: string]: string | string[] | undefined };
+}) {
+  // Text search now lives at its own URL (/search?q=...) instead of
+  // /shop?q=... -- /shop is the pure category/filter browsing page. Any
+  // old links, bookmarks, or shares still using /shop?q=... get sent
+  // straight to /search with every other param (sort, category, etc.)
+  // carried over untouched, so nothing that was shared before this change
+  // breaks.
+  if (searchParams?.q) {
+    const forwarded = new URLSearchParams();
+    for (const [key, value] of Object.entries(searchParams)) {
+      if (value === undefined) continue;
+      if (Array.isArray(value)) value.forEach((v) => forwarded.append(key, v));
+      else forwarded.append(key, value);
+    }
+    redirect(`/search?${forwarded.toString()}`);
+  }
+
   // If Supabase has a transient hiccup, fail soft (empty catalog + "no
   // products found" state) instead of throwing -- an unhandled throw here
   // would hit Next.js's default error screen, which is worse than the old

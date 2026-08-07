@@ -258,7 +258,7 @@ export default function Header() {
     if (query.trim()) {
       saveSearchHistory(query.trim());
       setSearchHistory(getSearchHistory());
-      router.push(`/shop?q=${encodeURIComponent(query.trim())}`);
+      router.push(`/search?q=${encodeURIComponent(query.trim())}`);
       setMobileOpen(false);
       setSuggestOpen(false);
       setMobileSearchOpen(false);

@@ -1,211 +1,183 @@
-diff --git a/app/api/merchant-feed/route.ts b/app/api/merchant-feed/route.ts
-index 95b90d2..3e8ae63 100644
---- a/app/api/merchant-feed/route.ts
-+++ b/app/api/merchant-feed/route.ts
-@@ -6,6 +6,15 @@ import { fetchShippingSettings } from '@/lib/pincode-api';
- 
- const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
- 
-+// Without this, Next.js treats this route as static (no request params,
-+// no cookies/headers used) and bakes the response ONCE at build time --
-+// this was also *why* it originally failed to build (Next tries to
-+// prerender it). Forcing it dynamic means every request re-reads the
-+// live settings/products from Supabase, so changes made in Admin (GST &
-+// Shipping fee, Fulfillment Timing, product edits, etc.) show up on the
-+// very next fetch instead of only after the next deployment.
-+export const dynamic = 'force-dynamic';
-+
- function escapeXml(input: string): string {
-   return input
-     .replace(/&/g, '&amp;')
-@@ -112,7 +121,7 @@ export async function GET() {
-   return new NextResponse(xml, {
-     headers: {
-       'Content-Type': 'application/xml; charset=utf-8',
--      'Cache-Control': 'public, max-age=3600',
-+      'Cache-Control': 'public, max-age=300, stale-while-revalidate=60',
-     },
-   });
+diff --git a/app/api/admin/products/[id]/route.ts b/app/api/admin/products/[id]/route.ts
+index 18898c5..65a1cba 100644
+--- a/app/api/admin/products/[id]/route.ts
++++ b/app/api/admin/products/[id]/route.ts
+@@ -22,6 +22,7 @@ function revalidateStorefront(slug?: string | null) {
+   // which single category this product belonged to.
+   revalidatePath('/category/[slug]', 'page');
+   revalidatePath('/shop');
++  revalidatePath('/search');
+   if (slug) revalidatePath(`/product/${slug}`);
  }
-diff --git a/app/legal/[slug]/page.tsx b/app/legal/[slug]/page.tsx
-index a74f417..613c4be 100644
---- a/app/legal/[slug]/page.tsx
-+++ b/app/legal/[slug]/page.tsx
-@@ -3,6 +3,7 @@ import Link from 'next/link';
- import type { Metadata } from 'next';
- import { getServerSupabase } from '@/lib/supabase-server';
- import { LEGAL_PAGE_TITLES, LegalPages, LegalSlug, applyFulfillmentTokens, fetchFulfillmentSettings } from '@/lib/marketing-api';
-+import { fetchShippingSettings } from '@/lib/pincode-api';
  
- const VALID_SLUGS = Object.keys(LEGAL_PAGE_TITLES) as LegalSlug[];
+diff --git a/app/api/admin/products/route.ts b/app/api/admin/products/route.ts
+index 597558c..4966afc 100644
+--- a/app/api/admin/products/route.ts
++++ b/app/api/admin/products/route.ts
+@@ -88,6 +88,7 @@ export async function POST(req: Request) {
+   revalidatePath('/');
+   revalidatePath('/category/[slug]', 'page');
+   revalidatePath('/shop');
++  revalidatePath('/search');
  
-@@ -46,12 +47,17 @@ export default async function LegalPage({ params }: { params: { slug: string } }
-   const slug = params.slug as LegalSlug;
-   if (!VALID_SLUGS.includes(slug)) notFound();
+   return NextResponse.json({ product: data });
+ }
+diff --git a/app/page.tsx b/app/page.tsx
+index 6b74f45..a250e29 100644
+--- a/app/page.tsx
++++ b/app/page.tsx
+@@ -80,7 +80,7 @@ export default async function Home() {
+         description: data.description,
+         potentialAction: {
+           '@type': 'SearchAction',
+-          target: `${SITE_URL}/shop?q={search_term_string}`,
++          target: `${SITE_URL}/search?q={search_term_string}`,
+           'query-input': 'required name=search_term_string',
+         },
+       },
+diff --git a/app/shop/page.tsx b/app/shop/page.tsx
+index d053633..a6c52ce 100644
+--- a/app/shop/page.tsx
++++ b/app/shop/page.tsx
+@@ -1,4 +1,5 @@
+ import { Metadata } from 'next';
++import { redirect } from 'next/navigation';
+ import { fetchProductsServer } from '@/lib/products-api-server';
+ import { fetchCategoriesServer } from '@/lib/products-api-server';
+ import ShopContent from './shop-content';
+@@ -17,7 +18,27 @@ export const metadata: Metadata = {
+     'Browse our full collection of sarees and ethnic wear, sourced directly from master weavers across India.',
+ };
  
--  const [pages, fulfillment] = await Promise.all([getLegalPages(), fetchFulfillmentSettings()]);
-+  const [pages, fulfillment, shipping] = await Promise.all([
-+    getLegalPages(),
-+    fetchFulfillmentSettings(),
-+    fetchShippingSettings(),
-+  ]);
-   const title = LEGAL_PAGE_TITLES[slug];
-   const rawContent = pages[slug] || 'This page is being updated. Please check back soon.';
--  // {{dispatch_days}}, {{return_days}}, etc. always reflect the live
--  // numbers from Admin > Marketing > Shipping & Returns Timing.
--  const content = applyFulfillmentTokens(rawContent, fulfillment);
-+  // {{dispatch_days}}, {{return_days}}, {{shipping_fee}}, etc. always
-+  // reflect the live numbers from Admin > Marketing > Shipping & Returns
-+  // Timing and Admin > Settings > GST & Shipping.
-+  const content = applyFulfillmentTokens(rawContent, fulfillment, shipping);
- 
-   return (
-     <div className="container-boutique max-w-3xl py-10 sm:py-14">
-diff --git a/components/admin/marketing-panel.tsx b/components/admin/marketing-panel.tsx
-index 5036c29..546fad9 100644
---- a/components/admin/marketing-panel.tsx
-+++ b/components/admin/marketing-panel.tsx
-@@ -255,15 +255,17 @@ function LegalPagesTab() {
-       {(activeSlug === 'shipping-policy' || activeSlug === 'refund-policy') && (
-         <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-xs">
-           <p className="font-medium text-foreground">
--            Keep this in sync with Admin &gt; Marketing &gt; Shipping &amp; Returns Timing
-+            Keep this in sync with Admin &gt; Marketing &gt; Shipping &amp; Returns Timing and
-+            Admin &gt; Settings &gt; GST &amp; Shipping
-           </p>
-           <p className="mt-1 text-muted-foreground">
-             Use these tokens anywhere in the text below and they'll always show the live numbers
--            from the Shipping &amp; Returns Timing tab, instead of numbers you'd otherwise have to
--            update by hand every time they change:{' '}
-+            from those settings, instead of numbers you'd otherwise have to update by hand every
-+            time they change:{' '}
-             <code>{'{{dispatch_days}}'}</code>, <code>{'{{metro_days}}'}</code>,{' '}
-             <code>{'{{other_days}}'}</code>, <code>{'{{remote_days}}'}</code>,{' '}
--            <code>{'{{return_days}}'}</code>, <code>{'{{cancellation_hours}}'}</code>.
-+            <code>{'{{return_days}}'}</code>, <code>{'{{cancellation_hours}}'}</code>,{' '}
-+            <code>{'{{shipping_fee}}'}</code>, <code>{'{{free_shipping_threshold}}'}</code>.
-           </p>
-           <button
-             type="button"
-diff --git a/lib/marketing-api.ts b/lib/marketing-api.ts
-index e8da5de..b2b23ba 100644
---- a/lib/marketing-api.ts
-+++ b/lib/marketing-api.ts
-@@ -1,4 +1,18 @@
--import { supabase } from './supabase';
-+import { getServerSupabase } from './supabase-server';
-+import { fetchShippingSettings, type ShippingSettings } from './pincode-api';
-+
-+// NOTE: this file is imported from BOTH client components (admin panels,
-+// WhatsApp/trust-badge widgets, live chat) and server-only code (the
-+// Google Merchant feed route, the legal pages route, the AI chat route).
-+// It used to import the `supabase` singleton from './supabase', which is
-+// marked 'use client' -- that's fine from a Client Component, but Next.js
-+// throws "Cannot access supabase.from on the server. You cannot dot into
-+// a client module from a server component." the moment a Server
-+// Component / Route Handler touches it (this is what broke the
-+// /api/merchant-feed build). `getServerSupabase()` uses the exact same
-+// anon-key client config with no 'use client' boundary, so it works
-+// identically from both the browser and the server.
-+const supabase = getServerSupabase();
- 
- // ---------------------------------------------------------------------
- // Fulfillment timing: dispatch window, delivery windows by zone, return
-@@ -107,17 +121,34 @@ export function shippingReturnsSummary(f: FulfillmentSettings, freeShippingThres
- 
- // Tokens an admin can drop anywhere inside a Legal Page's text so that
- // page always reflects the current numbers from Admin > Marketing >
--// Shipping & Returns Timing, instead of typing numbers in as plain text
--// that silently go stale the next time those settings change.
--export function applyFulfillmentTokens(text: string, f: FulfillmentSettings): string {
-+// Shipping & Returns Timing (plus the shipping fee / free-shipping
-+// threshold from Admin > Settings > GST & Shipping), instead of typing
-+// numbers in as plain text that silently go stale the next time those
-+// settings change. The `shipping` param is optional so existing callers
-+// that only have FulfillmentSettings keep working unchanged; without it,
-+// {{shipping_fee}}/{{free_shipping_threshold}} are simply left as-is.
-+export function applyFulfillmentTokens(
-+  text: string,
-+  f: FulfillmentSettings,
-+  shipping?: Pick<ShippingSettings, 'flat_rate' | 'free_shipping_threshold'>,
-+): string {
-   if (!text) return text;
--  return text
-+  let result = text
-     .replace(/\{\{\s*dispatch_days\s*\}\}/g, dayRange(f.dispatch_days_min, f.dispatch_days_max))
-     .replace(/\{\{\s*metro_days\s*\}\}/g, dayRange(f.delivery_metro_min, f.delivery_metro_max))
-     .replace(/\{\{\s*other_days\s*\}\}/g, dayRange(f.delivery_other_min, f.delivery_other_max))
-     .replace(/\{\{\s*remote_days\s*\}\}/g, dayRange(f.delivery_remote_min, f.delivery_remote_max))
-     .replace(/\{\{\s*return_days\s*\}\}/g, String(f.return_window_days))
-     .replace(/\{\{\s*cancellation_hours\s*\}\}/g, String(f.cancellation_window_hours));
-+  if (shipping) {
-+    result = result
-+      .replace(/\{\{\s*shipping_fee\s*\}\}/g, `Rs ${shipping.flat_rate.toLocaleString('en-IN')}`)
-+      .replace(
-+        /\{\{\s*free_shipping_threshold\s*\}\}/g,
-+        `Rs ${shipping.free_shipping_threshold.toLocaleString('en-IN')}`,
-+      );
+-export default async function ShopPage() {
++export default async function ShopPage({
++  searchParams,
++}: {
++  searchParams: { [key: string]: string | string[] | undefined };
++}) {
++  // Text search now lives at its own URL (/search?q=...) instead of
++  // /shop?q=... -- /shop is the pure category/filter browsing page. Any
++  // old links, bookmarks, or shares still using /shop?q=... get sent
++  // straight to /search with every other param (sort, category, etc.)
++  // carried over untouched, so nothing that was shared before this change
++  // breaks.
++  if (searchParams?.q) {
++    const forwarded = new URLSearchParams();
++    for (const [key, value] of Object.entries(searchParams)) {
++      if (value === undefined) continue;
++      if (Array.isArray(value)) value.forEach((v) => forwarded.append(key, v));
++      else forwarded.append(key, value);
++    }
++    redirect(`/search?${forwarded.toString()}`);
 +  }
-+  return result;
- }
++
+   // If Supabase has a transient hiccup, fail soft (empty catalog + "no
+   // products found" state) instead of throwing -- an unhandled throw here
+   // would hit Next.js's default error screen, which is worse than the old
+diff --git a/app/shop/shop-content.tsx b/app/shop/shop-content.tsx
+index ab897ba..36bc345 100644
+--- a/app/shop/shop-content.tsx
++++ b/app/shop/shop-content.tsx
+@@ -1,7 +1,7 @@
+ 'use client';
  
- // Ready-to-paste templates — the admin panel's "Insert template" button on
-@@ -135,7 +166,7 @@ Remote/rural areas: may take up to {{remote_days}} business days
- These are estimated timelines and may vary depending on courier partner delays, weather conditions, or other unforeseen circumstances.
+ import { useMemo, useState, useEffect, Suspense } from 'react';
+-import { useSearchParams, useRouter } from 'next/navigation';
++import { useSearchParams, useRouter, usePathname } from 'next/navigation';
+ import { SlidersHorizontal, TrendingDown, Flame, Gift, Camera } from 'lucide-react';
+ import { Product, CategoryRow } from '@/lib/types';
+ import ProductCard from '@/components/product-card';
+@@ -52,6 +52,11 @@ interface ShopContentProps {
+ function ShopContentInner({ products, categories }: ShopContentProps) {
+   const params = useSearchParams();
+   const router = useRouter();
++  // This component is now mounted at both /shop (category/filter browsing)
++  // and /search (text search has its own URL — see app/search/page.tsx), so
++  // any navigation back to "the current listing page" must use whichever
++  // path we're actually on instead of a hardcoded '/shop'.
++  const pathname = usePathname();
  
- Shipping Charges
--Free shipping is available on eligible orders as shown at checkout. A flat shipping charge applies below that threshold.
-+Free shipping on all orders above {{free_shipping_threshold}}. A flat shipping charge of {{shipping_fee}} applies on orders below that amount.
+   // Set by the header's "search by image" camera button: it ranks the
+   // catalog by visual similarity client-side (lib/image-search.ts) and
+@@ -151,7 +156,7 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
+     setImageSearchIds(null);
+     setImageSearchMatches({});
+     setImageSearchThumbnail(null);
+-    router.replace('/shop');
++    router.replace(pathname);
+   };
  
- Order Tracking
- Once your order is dispatched, you will receive a tracking link via email/WhatsApp/SMS to track your shipment in real time.
-@@ -225,12 +256,16 @@ export async function saveLegalPages(pages: LegalPages) {
- // editor — it needs the raw, unresolved text so saving it back doesn't
- // bake today's numbers in and destroy the tokens.
- export async function fetchLegalPagesResolved(): Promise<LegalPages> {
--  const [pages, fulfillment] = await Promise.all([fetchLegalPages(), fetchFulfillmentSettings()]);
-+  const [pages, fulfillment, shipping] = await Promise.all([
-+    fetchLegalPages(),
-+    fetchFulfillmentSettings(),
-+    fetchShippingSettings(),
-+  ]);
-   return {
--    'privacy-policy': applyFulfillmentTokens(pages['privacy-policy'], fulfillment),
--    'terms-conditions': applyFulfillmentTokens(pages['terms-conditions'], fulfillment),
--    'shipping-policy': applyFulfillmentTokens(pages['shipping-policy'], fulfillment),
--    'refund-policy': applyFulfillmentTokens(pages['refund-policy'], fulfillment),
-+    'privacy-policy': applyFulfillmentTokens(pages['privacy-policy'], fulfillment, shipping),
-+    'terms-conditions': applyFulfillmentTokens(pages['terms-conditions'], fulfillment, shipping),
-+    'shipping-policy': applyFulfillmentTokens(pages['shipping-policy'], fulfillment, shipping),
-+    'refund-policy': applyFulfillmentTokens(pages['refund-policy'], fulfillment, shipping),
+   const toggle = (list: string[], value: string) =>
+diff --git a/components/header.tsx b/components/header.tsx
+index a958562..83d4249 100644
+--- a/components/header.tsx
++++ b/components/header.tsx
+@@ -258,7 +258,7 @@ export default function Header() {
+     if (query.trim()) {
+       saveSearchHistory(query.trim());
+       setSearchHistory(getSearchHistory());
+-      router.push(`/shop?q=${encodeURIComponent(query.trim())}`);
++      router.push(`/search?q=${encodeURIComponent(query.trim())}`);
+       setMobileOpen(false);
+       setSuggestOpen(false);
+       setMobileSearchOpen(false);
+diff --git a/lib/products-api-server.ts b/lib/products-api-server.ts
+index 5875332..2cff6f3 100644
+--- a/lib/products-api-server.ts
++++ b/lib/products-api-server.ts
+@@ -66,6 +66,15 @@ export function mapRowToProduct(row: ProductRow): Product {
+     origin: row.origin ?? '',
+     colors: row.colors ?? [],
+     all_colors: resolveAllColors(row),
++    // Without this, productMatchesQuery() (lib/search-utils.ts) has no
++    // per-variant colour/slug/image to match against on server-rendered
++    // pages, so a search like "yellow saree" would find the product (via
++    // all_colors) but could never resolve *which* variant is yellow --
++    // silently falling back to the product's default variant image/slug
++    // instead of the one the shopper actually searched for.
++    variant_list: (row.product_variants ?? [])
++      .filter((v) => !!v.color)
++      .map((v) => ({ slug: v.slug, color: v.color as string, image: v.images?.[0] ?? null })),
+     sizes: row.sizes ?? ['Free Size'],
+     occasion: row.occasion ?? [],
+     gender: row.gender || 'female',
+@@ -73,6 +82,7 @@ export function mapRowToProduct(row: ProductRow): Product {
+     material: row.material ?? null,
+     pattern: row.pattern ?? null,
+     images: row.images ?? [],
++    all_images: resolveAllImages(row),
+     video_url: row.video_url ?? null,
+     autoplay_video_in_catalog: row.autoplay_video_in_catalog ?? false,
+     sku: row.sku ?? null,
+@@ -92,6 +102,31 @@ export function mapRowToProduct(row: ProductRow): Product {
    };
  }
  
-diff --git a/lib/pincode-api.ts b/lib/pincode-api.ts
-index b8458fe..53183ad 100644
---- a/lib/pincode-api.ts
-+++ b/lib/pincode-api.ts
-@@ -1,4 +1,4 @@
--import { getSupabaseBrowser } from './supabase-browser';
-+import { getServerSupabase } from './supabase-server';
- 
- export interface PincodeResult {
-   serviceable: boolean;
-@@ -138,7 +138,7 @@ export const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
- };
- 
- export async function fetchShippingSettings(): Promise<ShippingSettings> {
--  const supabase = getSupabaseBrowser();
-+  const supabase = getServerSupabase();
-   const { data, error } = await supabase
-     .from('settings')
-     .select('value')
-@@ -149,7 +149,7 @@ export async function fetchShippingSettings(): Promise<ShippingSettings> {
- }
- 
- export async function saveShippingSettings(settings: ShippingSettings): Promise<void> {
--  const supabase = getSupabaseBrowser();
-+  const supabase = getServerSupabase();
-   const { error } = await supabase
-     .from('settings')
-     .upsert({ key: 'shipping', value: settings }, { onConflict: 'key' });
++/**
++ * Every photo this product has anywhere: the base product's own `images`
++ * plus every image on every `product_variants` row, de-duplicated. Kept in
++ * sync with the identical helper in lib/products-api.ts. Without this, the
++ * server-rendered /shop and /category pages would have no way to show or
++ * link to a matched colour variant's own photo -- see `variant_list` below.
++ */
++function resolveAllImages(row: ProductRow): string[] {
++  const seen = new Set<string>();
++  const all: string[] = [];
++  for (const img of row.images ?? []) {
++    if (!img || seen.has(img)) continue;
++    seen.add(img);
++    all.push(img);
++  }
++  for (const v of row.product_variants ?? []) {
++    for (const img of v.images ?? []) {
++      if (!img || seen.has(img)) continue;
++      seen.add(img);
++      all.push(img);
++    }
++  }
++  return all;
++}
++
+ /**
+  * Batch-attaches each product's vendor storefront collection (name + slug)
+  * via the `product_collections` view -- kept in sync with the identical

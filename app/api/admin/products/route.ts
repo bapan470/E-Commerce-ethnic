@@ -88,6 +88,7 @@ export async function POST(req: Request) {
   revalidatePath('/');
   revalidatePath('/category/[slug]', 'page');
   revalidatePath('/shop');
+  revalidatePath('/search');
 
   return NextResponse.json({ product: data });
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import { SlidersHorizontal, TrendingDown, Flame, Gift, Camera } from 'lucide-react';
 import { Product, CategoryRow } from '@/lib/types';
 import ProductCard from '@/components/product-card';
@@ -52,6 +52,11 @@ interface ShopContentProps {
 function ShopContentInner({ products, categories }: ShopContentProps) {
   const params = useSearchParams();
   const router = useRouter();
+  // This component is now mounted at both /shop (category/filter browsing)
+  // and /search (text search has its own URL — see app/search/page.tsx), so
+  // any navigation back to "the current listing page" must use whichever
+  // path we're actually on instead of a hardcoded '/shop'.
+  const pathname = usePathname();
 
   // Set by the header's "search by image" camera button: it ranks the
   // catalog by visual similarity client-side (lib/image-search.ts) and
@@ -151,7 +156,7 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
     setImageSearchIds(null);
     setImageSearchMatches({});
     setImageSearchThumbnail(null);
-    router.replace('/shop');
+    router.replace(pathname);
   };
 
   const toggle = (list: string[], value: string) =>
