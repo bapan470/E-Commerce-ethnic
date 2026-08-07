@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { STANDARD_SIZES } from '@/lib/size-chart';
+import { productMatchesQuery, expandHindiQuery } from '@/lib/search-utils';
 
 const ALL_SIZES = [...STANDARD_SIZES];
 
@@ -72,6 +73,7 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
     initialCategory ? [initialCategory] : []
   );
   const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
+  const [selectedColors, setSelectedColors] = useState<string[]>([]);
   const [selectedFabrics, setSelectedFabrics] = useState<string[]>([]);
   const [selectedOccasions, setSelectedOccasions] = useState<string[]>([]);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 35000]);
@@ -82,6 +84,21 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
 
   // Filter option lists are derived from whatever products/admin have
   // actually tagged, so the panel never shows an empty or stale option.
+  const allColors = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          products.flatMap((p) => [
+            ...(p.all_colors ?? p.colors ?? []),
+            ...(p.variant_list?.map((v) => v.color) ?? []),
+          ])
+        )
+      )
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b)),
+    [products]
+  );
+
   const allFabrics = useMemo(
     () =>
       Array.from(new Set(products.map((p) => p.fabric).filter(Boolean))).sort((a, b) =>
@@ -148,6 +165,15 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
     if (selectedSizes.length > 0) {
       list = list.filter((p) => p.sizes.some((s) => selectedSizes.includes(s)));
     }
+    if (selectedColors.length > 0) {
+      list = list.filter((p) => {
+        const productColors = [
+          ...(p.all_colors ?? p.colors ?? []),
+          ...(p.variant_list?.map((v) => v.color) ?? []),
+        ].map((c) => c.toLowerCase());
+        return selectedColors.some((sc) => productColors.includes(sc.toLowerCase()));
+      });
+    }
     if (selectedFabrics.length > 0) {
       list = list.filter((p) => selectedFabrics.includes(p.fabric));
     }
@@ -158,17 +184,7 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
       (p) => p.price >= priceRange[0] && p.price <= priceRange[1]
     );
     if (query.trim()) {
-      const q = query.toLowerCase();
-      list = list.filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) ||
-          p.category.toLowerCase().includes(q) ||
-          p.fabric.toLowerCase().includes(q) ||
-          p.origin.toLowerCase().includes(q) ||
-          (p.all_colors ?? p.colors).some((c) => c.toLowerCase().includes(q)) ||
-          p.variant_list?.some((v) => v.color.toLowerCase().includes(q)) ||
-          (p.occasion ?? []).some((o) => o.toLowerCase().includes(q))
-      );
+      list = list.filter((p) => productMatchesQuery(p, query.trim()).matched);
     }
     if (imageSearchIds) {
       // Visual-similarity order takes over from the regular sort dropdown —
@@ -205,11 +221,12 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
         list.sort((a, b) => Number(!!b.featured) - Number(!!a.featured));
     }
     return list;
-  }, [products, selectedCats, selectedSizes, selectedFabrics, selectedOccasions, priceRange, query, sort, imageSearchIds]);
+  }, [products, selectedCats, selectedSizes, selectedColors, selectedFabrics, selectedOccasions, priceRange, query, sort, imageSearchIds]);
 
   const activeCount =
     selectedCats.length +
     selectedSizes.length +
+    selectedColors.length +
     selectedFabrics.length +
     selectedOccasions.length +
     (priceRange[0] > 0 || priceRange[1] < 35000 ? 1 : 0);
@@ -217,6 +234,7 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
   const clearAll = () => {
     setSelectedCats([]);
     setSelectedSizes([]);
+    setSelectedColors([]);
     setSelectedFabrics([]);
     setSelectedOccasions([]);
     setPriceRange([0, 35000]);
@@ -283,6 +301,32 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
           ))}
         </div>
       </div>
+
+      {allColors.length > 0 && (
+        <>
+          <Separator />
+          <div>
+            <h3 className="mb-3 font-serif text-sm font-semibold uppercase tracking-wider text-primary">
+              Color
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {allColors.map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setSelectedColors((prev) => toggle(prev, c))}
+                  className={`rounded-full border px-3 py-1 text-xs font-medium capitalize transition-colors ${
+                    selectedColors.includes(c)
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-border bg-background hover:border-primary/50'
+                  }`}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
 
       {allFabrics.length > 0 && (
         <>
@@ -469,18 +513,49 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
           </div>
 
           {filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-border py-20 text-center">
-              <p className="font-serif text-lg font-semibold">No products match your filters</p>
-              <p className="text-sm text-muted-foreground">Try adjusting or clearing filters.</p>
-              <Button onClick={clearAll} variant="outline">Clear filters</Button>
+            <div className="flex flex-col items-center justify-center gap-4 rounded-lg border border-dashed border-border py-16 text-center">
+              <div className="text-4xl">🔍</div>
+              <div>
+                <p className="font-serif text-lg font-semibold">No products found</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {query.trim()
+                    ? <>No results for &quot;<span className="font-medium text-foreground">{query}</span>&quot;. Try a different spelling or browse below.</>
+                    : 'Try adjusting or clearing your filters.'}
+                </p>
+              </div>
+              <div className="flex flex-wrap justify-center gap-2">
+                {['Silk Sarees', 'Cotton Sarees', 'Lehenga', 'Kurti', 'Mulmul Cotton'].map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => { setQuery(s); setSelectedCats([]); setSelectedColors([]); setSelectedFabrics([]); setSelectedSizes([]); setSelectedOccasions([]); }}
+                    className="rounded-full border border-border px-4 py-1.5 text-sm hover:border-primary hover:text-primary transition-colors"
+                  >{s}</button>
+                ))}
+              </div>
+              <Button onClick={clearAll} variant="outline" className="mt-2">Clear all filters</Button>
+
+              {/* Show some featured products as fallback */}
+              {products.length > 0 && (
+                <div className="mt-6 w-full text-left">
+                  <p className="mb-3 text-sm font-semibold text-muted-foreground uppercase tracking-wider">You might like</p>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    {products.filter((p) => p.featured).slice(0, 3).map((p, idx) => (
+                      <ProductCard key={p.id} product={p} priority={idx === 0} />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
               {filtered.map((p: Product, idx: number) => {
                 // If query matches a specific variant color, land on that variant
-                const q = query.trim().toLowerCase();
-                const colorVariant = q
-                  ? p.variant_list?.find((v) => v.color.toLowerCase().includes(q))
+                const q = query.trim();
+                const expandedQs = q ? expandHindiQuery(q) : [];
+                const colorVariant = expandedQs.length
+                  ? p.variant_list?.find((v) =>
+                      expandedQs.some((eq) => v.color.toLowerCase().includes(eq.toLowerCase()))
+                    )
                   : undefined;
                 const colorMatchSlug = colorVariant ? colorVariant.slug : undefined;
                 const colorMatchImage = colorVariant?.image ?? undefined;

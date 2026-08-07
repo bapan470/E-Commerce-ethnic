@@ -9,6 +9,23 @@ import { useCart, useCategories } from '@/lib/cart-context';
 import { useAuth } from '@/lib/auth-context';
 import { getCheckoutReturnPath, isCheckoutReturnFromBuyNow, clearCheckoutReturnBuyNowFlag } from '@/lib/checkout-return';
 import { rankProductIdsByImage, createSearchThumbnail } from '@/lib/image-search';
+import { productMatchesQuery, expandHindiQuery } from '@/lib/search-utils';
+
+const SEARCH_HISTORY_KEY = 'searchHistory';
+const MAX_HISTORY = 6;
+
+function getSearchHistory(): string[] {
+  try { return JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY) || '[]'); } catch { return []; }
+}
+function saveSearchHistory(q: string) {
+  const h = getSearchHistory().filter((s) => s !== q);
+  h.unshift(q);
+  localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(h.slice(0, MAX_HISTORY)));
+}
+function removeSearchHistory(q: string) {
+  const h = getSearchHistory().filter((s) => s !== q);
+  localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(h));
+}
 import { fetchProducts } from '@/lib/products-api';
 import { Product } from '@/lib/types';
 import { formatINR } from '@/lib/format';
@@ -65,6 +82,7 @@ export default function Header() {
   const router = useRouter();
   const pathname = usePathname();
   const [query, setQuery] = useState('');
+  const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
@@ -195,25 +213,19 @@ export default function Header() {
   }, [pathname]);
 
   const suggestions = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = query.trim();
     if (q.length < 2) return [];
     const results: Array<(typeof products)[0] & { matchedSlug: string; matchedImage: string | null }> = [];
     for (const p of products) {
-      const nameMatch = p.name.toLowerCase().includes(q);
-      const catMatch = p.category.toLowerCase().includes(q);
-      const fabricMatch = p.fabric.toLowerCase().includes(q);
-      const baseColorMatch = !!p.colors?.[0]?.toLowerCase().includes(q);
-      const matchedVariant = p.variant_list?.find((v) =>
-        v.color.toLowerCase().includes(q)
-      );
-      if (nameMatch || catMatch || fabricMatch || baseColorMatch || matchedVariant) {
+      const { matched, matchedVariant } = productMatchesQuery(p, q);
+      if (matched) {
         results.push({
           ...p,
           matchedSlug: matchedVariant ? matchedVariant.slug : (p.default_variant_slug ?? p.slug),
           matchedImage: matchedVariant?.image ?? p.default_variant_image ?? p.images?.[0] ?? null,
         });
       }
-      if (results.length >= 5) break;
+      if (results.length >= 6) break;
     }
     return results;
   }, [query, products]);
@@ -237,6 +249,8 @@ export default function Header() {
   const onSearch = (e: FormEvent) => {
     e.preventDefault();
     if (query.trim()) {
+      saveSearchHistory(query.trim());
+      setSearchHistory(getSearchHistory());
       router.push(`/shop?q=${encodeURIComponent(query.trim())}`);
       setMobileOpen(false);
       setSuggestOpen(false);
@@ -391,6 +405,10 @@ export default function Header() {
   };
 
   const goToProduct = (slug: string) => {
+    if (query.trim()) {
+      saveSearchHistory(query.trim());
+      setSearchHistory(getSearchHistory());
+    }
     router.push(`/product/${slug}`);
     setQuery('');
     setSuggestOpen(false);
@@ -522,6 +540,7 @@ export default function Header() {
                 onChange={(e) => setQuery(e.target.value)}
                 onFocus={() => {
                   setSuggestOpen(true);
+                  setSearchHistory(getSearchHistory());
                   ensureProductsLoaded();
                 }}
                 className="border-border/60 bg-muted/40 pl-9 pr-9"
@@ -543,41 +562,95 @@ export default function Header() {
             </div>
           </form>
 
-          {suggestOpen && suggestions.length > 0 && (
+          {suggestOpen && (
             <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-lg border border-border/60 bg-background shadow-lg">
-              {suggestions.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => goToProduct(p.matchedSlug)}
-                  className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-muted/60"
-                >
-                  <div className="relative h-11 w-9 shrink-0 overflow-hidden rounded bg-muted">
-                    {p.matchedImage && (
-                      <Image src={toPublicMediaUrl(p.matchedImage) ?? p.matchedImage} alt={p.name} fill sizes="36px" className="object-cover" />
-                    )}
+              {/* Search History — shown when input is empty */}
+              {!query.trim() && searchHistory.length > 0 && (
+                <>
+                  <div className="flex items-center justify-between px-3 pt-2 pb-1">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Recent Searches</span>
+                    <button
+                      onClick={() => { localStorage.removeItem(SEARCH_HISTORY_KEY); setSearchHistory([]); }}
+                      className="text-[10px] text-muted-foreground hover:text-primary"
+                    >Clear all</button>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{p.name}</p>
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-xs text-muted-foreground">{p.category}</p>
-                      {p.variant_list?.some((v) => v.color.toLowerCase().includes(query.trim().toLowerCase())) && (
-                        <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary capitalize">
-                          {p.variant_list.find((v) => v.color.toLowerCase().includes(query.trim().toLowerCase()))?.color}
-                        </span>
-                      )}
+                  {searchHistory.map((h) => (
+                    <div key={h} className="flex items-center gap-2 px-3 py-1.5 hover:bg-muted/60">
+                      <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <button
+                        className="flex-1 text-left text-sm"
+                        onClick={() => { setQuery(h); setSuggestOpen(true); }}
+                      >{h}</button>
+                      <button
+                        onClick={() => { removeSearchHistory(h); setSearchHistory(getSearchHistory()); }}
+                        className="text-xs text-muted-foreground hover:text-destructive"
+                      >✕</button>
                     </div>
+                  ))}
+                </>
+              )}
+
+              {/* Product suggestions */}
+              {suggestions.length > 0 && (
+                <>
+                  {suggestions.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => goToProduct(p.matchedSlug)}
+                      className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-muted/60"
+                    >
+                      <div className="relative h-11 w-9 shrink-0 overflow-hidden rounded bg-muted">
+                        {p.matchedImage && (
+                          <Image src={toPublicMediaUrl(p.matchedImage) ?? p.matchedImage} alt={p.name} fill sizes="36px" className="object-cover" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{p.name}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-xs text-muted-foreground">{p.category}</p>
+                          {p.variant_list?.find((v) => {
+                            const qs = expandHindiQuery(query.trim());
+                            return qs.some((q) => v.color.toLowerCase().includes(q.toLowerCase()));
+                          }) && (
+                            <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary capitalize">
+                              {p.variant_list?.find((v) => {
+                                const qs = expandHindiQuery(query.trim());
+                                return qs.some((q) => v.color.toLowerCase().includes(q.toLowerCase()));
+                              })?.color}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <span className="shrink-0 text-sm font-semibold text-primary">
+                        {formatINR(p.price)}
+                      </span>
+                    </button>
+                  ))}
+                  <button
+                    onClick={onSearch as any}
+                    className="w-full border-t border-border/60 px-3 py-2 text-center text-xs font-medium text-primary hover:bg-muted/60"
+                  >
+                    See all results for &quot;{query}&quot;
+                  </button>
+                </>
+              )}
+
+              {/* No results */}
+              {query.trim().length >= 2 && suggestions.length === 0 && (
+                <div className="px-4 py-5 text-center">
+                  <p className="text-sm font-medium text-foreground">No results for &quot;{query}&quot;</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">Try a different spelling or browse categories below</p>
+                  <div className="mt-3 flex flex-wrap justify-center gap-2">
+                    {['Silk Sarees', 'Cotton', 'Lehenga', 'Kurti'].map((s) => (
+                      <button
+                        key={s}
+                        onClick={() => setQuery(s)}
+                        className="rounded-full border border-border px-3 py-1 text-xs hover:border-primary hover:text-primary"
+                      >{s}</button>
+                    ))}
                   </div>
-                  <span className="shrink-0 text-sm font-semibold text-primary">
-                    {formatINR(p.price)}
-                  </span>
-                </button>
-              ))}
-              <button
-                onClick={onSearch as any}
-                className="w-full border-t border-border/60 px-3 py-2 text-center text-xs font-medium text-primary hover:bg-muted/60"
-              >
-                See all results for &quot;{query}&quot;
-              </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -653,6 +726,32 @@ export default function Header() {
               </button>
             </form>
 
+            {/* Mobile: Search History */}
+            {!query.trim() && searchHistory.length > 0 && (
+              <div className="mt-2 rounded-lg border border-border/60">
+                <div className="flex items-center justify-between px-3 pt-2 pb-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Recent</span>
+                  <button
+                    onClick={() => { localStorage.removeItem(SEARCH_HISTORY_KEY); setSearchHistory([]); }}
+                    className="text-[10px] text-muted-foreground hover:text-primary"
+                  >Clear</button>
+                </div>
+                {searchHistory.map((h) => (
+                  <div key={h} className="flex items-center gap-2 px-3 py-2 hover:bg-muted/60">
+                    <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <button className="flex-1 text-left text-sm" onClick={() => { setQuery(h); }}>
+                      {h}
+                    </button>
+                    <button
+                      onClick={() => { removeSearchHistory(h); setSearchHistory(getSearchHistory()); }}
+                      className="text-xs text-muted-foreground"
+                    >✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Mobile: Product suggestions */}
             {suggestions.length > 0 && (
               <div className="mt-2 max-h-80 overflow-y-auto rounded-lg border border-border/60">
                 {suggestions.map((p) => (
@@ -670,9 +769,15 @@ export default function Header() {
                       <p className="truncate text-sm font-medium">{p.name}</p>
                       <div className="flex items-center gap-1.5">
                         <p className="text-xs text-muted-foreground">{p.category}</p>
-                        {p.variant_list?.some((v) => v.color.toLowerCase().includes(query.trim().toLowerCase())) && (
+                        {p.variant_list?.find((v) => {
+                          const qs = expandHindiQuery(query.trim());
+                          return qs.some((q) => v.color.toLowerCase().includes(q.toLowerCase()));
+                        }) && (
                           <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary capitalize">
-                            {p.variant_list.find((v) => v.color.toLowerCase().includes(query.trim().toLowerCase()))?.color}
+                            {p.variant_list?.find((v) => {
+                              const qs = expandHindiQuery(query.trim());
+                              return qs.some((q) => v.color.toLowerCase().includes(q.toLowerCase()));
+                            })?.color}
                           </span>
                         )}
                       </div>
@@ -682,6 +787,23 @@ export default function Header() {
                     </span>
                   </button>
                 ))}
+              </div>
+            )}
+
+            {/* Mobile: No results */}
+            {query.trim().length >= 2 && suggestions.length === 0 && (
+              <div className="mt-2 rounded-lg border border-border/60 px-4 py-5 text-center">
+                <p className="text-sm font-medium">No results for &quot;{query}&quot;</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">Try a different spelling or a category</p>
+                <div className="mt-3 flex flex-wrap justify-center gap-2">
+                  {['Silk Sarees', 'Cotton', 'Lehenga', 'Kurti'].map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setQuery(s)}
+                      className="rounded-full border border-border px-3 py-1 text-xs hover:border-primary hover:text-primary"
+                    >{s}</button>
+                  ))}
+                </div>
               </div>
             )}
           </div>
