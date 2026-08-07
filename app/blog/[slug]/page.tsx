@@ -10,6 +10,7 @@ import { fetchCategoriesServer, fetchProductBySlugServer } from '@/lib/products-
 import { blurDataURL } from '@/lib/utils';
 import { safeJsonLd } from '@/lib/json-ld';
 import BlogProductCard from '@/components/blog/blog-product-card';
+import BlogCtaButton from '@/components/blog/blog-cta-button';
 import { toPublicMediaUrl } from '@/lib/media-url';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
@@ -207,7 +208,7 @@ export default async function BlogPostPage({ params }: Params) {
           const productSlug = para.trim().match(PRODUCT_CARD_RE)?.[1];
           if (productSlug) {
             const product = productBySlug.get(productSlug);
-            return product ? <BlogProductCard key={i} product={product} /> : null;
+            return product ? <BlogProductCard key={i} product={product} blogSlug={post.slug} /> : null;
           }
           return (
             <p key={i} className="mb-4 leading-relaxed text-foreground/90">
@@ -218,20 +219,11 @@ export default async function BlogPostPage({ params }: Params) {
       </div>
 
       {relatedCategorySlug && (
-        <div className="mt-10 rounded-2xl border border-border bg-muted/40 p-6 text-center">
-          <p className="font-serif text-lg font-semibold text-foreground">
-            Shop the {post.related_category_name} collection
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Handpicked pieces, straight from the weavers.
-          </p>
-          <Link
-            href={`/category/${relatedCategorySlug}`}
-            className="mt-4 inline-block rounded-full bg-primary px-6 py-2 text-sm font-medium text-primary-foreground hover:opacity-90"
-          >
-            Browse {post.related_category_name}
-          </Link>
-        </div>
+        <BlogCtaButton
+          categorySlug={relatedCategorySlug}
+          categoryName={post.related_category_name!}
+          blogSlug={post.slug}
+        />
       )}
 
       <div className="mt-8">
