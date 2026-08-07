@@ -22,6 +22,7 @@ import {
   deleteBlogPost,
 } from '@/lib/blog-api';
 import { BlogPostRow } from '@/lib/types';
+import { fetchBlogPerformance, BlogPostPerformance } from '@/lib/blog-performance-api';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -74,6 +75,18 @@ export default function BlogPanel() {
   const [saving, setSaving] = useState(false);
   const [confirmTarget, setConfirmTarget] = useState<BlogPostRow | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Per-post performance (Views/Clicks/Conversions) — self-hosted, reads
+  // straight from blog_analytics_events via /api/admin/blog-performance.
+  const [perf, setPerf] = useState<Map<string, BlogPostPerformance>>(new Map());
+  const [perfLoading, setPerfLoading] = useState(true);
+
+  useEffect(() => {
+    fetchBlogPerformance(30)
+      .then((data) => setPerf(new Map(data.posts.map((p) => [p.slug, p]))))
+      .catch(() => {})
+      .finally(() => setPerfLoading(false));
+  }, []);
 
   const [title, setTitle] = useState('');
   const [slug, setSlug] = useState('');
@@ -544,6 +557,9 @@ export default function BlogPanel() {
               <th className="px-4 py-3">Title</th>
               <th className="px-4 py-3">Slug</th>
               <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Views</th>
+              <th className="px-4 py-3">Clicks</th>
+              <th className="px-4 py-3">Conversions</th>
               <th className="px-4 py-3">Published</th>
               <th className="px-4 py-3">Actions</th>
             </tr>
@@ -574,6 +590,15 @@ export default function BlogPanel() {
                     )}
                   </button>
                 </td>
+                <td className="px-4 py-3 text-sm">
+                  {perfLoading ? '…' : (perf.get(p.slug)?.views ?? 0).toLocaleString('en-IN')}
+                </td>
+                <td className="px-4 py-3 text-sm">
+                  {perfLoading ? '…' : (perf.get(p.slug)?.clicks ?? 0).toLocaleString('en-IN')}
+                </td>
+                <td className="px-4 py-3 text-sm">
+                  {perfLoading ? '…' : (perf.get(p.slug)?.conversions ?? 0).toLocaleString('en-IN')}
+                </td>
                 <td className="px-4 py-3 text-sm text-muted-foreground">
                   {new Date(p.published_at).toLocaleDateString('en-IN')}
                 </td>
@@ -596,14 +621,14 @@ export default function BlogPanel() {
             ))}
             {!loading && posts.length > 0 && filteredPosts.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={8} className="px-4 py-8 text-center text-sm text-muted-foreground">
                   No posts match your search.
                 </td>
               </tr>
             )}
             {!loading && posts.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={8} className="px-4 py-8 text-center text-sm text-muted-foreground">
                   No blog posts yet. Add one to get started.
                 </td>
               </tr>
