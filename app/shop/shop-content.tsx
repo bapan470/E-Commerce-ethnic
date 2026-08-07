@@ -28,6 +28,7 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { STANDARD_SIZES } from '@/lib/size-chart';
 import { productMatchesQuery, expandHindiQuery } from '@/lib/search-utils';
+import { getColorSwatchHex } from '@/lib/color-swatch';
 
 const ALL_SIZES = [...STANDARD_SIZES];
 
@@ -319,12 +320,19 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
                 <button
                   key={c}
                   onClick={() => setSelectedColors((prev) => toggle(prev, c))}
-                  className={`rounded-full border px-3 py-1 text-xs font-medium capitalize transition-colors ${
+                  className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium capitalize transition-colors ${
                     selectedColors.includes(c)
                       ? 'border-primary bg-primary text-primary-foreground'
                       : 'border-border bg-background hover:border-primary/50'
                   }`}
                 >
+                  <span
+                    className={`h-3 w-3 shrink-0 rounded-full border ${
+                      selectedColors.includes(c) ? 'border-primary-foreground/50' : 'border-border/70'
+                    }`}
+                    style={{ backgroundColor: getColorSwatchHex(c) }}
+                    aria-hidden="true"
+                  />
                   {c}
                 </button>
               ))}
