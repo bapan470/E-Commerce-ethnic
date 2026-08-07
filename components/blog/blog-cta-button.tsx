@@ -2,11 +2,9 @@
 
 import Link from 'next/link';
 
-// Same visual CTA as before, but now a client component so it can fire a
-// GA4 event on click. Every click sends `blog_slug` as a standard event
-// parameter — no custom-dimension registration needed in GA4 because
-// `pagePath` (which the admin blog-performance report groups by) is
-// automatically attached to every event GA4 collects, custom or not.
+// Self-hosted click tracking (no GA4 needed) — POSTs straight to
+// /api/blog/track. If GA4 gets configured later, this still works
+// unchanged since it doesn't depend on gtag at all.
 export default function BlogCtaButton({
   categorySlug,
   categoryName,
@@ -17,13 +15,12 @@ export default function BlogCtaButton({
   blogSlug: string;
 }) {
   const handleClick = () => {
-    if (typeof window !== 'undefined' && typeof (window as any).gtag === 'function') {
-      (window as any).gtag('event', 'blog_cta_click', {
-        blog_slug: blogSlug,
-        cta_type: 'category',
-        target: categorySlug,
-      });
-    }
+    fetch('/api/blog/track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ blog_slug: blogSlug, event_type: 'click', cta_type: 'category' }),
+      keepalive: true,
+    }).catch(() => {});
   };
 
   return (

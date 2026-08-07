@@ -11,6 +11,7 @@ import { blurDataURL } from '@/lib/utils';
 import { safeJsonLd } from '@/lib/json-ld';
 import BlogProductCard from '@/components/blog/blog-product-card';
 import BlogCtaButton from '@/components/blog/blog-cta-button';
+import BlogViewTracker from '@/components/blog/blog-view-tracker';
 import { toPublicMediaUrl } from '@/lib/media-url';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
@@ -168,6 +169,7 @@ export default async function BlogPostPage({ params }: Params) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }}
       />
+      <BlogViewTracker slug={post.slug} />
 
       <nav className="mb-4 text-xs text-muted-foreground">
         <Link href="/" className="hover:text-primary">

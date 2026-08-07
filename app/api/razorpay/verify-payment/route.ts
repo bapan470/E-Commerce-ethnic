@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
+import { cookies } from 'next/headers';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 // SECURITY: this route now does the `orders` status update itself,
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest) {
     const admin = getSupabaseAdmin();
     const { data: order, error: orderError } = await admin
       .from('orders')
-      .select('id, status, razorpay_order_id')
+      .select('id, status, razorpay_order_id, total_amount')
       .eq('id', internalOrderId)
       .maybeSingle();
 
@@ -89,6 +90,23 @@ export async function POST(req: NextRequest) {
 
     if (updateError) {
       return NextResponse.json({ error: 'Failed to update order status' }, { status: 500 });
+    }
+
+    // Self-hosted blog conversion attribution — if this browser visited a
+    // blog post in the last 30 minutes (see BlogViewTracker), credit this
+    // sale to that post in blog_analytics_events. Best-effort: a failure
+    // here must never block the actual order confirmation.
+    try {
+      const lastBlogSlug = cookies().get('last_blog_slug')?.value;
+      if (lastBlogSlug) {
+        await admin.from('blog_analytics_events').insert({
+          blog_slug: lastBlogSlug,
+          event_type: 'conversion',
+          amount: order.total_amount,
+        });
+      }
+    } catch {
+      // non-fatal — order is already confirmed above
     }
 
     return NextResponse.json({ success: true, verified: true });

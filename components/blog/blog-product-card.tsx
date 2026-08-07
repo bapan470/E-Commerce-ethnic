@@ -7,14 +7,6 @@ import { Product } from '@/lib/types';
 import { formatINR, discountPct } from '@/lib/format';
 import { blurDataURL } from '@/lib/utils';
 
-// Deliberately NOT the full shop-grid ProductCard (components/product-card.tsx)
-// — that one needs CartProvider hooks, wishlist state, hover-swap images etc.
-// This is a lightweight card for inside blog body text: it just needs to
-// look good sitting between two paragraphs and link through to the PDP.
-//
-// Now a client component (was server-rendered before) so the click can be
-// tracked as a `blog_cta_click` GA4 event — this is what the admin Blog
-// performance panel counts as "Clicks" per post.
 export default function BlogProductCard({
   product,
   blogSlug,
@@ -28,13 +20,12 @@ export default function BlogProductCard({
   const discount = discountPct(product.price, product.mrp);
 
   const handleClick = () => {
-    if (typeof window !== 'undefined' && typeof (window as any).gtag === 'function') {
-      (window as any).gtag('event', 'blog_cta_click', {
-        blog_slug: blogSlug,
-        cta_type: 'product_card',
-        target: product.slug,
-      });
-    }
+    fetch('/api/blog/track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ blog_slug: blogSlug, event_type: 'click', cta_type: 'product_card' }),
+      keepalive: true,
+    }).catch(() => {});
   };
 
   return (

@@ -1,40 +1,20 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
-import { BetaAnalyticsDataClient } from '@google-analytics/data';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
-// Same GA4 client setup as app/api/admin/traffic/route.ts — reuses the
-// existing GA4_PROPERTY_ID / GA4_SERVICE_ACCOUNT_JSON env vars, nothing new
-// to configure if Traffic tab already works.
-function getGa4Client() {
-  const propertyId = process.env.GA4_PROPERTY_ID;
-  if (!propertyId) throw new Error('GA4_PROPERTY_ID environment variable is not set');
-
-  let credentials: object | undefined;
-  if (process.env.GA4_SERVICE_ACCOUNT_JSON) {
-    try {
-      credentials = JSON.parse(process.env.GA4_SERVICE_ACCOUNT_JSON);
-    } catch {
-      throw new Error('GA4_SERVICE_ACCOUNT_JSON is not valid JSON');
-    }
-  }
-
-  const client = new BetaAnalyticsDataClient(credentials ? { credentials } : {});
-  return { client, propertyId };
-}
-
-// Strips a GA4 pagePath like "/blog/handloom-tant-jamdani..." down to just
-// the slug, so it can be matched against blog_posts.slug from Supabase.
-function slugFromPath(path: string): string {
-  return path.replace(/^\/blog\//, '').replace(/\/$/, '').split('?')[0];
-}
-
+// Replaces the GA4-based version. Reads straight from
+// blog_analytics_events (see supabase/migrations/*_blog_analytics_events.sql)
+// — no Google Cloud, no service account JSON, no external API. Response
+// shape ({ days, posts: [{ slug, views, clicks, conversions, revenue }] })
+// is unchanged, so lib/blog-performance-api.ts and the admin Blog table
+// patch from before need no changes.
 export interface BlogPostPerformance {
   slug: string;
   views: number;
-  users: number;
-  clicks: number; // clicks on the in-post CTA / product cards (blog_cta_click event)
-  conversions: number; // purchases where this post's URL was the session's landing page
+  users: number; // not tracked separately in the self-hosted version; mirrors views
+  clicks: number;
+  conversions: number;
   revenue: number;
 }
 
@@ -47,61 +27,16 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const days = Number(searchParams.get('days') || 30);
-  const startDate = `${days}daysAgo`;
+  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
   try {
-    const { client, propertyId } = getGa4Client();
-    const property = `properties/${propertyId}`;
+    const admin = getSupabaseAdmin();
+    const { data, error } = await admin
+      .from('blog_analytics_events')
+      .select('blog_slug, event_type, amount')
+      .gte('created_at', since);
 
-    const [viewsRes, clicksRes, convRes] = await Promise.all([
-      // Page views per blog post
-      client.runReport({
-        property,
-        dateRanges: [{ startDate, endDate: 'today' }],
-        dimensions: [{ name: 'pagePath' }],
-        metrics: [{ name: 'screenPageViews' }, { name: 'totalUsers' }],
-        dimensionFilter: {
-          filter: { fieldName: 'pagePath', stringFilter: { value: '/blog/', matchType: 'BEGINS_WITH' } },
-        },
-        limit: 1000,
-      }),
-
-      // Clicks on the CTA / product cards inside each post. Requires the
-      // `blog_cta_click` custom event (see components/blog/blog-cta-button.tsx
-      // and the patched blog-product-card.tsx) to actually be firing —
-      // until that ships, this report will just come back empty (0s), not
-      // an error, so the rest of the dashboard still works.
-      client.runReport({
-        property,
-        dateRanges: [{ startDate, endDate: 'today' }],
-        dimensions: [{ name: 'pagePath' }],
-        metrics: [{ name: 'eventCount' }],
-        dimensionFilter: {
-          andGroup: {
-            expressions: [
-              { filter: { fieldName: 'eventName', stringFilter: { value: 'blog_cta_click', matchType: 'EXACT' } } },
-              { filter: { fieldName: 'pagePath', stringFilter: { value: '/blog/', matchType: 'BEGINS_WITH' } } },
-            ],
-          },
-        },
-        limit: 1000,
-      }),
-
-      // Conversions/revenue attributed to sessions that *entered* the site
-      // on a given blog post (landing page). This is session-level
-      // attribution — GA4's standard way of tying a purchase back to the
-      // page that first brought the visitor in.
-      client.runReport({
-        property,
-        dateRanges: [{ startDate, endDate: 'today' }],
-        dimensions: [{ name: 'landingPage' }],
-        metrics: [{ name: 'conversions' }, { name: 'totalRevenue' }],
-        dimensionFilter: {
-          filter: { fieldName: 'landingPage', stringFilter: { value: '/blog/', matchType: 'BEGINS_WITH' } },
-        },
-        limit: 1000,
-      }),
-    ]);
+    if (error) throw new Error(error.message);
 
     const bySlug = new Map<string, BlogPostPerformance>();
     const ensure = (slug: string): BlogPostPerformance => {
@@ -113,26 +48,17 @@ export async function GET(req: Request) {
       return row;
     };
 
-    for (const r of viewsRes[0]?.rows ?? []) {
-      const slug = slugFromPath(r.dimensionValues?.[0]?.value ?? '');
-      if (!slug) continue;
-      const row = ensure(slug);
-      row.views += Number(r.metricValues?.[0]?.value ?? 0);
-      row.users += Number(r.metricValues?.[1]?.value ?? 0);
-    }
-
-    for (const r of clicksRes[0]?.rows ?? []) {
-      const slug = slugFromPath(r.dimensionValues?.[0]?.value ?? '');
-      if (!slug) continue;
-      ensure(slug).clicks += Number(r.metricValues?.[0]?.value ?? 0);
-    }
-
-    for (const r of convRes[0]?.rows ?? []) {
-      const slug = slugFromPath(r.dimensionValues?.[0]?.value ?? '');
-      if (!slug) continue;
-      const row = ensure(slug);
-      row.conversions += Number(r.metricValues?.[0]?.value ?? 0);
-      row.revenue += Number(r.metricValues?.[1]?.value ?? 0);
+    for (const r of data ?? []) {
+      const row = ensure(r.blog_slug);
+      if (r.event_type === 'view') {
+        row.views += 1;
+        row.users += 1; // approximation: no dedup by visitor in the lightweight version
+      } else if (r.event_type === 'click') {
+        row.clicks += 1;
+      } else if (r.event_type === 'conversion') {
+        row.conversions += 1;
+        row.revenue += Number(r.amount ?? 0);
+      }
     }
 
     return NextResponse.json({ days, posts: Array.from(bySlug.values()) });
