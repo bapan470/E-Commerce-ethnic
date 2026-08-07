@@ -180,10 +180,21 @@ export default function BlogPanel() {
       setRelatedCategory(matchedCategory ? matchedCategory.name : 'none');
       setPublished(false);
       setOpen(true);
+
+      const insertedNames: string[] = Array.isArray(data.inserted_products)
+        ? data.inserted_products.map((p: { name: string }) => p.name).filter(Boolean)
+        : [];
+      const productNote =
+        insertedNames.length > 0
+          ? ` + auto-inserted product card${insertedNames.length > 1 ? 's' : ''} for ${insertedNames.join(' & ')}`
+          : '';
+
       toast.success(
-        data.suggested_cover_image
-          ? 'Draft generated with a product photo as cover — review before publishing'
-          : 'Draft generated — review and add a cover image before publishing'
+        (data.suggested_cover_image
+          ? 'Draft generated with a product photo as cover'
+          : 'Draft generated — add a cover image before publishing') +
+          productNote +
+          ' — review before publishing'
       );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'AI generation failed');

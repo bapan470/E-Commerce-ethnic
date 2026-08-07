@@ -21,6 +21,11 @@ interface GeneratedPost {
   read_minutes: number;
   related_category_name: string;
   suggested_cover_image: string;
+  // Real products auto-inserted as {{product:slug}} cards in body_paragraphs
+  // below, surfaced back to the admin UI just so the toast/dialog can say
+  // *which* products got picked — purely informational, the markers
+  // themselves are already the source of truth for rendering.
+  inserted_products: { slug: string; name: string }[];
 }
 
 const slugify = (s: string) =>
@@ -205,6 +210,50 @@ export async function POST(req: Request) {
       if (withImages) suggestedCoverImage = withImages.images[0];
     }
 
+    // Auto-insert real product cards ({{product:slug}} — same marker the
+    // admin's "Insert product card" button writes, parsed by
+    // app/blog/[slug]/page.tsx into a <BlogProductCard> with a real photo,
+    // price and "Shop Now" link). Doing this here means every AI-generated
+    // draft already has conversion-driving product cards in place, instead
+    // of relying on the admin to add them by hand after the fact — the
+    // admin can still remove/move the markers in the review step before
+    // publishing, same as any other text in the draft.
+    const insertedProducts: { slug: string; name: string }[] = [];
+    if (relatedCategoryName) {
+      const { data: cardCandidates } = await supabase
+        .from('products')
+        .select('slug, name, images, rating, featured')
+        .eq('category_name', relatedCategoryName)
+        .eq('approval_status', 'live')
+        .eq('in_stock', true)
+        .order('featured', { ascending: false })
+        .order('rating', { ascending: false })
+        .limit(10);
+
+      const picked = (cardCandidates ?? [])
+        .filter((p: any) => Array.isArray(p.images) && p.images.length > 0)
+        // Don't repeat the exact product whose photo is already the cover image.
+        .filter((p: any) => p.images[0] !== suggestedCoverImage)
+        .slice(0, bodyParagraphs.length >= 6 ? 2 : 1);
+
+      if (picked.length > 0) {
+        // Spread the cards through the post rather than bunching them at
+        // the top/bottom — roughly a third and two-thirds of the way down
+        // — so they read as a natural break, not an ad wall.
+        const insertAt = picked.map((_, i) =>
+          Math.max(1, Math.round(((i + 1) * bodyParagraphs.length) / (picked.length + 1)))
+        );
+        // Insert back-to-front so earlier insertions don't shift later indices.
+        insertAt
+          .map((pos, i) => ({ pos, product: picked[i] }))
+          .sort((a, b) => b.pos - a.pos)
+          .forEach(({ pos, product }) => {
+            bodyParagraphs.splice(pos, 0, `{{product:${product.slug}}}`);
+          });
+        picked.forEach((p: any) => insertedProducts.push({ slug: p.slug, name: p.name }));
+      }
+    }
+
     const result: GeneratedPost = {
       title: parsed.title.trim(),
       slug: slugify(parsed.title),
@@ -214,6 +263,7 @@ export async function POST(req: Request) {
       read_minutes: readMinutes,
       related_category_name: relatedCategoryName,
       suggested_cover_image: suggestedCoverImage,
+      inserted_products: insertedProducts,
     };
 
     return NextResponse.json(result);

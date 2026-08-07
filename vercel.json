@@ -1,12 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/cron/daily-jobs",
-      "schedule": "0 21 * * *"
-    },
-    {
-      "path": "/api/cron/vendor-order-timeout",
-      "schedule": "30 21 * * *"
+      "path": "/api/blog/generate",
+      "schedule": "30 3 * * *"
     }
   ]
 }
