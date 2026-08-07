@@ -196,14 +196,25 @@ export default function Header() {
   const suggestions = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (q.length < 2) return [];
-    return products
-      .filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) ||
-          p.category.toLowerCase().includes(q) ||
-          p.fabric.toLowerCase().includes(q)
-      )
-      .slice(0, 5);
+    const results: Array<(typeof products)[0] & { matchedSlug: string; matchedImage: string | null }> = [];
+    for (const p of products) {
+      const nameMatch = p.name.toLowerCase().includes(q);
+      const catMatch = p.category.toLowerCase().includes(q);
+      const fabricMatch = p.fabric.toLowerCase().includes(q);
+      const baseColorMatch = !!p.colors?.[0]?.toLowerCase().includes(q);
+      const matchedVariant = p.variant_list?.find((v) =>
+        v.color.toLowerCase().includes(q)
+      );
+      if (nameMatch || catMatch || fabricMatch || baseColorMatch || matchedVariant) {
+        results.push({
+          ...p,
+          matchedSlug: matchedVariant ? matchedVariant.slug : (p.default_variant_slug ?? p.slug),
+          matchedImage: matchedVariant?.image ?? p.default_variant_image ?? p.images?.[0] ?? null,
+        });
+      }
+      if (results.length >= 5) break;
+    }
+    return results;
   }, [query, products]);
 
   useEffect(() => {
@@ -536,12 +547,12 @@ export default function Header() {
               {suggestions.map((p) => (
                 <button
                   key={p.id}
-                  onClick={() => goToProduct(p.slug)}
+                  onClick={() => goToProduct(p.matchedSlug)}
                   className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-muted/60"
                 >
                   <div className="relative h-11 w-9 shrink-0 overflow-hidden rounded bg-muted">
-                    {p.images[0] && (
-                      <Image src={p.images[0]} alt={p.name} fill sizes="36px" className="object-cover" />
+                    {p.matchedImage && (
+                      <Image src={p.matchedImage} alt={p.name} fill sizes="36px" className="object-cover" />
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -639,12 +650,12 @@ export default function Header() {
                 {suggestions.map((p) => (
                   <button
                     key={p.id}
-                    onClick={() => goToProduct(p.slug)}
+                    onClick={() => goToProduct(p.matchedSlug)}
                     className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-muted/60"
                   >
                     <div className="relative h-11 w-9 shrink-0 overflow-hidden rounded bg-muted">
-                      {p.images[0] && (
-                        <Image src={p.images[0]} alt={p.name} fill sizes="36px" className="object-cover" />
+                      {p.matchedImage && (
+                        <Image src={p.matchedImage} alt={p.name} fill sizes="36px" className="object-cover" />
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
