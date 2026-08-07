@@ -219,10 +219,17 @@ export default function Header() {
     for (const p of products) {
       const { matched, matchedVariant } = productMatchesQuery(p, q);
       if (matched) {
+        // If matched variant has no image, try to find any image from all_images
+        // that belongs to this variant, else fall back to default
+        const variantImage = matchedVariant?.image
+          ?? (matchedVariant ? (p.all_images?.find(img => img) ?? p.default_variant_image ?? p.images?.[0]) : null)
+          ?? p.default_variant_image
+          ?? p.images?.[0]
+          ?? null;
         results.push({
           ...p,
           matchedSlug: matchedVariant ? matchedVariant.slug : (p.default_variant_slug ?? p.slug),
-          matchedImage: matchedVariant?.image ?? p.default_variant_image ?? p.images?.[0] ?? null,
+          matchedImage: variantImage,
         });
       }
       if (results.length >= 6) break;

@@ -549,16 +549,14 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
               {filtered.map((p: Product, idx: number) => {
-                // If query matches a specific variant color, land on that variant
                 const q = query.trim();
-                const expandedQs = q ? expandHindiQuery(q) : [];
-                const colorVariant = expandedQs.length
-                  ? p.variant_list?.find((v) =>
-                      expandedQs.some((eq) => v.color.toLowerCase().includes(eq.toLowerCase()))
-                    )
+                // Use productMatchesQuery to get the exact matched variant (same logic as search suggestions)
+                const { matchedVariant } = q ? productMatchesQuery(p, q) : { matchedVariant: undefined };
+                const colorMatchSlug = matchedVariant ? matchedVariant.slug : undefined;
+                // If variant has no image, fall back to all_images[0] then product default
+                const colorMatchImage = matchedVariant
+                  ? (matchedVariant.image ?? p.all_images?.[0] ?? p.images?.[0] ?? undefined)
                   : undefined;
-                const colorMatchSlug = colorVariant ? colorVariant.slug : undefined;
-                const colorMatchImage = colorVariant?.image ?? undefined;
                 return (
                   <ProductCard
                     key={p.id}
