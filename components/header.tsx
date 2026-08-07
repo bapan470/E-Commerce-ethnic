@@ -12,6 +12,7 @@ import { rankProductIdsByImage, createSearchThumbnail } from '@/lib/image-search
 import { fetchProducts } from '@/lib/products-api';
 import { Product } from '@/lib/types';
 import { formatINR } from '@/lib/format';
+import { toPublicMediaUrl } from '@/lib/media-url';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
