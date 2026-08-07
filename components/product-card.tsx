@@ -19,6 +19,7 @@ export default function ProductCard({
   priority = false,
   compact = false,
   imageOverride,
+  slugOverride,
 }: {
   product: Product;
   /** Set true for cards in the first visible row so their image gets
@@ -36,6 +37,9 @@ export default function ProductCard({
    * instead of whatever colour happens to be the product's default.
    */
   imageOverride?: string;
+  /** When a search query matches a specific colour variant, pass that
+   *  variant's slug so the card links directly to that colour. */
+  slugOverride?: string;
 }) {
   const { addItem, activePromotions } = useCart();
   const router = useRouter();
@@ -73,7 +77,7 @@ export default function ProductCard({
   // When this product has colour variants, the card should show and link to
   // the default one -- shoppers land straight on that colour, and clicking
   // through from shop/category always opens that exact variant.
-  const href = `/product/${product.default_variant_slug || product.slug}`;
+  const href = `/product/${slugOverride || product.default_variant_slug || product.slug}`;
   const img = toPublicMediaUrl(
     imageOverride || product.default_variant_image || product.images[0]
   ) || 'https://placehold.co/800x1000?text=No+Image';

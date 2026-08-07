@@ -552,12 +552,19 @@ export default function Header() {
                 >
                   <div className="relative h-11 w-9 shrink-0 overflow-hidden rounded bg-muted">
                     {p.matchedImage && (
-                      <Image src={p.matchedImage} alt={p.name} fill sizes="36px" className="object-cover" />
+                      <Image src={toPublicMediaUrl(p.matchedImage) ?? p.matchedImage} alt={p.name} fill sizes="36px" className="object-cover" />
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{p.name}</p>
-                    <p className="text-xs text-muted-foreground">{p.category}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs text-muted-foreground">{p.category}</p>
+                      {p.variant_list?.some((v) => v.color.toLowerCase().includes(query.trim().toLowerCase())) && (
+                        <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary capitalize">
+                          {p.variant_list.find((v) => v.color.toLowerCase().includes(query.trim().toLowerCase()))?.color}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <span className="shrink-0 text-sm font-semibold text-primary">
                     {formatINR(p.price)}
@@ -655,12 +662,19 @@ export default function Header() {
                   >
                     <div className="relative h-11 w-9 shrink-0 overflow-hidden rounded bg-muted">
                       {p.matchedImage && (
-                        <Image src={p.matchedImage} alt={p.name} fill sizes="36px" className="object-cover" />
+                        <Image src={toPublicMediaUrl(p.matchedImage) ?? p.matchedImage} alt={p.name} fill sizes="36px" className="object-cover" />
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">{p.name}</p>
-                      <p className="text-xs text-muted-foreground">{p.category}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs text-muted-foreground">{p.category}</p>
+                        {p.variant_list?.some((v) => v.color.toLowerCase().includes(query.trim().toLowerCase())) && (
+                          <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary capitalize">
+                            {p.variant_list.find((v) => v.color.toLowerCase().includes(query.trim().toLowerCase()))?.color}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <span className="shrink-0 text-sm font-semibold text-primary">
                       {formatINR(p.price)}

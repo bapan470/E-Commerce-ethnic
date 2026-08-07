@@ -164,7 +164,10 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
           p.name.toLowerCase().includes(q) ||
           p.category.toLowerCase().includes(q) ||
           p.fabric.toLowerCase().includes(q) ||
-          p.origin.toLowerCase().includes(q)
+          p.origin.toLowerCase().includes(q) ||
+          (p.all_colors ?? p.colors).some((c) => c.toLowerCase().includes(q)) ||
+          p.variant_list?.some((v) => v.color.toLowerCase().includes(q)) ||
+          (p.occasion ?? []).some((o) => o.toLowerCase().includes(q))
       );
     }
     if (imageSearchIds) {
@@ -473,14 +476,24 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
-              {filtered.map((p: Product, idx: number) => (
-                <ProductCard
-                  key={p.id}
-                  product={p}
-                  priority={idx < 4}
-                  imageOverride={imageSearchIds ? imageSearchMatches[p.id] : undefined}
-                />
-              ))}
+              {filtered.map((p: Product, idx: number) => {
+                // If query matches a specific variant color, land on that variant
+                const q = query.trim().toLowerCase();
+                const colorVariant = q
+                  ? p.variant_list?.find((v) => v.color.toLowerCase().includes(q))
+                  : undefined;
+                const colorMatchSlug = colorVariant ? colorVariant.slug : undefined;
+                const colorMatchImage = colorVariant?.image ?? undefined;
+                return (
+                  <ProductCard
+                    key={p.id}
+                    product={p}
+                    priority={idx < 4}
+                    imageOverride={imageSearchIds ? imageSearchMatches[p.id] : (colorMatchImage || undefined)}
+                    slugOverride={colorMatchSlug}
+                  />
+                );
+              })}
             </div>
           )}
         </div>
