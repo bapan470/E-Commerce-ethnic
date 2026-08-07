@@ -1,39 +1,107 @@
-# Colour-variant fix: add variants before the product is saved
+# Blog Performance Dashboard — setup instructions
 
-File: components/admin/product-variants-manager.tsx + products-panel.tsx
+## Naye files (seedha copy karo)
+- `app/api/admin/blog-performance/route.ts` — GA4 se per-post views/clicks/conversions/revenue nikalta hai
+- `lib/blog-performance-api.ts` — client-side fetch helper
+- `components/blog/blog-cta-button.tsx` — naya client component (click-tracked CTA)
+- `components/blog/blog-product-card.tsx` — REPLACE karo (ab 'use client' hai, click tracking ke saath)
 
-- The "Colour & size variants" section used to block completely on a
-  brand-new product ("Save this product first...").
-- Now: as soon as you type at least ONE colour into the main product's
-  "Colors" field, the "Add colour" button/form appears — even before
-  you've clicked "Add Product". Colours added at this point are staged in
-  memory (shown with a "Staged" badge).
-- When you actually click "Add Product", every staged variant is created
-  for real (with its sizes, stock, SKU, default flag) right after the
-  product itself is saved.
-- Works the same whether the product is single-size (Free Size) or
-  multi-size — you still add the colour + its size/stock/price yourself
-  via "Add colour", same as always. (An earlier draft of this fix also
-  auto-created a variant for single-size products with no button press —
-  that part was reverted since it surprised admins with an unwanted
-  automatic default variant; single-size products now behave exactly like
-  they always did, manual "Add colour" only.)
+Yeh sab existing `GA4_PROPERTY_ID` / `GA4_SERVICE_ACCOUNT_JSON` env vars hi
+use karte hain (jo Traffic tab already use kar raha hai) — koi naya
+GA4 setup nahi chahiye.
 
-## SEO / AI generation — unaffected
-Both auto-fill SEO (meta title/description/style note) and the "Generate
-with AI" listing button work exactly as before.
+---
 
-## How to apply
-Option A — replace the two files directly:
-  Copy components/admin/product-variants-manager.tsx and
-  components/admin/products-panel.tsx from this zip into the same paths in
-  your repo, overwriting the existing ones.
+## Patch 1: `app/blog/[slug]/page.tsx`
 
-Option B — apply the included patch:
-  cd /path/to/E-Commerce-ethnic
-  git apply changes.diff
+Top mein import add karo:
+```tsx
+import BlogCtaButton from '@/components/blog/blog-cta-button';
+```
 
-## After applying
-  git add components/admin/product-variants-manager.tsx components/admin/products-panel.tsx
-  git commit -m "Allow adding colour variants before the product itself is saved"
-  git push
+**Product card render karte waqt** (jahan `<BlogProductCard key={i} product={product} />`
+hai), `blogSlug` prop add karo:
+```tsx
+return product ? <BlogProductCard key={i} product={product} blogSlug={post.slug} /> : null;
+```
+
+**Bottom CTA block** (`{relatedCategorySlug && (...)}`) ko poora replace karo:
+```tsx
+{relatedCategorySlug && (
+  <BlogCtaButton
+    categorySlug={relatedCategorySlug}
+    categoryName={post.related_category_name!}
+    blogSlug={post.slug}
+  />
+)}
+```
+
+---
+
+## Patch 2: `components/admin/blog-panel.tsx`
+
+Top mein imports add karo:
+```tsx
+import { useState, useEffect } from 'react'; // already imported — just add fetchBlogPerformance below
+import { fetchBlogPerformance, BlogPostPerformance } from '@/lib/blog-performance-api';
+```
+
+Component ke andar, existing `useState` declarations ke paas naya state add karo:
+```tsx
+const [perf, setPerf] = useState<Map<string, BlogPostPerformance>>(new Map());
+const [perfLoading, setPerfLoading] = useState(true);
+
+useEffect(() => {
+  fetchBlogPerformance(30)
+    .then((data) => {
+      const map = new Map(data.posts.map((p) => [p.slug, p]));
+      setPerf(map);
+    })
+    .catch(() => {})
+    .finally(() => setPerfLoading(false));
+}, []);
+```
+
+Table header mein 2 column add karo (Status ke baad):
+```tsx
+<th className="px-4 py-3">Status</th>
+<th className="px-4 py-3">Views (30d)</th>
+<th className="px-4 py-3">Clicks</th>
+<th className="px-4 py-3">Conversions</th>
+<th className="px-4 py-3">Published</th>
+```
+
+Table row mein (Status `<td>` ke baad, Published `<td>` se pehle) yeh add karo:
+```tsx
+<td className="px-4 py-3 text-sm">
+  {perfLoading ? '…' : (perf.get(p.slug)?.views ?? 0).toLocaleString('en-IN')}
+</td>
+<td className="px-4 py-3 text-sm">
+  {perfLoading ? '…' : (perf.get(p.slug)?.clicks ?? 0).toLocaleString('en-IN')}
+</td>
+<td className="px-4 py-3 text-sm">
+  {perfLoading ? '…' : (perf.get(p.slug)?.conversions ?? 0).toLocaleString('en-IN')}
+</td>
+```
+
+Aur `colSpan={5}` jahan bhi hai (empty-state rows), use `colSpan={8}` karo
+(kyunki 3 naye columns add ho gaye).
+
+---
+
+## Important notes
+
+1. **Views/Clicks turant nahi dikhenge naye posts ke liye** — GA4 data collect
+   hone mein aam taur pe 24-48 hours lagte hain. Purane posts (jo 25/7, 28/7
+   ko publish hue) ke liye already data hoga.
+2. **"Clicks" tabhi dikhega jab Patch 1 (CTA/product card tracking) bhi live
+   ho** — sirf Patch 2 (admin table) karne se clicks 0 rahenge.
+3. **"Conversions" ke liye GA4 mein 'purchase' event ko "key event" mark hona
+   chahiye** — Admin > Events > Mark as key event (GA4 console mein, code mein
+   nahi). Agar already ecommerce tracking chalu hai, yeh usually default hota
+   hai.
+4. Yeh "Views/Clicks/Conversions" hai — **true Google Search "impressions"**
+   (jaise "aapka post kitni baar Google results mein dikha") is se alag hoti
+   hai, woh Search Console API se aati hai, GA4 se nahi. Agar woh bhi chahiye,
+   bata dena — Search Console property verify karke ek aur report add kar
+   denge.

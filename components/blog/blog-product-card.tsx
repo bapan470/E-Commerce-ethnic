@@ -1,3 +1,5 @@
+'use client';
+
 import Link from 'next/link';
 import Image from 'next/image';
 import { ShoppingBag } from 'lucide-react';
@@ -7,18 +9,38 @@ import { blurDataURL } from '@/lib/utils';
 
 // Deliberately NOT the full shop-grid ProductCard (components/product-card.tsx)
 // — that one needs CartProvider hooks, wishlist state, hover-swap images etc.
-// This is a plain server-rendered card for inside blog body text: it just
-// needs to look good sitting between two paragraphs and link through to the
-// PDP, no client-side interactivity required.
-export default function BlogProductCard({ product }: { product: Product }) {
+// This is a lightweight card for inside blog body text: it just needs to
+// look good sitting between two paragraphs and link through to the PDP.
+//
+// Now a client component (was server-rendered before) so the click can be
+// tracked as a `blog_cta_click` GA4 event — this is what the admin Blog
+// performance panel counts as "Clicks" per post.
+export default function BlogProductCard({
+  product,
+  blogSlug,
+}: {
+  product: Product;
+  blogSlug: string;
+}) {
   const href = `/product/${product.default_variant_slug || product.slug}`;
   const img =
     product.default_variant_image || product.images[0] || 'https://placehold.co/800x1000?text=No+Image';
   const discount = discountPct(product.price, product.mrp);
 
+  const handleClick = () => {
+    if (typeof window !== 'undefined' && typeof (window as any).gtag === 'function') {
+      (window as any).gtag('event', 'blog_cta_click', {
+        blog_slug: blogSlug,
+        cta_type: 'product_card',
+        target: product.slug,
+      });
+    }
+  };
+
   return (
     <Link
       href={href}
+      onClick={handleClick}
       className="not-prose group my-6 flex items-center gap-4 rounded-2xl border border-border bg-muted/30 p-4 transition-shadow hover:shadow-md sm:gap-5 sm:p-5"
     >
       <div className="relative aspect-[4/5] w-24 shrink-0 overflow-hidden rounded-xl bg-muted sm:w-28">
