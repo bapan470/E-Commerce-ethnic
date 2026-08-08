@@ -125,8 +125,18 @@ export async function POST(req: Request) {
   try {
     const promptText = buildPrompt(topic, extraKeywords, categoryNames);
 
+    // Aborted comfortably before the platform's own 60s hard execution
+    // ceiling (maxDuration above), leaving headroom for the DB reads
+    // (categories, related-category products, review lookup) that run
+    // before and after this call. Previously this was 55_000ms, which left
+    // as little as ~1-2s for everything else once cold-start/DB latency is
+    // counted — tight enough that the whole function could get killed by
+    // the HOSTING layer itself before our try/catch below ever ran,
+    // producing an HTML timeout page instead of the JSON error response
+    // that catch block is meant to guarantee (surfaced client-side as the
+    // confusing "Unexpected token '<' ... is not valid JSON" toast).
     const nimController = new AbortController();
-    const nimTimeout = setTimeout(() => nimController.abort(), 55_000);
+    const nimTimeout = setTimeout(() => nimController.abort(), 40_000);
 
     let res: Response;
     try {

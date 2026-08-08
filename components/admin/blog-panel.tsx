@@ -24,6 +24,28 @@ import {
 import { BlogPostRow, BlogFaq } from '@/lib/types';
 import { fetchBlogPerformance, BlogPostPerformance } from '@/lib/blog-performance-api';
 import { formatINR } from '@/lib/format';
+
+// The AI/network-backed admin endpoints below (generate-blog-post especially
+// — a long-running NVIDIA NIM call close to the platform's execution-time
+// ceiling) can occasionally get killed by the HOSTING layer itself before
+// our own route handler's try/catch gets a chance to return a proper JSON
+// error (e.g. a Vercel function timeout, or a proxy/edge error). When that
+// happens the browser gets back an HTML error page instead of JSON, and a
+// bare `res.json()` throws the cryptic native
+// `Unexpected token '<', "<!DOCTYPE"... is not valid JSON` error straight
+// into the toast. This wrapper checks the content-type first so every
+// failure mode — including "not JSON at all" — surfaces as one clear,
+// actionable message instead.
+async function parseJsonResponse(res: Response): Promise<any> {
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    if (res.status === 504 || res.status === 502 || res.status === 503) {
+      throw new Error('The server took too long to respond. Please try again.');
+    }
+    throw new Error(`Unexpected server response (HTTP ${res.status}). Please try again.`);
+  }
+  return res.json();
+}
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -141,7 +163,7 @@ export default function BlogPanel() {
     setGapsNote(null);
     try {
       const res = await fetch('/api/admin/blog-keyword-gaps');
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!res.ok) throw new Error(data?.error || 'Failed to load keyword gaps');
       setKeywordGaps(data.gaps || []);
       if (data.note) setGapsNote(data.note);
@@ -156,7 +178,7 @@ export default function BlogPanel() {
     setTrendsLoading(true);
     try {
       const res = await fetch('/api/admin/blog-trend-ideas');
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!res.ok) throw new Error(data?.error || 'Failed to load ideas');
       setTrendIdeas(data.ideas || []);
     } catch (err) {
@@ -179,7 +201,7 @@ export default function BlogPanel() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topic }),
       });
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!res.ok) throw new Error(data?.error || 'Generation failed');
 
       // Pre-fill the normal add/edit dialog with the AI draft — published
@@ -240,7 +262,7 @@ export default function BlogPanel() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category_name: relatedCategory }),
       });
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       if (!res.ok) throw new Error(data?.error || 'No product photo found for that category');
       setCoverImage(data.image);
       toast.success('Cover image set from a live product photo');
