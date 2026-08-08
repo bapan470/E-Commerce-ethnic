@@ -3,13 +3,18 @@ import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
-// Same free-tier NVIDIA NIM setup already used by
+// Same free-tier NVIDIA NIM key already used by
 // app/api/admin/generate-listing/route.ts and lib/vendor-ai-listing.ts —
 // reuses NVIDIA_API_KEY so there's nothing new to configure. Text-only here
-// (no product photo), so the vision model is used purely as a text model.
+// (no product photo), so we deliberately use a lighter, text-only model
+// instead of the 11b VISION model those other two routes need — the vision
+// model was consistently taking 48s+ to finish a long JSON blog post on
+// NIM's free tier and blowing straight through the 60s Vercel ceiling
+// (logged in Vercel as a recurring `[AbortError] This operation was
+// aborted` 504). The 8b text model produces the same JSON far faster.
 export const maxDuration = 60;
 
-const MODEL = 'meta/llama-3.2-11b-vision-instruct';
+const MODEL = 'meta/llama-3.1-8b-instruct';
 const NIM_ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions';
 
 interface GeneratedPost {
@@ -231,33 +236,33 @@ export async function POST(req: Request) {
   const validNameSet = new Set(categoryNames.map((n) => n.toLowerCase()));
 
   try {
-    // First attempt: the normal-length prompt (900-1300 words), generous
-    // token budget, and as much of the platform's time budget as we can
-    // safely give it (48s, leaving ~10-12s for the DB reads before/after
-    // under the 60s hard ceiling). Only a TRUNCATED response (model ran
-    // out of tokens mid-JSON — a genuine content-length problem) gets a
-    // retry, and that retry uses a deliberately small time budget since
-    // by then most of the 60s ceiling is already spent. A pure timeout
-    // (NIM's free tier not responding at all within the window — verified
-    // via Vercel logs as a real, recurring failure mode, not just
-    // truncation) is NOT retried here: the endpoint being slow right now
-    // won't be fixed by asking again immediately, and a second long wait
-    // would blow straight through the platform ceiling anyway. That case
-    // gets its own honest error message below instead.
+    // First attempt: the normal-length prompt (900-1300 words) on the fast
+    // 8b text model, given a 35s budget — comfortably enough for this
+    // model on NIM's free tier, while still leaving a real ~15-18s window
+    // for a retry plus the DB reads before/after, all inside the 60s
+    // platform ceiling. Both a TRUNCATED response (model ran out of tokens
+    // mid-JSON) and a TIMEOUT (NIM free tier just being slow right now —
+    // verified via Vercel logs as a real, recurring failure mode) now get
+    // ONE retry with a shorter/stricter prompt and a smaller token budget,
+    // since that retry is cheap and fast enough on the 8b model to still
+    // fit the remaining time — previously a timeout skipped the retry
+    // entirely and failed the whole request outright.
     let attempt = await attemptGeneration(
       apiKey,
       buildPrompt(topic, extraKeywords, categoryNames, false),
       5500,
-      48_000
+      35_000
     );
 
-    if (!attempt.ok && attempt.reason === 'truncated') {
-      console.error('[generate-blog-post] First attempt truncated — retrying with a shorter prompt.');
+    if (!attempt.ok && (attempt.reason === 'truncated' || attempt.reason === 'timeout')) {
+      console.error(
+        `[generate-blog-post] First attempt ${attempt.reason} — retrying with a shorter/stricter prompt.`
+      );
       attempt = await attemptGeneration(
         apiKey,
         buildPrompt(topic, extraKeywords, categoryNames, true),
-        3500,
-        9_000
+        3000,
+        18_000
       );
     }
 
@@ -276,7 +281,7 @@ export async function POST(req: Request) {
         return NextResponse.json(
           {
             error:
-              "AI service (NVIDIA's free tier) is responding slowly right now and didn't finish in time. Please wait a minute and try again.",
+              "AI service (NVIDIA's free tier) is responding slowly right now and didn't finish in time, even after a retry. Please wait a minute and try again.",
           },
           { status: 504 }
         );
