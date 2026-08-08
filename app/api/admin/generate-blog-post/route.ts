@@ -51,20 +51,32 @@ function sanitizeInlineLinks(paragraph: string, validNames: Set<string>): string
   });
 }
 
-function buildPrompt(topic: string, extraKeywords: string, categoryNames: string[]) {
+function buildPrompt(topic: string, extraKeywords: string, categoryNames: string[], strict = false) {
   const categoryList = categoryNames.length > 0 ? categoryNames.join(', ') : '(no categories available)';
+  // `strict` is used for the one-shot automatic retry when a normal
+  // generation comes back truncated (JSON cut off before the closing
+  // brace — the model ran out of its token budget mid-post). A visibly
+  // shorter, more conservative target gives the retry a much better
+  // chance of actually finishing this time, rather than repeating the
+  // same failure. Everything else about the post (tone, structure,
+  // required JSON shape) stays the same so the output is still a
+  // legitimate blog post, just a leaner one.
+  const wordRange = strict ? '500 and 750' : '900 and 1300';
+  const sectionRange = strict ? '2 to 3' : '3 to 5';
+  const paraRange = strict ? '2 (max 3 sentences each)' : '2 to 3 (3-5 sentences each)';
+  const faqRange = strict ? '2 to 3' : '3 to 4';
   return `You are an SEO content writer for "AruhiHandlooms", an Indian ethnic-wear e-commerce store selling handwoven sarees, lehengas, bridal wear and kurtis. Their existing blog targets real search-intent, long-tail keywords (often Hinglish) in a warm, boutique-style, no-fuss voice — practical how-to and guide content, not generic marketing fluff.
 
-Write a full, LONG-FORM blog post for this topic: "${topic}"
+Write a full blog post for this topic: "${topic}"
 ${extraKeywords ? `Additional keywords/context to weave in naturally: ${extraKeywords}` : ''}
 
 The store's ACTUAL live product categories are exactly: ${categoryList}
 Do not invent or use any category name outside this exact list.
 
 LENGTH & STRUCTURE (both are hard requirements, not suggestions):
-- Total length must land between 900 and 1300 words across the whole body — this is a solid, ranking-focused guide, not a short blurb, but it must stay disciplined in length (see IMPORTANT note below on why). If you find yourself running long, tighten paragraphs rather than adding more sections.
-- Organize the post into 3 to 5 distinct sections. Each section starts with its own H2-style heading, written as its own array entry using the exact marker syntax: {{h2:Section Heading Text}} — the heading text itself should be specific and contain a natural keyword variation (e.g. "{{h2:How to Choose the Right Silk Saree for a Wedding}}"), not a generic label like "Introduction" or "Conclusion".
-- Each section then contains 2 to 3 prose paragraphs (3-5 sentences each) directly after its {{h2:...}} marker entry, before the next section's heading.
+- Total length must land between ${wordRange} words across the whole body${strict ? ' — keep this SHORT and tight, this is a compact guide, not a long-form piece' : ' — this is a solid, ranking-focused guide, not a short blurb, but it must stay disciplined in length (see IMPORTANT note below on why)'}. If you find yourself running long, tighten paragraphs rather than adding more sections.
+- Organize the post into ${sectionRange} distinct sections. Each section starts with its own H2-style heading, written as its own array entry using the exact marker syntax: {{h2:Section Heading Text}} — the heading text itself should be specific and contain a natural keyword variation (e.g. "{{h2:How to Choose the Right Silk Saree for a Wedding}}"), not a generic label like "Introduction" or "Conclusion".
+- Each section then contains ${paraRange} prose paragraphs directly after its {{h2:...}} marker entry, before the next section's heading.
 - The very first array entry should be 1 intro paragraph BEFORE the first {{h2:...}} marker, hooking the reader on the problem/question before the structured sections begin.
 - IMPORTANT: you must finish the ENTIRE JSON object, including every key below and the closing brace. A longer post that gets cut off mid-sentence and produces broken JSON is a hard failure — a complete, well-formed, slightly shorter post is always the right tradeoff. Stay well within the word budget above specifically so you have room to close out every field properly.
 
@@ -73,21 +85,99 @@ CRITICAL — avoid repetition across sections: if the post covers multiple outfi
 OTHER CONTENT RULES:
 - Written for an Indian audience shopping for ethnic wear online.
 - No emojis, no markdown formatting — plain prose paragraphs only, EXCEPT for the {{h2:...}} section markers and the in-content category links described below.
-- In 2 to 3 of the paragraphs (not all, and never inside a heading marker itself), naturally weave in ONE in-content link per paragraph using this exact syntax: [natural anchor text](category:Exact Category Name) — the category name must be copied exactly from the list above. Example: "you could reach for a [Banarasi silk saree](category:Silk Sarees) in a warm gold tone". Only link where it's a genuinely relevant, natural mention — never force it, never link the same category twice.
+- In ${strict ? '1 to 2' : '2 to 3'} of the paragraphs (not all, and never inside a heading marker itself), naturally weave in ONE in-content link per paragraph using this exact syntax: [natural anchor text](category:Exact Category Name) — the category name must be copied exactly from the list above. Example: "you could reach for a [Banarasi silk saree](category:Silk Sarees) in a warm gold tone". Only link where it's a genuinely relevant, natural mention — never force it, never link the same category twice.
 - Naturally mention relevant fabrics/crafts (e.g. Banarasi, Kanjivaram, Chanderi, Tussar, Mysore Silk, Georgette) only where genuinely relevant to the topic — don't force it.
 
 FAQ SECTION (separate from body_paragraphs, required):
-- Write 3 to 4 genuinely useful FAQ question/answer pairs that real shoppers would search for around this topic (think "People Also Ask" style queries). Questions should be specific, not generic. Answers should be 2-3 sentences, self-contained (make sense without reading the rest of the post), and free of markdown/emojis.
+- Write ${faqRange} genuinely useful FAQ question/answer pairs that real shoppers would search for around this topic (think "People Also Ask" style queries). Questions should be specific, not generic. Answers should be ${strict ? '1-2 sentences' : '2-3 sentences'}, self-contained (make sense without reading the rest of the post), and free of markdown/emojis.
 
 Respond with ONLY a JSON object (no markdown fences, no preamble) with these exact keys:
 {
   "title": "SEO title, 45-70 characters, includes the main keyword naturally",
   "excerpt": "meta description / listing summary, 140-160 characters, makes someone want to click",
   "keywords": ["3-5 realistic search-intent keyword phrases a real shopper would type, mix of Hinglish and English where natural"],
-  "body_paragraphs": ["1 intro paragraph, then {{h2:Heading}} markers interleaved with 2-3 paragraphs each, 3 to 5 sections total, 900-1300 words combined, with category links embedded per the syntax above"],
-  "faqs": [{"question": "specific search-style question", "answer": "2-3 sentence self-contained answer"}, "... 3 to 4 items total"],
+  "body_paragraphs": ["1 intro paragraph, then {{h2:Heading}} markers interleaved with paragraphs per the structure above, ${wordRange} words combined, with category links embedded per the syntax above"],
+  "faqs": [{"question": "specific search-style question", "answer": "self-contained answer"}, "... ${faqRange} items total"],
   "related_category_name": "the single BEST-matching category from the exact list above for a final 'Shop this collection' button — must be copied exactly from the list, or empty string if genuinely none fit"
 }`;
+}
+
+// One NIM call + parse attempt. Returns the parsed post on success, or a
+// tagged failure reason so the caller can decide whether to retry (only
+// `truncated` is worth retrying — a truncated response means the model
+// simply ran out of token budget for THIS attempt, which a shorter/
+// stricter prompt on retry can realistically fix. An HTTP error or a
+// genuinely malformed non-truncated response won't be fixed by retrying
+// with the same shape of request, so those are returned as-is for the
+// caller to surface immediately).
+type NimAttempt =
+  | { ok: true; parsed: GeneratedPost }
+  | { ok: false; reason: 'http_error'; status: number; rateLimited: boolean }
+  | { ok: false; reason: 'truncated' | 'malformed' };
+
+async function attemptGeneration(
+  apiKey: string,
+  promptText: string,
+  maxTokens: number,
+  timeoutMs: number
+): Promise<NimAttempt> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let res: Response;
+  try {
+    res = await fetch(NIM_ENDPOINT, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [{ role: 'user', content: promptText }],
+        temperature: 0.6,
+        max_tokens: maxTokens,
+        response_format: { type: 'json_object' },
+      }),
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    console.error('[generate-blog-post] NVIDIA NIM API error:', res.status, errText);
+    return { ok: false, reason: 'http_error', status: res.status, rateLimited: res.status === 429 };
+  }
+
+  const data = await res.json();
+  const text: string = data?.choices?.[0]?.message?.content ?? '';
+  const cleaned = text.replace(/^```(json)?/i, '').replace(/```$/, '').trim();
+
+  let parsed: GeneratedPost | undefined;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        parsed = JSON.parse(match[0]);
+      } catch {
+        parsed = undefined;
+      }
+    }
+  }
+
+  if (!parsed || !parsed.title || !Array.isArray(parsed.body_paragraphs) || parsed.body_paragraphs.length === 0) {
+    const looksTruncated = !cleaned.trim().endsWith('}');
+    console.error(
+      `[generate-blog-post] Could not parse AI response${looksTruncated ? ' (looks truncated — did not end with "}")' : ''}:`,
+      text.slice(0, 500)
+    );
+    return { ok: false, reason: looksTruncated ? 'truncated' : 'malformed' };
+  }
+
+  return { ok: true, parsed };
 }
 
 export async function POST(req: Request) {
@@ -124,104 +214,57 @@ export async function POST(req: Request) {
   const validNameSet = new Set(categoryNames.map((n) => n.toLowerCase()));
 
   try {
-    const promptText = buildPrompt(topic, extraKeywords, categoryNames);
+    // First attempt: the normal-length prompt (900-1300 words), generous
+    // token budget, generous-but-safe timeout. If THIS comes back
+    // truncated (model ran out of tokens mid-JSON — verified via Vercel
+    // logs as the actual recurring failure), we retry ONCE with a
+    // visibly shorter/stricter prompt and a smaller, faster budget
+    // instead of just failing outright. Total worst-case wall-clock for
+    // both attempts combined stays comfortably under the platform's 60s
+    // ceiling (maxDuration above): 32s + 20s = 52s, leaving room for the
+    // DB reads before/after.
+    let attempt = await attemptGeneration(
+      apiKey,
+      buildPrompt(topic, extraKeywords, categoryNames, false),
+      5500,
+      32_000
+    );
 
-    // Aborted comfortably before the platform's own 60s hard execution
-    // ceiling (maxDuration above), leaving headroom for the DB reads
-    // (categories, related-category products, review lookup) that run
-    // before and after this call. Bumped slightly (40s -> 45s) alongside
-    // the max_tokens increase below — a real (non-abort) NIM completion
-    // was observed taking ~40s to hit the OLD 4096-token ceiling on a
-    // long post, so a higher ceiling needs a bit more wall-clock room too.
-    // The prompt's word-count target was deliberately tightened at the
-    // same time (see buildPrompt) so actual generations finish well
-    // short of this ceiling in practice, rather than relying on a bigger
-    // token budget alone.
-    const nimController = new AbortController();
-    const nimTimeout = setTimeout(() => nimController.abort(), 45_000);
-
-    let res: Response;
-    try {
-      res = await fetch(NIM_ENDPOINT, {
-        method: 'POST',
-        signal: nimController.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: MODEL,
-          messages: [{ role: 'user', content: promptText }],
-          temperature: 0.6,
-          // 4096 was verified (via Vercel function logs) to be too tight:
-          // a real generation for a 1200-1800 word post + 4-5 FAQs hit
-          // this ceiling mid-JSON (finish_reason: length), producing a
-          // truncated, unparseable response — surfaced to the admin as
-          // "AI returned an unexpected format". Bumped to 5500 for
-          // headroom, alongside shrinking the prompt's target length
-          // (see buildPrompt) so real generations finish with tokens to
-          // spare well before hitting this ceiling, instead of relying
-          // on a bigger ceiling alone.
-          max_tokens: 5500,
-          response_format: { type: 'json_object' },
-        }),
-      });
-    } finally {
-      clearTimeout(nimTimeout);
-    }
-
-    if (!res.ok) {
-      const errText = await res.text().catch(() => '');
-      console.error('[generate-blog-post] NVIDIA NIM API error:', res.status, errText);
-      const rateLimited = res.status === 429;
-      return NextResponse.json(
-        {
-          error: rateLimited
-            ? 'AI is rate-limited right now (free tier). Wait a minute and try again.'
-            : 'AI generation failed. Please try again.',
-        },
-        { status: 502 }
+    if (!attempt.ok && attempt.reason === 'truncated') {
+      console.error('[generate-blog-post] First attempt truncated — retrying with a shorter prompt.');
+      attempt = await attemptGeneration(
+        apiKey,
+        buildPrompt(topic, extraKeywords, categoryNames, true),
+        3500,
+        20_000
       );
     }
 
-    const data = await res.json();
-    const text: string = data?.choices?.[0]?.message?.content ?? '';
-    const cleaned = text.replace(/^```(json)?/i, '').replace(/```$/, '').trim();
-
-    let parsed: GeneratedPost | undefined;
-    try {
-      parsed = JSON.parse(cleaned);
-    } catch {
-      const match = cleaned.match(/\{[\s\S]*\}/);
-      if (match) {
-        try {
-          parsed = JSON.parse(match[0]);
-        } catch {
-          parsed = undefined;
-        }
+    if (!attempt.ok) {
+      if (attempt.reason === 'http_error') {
+        return NextResponse.json(
+          {
+            error: attempt.rateLimited
+              ? 'AI is rate-limited right now (free tier). Wait a minute and try again.'
+              : 'AI generation failed. Please try again.',
+          },
+          { status: 502 }
+        );
       }
-    }
-
-    if (!parsed || !parsed.title || !Array.isArray(parsed.body_paragraphs) || parsed.body_paragraphs.length === 0) {
-      // A response that ends without a closing brace/quote (i.e. got cut
-      // off mid-generation, whether from the token ceiling or the model
-      // stopping early) is a distinct, actionable case from a genuinely
-      // malformed response — surface that distinction so a truncation
-      // regression is obvious from the toast alone, not just the logs.
-      const looksTruncated = !cleaned.trim().endsWith('}');
-      console.error(
-        `[generate-blog-post] Could not parse AI response${looksTruncated ? ' (looks truncated — did not end with "}")' : ''}:`,
-        text.slice(0, 500)
-      );
+      // Ran out of retries — either truncated twice in a row (rare given
+      // the much smaller retry budget) or genuinely malformed output.
       return NextResponse.json(
         {
-          error: looksTruncated
-            ? 'AI response was cut off before finishing. Please try again — if this keeps happening, try a shorter/more specific topic.'
-            : 'AI returned an unexpected format. Please try again.',
+          error:
+            attempt.reason === 'truncated'
+              ? 'AI response was cut off before finishing, even after a retry. Please try again — if this keeps happening, try a shorter/more specific topic.'
+              : 'AI returned an unexpected format. Please try again.',
         },
         { status: 502 }
       );
     }
+
+    const parsed = attempt.parsed;
 
     const bodyParagraphs = parsed.body_paragraphs
       .filter((p) => typeof p === 'string' && p.trim().length > 0)
