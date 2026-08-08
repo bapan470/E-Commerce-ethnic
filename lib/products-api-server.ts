@@ -203,6 +203,34 @@ export async function fetchProductsByCategoryServer(
   return attachCollectionsServer(products);
 }
 
+/** Store-wide fallback for the "You might also like" grid on a blog post
+ *  when the post has no `related_category_name` that resolves to a real
+ *  category (the AI generator sometimes names a plausible-but-nonexistent
+ *  category), or when that category simply has no live stock right now.
+ *  Same shape/columns as fetchProductsByCategoryServer, just without the
+ *  category filter, so the blog post always has a real catalog grid to
+ *  show instead of silently rendering nothing. */
+export async function fetchFeaturedProductsServer(
+  opts: { limit?: number; excludeSlugs?: string[] } = {}
+): Promise<Product[]> {
+  const { limit = 4, excludeSlugs = [] } = opts;
+  const supabase = getServerSupabase();
+  const { data, error } = await supabase
+    .from('products')
+    .select(`${CUSTOMER_SAFE_PRODUCT_COLUMNS}, product_variants(slug, images, is_default, color)`)
+    .eq('approval_status', 'live')
+    .eq('in_stock', true)
+    .order('featured', { ascending: false })
+    .order('rating', { ascending: false })
+    .limit(limit + excludeSlugs.length);
+  if (error) throw error;
+  const products = (data as unknown as ProductRow[])
+    .map(mapRowToProduct)
+    .filter((p) => !excludeSlugs.includes(p.slug))
+    .slice(0, limit);
+  return attachCollectionsServer(products);
+}
+
 export async function fetchCategoriesServer(): Promise<CategoryRow[]> {
   const supabase = getServerSupabase();
   const { data, error } = await supabase

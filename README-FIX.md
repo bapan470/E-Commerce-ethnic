@@ -1,46 +1,50 @@
-# Blog "Generate with AI" — timeout + internal links + cover image fixes
+# AruhiHandlooms blog — AI generation + product catalog fixes
 
-Only file touched: `app/api/admin/generate-blog-post/route.ts`
+Three files touched:
+- `app/api/admin/generate-blog-post/route.ts`
+- `app/blog/[slug]/page.tsx`
+- `lib/products-api-server.ts`
 
-## Fix 1 — 500/504 timeout
-Switched from the slow VISION model to `meta/llama-3.1-8b-instruct`
-(text-only, faster), and made a plain timeout retry once instead of
-failing outright. Timings rebalanced to fit inside Vercel's 60s ceiling.
+## 1. 500/504 timeout on "Generate with AI"
+Swapped the slow VISION model for the lighter, faster
+`meta/llama-3.1-8b-instruct` (this route is text-only, no image involved),
+and made a plain timeout retry once instead of failing outright.
 
-## Fix 2 — missing internal (category) links
-Added `ensureCategoryLinks()`: if the model didn't embed any valid
-`[text](category:Name)` link itself, the code now finds a real mention of
-a category name already in the prose and links it, or as a last resort
-appends one short sentence linking the related category — so a post can
-never ship with zero internal links.
+## 2. Missing internal (category) links
+Added `ensureCategoryLinks()`: guarantees at least one real
+`[text](category:Name)` link in every generated post, either by linking an
+actual category mention already in the prose, or appending one short
+sentence linking the related category — no longer fully dependent on the
+model remembering to do it itself.
 
-## Fix 3 — cover image showing "No Image" (this round)
-Two causes, both fixed:
+## 3. Cover image showing "No Image"
+- Stripped stray broken `(category:Name)` text the model sometimes leaves
+  in the prose without the required `[brackets]` (was leaking onto the
+  live page as literal text).
+- Cover image now falls back to any live/in-stock/featured product photo
+  store-wide when the model's `related_category_name` doesn't match a real
+  category (it sometimes invents one, e.g. "Banarasi Sarees" when the real
+  category is "Silk Sarees") — never blank anymore.
 
-1. **Stray broken markup leaking onto the page.** The model sometimes
-   drops the required `[anchor text]` and just writes a bare
-   `(category:Name)` straight in a sentence — e.g. "...Banarasi silk
-   saree (category:Banarasi Sarees) to the..." showing up literally on
-   the live post. This wasn't a valid link so nothing caught it before.
-   Now stripped with `stripStrayCategoryParens()`.
-2. **No cover image at all.** The cover photo is pulled from a live
-   product in `related_category_name` — but that field is only trusted
-   when it exactly matches a real category, and the model sometimes
-   invents a plausible-but-nonexistent one (like "Banarasi Sarees" above,
-   when the real category is "Silk Sarees"). When that happens (or the
-   matched category simply has no product photos yet), `related_category_
-   name` ends up empty and the cover image did too — shown on the site as
-   the "No Image" placeholder. Now there's a store-wide fallback: any
-   live, in-stock, featured/top-rated product photo is used instead of
-   leaving the field blank.
+## 4. Similar-products catalog in the blog post (this round)
+This is what you just asked for. The blog post already had a "You Might
+Also Like" product grid at the bottom (`app/blog/[slug]/page.tsx`) — but
+it only ever pulled from `post.related_category_name`, so it silently
+showed NOTHING whenever that field was empty (same root cause as the
+cover-image bug: the AI's category guess not matching a real category).
+
+Added `fetchFeaturedProductsServer()` in `lib/products-api-server.ts` — a
+store-wide "best available products" fallback (live, in-stock, sorted by
+featured then rating) — and wired it into the blog page: if the
+category-matched grid comes back empty, it now falls back to this so
+every blog post always shows a real product catalog at the end, AI-picked
+either way (by category match first, or by featured/rating store-wide).
 
 ## To apply
-Replace `app/api/admin/generate-blog-post/route.ts` with the copy in this
-zip, or `git apply generate-blog-post-fix.patch`, then commit & push.
+Replace all three files with the copies in this zip, or
+`git apply all-fixes.patch`, then commit & push.
 
-Note: all three fixes only affect posts generated **after** you deploy.
-The already-published "A Comprehensive Guide to Sarees" post in the
-screenshot won't retroactively get an image or fixed text — easiest is to
-delete it from the admin blog list and regenerate the topic fresh, or
-manually set a cover image and remove the stray "(category:...)" text in
-the edit dialog.
+Note: fixes 1–4 only affect posts generated **after** you deploy. Fix 4
+(the catalog fallback) DOES also apply retroactively to already-published
+posts, since it's read at page-render time, not generation time — no need
+to regenerate old posts for that one.

@@ -10,6 +10,7 @@ import {
   fetchCategoriesServer,
   fetchProductBySlugServer,
   fetchProductsByCategoryServer,
+  fetchFeaturedProductsServer,
 } from '@/lib/products-api-server';
 import { blurDataURL } from '@/lib/utils';
 import { safeJsonLd } from '@/lib/json-ld';
@@ -216,12 +217,22 @@ export default async function BlogPostPage({ params }: Params) {
   // post's related category, excluding anything already shown as an
   // inline {{product:slug}} card above, so it adds new options instead of
   // repeating the same products the reader already scrolled past.
-  const relatedProducts = post.related_category_name
+  // Falls back to the store's featured/top-rated products when the post
+  // has no matching related category (or that category currently has no
+  // live stock) — the grid should never be empty just because the AI's
+  // category guess didn't resolve.
+  let relatedProducts = post.related_category_name
     ? await fetchProductsByCategoryServer(post.related_category_name, {
         limit: 4,
         excludeSlugs: productSlugs,
       }).catch(() => [])
     : [];
+  if (relatedProducts.length === 0) {
+    relatedProducts = await fetchFeaturedProductsServer({
+      limit: 4,
+      excludeSlugs: productSlugs,
+    }).catch(() => []);
+  }
 
   const url = `${SITE_URL}/blog/${post.slug}`;
   const coverImage =
