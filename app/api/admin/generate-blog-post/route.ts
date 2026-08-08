@@ -113,7 +113,7 @@ Respond with ONLY a JSON object (no markdown fences, no preamble) with these exa
 type NimAttempt =
   | { ok: true; parsed: GeneratedPost }
   | { ok: false; reason: 'http_error'; status: number; rateLimited: boolean }
-  | { ok: false; reason: 'truncated' | 'malformed' };
+  | { ok: false; reason: 'truncated' | 'malformed' | 'timeout' };
 
 async function attemptGeneration(
   apiKey: string,
@@ -123,62 +123,79 @@ async function attemptGeneration(
 ): Promise<NimAttempt> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  let res: Response;
   try {
-    res = await fetch(NIM_ENDPOINT, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        messages: [{ role: 'user', content: promptText }],
-        temperature: 0.6,
-        max_tokens: maxTokens,
-        response_format: { type: 'json_object' },
-      }),
-    });
+    let res: Response;
+    try {
+      res = await fetch(NIM_ENDPOINT, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: MODEL,
+          messages: [{ role: 'user', content: promptText }],
+          temperature: 0.6,
+          max_tokens: maxTokens,
+          response_format: { type: 'json_object' },
+        }),
+      });
+    } catch (fetchErr) {
+      // Covers our own AbortController firing (NIM simply hadn't replied
+      // within timeoutMs — verified via Vercel logs as DOMException
+      // [AbortError], previously left UNCAUGHT here so it skipped past
+      // this function entirely into the outer catch, skipping the retry
+      // below in the process) as well as genuine network failures. Both
+      // are worth one retry with a smaller/faster request rather than
+      // failing outright.
+      const isAbort = fetchErr instanceof Error && fetchErr.name === 'AbortError';
+      console.error(
+        `[generate-blog-post] NIM fetch failed (${isAbort ? 'timed out after ' + timeoutMs + 'ms' : 'network error'}):`,
+        fetchErr
+      );
+      return { ok: false, reason: 'timeout' };
+    }
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      console.error('[generate-blog-post] NVIDIA NIM API error:', res.status, errText);
+      return { ok: false, reason: 'http_error', status: res.status, rateLimited: res.status === 429 };
+    }
+
+    const data = await res.json();
+    const text: string = data?.choices?.[0]?.message?.content ?? '';
+    const cleaned = text.replace(/^```(json)?/i, '').replace(/```$/, '').trim();
+
+    let parsed: GeneratedPost | undefined;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      const match = cleaned.match(/\{[\s\S]*\}/);
+      if (match) {
+        try {
+          parsed = JSON.parse(match[0]);
+        } catch {
+          parsed = undefined;
+        }
+      }
+    }
+
+    if (!parsed || !parsed.title || !Array.isArray(parsed.body_paragraphs) || parsed.body_paragraphs.length === 0) {
+      const looksTruncated = !cleaned.trim().endsWith('}');
+      console.error(
+        `[generate-blog-post] Could not parse AI response${looksTruncated ? ' (looks truncated — did not end with "}")' : ''}:`,
+        text.slice(0, 500)
+      );
+      return { ok: false, reason: looksTruncated ? 'truncated' : 'malformed' };
+    }
+
+    return { ok: true, parsed };
   } finally {
     clearTimeout(timeout);
   }
-
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '');
-    console.error('[generate-blog-post] NVIDIA NIM API error:', res.status, errText);
-    return { ok: false, reason: 'http_error', status: res.status, rateLimited: res.status === 429 };
-  }
-
-  const data = await res.json();
-  const text: string = data?.choices?.[0]?.message?.content ?? '';
-  const cleaned = text.replace(/^```(json)?/i, '').replace(/```$/, '').trim();
-
-  let parsed: GeneratedPost | undefined;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch {
-    const match = cleaned.match(/\{[\s\S]*\}/);
-    if (match) {
-      try {
-        parsed = JSON.parse(match[0]);
-      } catch {
-        parsed = undefined;
-      }
-    }
-  }
-
-  if (!parsed || !parsed.title || !Array.isArray(parsed.body_paragraphs) || parsed.body_paragraphs.length === 0) {
-    const looksTruncated = !cleaned.trim().endsWith('}');
-    console.error(
-      `[generate-blog-post] Could not parse AI response${looksTruncated ? ' (looks truncated — did not end with "}")' : ''}:`,
-      text.slice(0, 500)
-    );
-    return { ok: false, reason: looksTruncated ? 'truncated' : 'malformed' };
-  }
-
-  return { ok: true, parsed };
 }
+
 
 export async function POST(req: Request) {
   const cookie = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? null;
@@ -215,19 +232,23 @@ export async function POST(req: Request) {
 
   try {
     // First attempt: the normal-length prompt (900-1300 words), generous
-    // token budget, generous-but-safe timeout. If THIS comes back
-    // truncated (model ran out of tokens mid-JSON — verified via Vercel
-    // logs as the actual recurring failure), we retry ONCE with a
-    // visibly shorter/stricter prompt and a smaller, faster budget
-    // instead of just failing outright. Total worst-case wall-clock for
-    // both attempts combined stays comfortably under the platform's 60s
-    // ceiling (maxDuration above): 32s + 20s = 52s, leaving room for the
-    // DB reads before/after.
+    // token budget, and as much of the platform's time budget as we can
+    // safely give it (48s, leaving ~10-12s for the DB reads before/after
+    // under the 60s hard ceiling). Only a TRUNCATED response (model ran
+    // out of tokens mid-JSON — a genuine content-length problem) gets a
+    // retry, and that retry uses a deliberately small time budget since
+    // by then most of the 60s ceiling is already spent. A pure timeout
+    // (NIM's free tier not responding at all within the window — verified
+    // via Vercel logs as a real, recurring failure mode, not just
+    // truncation) is NOT retried here: the endpoint being slow right now
+    // won't be fixed by asking again immediately, and a second long wait
+    // would blow straight through the platform ceiling anyway. That case
+    // gets its own honest error message below instead.
     let attempt = await attemptGeneration(
       apiKey,
       buildPrompt(topic, extraKeywords, categoryNames, false),
       5500,
-      32_000
+      48_000
     );
 
     if (!attempt.ok && attempt.reason === 'truncated') {
@@ -236,7 +257,7 @@ export async function POST(req: Request) {
         apiKey,
         buildPrompt(topic, extraKeywords, categoryNames, true),
         3500,
-        20_000
+        9_000
       );
     }
 
@@ -249,6 +270,15 @@ export async function POST(req: Request) {
               : 'AI generation failed. Please try again.',
           },
           { status: 502 }
+        );
+      }
+      if (attempt.reason === 'timeout') {
+        return NextResponse.json(
+          {
+            error:
+              "AI service (NVIDIA's free tier) is responding slowly right now and didn't finish in time. Please wait a minute and try again.",
+          },
+          { status: 504 }
         );
       }
       // Ran out of retries — either truncated twice in a row (rare given
@@ -265,6 +295,7 @@ export async function POST(req: Request) {
     }
 
     const parsed = attempt.parsed;
+
 
     const bodyParagraphs = parsed.body_paragraphs
       .filter((p) => typeof p === 'string' && p.trim().length > 0)
