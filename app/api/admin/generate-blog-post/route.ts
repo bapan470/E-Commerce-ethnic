@@ -60,6 +60,19 @@ function escapeRegExp(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// The model occasionally drops the required leading `[anchor text]` and
+// just emits a bare `(category:Name)` straight in the prose — not a valid
+// link (CATEGORY_LINK_RE won't match it, so sanitizeInlineLinks leaves it
+// untouched), just literal junk text that leaks onto the live page
+// verbatim, e.g. "...Banarasi silk saree (category:Banarasi Sarees) to
+// the...". The sentence already reads fine without it, so it's stripped
+// outright rather than attempting to reconstruct a link from a name that,
+// in practice, is often not even a real category (as in that example).
+const STRAY_CATEGORY_PAREN_RE = /(?<!\])\(category:[^)]+\)/gi;
+function stripStrayCategoryParens(paragraph: string): string {
+  return paragraph.replace(STRAY_CATEGORY_PAREN_RE, '').replace(/[ \t]{2,}/g, ' ').replace(/\s+([.,])/g, '$1');
+}
+
 // Fallback so a post never ships with ZERO internal links. The prompt asks
 // the model to embed `[anchor](category:Name)` links itself, but that's an
 // instruction-following ask on top of an already-long structured-JSON
@@ -389,7 +402,8 @@ export async function POST(req: Request) {
 
     let bodyParagraphs = parsed.body_paragraphs
       .filter((p) => typeof p === 'string' && p.trim().length > 0)
-      .map((p) => sanitizeInlineLinks(p, validNameSet));
+      .map((p) => sanitizeInlineLinks(p, validNameSet))
+      .map(stripStrayCategoryParens);
 
     const relatedRaw = (parsed.related_category_name || '').trim();
     const relatedCategoryName = validNameSet.has(relatedRaw.toLowerCase())
@@ -410,8 +424,6 @@ export async function POST(req: Request) {
     // Pull a real product photo from that category to suggest as the cover
     // image — a live catalog photo converts better than a generic stock
     // image, and it saves the manual "go find a URL" step for the admin.
-    // Best-effort: if nothing's found (empty category, no images), the
-    // admin just gets an empty cover field like before, nothing breaks.
     let suggestedCoverImage = '';
     if (relatedCategoryName) {
       const { data: productRows } = await supabase
@@ -425,6 +437,32 @@ export async function POST(req: Request) {
         (p: any) => Array.isArray(p.images) && p.images.length > 0
       );
       if (withImages) suggestedCoverImage = withImages.images[0];
+    }
+
+    // Fallback so the post never ships with "No Image": relatedCategoryName
+    // is only ever set when the model's related_category_name exactly
+    // matches a real, live category (see validNameSet check above) — the
+    // model can and does sometimes invent a plausible-sounding but
+    // non-existent category (e.g. "Banarasi Sarees" when the real
+    // category is "Silk Sarees"), which leaves relatedCategoryName empty
+    // and, previously, the cover image blank too. When that happens (or
+    // the matched category simply has no live product photos yet), fall
+    // back to any live, in-stock product photo store-wide instead of
+    // leaving the field empty — still a real catalog photo, just not
+    // guaranteed to match the topic as closely as an in-category one.
+    if (!suggestedCoverImage) {
+      const { data: fallbackRows } = await supabase
+        .from('products')
+        .select('images')
+        .eq('approval_status', 'live')
+        .eq('in_stock', true)
+        .order('featured', { ascending: false })
+        .order('rating', { ascending: false })
+        .limit(10);
+      const fallbackWithImages = (fallbackRows ?? []).find(
+        (p: any) => Array.isArray(p.images) && p.images.length > 0
+      );
+      if (fallbackWithImages) suggestedCoverImage = fallbackWithImages.images[0];
     }
 
     // Auto-insert real product cards ({{product:slug}} — same marker the

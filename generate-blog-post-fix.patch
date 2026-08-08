@@ -1,5 +1,5 @@
 diff --git a/app/api/admin/generate-blog-post/route.ts b/app/api/admin/generate-blog-post/route.ts
-index 8e828ea..ec87e67 100644
+index 8e828ea..0f92e5c 100644
 --- a/app/api/admin/generate-blog-post/route.ts
 +++ b/app/api/admin/generate-blog-post/route.ts
 @@ -3,13 +3,18 @@ import { cookies } from 'next/headers';
@@ -24,12 +24,25 @@ index 8e828ea..ec87e67 100644
  const NIM_ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions';
  
  interface GeneratedPost {
-@@ -51,6 +56,91 @@ function sanitizeInlineLinks(paragraph: string, validNames: Set<string>): string
+@@ -51,6 +56,104 @@ function sanitizeInlineLinks(paragraph: string, validNames: Set<string>): string
    });
  }
  
 +function escapeRegExp(s: string) {
 +  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
++}
++
++// The model occasionally drops the required leading `[anchor text]` and
++// just emits a bare `(category:Name)` straight in the prose — not a valid
++// link (CATEGORY_LINK_RE won't match it, so sanitizeInlineLinks leaves it
++// untouched), just literal junk text that leaks onto the live page
++// verbatim, e.g. "...Banarasi silk saree (category:Banarasi Sarees) to
++// the...". The sentence already reads fine without it, so it's stripped
++// outright rather than attempting to reconstruct a link from a name that,
++// in practice, is often not even a real category (as in that example).
++const STRAY_CATEGORY_PAREN_RE = /(?<!\])\(category:[^)]+\)/gi;
++function stripStrayCategoryParens(paragraph: string): string {
++  return paragraph.replace(STRAY_CATEGORY_PAREN_RE, '').replace(/[ \t]{2,}/g, ' ').replace(/\s+([.,])/g, '$1');
 +}
 +
 +// Fallback so a post never ships with ZERO internal links. The prompt asks
@@ -116,7 +129,7 @@ index 8e828ea..ec87e67 100644
  function buildPrompt(topic: string, extraKeywords: string, categoryNames: string[], strict = false) {
    const categoryList = categoryNames.length > 0 ? categoryNames.join(', ') : '(no categories available)';
    // `strict` is used for the one-shot automatic retry when a normal
-@@ -231,33 +321,33 @@ export async function POST(req: Request) {
+@@ -231,33 +334,33 @@ export async function POST(req: Request) {
    const validNameSet = new Set(categoryNames.map((n) => n.toLowerCase()));
  
    try {
@@ -168,7 +181,7 @@ index 8e828ea..ec87e67 100644
        );
      }
  
-@@ -276,7 +366,7 @@ export async function POST(req: Request) {
+@@ -276,7 +379,7 @@ export async function POST(req: Request) {
          return NextResponse.json(
            {
              error:
@@ -177,15 +190,17 @@ index 8e828ea..ec87e67 100644
            },
            { status: 504 }
          );
-@@ -297,21 +387,26 @@ export async function POST(req: Request) {
+@@ -297,9 +400,20 @@ export async function POST(req: Request) {
      const parsed = attempt.parsed;
  
  
 -    const bodyParagraphs = parsed.body_paragraphs
 +    let bodyParagraphs = parsed.body_paragraphs
        .filter((p) => typeof p === 'string' && p.trim().length > 0)
-       .map((p) => sanitizeInlineLinks(p, validNameSet));
- 
+-      .map((p) => sanitizeInlineLinks(p, validNameSet));
++      .map((p) => sanitizeInlineLinks(p, validNameSet))
++      .map(stripStrayCategoryParens);
++
 +    const relatedRaw = (parsed.related_category_name || '').trim();
 +    const relatedCategoryName = validNameSet.has(relatedRaw.toLowerCase())
 +      ? categoryNames.find((n) => n.toLowerCase() === relatedRaw.toLowerCase()) || ''
@@ -195,10 +210,10 @@ index 8e828ea..ec87e67 100644
 +    // on ensureCategoryLinks for why this can no longer be left entirely
 +    // up to the model.
 +    bodyParagraphs = ensureCategoryLinks(bodyParagraphs, categoryNames, relatedCategoryName);
-+
+ 
      // Estimated by us from the actual generated word count (~200 wpm),
      // rather than trusting the model's own guess, which was frequently off
-     // (e.g. claiming 8 minutes for a ~500-word post).
+@@ -307,16 +421,9 @@ export async function POST(req: Request) {
      const totalWords = bodyParagraphs.join(' ').split(/\s+/).filter(Boolean).length;
      const readMinutes = Math.max(2, Math.round(totalWords / 200));
  
@@ -210,3 +225,41 @@ index 8e828ea..ec87e67 100644
      // Pull a real product photo from that category to suggest as the cover
      // image — a live catalog photo converts better than a generic stock
      // image, and it saves the manual "go find a URL" step for the admin.
+-    // Best-effort: if nothing's found (empty category, no images), the
+-    // admin just gets an empty cover field like before, nothing breaks.
+     let suggestedCoverImage = '';
+     if (relatedCategoryName) {
+       const { data: productRows } = await supabase
+@@ -332,6 +439,32 @@ export async function POST(req: Request) {
+       if (withImages) suggestedCoverImage = withImages.images[0];
+     }
+ 
++    // Fallback so the post never ships with "No Image": relatedCategoryName
++    // is only ever set when the model's related_category_name exactly
++    // matches a real, live category (see validNameSet check above) — the
++    // model can and does sometimes invent a plausible-sounding but
++    // non-existent category (e.g. "Banarasi Sarees" when the real
++    // category is "Silk Sarees"), which leaves relatedCategoryName empty
++    // and, previously, the cover image blank too. When that happens (or
++    // the matched category simply has no live product photos yet), fall
++    // back to any live, in-stock product photo store-wide instead of
++    // leaving the field empty — still a real catalog photo, just not
++    // guaranteed to match the topic as closely as an in-category one.
++    if (!suggestedCoverImage) {
++      const { data: fallbackRows } = await supabase
++        .from('products')
++        .select('images')
++        .eq('approval_status', 'live')
++        .eq('in_stock', true)
++        .order('featured', { ascending: false })
++        .order('rating', { ascending: false })
++        .limit(10);
++      const fallbackWithImages = (fallbackRows ?? []).find(
++        (p: any) => Array.isArray(p.images) && p.images.length > 0
++      );
++      if (fallbackWithImages) suggestedCoverImage = fallbackWithImages.images[0];
++    }
++
+     // Auto-insert real product cards ({{product:slug}} — same marker the
+     // admin's "Insert product card" button writes, parsed by
+     // app/blog/[slug]/page.tsx into a <BlogProductCard> with a real photo,
