@@ -82,7 +82,10 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
 
   const url = `${SITE_URL}/blog/${post.slug}`;
   const title = `${post.title} | AruhiHandlooms`;
-  const coverImage = toPublicMediaUrl(post.cover_image) || post.cover_image;
+  const coverImage =
+    toPublicMediaUrl(post.cover_image) ||
+    post.cover_image ||
+    'https://placehold.co/1200x630?text=No+Image';
 
   return {
     title,
@@ -150,12 +153,16 @@ export default async function BlogPostPage({ params }: Params) {
   }
 
   const url = `${SITE_URL}/blog/${post.slug}`;
+  const coverImage =
+    toPublicMediaUrl(post.cover_image) ||
+    post.cover_image ||
+    'https://placehold.co/1200x630?text=No+Image';
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Article',
     headline: post.title,
     description: post.excerpt,
-    image: toPublicMediaUrl(post.cover_image) || post.cover_image,
+    image: coverImage,
     datePublished: post.published_at,
     dateModified: post.updated_at || post.published_at,
     author: { '@type': 'Organization', name: 'AruhiHandlooms' },
@@ -194,7 +201,7 @@ export default async function BlogPostPage({ params }: Params) {
 
       <div className="relative mt-6 aspect-[16/9] w-full overflow-hidden rounded-2xl bg-muted">
         <Image
-          src={toPublicMediaUrl(post.cover_image) || post.cover_image}
+          src={coverImage}
           alt={post.title}
           fill
           sizes="(max-width: 768px) 100vw, 768px"

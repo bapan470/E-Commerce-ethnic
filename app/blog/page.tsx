@@ -58,7 +58,11 @@ export default async function BlogIndexPage() {
           >
             <div className="relative aspect-[16/10] w-full overflow-hidden bg-muted">
               <Image
-                src={toPublicMediaUrl(post.cover_image) || post.cover_image}
+                src={
+                  toPublicMediaUrl(post.cover_image) ||
+                  post.cover_image ||
+                  'https://placehold.co/800x500?text=No+Image'
+                }
                 alt={post.title}
                 fill
                 sizes="(max-width: 768px) 100vw, 33vw"
