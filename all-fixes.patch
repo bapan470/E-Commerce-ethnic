@@ -1,3 +1,182 @@
+diff --git a/app/api/admin/blog-keyword-gaps/route.ts b/app/api/admin/blog-keyword-gaps/route.ts
+index d44d9b2..5b71902 100644
+--- a/app/api/admin/blog-keyword-gaps/route.ts
++++ b/app/api/admin/blog-keyword-gaps/route.ts
+@@ -11,9 +11,17 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
+ // is best-effort and failures just shrink the result instead of erroring.
+ const SUGGEST_ENDPOINT = 'https://suggestqueries.google.com/complete/search';
+ 
+-// Base head-terms for the niche. Combined at request time with the store's
+-// live category names, so results move automatically as categories change.
++// Base head-terms for the niche, plus purchase-intent phrasing and major
++// India saree-buying/handloom-craft cities/regions — combined at request
++// time with the store's live category names, so Suggest returns real
++// autocomplete queries around "where do people actually buy this" and
++// "what do they search right before purchasing", not just generic terms.
+ const BASE_SEEDS = ['saree', 'lehenga', 'kurti', 'silk saree', 'bridal wear', 'ethnic wear'];
++const PURCHASE_INTENT_SEEDS = ['buy sarees online', 'handloom saree price', 'silk saree online shopping'];
++const CITY_SEEDS = [
++  'saree shopping mumbai', 'saree shopping chennai', 'saree shopping kolkata',
++  'saree shopping delhi', 'banarasi saree varanasi', 'kanchipuram silk saree',
++];
+ 
+ const STOPWORDS = new Set([
+   'the', 'a', 'an', 'for', 'to', 'of', 'and', 'or', 'in', 'on', 'with', 'is',
+@@ -68,7 +76,9 @@ export async function GET() {
+   ]);
+ 
+   const categoryNames = (categoriesData ?? []).map((c: any) => String(c.name)).filter(Boolean);
+-  const seeds = Array.from(new Set([...BASE_SEEDS, ...categoryNames])).slice(0, 10);
++  const seeds = Array.from(
++    new Set([...BASE_SEEDS, ...PURCHASE_INTENT_SEEDS, ...CITY_SEEDS, ...categoryNames])
++  ).slice(0, 16);
+ 
+   // "Covered" corpus = every existing blog post's title + its keyword list,
+   // reduced to significant words. A suggestion counts as covered if enough
+diff --git a/app/api/admin/blog-trend-ideas/route.ts b/app/api/admin/blog-trend-ideas/route.ts
+index 9ad9be2..bae84c6 100644
+--- a/app/api/admin/blog-trend-ideas/route.ts
++++ b/app/api/admin/blog-trend-ideas/route.ts
+@@ -1,6 +1,7 @@
+ import { NextResponse } from 'next/server';
+ import { cookies } from 'next/headers';
+ import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
++import { getSupabaseAdmin } from '@/lib/supabase-admin';
+ 
+ // Google has no official free Trends API. The public "Trending Now" RSS feed
+ // (used by the Trends website itself) is the closest thing — no key needed,
+@@ -41,9 +42,48 @@ const SEASONAL_BANK: { month: number; topics: string[] }[] = [
+ 
+ interface TopicIdea {
+   topic: string;
+-  source: 'trends' | 'seasonal';
++  source: 'trends' | 'seasonal' | 'evergreen';
+ }
+ 
++// Long-tail, purchase-intent + India-city-tied topics — the kind of
++// specific query a real buyer types before purchasing rather than just
++// browsing (e.g. "kanchipuram silk saree buying guide" over "silk
++// sarees"). Each major handloom craft is deliberately tied to the Indian
++// city/region it's actually associated with and known/searched for, since
++// that's both a genuine long-tail SEO angle and matches real buyer intent
++// ("where do I get an authentic X"). Kept separate from SEASONAL_BANK
++// (which is festival/calendar-driven) since these don't expire — they're
++// filtered against already-published posts below just like everything
++// else, so once a topic here gets used it drops out and the next one
++// surfaces instead of repeating forever.
++const EVERGREEN_LONGTAIL_BANK: string[] = [
++  'kanchipuram silk saree buying guide',
++  'banarasi silk saree shopping guide varanasi',
++  'pochampally ikkat saree guide hyderabad',
++  'bandhani saree shopping guide jaipur',
++  'patola saree buying guide ahmedabad',
++  'saree wholesale market guide surat',
++  'chanderi saree buying guide madhya pradesh',
++  'tant saree shopping guide kolkata',
++  'mysore silk saree buying guide bangalore',
++  'saree shopping guide chennai t nagar',
++  'saree market guide delhi chandni chowk',
++  'best sarees for wedding shopping mumbai',
++  'how to identify a genuine handloom saree before buying',
++  'handloom vs powerloom saree difference explained',
++  'best silk sarees under 5000 online india',
++  'affordable handloom sarees online india',
++  'cotton handloom sarees for daily wear online',
++  'wedding silk saree price guide india',
++  'how to buy sarees online safely in india',
++  'best handloom saree brands in india',
++  'maheshwari saree buying guide indore',
++  'sambalpuri saree guide odisha',
++  'jamdani saree guide west bengal',
++  'gadwal saree buying guide telangana',
++  'silk saree care and storage tips for indian summers',
++];
++
+ function extractRssTitles(xml: string): string[] {
+   // Deliberately regex-based rather than pulling in an XML parser dependency
+   // for one endpoint — Trends RSS <item><title> is a plain, well-formed tag.
+@@ -86,6 +126,19 @@ async function fetchTrendingTopics(): Promise<string[]> {
+   }
+ }
+ 
++const STOPWORDS = new Set([
++  'the', 'a', 'an', 'for', 'to', 'of', 'and', 'or', 'in', 'on', 'with', 'is',
++  'how', 'what', 'best', 'vs', 'near', 'me', 'my', 'your', 'guide', 'ideas', 'idea',
++]);
++
++function significantWords(s: string): string[] {
++  return s
++    .toLowerCase()
++    .replace(/[^a-z0-9\s]/g, ' ')
++    .split(/\s+/)
++    .filter((w) => w.length > 2 && !STOPWORDS.has(w));
++}
++
+ export async function GET() {
+   const cookie = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? null;
+   const verified = await verifyAdminToken(cookie);
+@@ -93,17 +146,53 @@ export async function GET() {
+     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+   }
+ 
++  // Same "already covered" idea as blog-keyword-gaps: a topic counts as
++  // used once its significant words substantially overlap with an
++  // existing post's title/keywords, so a suggestion that's already been
++  // written about (in any of these three buckets — trending, seasonal, or
++  // evergreen) drops out and the next best one takes its place instead of
++  // showing the same pill forever.
++  const supabase = getSupabaseAdmin();
++  const { data: postsData } = await supabase.from('blog_posts').select('title, keywords').limit(300);
++  const coveredCorpus: string[][] = (postsData ?? []).map((p: any) => {
++    const text = [p.title, ...(Array.isArray(p.keywords) ? p.keywords : [])].join(' ');
++    return significantWords(text);
++  });
++  const isCovered = (topic: string): boolean => {
++    const words = significantWords(topic);
++    if (words.length === 0) return false;
++    return coveredCorpus.some((corpusWords) => {
++      const overlap = words.filter((w) => corpusWords.includes(w)).length;
++      return overlap >= Math.max(2, Math.ceil(words.length * 0.6));
++    });
++  };
++
+   const now = new Date();
+-  const thisMonth = SEASONAL_BANK.find((m) => m.month === now.getMonth() + 1);
+-  const nextMonth = SEASONAL_BANK.find((m) => m.month === ((now.getMonth() + 1) % 12) + 1);
++  const monthIndex = (offset: number) => (((now.getMonth() + offset) % 12) + 12) % 12;
++  // Current + next month's festival topics first (most timely); if too
++  // many of those are already covered, backfill from the following month
++  // and last month too, so the seasonal bucket doesn't just shrink to
++  // nothing as the month's few topics get used up one by one.
++  const monthOrder = [monthIndex(0), monthIndex(1), monthIndex(2), monthIndex(-1)];
++  const seasonalPool = Array.from(
++    new Set(
++      monthOrder.flatMap((mIdx) => SEASONAL_BANK.find((m) => m.month === mIdx + 1)?.topics ?? [])
++    )
++  );
++  const seasonal: TopicIdea[] = seasonalPool
++    .filter((t) => !isCovered(t))
++    .slice(0, 5)
++    .map((topic) => ({ topic, source: 'seasonal' as const }));
+ 
+-  const seasonal: TopicIdea[] = [
+-    ...(thisMonth?.topics ?? []),
+-    ...(nextMonth?.topics.slice(0, 2) ?? []),
+-  ].map((topic) => ({ topic, source: 'seasonal' as const }));
++  const evergreen: TopicIdea[] = EVERGREEN_LONGTAIL_BANK.filter((t) => !isCovered(t))
++    .slice(0, 6)
++    .map((topic) => ({ topic, source: 'evergreen' as const }));
+ 
+   const trendingRaw = await fetchTrendingTopics();
+-  const trending: TopicIdea[] = trendingRaw.slice(0, 8).map((topic) => ({ topic, source: 'trends' as const }));
++  const trending: TopicIdea[] = trendingRaw
++    .filter((t) => !isCovered(t))
++    .slice(0, 6)
++    .map((topic) => ({ topic, source: 'trends' as const }));
+ 
+-  return NextResponse.json({ ideas: [...trending, ...seasonal] });
++  return NextResponse.json({ ideas: [...trending, ...evergreen, ...seasonal] });
+ }
 diff --git a/app/api/admin/generate-blog-post/route.ts b/app/api/admin/generate-blog-post/route.ts
 index 8e828ea..0f92e5c 100644
 --- a/app/api/admin/generate-blog-post/route.ts
@@ -299,6 +478,38 @@ index 6f4c413..0f3ac4b 100644
  
    const url = `${SITE_URL}/blog/${post.slug}`;
    const coverImage =
+diff --git a/components/admin/blog-panel.tsx b/components/admin/blog-panel.tsx
+index 4a2bcdf..974660d 100644
+--- a/components/admin/blog-panel.tsx
++++ b/components/admin/blog-panel.tsx
+@@ -144,7 +144,7 @@ export default function BlogPanel() {
+   // so the admin still reviews/edits before it goes live.
+   const [aiTopic, setAiTopic] = useState('');
+   const [aiGenerating, setAiGenerating] = useState(false);
+-  const [trendIdeas, setTrendIdeas] = useState<{ topic: string; source: 'trends' | 'seasonal' }[]>([]);
++  const [trendIdeas, setTrendIdeas] = useState<{ topic: string; source: 'trends' | 'seasonal' | 'evergreen' }[]>([]);
+   const [trendsLoading, setTrendsLoading] = useState(false);
+   const [keywordGaps, setKeywordGaps] = useState<string[]>([]);
+   const [gapsLoading, setGapsLoading] = useState(false);
+@@ -531,10 +531,16 @@ export default function BlogPanel() {
+                     generateWithAI(idea.topic);
+                   }}
+                   disabled={aiGenerating}
+-                  title={idea.source === 'trends' ? 'From Google Trends' : 'Seasonal/festival idea'}
++                  title={
++                    idea.source === 'trends'
++                      ? 'From Google Trends'
++                      : idea.source === 'evergreen'
++                        ? 'City/purchase-intent long-tail idea'
++                        : 'Seasonal/festival idea'
++                  }
+                   className="rounded-full border border-border/60 bg-muted/40 px-2.5 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-60"
+                 >
+-                  {idea.source === 'trends' ? '🔥 ' : '🗓️ '}
++                  {idea.source === 'trends' ? '🔥 ' : idea.source === 'evergreen' ? '📍 ' : '🗓️ '}
+                   {idea.topic}
+                 </button>
+               ))}
 diff --git a/lib/products-api-server.ts b/lib/products-api-server.ts
 index 127c289..412b0c3 100644
 --- a/lib/products-api-server.ts

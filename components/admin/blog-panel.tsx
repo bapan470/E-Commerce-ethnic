@@ -144,7 +144,7 @@ export default function BlogPanel() {
   // so the admin still reviews/edits before it goes live.
   const [aiTopic, setAiTopic] = useState('');
   const [aiGenerating, setAiGenerating] = useState(false);
-  const [trendIdeas, setTrendIdeas] = useState<{ topic: string; source: 'trends' | 'seasonal' }[]>([]);
+  const [trendIdeas, setTrendIdeas] = useState<{ topic: string; source: 'trends' | 'seasonal' | 'evergreen' }[]>([]);
   const [trendsLoading, setTrendsLoading] = useState(false);
   const [keywordGaps, setKeywordGaps] = useState<string[]>([]);
   const [gapsLoading, setGapsLoading] = useState(false);
@@ -531,10 +531,16 @@ export default function BlogPanel() {
                     generateWithAI(idea.topic);
                   }}
                   disabled={aiGenerating}
-                  title={idea.source === 'trends' ? 'From Google Trends' : 'Seasonal/festival idea'}
+                  title={
+                    idea.source === 'trends'
+                      ? 'From Google Trends'
+                      : idea.source === 'evergreen'
+                        ? 'City/purchase-intent long-tail idea'
+                        : 'Seasonal/festival idea'
+                  }
                   className="rounded-full border border-border/60 bg-muted/40 px-2.5 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-60"
                 >
-                  {idea.source === 'trends' ? '🔥 ' : '🗓️ '}
+                  {idea.source === 'trends' ? '🔥 ' : idea.source === 'evergreen' ? '📍 ' : '🗓️ '}
                   {idea.topic}
                 </button>
               ))}

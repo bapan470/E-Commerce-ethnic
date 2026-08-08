@@ -11,9 +11,17 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 // is best-effort and failures just shrink the result instead of erroring.
 const SUGGEST_ENDPOINT = 'https://suggestqueries.google.com/complete/search';
 
-// Base head-terms for the niche. Combined at request time with the store's
-// live category names, so results move automatically as categories change.
+// Base head-terms for the niche, plus purchase-intent phrasing and major
+// India saree-buying/handloom-craft cities/regions — combined at request
+// time with the store's live category names, so Suggest returns real
+// autocomplete queries around "where do people actually buy this" and
+// "what do they search right before purchasing", not just generic terms.
 const BASE_SEEDS = ['saree', 'lehenga', 'kurti', 'silk saree', 'bridal wear', 'ethnic wear'];
+const PURCHASE_INTENT_SEEDS = ['buy sarees online', 'handloom saree price', 'silk saree online shopping'];
+const CITY_SEEDS = [
+  'saree shopping mumbai', 'saree shopping chennai', 'saree shopping kolkata',
+  'saree shopping delhi', 'banarasi saree varanasi', 'kanchipuram silk saree',
+];
 
 const STOPWORDS = new Set([
   'the', 'a', 'an', 'for', 'to', 'of', 'and', 'or', 'in', 'on', 'with', 'is',
@@ -68,7 +76,9 @@ export async function GET() {
   ]);
 
   const categoryNames = (categoriesData ?? []).map((c: any) => String(c.name)).filter(Boolean);
-  const seeds = Array.from(new Set([...BASE_SEEDS, ...categoryNames])).slice(0, 10);
+  const seeds = Array.from(
+    new Set([...BASE_SEEDS, ...PURCHASE_INTENT_SEEDS, ...CITY_SEEDS, ...categoryNames])
+  ).slice(0, 16);
 
   // "Covered" corpus = every existing blog post's title + its keyword list,
   // reduced to significant words. A suggestion counts as covered if enough
