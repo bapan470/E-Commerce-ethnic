@@ -6,12 +6,18 @@ import {
   fetchPublishedBlogPostsServer,
   fetchPublishedBlogPostBySlugServer,
 } from '@/lib/blog-api-server';
-import { fetchCategoriesServer, fetchProductBySlugServer } from '@/lib/products-api-server';
+import {
+  fetchCategoriesServer,
+  fetchProductBySlugServer,
+  fetchProductsByCategoryServer,
+} from '@/lib/products-api-server';
 import { blurDataURL } from '@/lib/utils';
 import { safeJsonLd } from '@/lib/json-ld';
 import BlogProductCard from '@/components/blog/blog-product-card';
 import BlogCtaButton from '@/components/blog/blog-cta-button';
 import BlogViewTracker from '@/components/blog/blog-view-tracker';
+import BlogReviewQuote from '@/components/blog/blog-review-quote';
+import ProductCard from '@/components/product-card';
 import { toPublicMediaUrl } from '@/lib/media-url';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
@@ -37,6 +43,60 @@ const CATEGORY_LINK_RE = /\[([^\]]+)\]\(category:([^)]+)\)/g;
 // longer resolves to a live product (deleted/unpublished since the post
 // was written) is simply dropped — never a broken card on the live site.
 const PRODUCT_CARD_RE = /^\{\{product:([a-z0-9-]+)\}\}$/i;
+
+// Section headings: a whole paragraph consisting of `{{h2:Heading Text}}`
+// (written by the AI generator — see app/api/admin/generate-blog-post)
+// renders as a real <h2> instead of prose. Keeping this as a plain-text
+// marker (rather than letting the model emit raw markdown/HTML) means a
+// malformed or hallucinated heading can never break the page — worst case
+// it just falls through to the generic paragraph renderer as plain text.
+const H2_MARKER_RE = /^\{\{h2:(.+)\}\}$/;
+
+// Inline customer-review blockquotes: a whole paragraph consisting of
+// `{{review:<base64 json>}}` (written by the AI generator once, from a
+// real approved review at generation time — see generate-blog-post)
+// renders as a BlogReviewQuote. Base64-encoded JSON rather than a live
+// DB id so the quote keeps working even if the underlying review is later
+// deleted/unapproved — invalid/undecodable payloads are simply dropped.
+const REVIEW_CARD_RE = /^\{\{review:([A-Za-z0-9+/=]+)\}\}$/;
+
+interface ReviewMarkerData {
+  name: string;
+  rating: number;
+  comment: string;
+  product: string;
+}
+
+function parseReviewMarker(base64: string): ReviewMarkerData | null {
+  try {
+    const json = Buffer.from(base64, 'base64').toString('utf8');
+    const parsed = JSON.parse(json);
+    if (
+      parsed &&
+      typeof parsed.comment === 'string' &&
+      typeof parsed.name === 'string' &&
+      typeof parsed.product === 'string'
+    ) {
+      return {
+        name: parsed.name,
+        rating: typeof parsed.rating === 'number' ? parsed.rating : 5,
+        comment: parsed.comment,
+        product: parsed.product,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+const slugifyHeading = (s: string) =>
+  s
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-');
 
 function renderParagraphWithLinks(paragraph: string, categoryNameToSlug: Map<string, string>) {
   const parts: (string | JSX.Element)[] = [];
@@ -152,11 +212,29 @@ export default async function BlogPostPage({ params }: Params) {
     productSlugs.forEach((s, i) => productBySlug.set(s, products[i]));
   }
 
+  // "You might also like" grid at the end — real live products from the
+  // post's related category, excluding anything already shown as an
+  // inline {{product:slug}} card above, so it adds new options instead of
+  // repeating the same products the reader already scrolled past.
+  const relatedProducts = post.related_category_name
+    ? await fetchProductsByCategoryServer(post.related_category_name, {
+        limit: 4,
+        excludeSlugs: productSlugs,
+      }).catch(() => [])
+    : [];
+
   const url = `${SITE_URL}/blog/${post.slug}`;
   const coverImage =
     toPublicMediaUrl(post.cover_image) ||
     post.cover_image ||
     'https://placehold.co/1200x630?text=No+Image';
+  // Keyword-rich alt text instead of a bare title repeat — folds in the
+  // post's top search-intent keyword (set by the AI generator/admin) so
+  // the cover image itself carries semantic SEO value for Google Images,
+  // not just the page around it.
+  const coverAlt =
+    post.keywords && post.keywords.length > 0 ? `${post.title} — ${post.keywords[0]}` : post.title;
+
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Article',
@@ -170,12 +248,36 @@ export default async function BlogPostPage({ params }: Params) {
     mainEntityOfPage: url,
   };
 
+  // FAQPage structured data — makes the post eligible for Google's FAQ
+  // rich results (the collapsible Q&A block that can appear directly in
+  // search results), on top of the plain Article schema above. Omitted
+  // entirely when a post has no faqs, since an empty FAQPage block is
+  // invalid schema and Google would just ignore/flag it anyway.
+  const faqJsonLd =
+    post.faqs && post.faqs.length > 0
+      ? {
+          '@context': 'https://schema.org',
+          '@type': 'FAQPage',
+          mainEntity: post.faqs.map((f) => ({
+            '@type': 'Question',
+            name: f.question,
+            acceptedAnswer: { '@type': 'Answer', text: f.answer },
+          })),
+        }
+      : null;
+
   return (
     <article className="container-boutique max-w-3xl py-8 pb-24 md:pb-12">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: safeJsonLd(jsonLd) }}
       />
+      {faqJsonLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(faqJsonLd) }}
+        />
+      )}
       <BlogViewTracker slug={post.slug} />
 
       <nav className="mb-4 text-xs text-muted-foreground">
@@ -202,7 +304,7 @@ export default async function BlogPostPage({ params }: Params) {
       <div className="relative mt-6 aspect-[16/9] w-full overflow-hidden rounded-2xl bg-muted">
         <Image
           src={coverImage}
-          alt={post.title}
+          alt={coverAlt}
           fill
           sizes="(max-width: 768px) 100vw, 768px"
           placeholder="blur"
@@ -214,11 +316,33 @@ export default async function BlogPostPage({ params }: Params) {
 
       <div className="mt-8 max-w-none text-foreground">
         {post.body_paragraphs.map((para, i) => {
-          const productSlug = para.trim().match(PRODUCT_CARD_RE)?.[1];
+          const trimmed = para.trim();
+
+          const productSlug = trimmed.match(PRODUCT_CARD_RE)?.[1];
           if (productSlug) {
             const product = productBySlug.get(productSlug);
             return product ? <BlogProductCard key={i} product={product} blogSlug={post.slug} /> : null;
           }
+
+          const heading = trimmed.match(H2_MARKER_RE)?.[1];
+          if (heading) {
+            return (
+              <h2
+                key={i}
+                id={slugifyHeading(heading)}
+                className="mb-3 mt-8 font-serif text-xl font-semibold text-foreground sm:text-2xl"
+              >
+                {heading}
+              </h2>
+            );
+          }
+
+          const reviewMatch = trimmed.match(REVIEW_CARD_RE)?.[1];
+          if (reviewMatch) {
+            const review = parseReviewMarker(reviewMatch);
+            return review ? <BlogReviewQuote key={i} review={review} /> : null;
+          }
+
           return (
             <p key={i} className="mb-4 leading-relaxed text-foreground/90">
               {renderParagraphWithLinks(para, categoryNameToSlug)}
@@ -227,12 +351,43 @@ export default async function BlogPostPage({ params }: Params) {
         })}
       </div>
 
+      {post.faqs && post.faqs.length > 0 && (
+        <div className="mt-10">
+          <h2 className="mb-4 font-serif text-xl font-semibold text-foreground sm:text-2xl">
+            Frequently Asked Questions
+          </h2>
+          <div className="divide-y divide-border rounded-2xl border border-border">
+            {post.faqs.map((faq, i) => (
+              <details key={i} className="group p-4 sm:p-5" open={i === 0}>
+                <summary className="cursor-pointer list-none font-medium text-foreground marker:content-none">
+                  {faq.question}
+                </summary>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{faq.answer}</p>
+              </details>
+            ))}
+          </div>
+        </div>
+      )}
+
       {relatedCategorySlug && (
         <BlogCtaButton
           categorySlug={relatedCategorySlug}
           categoryName={post.related_category_name!}
           blogSlug={post.slug}
         />
+      )}
+
+      {relatedProducts.length > 0 && (
+        <div className="mt-10">
+          <h2 className="mb-4 font-serif text-xl font-semibold text-foreground sm:text-2xl">
+            You Might Also Like
+          </h2>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {relatedProducts.map((product) => (
+              <ProductCard key={product.id} product={product} compact />
+            ))}
+          </div>
+        </div>
       )}
 
       <div className="mt-8">

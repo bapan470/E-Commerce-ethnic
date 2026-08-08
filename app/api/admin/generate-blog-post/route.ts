@@ -18,6 +18,7 @@ interface GeneratedPost {
   excerpt: string;
   keywords: string[];
   body_paragraphs: string[];
+  faqs: { question: string; answer: string }[];
   read_minutes: number;
   related_category_name: string;
   suggested_cover_image: string;
@@ -54,26 +55,36 @@ function buildPrompt(topic: string, extraKeywords: string, categoryNames: string
   const categoryList = categoryNames.length > 0 ? categoryNames.join(', ') : '(no categories available)';
   return `You are an SEO content writer for "AruhiHandlooms", an Indian ethnic-wear e-commerce store selling handwoven sarees, lehengas, bridal wear and kurtis. Their existing blog targets real search-intent, long-tail keywords (often Hinglish) in a warm, boutique-style, no-fuss voice — practical how-to and guide content, not generic marketing fluff.
 
-Write a full blog post for this topic: "${topic}"
+Write a full, LONG-FORM blog post for this topic: "${topic}"
 ${extraKeywords ? `Additional keywords/context to weave in naturally: ${extraKeywords}` : ''}
 
 The store's ACTUAL live product categories are exactly: ${categoryList}
 Do not invent or use any category name outside this exact list.
 
-Requirements:
-- 6 to 8 paragraphs, each 3-6 sentences, genuinely useful and specific (real technique, real fabric names, real practical detail) — not vague filler.
-- CRITICAL — avoid repetition across paragraphs: if the post covers multiple outfit types (e.g. saree, lehenga, kurti), each one needs its own genuinely distinct styling advice, fabric detail, and occasion fit. Do not reuse the same color/pairing suggestion ("neutral color like beige or cream, paired with a white or light-colored blouse") more than once in the whole post — that reads as generic AI filler and hurts both readability and SEO.
+LENGTH & STRUCTURE (both are hard requirements, not suggestions):
+- Total length must land between 1200 and 1800 words across the whole body — this is a ranking-focused long-form guide, not a short blog snippet. If you find yourself running short, add another genuinely useful section rather than padding existing paragraphs with filler.
+- Organize the post into 4 to 6 distinct sections. Each section starts with its own H2-style heading, written as its own array entry using the exact marker syntax: {{h2:Section Heading Text}} — the heading text itself should be specific and contain a natural keyword variation (e.g. "{{h2:How to Choose the Right Silk Saree for a Wedding}}"), not a generic label like "Introduction" or "Conclusion".
+- Each section then contains 2 to 4 prose paragraphs (3-6 sentences each) directly after its {{h2:...}} marker entry, before the next section's heading.
+- The very first array entries should be 1-2 intro paragraphs BEFORE the first {{h2:...}} marker, hooking the reader on the problem/question before the structured sections begin.
+
+CRITICAL — avoid repetition across sections: if the post covers multiple outfit types (e.g. saree, lehenga, kurti), each one needs its own genuinely distinct styling advice, fabric detail, and occasion fit. Do not reuse the same color/pairing suggestion ("neutral color like beige or cream, paired with a white or light-colored blouse") more than once in the whole post — that reads as generic AI filler and hurts both readability and SEO.
+
+OTHER CONTENT RULES:
 - Written for an Indian audience shopping for ethnic wear online.
-- No emojis, no markdown formatting, no headers inside paragraphs — plain prose paragraphs only, EXCEPT for the in-content category links described below.
-- In 2 to 4 of the paragraphs (not all), naturally weave in ONE in-content link per paragraph using this exact syntax: [natural anchor text](category:Exact Category Name) — the category name must be copied exactly from the list above. Example: "you could reach for a [Banarasi silk saree](category:Silk Sarees) in a warm gold tone". Only link where it's a genuinely relevant, natural mention — never force it, never link the same category twice.
+- No emojis, no markdown formatting — plain prose paragraphs only, EXCEPT for the {{h2:...}} section markers and the in-content category links described below.
+- In 2 to 4 of the paragraphs (not all, and never inside a heading marker itself), naturally weave in ONE in-content link per paragraph using this exact syntax: [natural anchor text](category:Exact Category Name) — the category name must be copied exactly from the list above. Example: "you could reach for a [Banarasi silk saree](category:Silk Sarees) in a warm gold tone". Only link where it's a genuinely relevant, natural mention — never force it, never link the same category twice.
 - Naturally mention relevant fabrics/crafts (e.g. Banarasi, Kanjivaram, Chanderi, Tussar, Mysore Silk, Georgette) only where genuinely relevant to the topic — don't force it.
+
+FAQ SECTION (separate from body_paragraphs, required):
+- Write 4 to 5 genuinely useful FAQ question/answer pairs that real shoppers would search for around this topic (think "People Also Ask" style queries). Questions should be specific, not generic. Answers should be 2-4 sentences, self-contained (make sense without reading the rest of the post), and free of markdown/emojis.
 
 Respond with ONLY a JSON object (no markdown fences, no preamble) with these exact keys:
 {
   "title": "SEO title, 45-70 characters, includes the main keyword naturally",
   "excerpt": "meta description / listing summary, 140-160 characters, makes someone want to click",
   "keywords": ["3-5 realistic search-intent keyword phrases a real shopper would type, mix of Hinglish and English where natural"],
-  "body_paragraphs": ["paragraph 1", "paragraph 2", "... 6 to 8 paragraphs total, with category links embedded per the syntax above"],
+  "body_paragraphs": ["1-2 intro paragraphs, then {{h2:Heading}} markers interleaved with 2-4 paragraphs each, 4 to 6 sections total, 1200-1800 words combined, with category links embedded per the syntax above"],
+  "faqs": [{"question": "specific search-style question", "answer": "2-4 sentence self-contained answer"}, "... 4 to 5 items total"],
   "related_category_name": "the single BEST-matching category from the exact list above for a final 'Shop this collection' button — must be copied exactly from the list, or empty string if genuinely none fit"
 }`;
 }
@@ -130,7 +141,11 @@ export async function POST(req: Request) {
           model: MODEL,
           messages: [{ role: 'user', content: promptText }],
           temperature: 0.6,
-          max_tokens: 2048,
+          // Bumped from 2048: long-form posts (1200-1800 words across 4-6
+          // H2 sections) plus 4-5 FAQ pairs need meaningfully more tokens
+          // than the old 6-8 short paragraphs did, or the JSON gets cut
+          // off mid-string and fails to parse below.
+          max_tokens: 4096,
           response_format: { type: 'json_object' },
         }),
       });
@@ -230,16 +245,19 @@ export async function POST(req: Request) {
         .order('rating', { ascending: false })
         .limit(10);
 
+      // Posts are now long-form (4-6 H2 sections), so 2-3 product cards
+      // spread through the post reads naturally instead of feeling sparse
+      // — was capped at 1-2 back when posts were 6-8 short paragraphs.
       const picked = (cardCandidates ?? [])
         .filter((p: any) => Array.isArray(p.images) && p.images.length > 0)
         // Don't repeat the exact product whose photo is already the cover image.
         .filter((p: any) => p.images[0] !== suggestedCoverImage)
-        .slice(0, bodyParagraphs.length >= 6 ? 2 : 1);
+        .slice(0, bodyParagraphs.length >= 12 ? 3 : 2);
 
       if (picked.length > 0) {
         // Spread the cards through the post rather than bunching them at
-        // the top/bottom — roughly a third and two-thirds of the way down
-        // — so they read as a natural break, not an ad wall.
+        // the top/bottom — roughly evenly across the length — so they read
+        // as a natural break, not an ad wall.
         const insertAt = picked.map((_, i) =>
           Math.max(1, Math.round(((i + 1) * bodyParagraphs.length) / (picked.length + 1)))
         );
@@ -254,12 +272,84 @@ export async function POST(req: Request) {
       }
     }
 
+    // Auto-insert one real customer review as social proof — a short
+    // blockquote from an actually-approved review on a product in the same
+    // category, encoded into a {{review:<base64 json>}} marker so
+    // app/blog/[slug]/page.tsx can render it without a second DB round
+    // trip and without breaking if the underlying review is later deleted
+    // or unapproved (the quote, once embedded, is just text from then on).
+    // Best-effort: if the category has no approved reviews yet, the post
+    // simply ships without one — nothing breaks.
+    if (relatedCategoryName) {
+      try {
+        const { data: categoryProducts } = await supabase
+          .from('products')
+          .select('id, name')
+          .eq('category_name', relatedCategoryName)
+          .eq('approval_status', 'live')
+          .limit(50);
+        const productIds = (categoryProducts ?? []).map((p: any) => p.id);
+        const productNameById = new Map((categoryProducts ?? []).map((p: any) => [p.id, p.name]));
+
+        if (productIds.length > 0) {
+          const { data: reviewRows } = await supabase
+            .from('reviews')
+            .select('product_id, customer_name, rating, comment')
+            .in('product_id', productIds)
+            .eq('is_approved', true)
+            .not('comment', 'is', null)
+            .order('rating', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(5);
+
+          const bestReview = (reviewRows ?? []).find(
+            (r: any) => typeof r.comment === 'string' && r.comment.trim().length >= 20
+          );
+
+          if (bestReview) {
+            const payload = {
+              name: bestReview.customer_name || 'Verified customer',
+              rating: bestReview.rating || 5,
+              comment: bestReview.comment.trim(),
+              product: productNameById.get(bestReview.product_id) || relatedCategoryName,
+            };
+            const marker = `{{review:${Buffer.from(JSON.stringify(payload)).toString('base64')}}}`;
+            // Place it about 80% of the way through — after most of the
+            // how-to content, right before things wrap up, so it reads as
+            // a natural "here's proof this works" beat, not an interruption.
+            const pos = Math.max(1, Math.round(bodyParagraphs.length * 0.8));
+            bodyParagraphs.splice(pos, 0, marker);
+          }
+        }
+      } catch (reviewErr) {
+        console.error('[generate-blog-post] review lookup failed (non-fatal):', reviewErr);
+      }
+    }
+
+    // FAQs: validate shape defensively since this comes straight from the
+    // model — anything malformed is dropped rather than saved as broken
+    // JSON that could crash the FAQPage schema or the public render.
+    const faqs = Array.isArray(parsed.faqs)
+      ? parsed.faqs
+          .filter(
+            (f): f is { question: string; answer: string } =>
+              !!f &&
+              typeof f.question === 'string' &&
+              typeof f.answer === 'string' &&
+              f.question.trim().length > 0 &&
+              f.answer.trim().length > 0
+          )
+          .map((f) => ({ question: f.question.trim(), answer: f.answer.trim() }))
+          .slice(0, 6)
+      : [];
+
     const result: GeneratedPost = {
       title: parsed.title.trim(),
       slug: slugify(parsed.title),
       excerpt: (parsed.excerpt || '').trim(),
       keywords: Array.isArray(parsed.keywords) ? parsed.keywords.filter(Boolean) : [],
       body_paragraphs: bodyParagraphs,
+      faqs,
       read_minutes: readMinutes,
       related_category_name: relatedCategoryName,
       suggested_cover_image: suggestedCoverImage,

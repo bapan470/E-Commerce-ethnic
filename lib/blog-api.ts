@@ -1,6 +1,6 @@
 'use client';
 
-import { BlogPostRow } from './types';
+import { BlogPostRow, BlogFaq } from './types';
 
 // SECURITY: every function in this file used to write directly to
 // `blog_posts` with the anon key (an over-broad RLS policy let ANY
@@ -26,6 +26,7 @@ export async function createBlogPost(input: {
   keywords: string[];
   cover_image: string;
   body_paragraphs: string[];
+  faqs?: BlogFaq[];
   read_minutes: number;
   related_category_name: string | null;
   published: boolean;
@@ -50,6 +51,7 @@ export async function updateBlogPost(
     keywords: string[];
     cover_image: string;
     body_paragraphs: string[];
+    faqs: BlogFaq[];
     read_minutes: number;
     related_category_name: string | null;
     published: boolean;

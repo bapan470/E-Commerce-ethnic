@@ -21,7 +21,7 @@ import {
   updateBlogPost,
   deleteBlogPost,
 } from '@/lib/blog-api';
-import { BlogPostRow } from '@/lib/types';
+import { BlogPostRow, BlogFaq } from '@/lib/types';
 import { fetchBlogPerformance, BlogPostPerformance } from '@/lib/blog-performance-api';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -66,6 +66,24 @@ const textToBody = (text: string) =>
     .map((p) => p.trim())
     .filter(Boolean);
 
+// FAQs are edited the same low-friction way as the body: one big textarea,
+// each Q/A pair as a "Q: ...\nA: ..." block separated by a blank line —
+// no dedicated add/remove-row UI needed for what's really just writing
+// four or five short question/answer pairs.
+const faqsToText = (faqs: BlogFaq[]) =>
+  faqs.map((f) => `Q: ${f.question}\nA: ${f.answer}`).join('\n\n');
+const textToFaqs = (text: string): BlogFaq[] =>
+  text
+    .split(/\n\s*\n/)
+    .map((block) => {
+      const qMatch = block.match(/Q:\s*(.+)/);
+      const aMatch = block.match(/A:\s*([\s\S]+)/);
+      const question = qMatch?.[1]?.trim() || '';
+      const answer = aMatch?.[1]?.trim() || '';
+      return { question, answer };
+    })
+    .filter((f) => f.question && f.answer);
+
 export default function BlogPanel() {
   const { categories, products } = useProducts();
   const [posts, setPosts] = useState<BlogPostRow[]>([]);
@@ -94,6 +112,7 @@ export default function BlogPanel() {
   const [keywords, setKeywords] = useState('');
   const [coverImage, setCoverImage] = useState('');
   const [bodyText, setBodyText] = useState('');
+  const [faqsText, setFaqsText] = useState('');
   const [readMinutes, setReadMinutes] = useState(5);
   const [relatedCategory, setRelatedCategory] = useState<string>('none');
   const [published, setPublished] = useState(true);
@@ -173,6 +192,7 @@ export default function BlogPanel() {
       setKeywords(Array.isArray(data.keywords) ? data.keywords.join(', ') : '');
       setCoverImage(data.suggested_cover_image || '');
       setBodyText(bodyToText(data.body_paragraphs || []));
+      setFaqsText(faqsToText(data.faqs || []));
       setReadMinutes(data.read_minutes || 5);
       const matchedCategory = categories.find(
         (c) => c.name.toLowerCase() === (data.related_category_name || '').toLowerCase()
@@ -303,6 +323,7 @@ export default function BlogPanel() {
     setKeywords('');
     setCoverImage('');
     setBodyText('');
+    setFaqsText('');
     setReadMinutes(5);
     setRelatedCategory('none');
     setPublished(true);
@@ -317,6 +338,7 @@ export default function BlogPanel() {
     setKeywords(p.keywords.join(', '));
     setCoverImage(p.cover_image);
     setBodyText(bodyToText(p.body_paragraphs));
+    setFaqsText(faqsToText(p.faqs || []));
     setReadMinutes(p.read_minutes);
     setRelatedCategory(p.related_category_name || 'none');
     setPublished(p.published);
@@ -328,12 +350,12 @@ export default function BlogPanel() {
   // here, not through a server route. This best-effort ping makes a save
   // show up on the live site right away instead of the admin having to
   // wait. Never blocks or fails the actual save if it errors.
-  const revalidateBlogPages = async (slug: string, previousSlug?: string) => {
+  const revalidateBlogPages = async (slug: string, published: boolean, previousSlug?: string) => {
     try {
       await fetch('/api/admin/revalidate-blog', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ slug, previous_slug: previousSlug || '' }),
+        body: JSON.stringify({ slug, previous_slug: previousSlug || '', published }),
       });
     } catch {
       // Ignore -- the 60s ISR window still catches it either way.
@@ -363,6 +385,7 @@ export default function BlogPanel() {
           .filter(Boolean),
         cover_image: coverImage.trim(),
         body_paragraphs: paragraphs,
+        faqs: textToFaqs(faqsText),
         read_minutes: readMinutes,
         related_category_name: relatedCategory === 'none' ? null : relatedCategory,
         published,
@@ -370,11 +393,11 @@ export default function BlogPanel() {
       if (editing) {
         await updateBlogPost(editing.id, payload);
         toast.success('Post updated');
-        await revalidateBlogPages(payload.slug, editing.slug);
+        await revalidateBlogPages(payload.slug, published, editing.slug);
       } else {
         await createBlogPost({ ...payload, published_at: new Date().toISOString() });
         toast.success('Post added');
-        await revalidateBlogPages(payload.slug);
+        await revalidateBlogPages(payload.slug, published);
       }
       setOpen(false);
       await load();
@@ -387,9 +410,10 @@ export default function BlogPanel() {
 
   const togglePublished = async (p: BlogPostRow) => {
     try {
-      await updateBlogPost(p.id, { published: !p.published });
+      const nowPublished = !p.published;
+      await updateBlogPost(p.id, { published: nowPublished });
       toast.success(p.published ? 'Post unpublished' : 'Post published');
-      await revalidateBlogPages(p.slug);
+      await revalidateBlogPages(p.slug, nowPublished);
       await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to update');
@@ -401,7 +425,7 @@ export default function BlogPanel() {
     try {
       await deleteBlogPost(confirmTarget.id);
       toast.success('Post deleted');
-      await revalidateBlogPages(confirmTarget.slug);
+      await revalidateBlogPages(confirmTarget.slug, false);
       await load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Delete failed');
@@ -746,7 +770,28 @@ export default function BlogPanel() {
                 <code className="rounded bg-muted px-1">[Banarasi silk saree](category:Silk Sarees)</code>. The
                 category name must match a real category exactly, or it renders as plain text.
                 Place your cursor where you want a product card and click &quot;Insert product
-                card&quot; above to drop in a full image + price + Shop Now card.
+                card&quot; above to drop in a full image + price + Shop Now card. Start a
+                paragraph with{' '}
+                <code className="rounded bg-muted px-1">{'{{h2:Your Heading Text}}'}</code> to
+                render it as a section heading instead of prose — aim for 4-6 sections and
+                1200-1800 words total on long-form posts.
+              </p>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="post-faqs">
+                FAQ section — one &quot;Q: … / A: …&quot; pair per block, separated by a blank line
+              </Label>
+              <Textarea
+                id="post-faqs"
+                rows={6}
+                value={faqsText}
+                onChange={(e) => setFaqsText(e.target.value)}
+                placeholder={'Q: Is a Banarasi saree suitable for a daytime wedding?\nA: Yes, in lighter zari work…'}
+              />
+              <p className="text-xs text-muted-foreground">
+                Renders as a collapsible FAQ block at the end of the post and adds FAQPage
+                structured data, which makes the post eligible for Google&apos;s FAQ rich result.
+                Optional, but recommended — aim for 4-5 pairs.
               </p>
             </div>
             <div className="grid grid-cols-2 gap-4">

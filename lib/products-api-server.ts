@@ -175,6 +175,34 @@ export async function fetchProductsServer(): Promise<Product[]> {
   return attachCollectionsServer(products);
 }
 
+/** Live products from a single category, for the "You might also like"
+ *  grid at the end of a blog post. Excludes any slugs already featured
+ *  as inline product cards earlier in the same post, so the grid adds
+ *  new options instead of repeating what the reader already saw. */
+export async function fetchProductsByCategoryServer(
+  categoryName: string,
+  opts: { limit?: number; excludeSlugs?: string[] } = {}
+): Promise<Product[]> {
+  const { limit = 4, excludeSlugs = [] } = opts;
+  const supabase = getServerSupabase();
+  let query = supabase
+    .from('products')
+    .select(`${CUSTOMER_SAFE_PRODUCT_COLUMNS}, product_variants(slug, images, is_default, color)`)
+    .eq('category_name', categoryName)
+    .eq('approval_status', 'live')
+    .eq('in_stock', true)
+    .order('featured', { ascending: false })
+    .order('rating', { ascending: false })
+    .limit(limit + excludeSlugs.length);
+  const { data, error } = await query;
+  if (error) throw error;
+  const products = (data as unknown as ProductRow[])
+    .map(mapRowToProduct)
+    .filter((p) => !excludeSlugs.includes(p.slug))
+    .slice(0, limit);
+  return attachCollectionsServer(products);
+}
+
 export async function fetchCategoriesServer(): Promise<CategoryRow[]> {
   const supabase = getServerSupabase();
   const { data, error } = await supabase

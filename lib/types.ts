@@ -168,6 +168,11 @@ export interface CategoryRow {
 
 /** Managed from Admin > Blog (`blog_posts` table). Public pages only ever
  *  read rows where `published` is true; the admin panel reads everything. */
+export interface BlogFaq {
+  question: string;
+  answer: string;
+}
+
 export interface BlogPostRow {
   id: string;
   slug: string;
@@ -176,6 +181,7 @@ export interface BlogPostRow {
   keywords: string[];
   cover_image: string;
   body_paragraphs: string[];
+  faqs: BlogFaq[];
   read_minutes: number;
   related_category_name: string | null;
   published: boolean;

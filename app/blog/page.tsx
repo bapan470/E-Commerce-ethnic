@@ -63,7 +63,7 @@ export default async function BlogIndexPage() {
                   post.cover_image ||
                   'https://placehold.co/800x500?text=No+Image'
                 }
-                alt={post.title}
+                alt={post.keywords && post.keywords.length > 0 ? `${post.title} — ${post.keywords[0]}` : post.title}
                 fill
                 sizes="(max-width: 768px) 100vw, 33vw"
                 placeholder="blur"
