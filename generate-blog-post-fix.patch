@@ -1,5 +1,5 @@
 diff --git a/app/api/admin/generate-blog-post/route.ts b/app/api/admin/generate-blog-post/route.ts
-index 8e828ea..838b9cd 100644
+index 8e828ea..ec87e67 100644
 --- a/app/api/admin/generate-blog-post/route.ts
 +++ b/app/api/admin/generate-blog-post/route.ts
 @@ -3,13 +3,18 @@ import { cookies } from 'next/headers';
@@ -24,7 +24,99 @@ index 8e828ea..838b9cd 100644
  const NIM_ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions';
  
  interface GeneratedPost {
-@@ -231,33 +236,33 @@ export async function POST(req: Request) {
+@@ -51,6 +56,91 @@ function sanitizeInlineLinks(paragraph: string, validNames: Set<string>): string
+   });
+ }
+ 
++function escapeRegExp(s: string) {
++  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
++}
++
++// Fallback so a post never ships with ZERO internal links. The prompt asks
++// the model to embed `[anchor](category:Name)` links itself, but that's an
++// instruction-following ask on top of an already-long structured-JSON
++// task — the lighter/faster 8b text model (swapped in to fix the NIM
++// timeout, see MODEL comment above) follows it far less reliably than the
++// bigger vision model used to. Rather than depend on the model for
++// something this important for SEO, we guarantee it ourselves:
++//   1) If the model DID embed at least one valid link, leave its output
++//      alone entirely — no double-linking.
++//   2) Otherwise, look for a category name (or its simple singular) that
++//      already appears naturally in the prose and wrap that real mention
++//      in the link markup — reads exactly like the model had done it.
++//   3) If literally no category name appears anywhere in the text, append
++//      one short, clearly-labelled sentence linking the related category
++//      to a mid-post paragraph, so there's always at least one link.
++function ensureCategoryLinks(
++  paragraphs: string[],
++  categoryNames: string[],
++  relatedCategoryName: string
++): string[] {
++  const alreadyLinked = new Set<string>();
++  for (const p of paragraphs) {
++    CATEGORY_LINK_RE.lastIndex = 0;
++    let m: RegExpExecArray | null;
++    while ((m = CATEGORY_LINK_RE.exec(p)) !== null) {
++      alreadyLinked.add(m[2].trim().toLowerCase());
++    }
++  }
++  if (alreadyLinked.size > 0) return paragraphs;
++
++  const isEligible = (p: string) =>
++    p.trim().length > 0 && !/^\{\{h2:/.test(p) && !/^\{\{product:/.test(p) && !/^\{\{review:/.test(p);
++
++  const result = [...paragraphs];
++  let inserted = 0;
++  const maxLinks = 2;
++
++  for (const name of categoryNames) {
++    if (inserted >= maxLinks) break;
++    const singular = name.replace(/s$/i, '');
++    const re = new RegExp(`\\b(${escapeRegExp(name)}|${escapeRegExp(singular)})\\b`, 'i');
++    for (let i = 0; i < result.length; i++) {
++      if (!isEligible(result[i])) continue;
++      const m = result[i].match(re);
++      if (m && m.index !== undefined) {
++        const matchedText = m[0];
++        result[i] =
++          result[i].slice(0, m.index) +
++          `[${matchedText}](category:${name})` +
++          result[i].slice(m.index + matchedText.length);
++        inserted++;
++        break;
++      }
++    }
++  }
++
++  if (inserted === 0) {
++    const fallbackName =
++      relatedCategoryName && categoryNames.some((c) => c.toLowerCase() === relatedCategoryName.toLowerCase())
++        ? relatedCategoryName
++        : categoryNames[0];
++    if (fallbackName) {
++      const midStart = Math.floor(result.length / 2);
++      let targetIdx = -1;
++      for (let i = midStart; i < result.length; i++) {
++        if (isEligible(result[i])) {
++          targetIdx = i;
++          break;
++        }
++      }
++      if (targetIdx === -1) targetIdx = result.findIndex(isEligible);
++      if (targetIdx !== -1) {
++        result[targetIdx] =
++          `${result[targetIdx].trim()} For more options, browse our [${fallbackName}](category:${fallbackName}) collection.`;
++      }
++    }
++  }
++
++  return result;
++}
++
+ function buildPrompt(topic: string, extraKeywords: string, categoryNames: string[], strict = false) {
+   const categoryList = categoryNames.length > 0 ? categoryNames.join(', ') : '(no categories available)';
+   // `strict` is used for the one-shot automatic retry when a normal
+@@ -231,33 +321,33 @@ export async function POST(req: Request) {
    const validNameSet = new Set(categoryNames.map((n) => n.toLowerCase()));
  
    try {
@@ -76,7 +168,7 @@ index 8e828ea..838b9cd 100644
        );
      }
  
-@@ -276,7 +281,7 @@ export async function POST(req: Request) {
+@@ -276,7 +366,7 @@ export async function POST(req: Request) {
          return NextResponse.json(
            {
              error:
@@ -85,3 +177,36 @@ index 8e828ea..838b9cd 100644
            },
            { status: 504 }
          );
+@@ -297,21 +387,26 @@ export async function POST(req: Request) {
+     const parsed = attempt.parsed;
+ 
+ 
+-    const bodyParagraphs = parsed.body_paragraphs
++    let bodyParagraphs = parsed.body_paragraphs
+       .filter((p) => typeof p === 'string' && p.trim().length > 0)
+       .map((p) => sanitizeInlineLinks(p, validNameSet));
+ 
++    const relatedRaw = (parsed.related_category_name || '').trim();
++    const relatedCategoryName = validNameSet.has(relatedRaw.toLowerCase())
++      ? categoryNames.find((n) => n.toLowerCase() === relatedRaw.toLowerCase()) || ''
++      : '';
++
++    // Guarantee at least one real internal (category) link — see comment
++    // on ensureCategoryLinks for why this can no longer be left entirely
++    // up to the model.
++    bodyParagraphs = ensureCategoryLinks(bodyParagraphs, categoryNames, relatedCategoryName);
++
+     // Estimated by us from the actual generated word count (~200 wpm),
+     // rather than trusting the model's own guess, which was frequently off
+     // (e.g. claiming 8 minutes for a ~500-word post).
+     const totalWords = bodyParagraphs.join(' ').split(/\s+/).filter(Boolean).length;
+     const readMinutes = Math.max(2, Math.round(totalWords / 200));
+ 
+-    const relatedRaw = (parsed.related_category_name || '').trim();
+-    const relatedCategoryName = validNameSet.has(relatedRaw.toLowerCase())
+-      ? categoryNames.find((n) => n.toLowerCase() === relatedRaw.toLowerCase()) || ''
+-      : '';
+-
+     // Pull a real product photo from that category to suggest as the cover
+     // image — a live catalog photo converts better than a generic stock
+     // image, and it saves the manual "go find a URL" step for the admin.
