@@ -99,6 +99,13 @@ export default function SellWithUsPage() {
       const created = await submitVendorApplication(form);
       setProfile(created);
       toast.success('Application submitted! We will review it soon.');
+      // GA4 event for Google Ads "Vendor Signup" conversion tracking.
+      if (typeof window !== 'undefined' && typeof (window as any).gtag === 'function') {
+        (window as any).gtag('event', 'vendor_signup', {
+          event_category: 'partner_signup',
+          event_label: 'sell_with_us',
+        });
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to submit application');
     } finally {

@@ -79,6 +79,13 @@ export default function ResellerPage() {
       setProfile(p);
       setMarkupInput(String(p.default_markup_amount));
       toast.success('Welcome! You are now a reseller.');
+      // GA4 event for Google Ads "Reseller Signup" conversion tracking.
+      if (typeof window !== 'undefined' && typeof (window as any).gtag === 'function') {
+        (window as any).gtag('event', 'reseller_signup', {
+          event_category: 'partner_signup',
+          event_label: 'account_reseller',
+        });
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to join');
     } finally {
