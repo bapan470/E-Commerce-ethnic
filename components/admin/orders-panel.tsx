@@ -497,7 +497,15 @@ function OrderRow({
         </td>
         <td className="px-4 py-3 align-top">
           <div className="text-sm font-medium">{order.customer_name || 'Guest'}</div>
-          <div className="text-xs text-muted-foreground">{order.customer_email || order.customer_phone}</div>
+          {order.customer_email && (
+            <div className="text-xs text-muted-foreground">{order.customer_email}</div>
+          )}
+          {order.customer_phone && (
+            <div className="text-xs text-muted-foreground">{order.customer_phone}</div>
+          )}
+          {!order.customer_email && !order.customer_phone && (
+            <div className="text-xs text-muted-foreground">—</div>
+          )}
           {order.is_reseller_order && (
             <div className="mt-1 flex flex-col gap-0.5">
               <span className="w-fit rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
