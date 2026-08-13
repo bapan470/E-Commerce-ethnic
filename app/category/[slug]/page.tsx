@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { fetchCategoriesServer, fetchProductsServer } from '@/lib/products-api-server';
 import ProductCard from '@/components/product-card';
+import ViewItemListTracker from '@/components/analytics/view-item-list-tracker';
 import { safeJsonLd } from '@/lib/json-ld';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
@@ -192,6 +193,10 @@ export default async function CategoryPage({ params }: Params) {
           ))}
         </div>
       )}
+      <ViewItemListTracker
+        listName={category.name}
+        items={categoryProducts.map((p) => ({ id: p.id, name: p.name, category: p.category, price: p.price }))}
+      />
     </div>
   );
 }

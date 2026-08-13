@@ -6,6 +6,7 @@ import { Star, Store } from 'lucide-react';
 import ProductCard from '@/components/product-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { fetchVendorStorefront, VendorStorefront } from '@/lib/vendor-storefront-api';
+import { fireGtagEvent } from '@/lib/gtag-track';
 
 export default function CollectionPageClient() {
   const params = useParams<{ slug: string }>();
@@ -24,6 +25,22 @@ export default function CollectionPageClient() {
       cancelled = true;
     };
   }, [params.slug]);
+
+  // Fire GA4 / Google Ads view_item_list once this vendor's products load.
+  useEffect(() => {
+    if (!data?.vendor || data.products.length === 0) return;
+    fireGtagEvent('view_item_list', {
+      item_list_name: `Collection: ${data.vendor.name}`,
+      items: data.products.slice(0, 20).map((p, idx) => ({
+        item_id: p.id,
+        item_name: p.name,
+        item_category: p.category,
+        price: p.price,
+        index: idx,
+      })),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.vendor?.id]);
 
   if (loading) {
     return (

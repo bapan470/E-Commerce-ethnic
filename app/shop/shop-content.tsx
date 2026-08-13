@@ -32,6 +32,7 @@ import { STANDARD_SIZES } from '@/lib/size-chart';
 import { productMatchesQuery, expandHindiQuery, fuzzyMatch } from '@/lib/search-utils';
 import { getColorSwatchHex } from '@/lib/color-swatch';
 import { trackEvent } from '@/lib/track-api';
+import { fireGtagEvent } from '@/lib/gtag-track';
 import { blurDataURL } from '@/lib/utils';
 
 const ALL_SIZES = [...STANDARD_SIZES];
@@ -265,6 +266,31 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
     }, 800);
     return () => clearTimeout(timer);
   }, [query, pathname]);
+
+  // Fire GA4 / Google Ads view_item_list whenever the grid the shopper is
+  // actually looking at changes (filters, sort, search, or the underlying
+  // product list itself). Debounced like the search log above so rapid
+  // filter toggling doesn't spam an event per click. GA4 caps ecommerce
+  // item arrays at 200 items, and no shopper scrolls a 200-card grid
+  // meaningfully, so we only report the first 20 — this is a "what did
+  // they see first" list-view signal, not full pagination data.
+  useEffect(() => {
+    if (filtered.length === 0) return;
+    const timer = setTimeout(() => {
+      fireGtagEvent('view_item_list', {
+        item_list_name: query.trim() ? `Search: ${query.trim()}` : selectedCats.length > 0 ? selectedCats.join(', ') : 'Shop All',
+        items: filtered.slice(0, 20).map((p, idx) => ({
+          item_id: p.id,
+          item_name: p.name,
+          item_category: p.category,
+          price: p.price,
+          index: idx,
+        })),
+      });
+    }, 800);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered]);
 
   const clearAll = () => {
     setSelectedCats([]);

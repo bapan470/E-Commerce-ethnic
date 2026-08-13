@@ -1,25 +1,47 @@
-FIX: Duplicate GA4 / Google Ads "purchase" event
+ADDED: GA4 / Google Ads "view_item" and "view_item_list" events
 
-File changed: app/checkout/page.tsx
+New/changed files (paths match your repo exactly — just overwrite):
 
-What changed:
-- Removed the manual gtag('event','purchase', ...) calls that were firing
-  directly inside app/checkout/page.tsx (both COD block and Online-payment
-  block), right after an order was placed.
-- Reason: components/analytics/purchase-tracker.tsx (<PurchaseTracker />)
-  already fires this exact same GA4 purchase event on the
-  /order-confirmation/[id] page, with proper sessionStorage dedupe.
-  Checkout page was firing it a SECOND time before redirecting there,
-  causing every order to be reported twice in GA4 DebugView and Google Ads
-  (double transaction_id, double revenue).
+1. app/product/[slug]/product-detail.tsx
+   - Added a new useEffect that fires gtag('event','view_item', {...})
+     once per product page load, with the product's id/name/category and
+     the currently selected variant's price. This is what lets Google Ads
+     do "dynamic remarketing" (show ads for the exact product someone
+     viewed).
+
+2. components/analytics/view-item-list-tracker.tsx  (NEW FILE)
+   - Small reusable client component that fires gtag('event',
+     'view_item_list', {...}). Needed because app/category/[slug]/page.tsx
+     is a server component and can't call gtag directly.
+
+3. app/category/[slug]/page.tsx
+   - Mounts <ViewItemListTracker /> with the category's product grid, so
+     visiting a category page fires view_item_list.
+
+4. app/shop/shop-content.tsx
+   - Added a debounced useEffect that fires view_item_list whenever the
+     shop grid the shopper is looking at changes (filters/sort/search).
+     Only the first 20 visible items are reported per event.
+
+5. app/collection/[slug]/collection-page-client.tsx
+   - Same idea as the shop page, fires view_item_list once a vendor's
+     collection page products load.
 
 How to apply:
-1. Replace your local app/checkout/page.tsx with the one in this zip
-   (same relative path: app/checkout/page.tsx).
-2. git add app/checkout/page.tsx
-3. git commit -m "fix: remove duplicate GA4/Google Ads purchase event fire in checkout"
-4. git push
+1. Extract this zip.
+2. Copy each file into your local repo at the exact same relative path
+   (overwrite existing files; view-item-list-tracker.tsx is new, so it
+   just gets added).
+3. git add -A
+4. git commit -m "feat: add GA4/Google Ads view_item and view_item_list events"
+5. git push
 
-No other files were changed. components/analytics/purchase-tracker.tsx was
-NOT modified — it's already correct and is now the single source of the
-purchase event.
+After deploying, test in GA4 DebugView:
+- Open a product page -> should see a "view_item" event.
+- Open /shop, /category/<slug>, or a vendor /collection/<slug> page ->
+  should see a "view_item_list" event.
+
+Note: these events won't appear in GA4's "Recent events" list (Admin >
+Events) immediately — GA4 normal reporting takes ~24-48h to process new
+event names, same as add_to_cart/begin_checkout did earlier. DebugView
+will show them in real time immediately though.

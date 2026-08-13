@@ -439,6 +439,29 @@ export default function ProductDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseProduct?.id]);
 
+  // Fire GA4 / Google Ads view_item event once per product load. Uses
+  // `product` (not `baseProduct`) so the price reflects the currently
+  // selected colour variant, matching what the shopper actually sees.
+  // Keyed on baseProduct.id (not variant/size) so switching size doesn't
+  // re-fire this — a size change isn't a new "product view".
+  useEffect(() => {
+    if (!product) return;
+    fireGtagEvent('view_item', {
+      currency: 'INR',
+      value: selectedSizePrice || product.price,
+      items: [
+        {
+          item_id: product.id,
+          item_name: product.name,
+          item_category: product.category,
+          price: selectedSizePrice || product.price,
+          quantity: 1,
+        },
+      ],
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseProduct?.id]);
+
   // Once an item has been added to the cart with a coupon previewed on this
   // page, sync that coupon into the shared cart (lib/cart-context.tsx) so it
   // actually applies and shows up in the cart drawer, cart page & checkout.
