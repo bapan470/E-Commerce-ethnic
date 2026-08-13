@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import OrderTracking from '@/components/order/order-tracking';
+import OrderStatusHistory from '@/components/admin/order-status-history';
 import CreateShipmentModal, {
   type CreateShipmentPayload,
 } from '@/components/admin/create-shipment-modal';
@@ -626,7 +627,7 @@ function OrderRow({
       {open && (
         <tr className="bg-muted/20">
           <td colSpan={10} className="px-4 py-3">
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <div>
                 <h4 className="mb-2 text-sm font-semibold">Items</h4>
                 <ul className="space-y-2 text-sm">
@@ -674,6 +675,10 @@ function OrderRow({
                     '—'
                   )}
                 </div>
+              </div>
+              <div>
+                <h4 className="mb-2 text-sm font-semibold">Status History</h4>
+                <OrderStatusHistory orderId={order.id} />
               </div>
             </div>
             <div className="mt-4">
