@@ -1028,20 +1028,11 @@ export default function CheckoutPage() {
           userId: loggedInUser?.id ?? null,
           metadata: { total: payableTotal, itemCount: items.length, paymentMethod: 'cod', email: customerEmail },
         });
-        // Fire GA4 / Google Ads purchase conversion (COD)
-        if (typeof window !== 'undefined' && typeof (window as any).gtag === 'function') {
-          (window as any).gtag('event', 'purchase', {
-            transaction_id: internalOrderId,
-            value: payableTotal,
-            currency: 'INR',
-            items: orderItems.map((item: any) => ({
-              item_id: item.product_id,
-              item_name: item.product_name,
-              price: item.price,
-              quantity: item.quantity ?? 1,
-            })),
-          });
-        }
+        // NOTE: GA4/Google Ads "purchase" conversion is intentionally NOT
+        // fired here anymore — it was duplicating the event that
+        // <PurchaseTracker /> already fires on the order-confirmation page
+        // (which has proper sessionStorage dedupe). Firing it in both
+        // places double-counted purchases/revenue in GA4 and Google Ads.
         toast.success('Order placed! Pay cash on delivery.');
         fetch('/api/order-confirm', {
           method: 'POST',
@@ -1101,20 +1092,8 @@ export default function CheckoutPage() {
         userId: loggedInUser?.id ?? null,
         metadata: { total: payableTotal, itemCount: items.length, paymentMethod: 'online', email: customerEmail },
       });
-      // Fire GA4 / Google Ads purchase conversion (Online payment)
-      if (typeof window !== 'undefined' && typeof (window as any).gtag === 'function') {
-        (window as any).gtag('event', 'purchase', {
-          transaction_id: internalOrderId,
-          value: payableTotal,
-          currency: 'INR',
-          items: orderItems.map((item: any) => ({
-            item_id: item.product_id,
-            item_name: item.product_name,
-            price: item.price,
-            quantity: item.quantity ?? 1,
-          })),
-        });
-      }
+      // NOTE: GA4/Google Ads "purchase" conversion is intentionally NOT
+      // fired here anymore — see the matching note in the COD branch above.
       toast.success('Payment successful! Order confirmed.');
       fetch('/api/order-confirm', {
         method: 'POST',
