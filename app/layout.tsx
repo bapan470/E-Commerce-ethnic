@@ -20,6 +20,15 @@ const playfair = Playfair_Display({
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
+// Without this, Next.js statically renders this layout at build time and
+// caches the getSeoSettings()/getAnalyticsSettings() Supabase reads below
+// indefinitely (the Data Cache) -- so toggling GA4/GTM/Meta Pixel etc. in
+// Admin > Marketing > Analytics writes to the DB immediately but the LIVE
+// site keeps serving the old cached <script> tags until the next deploy.
+// force-dynamic makes every request re-fetch these settings fresh, so
+// admin changes take effect on the very next page load.
+export const dynamic = 'force-dynamic';
+
 const DEFAULT_SEO: SeoSettings = {
   site_title: 'AruhiHandlooms — Handwoven Indian Ethnic Wear & Sarees',
   meta_description:
