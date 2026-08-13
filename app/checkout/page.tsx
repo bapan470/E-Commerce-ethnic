@@ -640,9 +640,9 @@ export default function CheckoutPage() {
           currency: 'INR',
           value: subtotal,
           items: items.map((item) => ({
-            item_id: item.id,
-            item_name: item.name,
-            price: item.price,
+            item_id: item.product.id,
+            item_name: item.product.name,
+            price: item.product.price,
             quantity: item.quantity ?? 1,
           })),
         });
@@ -1026,8 +1026,8 @@ export default function CheckoutPage() {
             value: payableTotal,
             currency: 'INR',
             items: orderItems.map((item: any) => ({
-              item_id: item.id,
-              item_name: item.name,
+              item_id: item.product_id,
+              item_name: item.product_name,
               price: item.price,
               quantity: item.quantity ?? 1,
             })),
@@ -1099,8 +1099,8 @@ export default function CheckoutPage() {
           value: payableTotal,
           currency: 'INR',
           items: orderItems.map((item: any) => ({
-            item_id: item.id,
-            item_name: item.name,
+            item_id: item.product_id,
+            item_name: item.product_name,
             price: item.price,
             quantity: item.quantity ?? 1,
           })),
