@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Tag, X, Loader2, PartyPopper, Wallet } from 'lucide-react';
@@ -12,6 +12,7 @@ import {
   getBogoCartProgress,
 } from '@/lib/cart-context';
 import { markCheckoutEntry } from '@/lib/checkout-return';
+import { fireGtagEvent } from '@/lib/gtag-track';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -87,6 +88,30 @@ export default function CartPage() {
       // fall back to defaults already set above
     });
   }, []);
+
+  // Fire GA4 / Google Ads view_cart once per page load — same hydration
+  // race as begin_checkout on the checkout page (cart-context loads items
+  // from localStorage in its own effect *after* mount, so items.length is
+  // 0 on first render even with a non-empty cart). Depend on items.length
+  // so this re-runs once hydration lands, guarded so it still only
+  // actually fires once per visit to this page.
+  const viewCartFiredRef = useRef(false);
+  useEffect(() => {
+    if (items.length > 0 && !viewCartFiredRef.current) {
+      viewCartFiredRef.current = true;
+      fireGtagEvent('view_cart', {
+        currency: 'INR',
+        value: subtotal,
+        items: items.map((item) => ({
+          item_id: item.product.id,
+          item_name: item.product.name,
+          price: item.product.price,
+          quantity: item.quantity ?? 1,
+        })),
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.length]);
 
   if (items.length === 0) {
     return (

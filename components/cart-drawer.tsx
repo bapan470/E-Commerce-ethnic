@@ -28,6 +28,7 @@ import {
 } from '@/lib/cart-context';
 import { useAuth } from '@/lib/auth-context';
 import { markCheckoutEntry } from '@/lib/checkout-return';
+import { fireGtagEvent } from '@/lib/gtag-track';
 import { formatINR, discountPct } from '@/lib/format';
 import { fetchProductPageCoupons, computeItemCouponDiscount, Coupon } from '@/lib/coupons-api';
 import { Button } from '@/components/ui/button';
@@ -121,6 +122,28 @@ export default function CartDrawer() {
   useEffect(() => {
     if (appliedCoupon) setPriceDetailsOpen(true);
   }, [appliedCoupon]);
+
+  // Fire GA4 / Google Ads view_cart once each time the side cart opens —
+  // not on every re-render while it stays open (e.g. quantity changes).
+  // Unlike begin_checkout on the checkout page, there's no localStorage
+  // hydration race to guard against here: isCartOpen only ever flips to
+  // true from a user action (tapping the cart icon, or "Add to Bag" — see
+  // product-detail.tsx), by which point cart-context's client-side state
+  // (and therefore `items`) is already populated.
+  useEffect(() => {
+    if (!isCartOpen) return;
+    fireGtagEvent('view_cart', {
+      currency: 'INR',
+      value: subtotal,
+      items: items.map((item) => ({
+        item_id: item.product.id,
+        item_name: item.product.name,
+        price: item.product.price,
+        quantity: item.quantity ?? 1,
+      })),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCartOpen]);
 
   // Swipe-to-close for the side cart on mobile — drag the panel toward the
   // right edge (the side it slides in from) to dismiss it, same gesture
