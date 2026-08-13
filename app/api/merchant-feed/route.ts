@@ -34,6 +34,21 @@ interface FeedVariant {
   product_variant_sizes: FeedVariantSize[] | null;
 }
 
+// Google's "Update product descriptions" recommendation flags items whose
+// <description> text never mentions an attribute (color, in this case)
+// that IS present elsewhere on the item -- even though we already send
+// <g:color>, Google specifically checks the free-text description too.
+// Since the feed is one item per colour/size, we know the exact colour
+// here, so we append it to the description whenever it isn't already
+// mentioned in the text (case-insensitive match to avoid "Red, Red").
+function ensureColorMentioned(description: string, color: string): string {
+  if (!color) return description;
+  const trimmed = description.trim();
+  if (!trimmed) return `Available in ${color}.`;
+  if (trimmed.toLowerCase().includes(color.toLowerCase())) return trimmed;
+  return `${trimmed} Available in ${color}.`;
+}
+
 function escapeXml(input: string): string {
   return input
     .replace(/&/g, '&amp;')
@@ -145,7 +160,7 @@ export async function GET() {
       <g:id>${escapeXml(id)}</g:id>
       <g:item_group_id>${escapeXml(itemGroupId)}</g:item_group_id>
       <title>${escapeXml(title)}</title>
-      <description>${escapeXml((product.description || product.name).slice(0, 5000))}</description>
+      <description>${escapeXml(ensureColorMentioned(product.description || product.name, color).slice(0, 5000))}</description>
       <link>${escapeXml(link)}</link>
       <g:image_link>${escapeXml(image)}</g:image_link>
       ${extraImages}
