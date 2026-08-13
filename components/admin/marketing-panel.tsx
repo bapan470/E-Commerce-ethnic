@@ -836,6 +836,45 @@ function AnalyticsTab() {
         </div>
       </div>
 
+      {/* Google Tag Manager */}
+      <div className="space-y-3 rounded-lg border border-border p-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <Label htmlFor="gtm-enabled">Google Tag Manager (GTM)</Label>
+            <p className="text-xs text-muted-foreground">Manages all tags (GA4, Ads, Pixel) from one place.</p>
+          </div>
+          <Switch
+            id="gtm-enabled"
+            checked={analytics.gtm_enabled}
+            onCheckedChange={(checked) => setAnalytics({ ...analytics, gtm_enabled: checked })}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="gtm-id">Container ID</Label>
+          <Input
+            id="gtm-id"
+            value={analytics.gtm_container_id}
+            onChange={(e) => setAnalytics({ ...analytics, gtm_container_id: e.target.value })}
+            placeholder="GTM-XXXXXXX"
+          />
+          <p className="text-xs text-muted-foreground">
+            tagmanager.google.com → your container → top-right corner (e.g. GTM-TT7WGBH4).
+          </p>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="google-ads-id">Google Ads ID (optional)</Label>
+          <Input
+            id="google-ads-id"
+            value={analytics.google_ads_id}
+            onChange={(e) => setAnalytics({ ...analytics, google_ads_id: e.target.value })}
+            placeholder="AW-XXXXXXXXX"
+          />
+          <p className="text-xs text-muted-foreground">
+            Google Ads → Tools → Conversions → copy the AW-XXXXXXXXX ID. Only needed if not using GTM.
+          </p>
+        </div>
+      </div>
+
       <div className="space-y-3 rounded-lg border border-border p-3">
         <div className="flex items-center justify-between">
           <div>
