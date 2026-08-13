@@ -50,6 +50,9 @@ async function getSeoSettings(): Promise<SeoSettings> {
 const DEFAULT_ANALYTICS: AnalyticsSettings = {
   ga_enabled: false,
   ga_measurement_id: '',
+  gtm_enabled: false,
+  gtm_container_id: '',
+  google_ads_id: '',
   meta_pixel_enabled: false,
   meta_pixel_id: '',
   trustpilot_enabled: false,
@@ -126,6 +129,8 @@ export default async function RootLayout({
 }) {
   const analytics = await getAnalyticsSettings();
   const gaId = analytics.ga_enabled ? analytics.ga_measurement_id.trim() : '';
+  const gtmId = (analytics as any).gtm_enabled ? ((analytics as any).gtm_container_id || '').trim() : '';
+  const googleAdsId = ((analytics as any).google_ads_id || '').trim();
   const pixelId = analytics.meta_pixel_enabled ? analytics.meta_pixel_id.trim() : '';
   const trustpilotKey = analytics.trustpilot_enabled ? analytics.trustpilot_integration_key.trim() : '';
 
@@ -149,7 +154,24 @@ export default async function RootLayout({
           </Script>
         )}
 
-        {gaId && (
+        {/* Google Tag Manager — loads GTM container which manages GA4 +
+            Google Ads + all other tags from the GTM dashboard.
+            Set Container ID in Admin > Marketing > Analytics. */}
+        {gtmId && (
+          <Script id="gtm-init" strategy="afterInteractive">
+            {`
+              (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+              new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+              j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+              'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+              })(window,document,'script','dataLayer','${gtmId}');
+            `}
+          </Script>
+        )}
+
+        {/* GA4 + Google Ads gtag.js — used when GTM is NOT configured.
+            If GTM is set above, manage GA4 and Ads from GTM instead. */}
+        {!gtmId && gaId && (
           <>
             <Script src={`https://www.googletagmanager.com/gtag/js?id=${gaId}`} strategy="afterInteractive" />
             <Script id="ga4-init" strategy="afterInteractive">
@@ -158,6 +180,7 @@ export default async function RootLayout({
                 function gtag(){dataLayer.push(arguments);}
                 gtag('js', new Date());
                 gtag('config', '${gaId}');
+                ${googleAdsId ? `gtag('config', '${googleAdsId}');` : ''}
               `}
             </Script>
           </>
@@ -181,6 +204,17 @@ export default async function RootLayout({
         )}
       </head>
       <body className="font-sans antialiased">
+        {/* GTM noscript fallback — required by Google */}
+        {gtmId && (
+          <noscript>
+            <iframe
+              src={`https://www.googletagmanager.com/ns.html?id=${gtmId}`}
+              height="0"
+              width="0"
+              style={{ display: 'none', visibility: 'hidden' }}
+            />
+          </noscript>
+        )}
         {pixelId && (
           <noscript>
             <img

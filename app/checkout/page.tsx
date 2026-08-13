@@ -634,6 +634,19 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (items.length > 0) {
       trackEvent('checkout_start', { metadata: { itemCount: items.length, cartValue: subtotal } });
+      // Fire GA4 / Google Ads begin_checkout event
+      if (typeof window !== 'undefined' && typeof (window as any).gtag === 'function') {
+        (window as any).gtag('event', 'begin_checkout', {
+          currency: 'INR',
+          value: subtotal,
+          items: items.map((item) => ({
+            item_id: item.id,
+            item_name: item.name,
+            price: item.price,
+            quantity: item.quantity ?? 1,
+          })),
+        });
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1006,6 +1019,20 @@ export default function CheckoutPage() {
           userId: loggedInUser?.id ?? null,
           metadata: { total: payableTotal, itemCount: items.length, paymentMethod: 'cod', email: customerEmail },
         });
+        // Fire GA4 / Google Ads purchase conversion (COD)
+        if (typeof window !== 'undefined' && typeof (window as any).gtag === 'function') {
+          (window as any).gtag('event', 'purchase', {
+            transaction_id: internalOrderId,
+            value: payableTotal,
+            currency: 'INR',
+            items: orderItems.map((item: any) => ({
+              item_id: item.id,
+              item_name: item.name,
+              price: item.price,
+              quantity: item.quantity ?? 1,
+            })),
+          });
+        }
         toast.success('Order placed! Pay cash on delivery.');
         fetch('/api/order-confirm', {
           method: 'POST',
@@ -1065,6 +1092,20 @@ export default function CheckoutPage() {
         userId: loggedInUser?.id ?? null,
         metadata: { total: payableTotal, itemCount: items.length, paymentMethod: 'online', email: customerEmail },
       });
+      // Fire GA4 / Google Ads purchase conversion (Online payment)
+      if (typeof window !== 'undefined' && typeof (window as any).gtag === 'function') {
+        (window as any).gtag('event', 'purchase', {
+          transaction_id: internalOrderId,
+          value: payableTotal,
+          currency: 'INR',
+          items: orderItems.map((item: any) => ({
+            item_id: item.id,
+            item_name: item.name,
+            price: item.price,
+            quantity: item.quantity ?? 1,
+          })),
+        });
+      }
       toast.success('Payment successful! Order confirmed.');
       fetch('/api/order-confirm', {
         method: 'POST',
