@@ -515,6 +515,9 @@ export async function saveSeoSettings(settings: SeoSettings) {
 // ---------------------------------------------------------------------
 
 export interface AnalyticsSettings {
+  gtm_enabled: boolean;
+  gtm_container_id: string; // e.g. GTM-XXXXXXX
+  google_ads_id: string; // e.g. AW-XXXXXXXXX
   ga_enabled: boolean;
   ga_measurement_id: string; // e.g. G-XXXXXXXXXX
   meta_pixel_enabled: boolean;
@@ -526,6 +529,9 @@ export interface AnalyticsSettings {
 const DEFAULT_ANALYTICS_SETTINGS: AnalyticsSettings = {
   ga_enabled: false,
   ga_measurement_id: '',
+  gtm_enabled: false,
+  gtm_container_id: '',
+  google_ads_id: '',
   meta_pixel_enabled: false,
   meta_pixel_id: '',
   trustpilot_enabled: false,

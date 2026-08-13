@@ -129,8 +129,8 @@ export default async function RootLayout({
 }) {
   const analytics = await getAnalyticsSettings();
   const gaId = analytics.ga_enabled ? analytics.ga_measurement_id.trim() : '';
-  const gtmId = (analytics as any).gtm_enabled ? ((analytics as any).gtm_container_id || '').trim() : '';
-  const googleAdsId = ((analytics as any).google_ads_id || '').trim();
+  const gtmId = analytics.gtm_enabled ? analytics.gtm_container_id.trim() : '';
+  const googleAdsId = analytics.google_ads_id.trim();
   const pixelId = analytics.meta_pixel_enabled ? analytics.meta_pixel_id.trim() : '';
   const trustpilotKey = analytics.trustpilot_enabled ? analytics.trustpilot_integration_key.trim() : '';
 
