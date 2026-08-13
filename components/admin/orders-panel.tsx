@@ -574,6 +574,22 @@ function OrderRow({
           </span>
         </td>
         <td className="px-4 py-3 align-top text-sm">
+          {/* An online order stuck at "pending" almost always means the
+              Razorpay popup was closed/abandoned before payment finished —
+              that's a different situation from a COD order sitting
+              "pending" (which is completely normal, since COD is only
+              collected at delivery). Flag it clearly instead of leaving
+              both looking identical in a plain dropdown. */}
+          {order.status === 'pending' && order.payment_method !== 'cod' && (
+            <div className="mb-1 w-fit rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700">
+              Payment Pending
+            </div>
+          )}
+          {order.status === 'paid' && (
+            <div className="mb-1 w-fit rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+              Paid
+            </div>
+          )}
           <select
             value={order.status}
             onChange={(e) => onChangeStatus(order.id, e.target.value)}

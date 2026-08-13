@@ -443,6 +443,31 @@ export function cartRecoveryEmail(cart: { items: any[]; cart_value: number }) {
   return { subject, html };
 }
 
+// Unlike cartRecoveryEmail (sent when someone never even reaches checkout),
+// this is for an order that WAS created -- stock reserved, address saved --
+// but the Razorpay popup was closed/abandoned before payment finished. The
+// link goes straight to a resume page for THIS exact order (not /cart), so
+// the customer doesn't have to rebuild their cart or re-enter their address.
+export function paymentReminderEmail(order: { id: string; items: any[]; total_amount: number; customer_name?: string }) {
+  const subject = `Your order is waiting — complete your payment`;
+  const resumeUrl = `${process.env.NEXT_PUBLIC_SITE_URL || ''}/checkout/resume/${order.id}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Almost there${order.customer_name ? `, ${order.customer_name}` : ''}!</h2>
+    <p>We've saved your order below, but the payment didn't go through. No need to start over — just complete the payment to confirm it.</p>
+    ${itemsTable(order.items)}
+    <p style="text-align:right; font-size:16px; font-weight:bold;">Order total: ${formatINR(order.total_amount)}</p>
+    <p style="text-align:center; margin-top: 20px;">
+      <a href="${resumeUrl}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+        Complete your payment
+      </a>
+    </p>
+    <p style="text-align:center; font-size:12px; color:#9a8f87; margin-top:16px;">
+      If you've changed your mind, you can simply ignore this email — nothing further will be charged.
+    </p>
+  `);
+  return { subject, html };
+}
+
 export function welcomeSeriesEmail(user: { full_name?: string; coupon_code?: string }) {
   const subject = `Welcome to ${SITE_NAME}${user.coupon_code ? " — here's 10% off" : ''}`;
   const html = wrapper(`

@@ -25,6 +25,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { sendEmail } from '@/lib/email';
 import {
   cartRecoveryEmail,
+  paymentReminderEmail,
   welcomeSeriesEmail,
   winbackEmail,
   vendorProductLiveEmail,
@@ -81,6 +82,50 @@ export async function runAbandonedCartsJob() {
   }
 
   return { checked: carts?.length || 0, sent };
+}
+
+// ------------------------- Payment reminder (abandoned online orders) -------------------------
+// Different from runAbandonedCartsJob above: that one fires for carts that
+// never reached checkout (no `orders` row yet). This one fires for orders
+// that DID get created by place_order_with_items() -- stock reserved,
+// address saved, razorpay_order_id issued -- but the customer closed the
+// Razorpay popup (or their payment failed) and never retried. Those orders
+// sit at status: 'pending' forever with no follow-up otherwise.
+export async function runPaymentReminderJob() {
+  const supabase = getSupabaseAdmin();
+  const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+
+  const { data: orders, error } = await supabase
+    .from('orders')
+    .select('id, items, total_amount, customer_name, customer_email, created_at')
+    .eq('status', 'pending')
+    .neq('payment_method', 'cod')
+    .not('razorpay_order_id', 'is', null)
+    .not('customer_email', 'is', null)
+    .is('payment_reminder_sent_at', null)
+    .lte('created_at', thirtyMinAgo);
+
+  if (error) throw error;
+
+  let sent = 0;
+  for (const order of orders || []) {
+    const { subject, html } = paymentReminderEmail({
+      id: order.id,
+      items: Array.isArray(order.items) ? order.items : [],
+      total_amount: order.total_amount,
+      customer_name: order.customer_name,
+    });
+    const result = await sendEmail({ to: order.customer_email as string, subject, html });
+    if (result.success) {
+      await supabase
+        .from('orders')
+        .update({ payment_reminder_sent_at: new Date().toISOString() })
+        .eq('id', order.id);
+      sent++;
+    }
+  }
+
+  return { checked: orders?.length || 0, sent };
 }
 
 // ----------------------------- Email automation -----------------------------

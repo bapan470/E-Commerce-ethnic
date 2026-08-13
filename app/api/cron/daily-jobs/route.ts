@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import {
   runAbandonedCartsJob,
+  runPaymentReminderJob,
   runEmailAutomationJob,
   runVendorReturnTimersJob,
   runVendorStockHoldScanJob,
@@ -52,6 +53,14 @@ export async function GET(req: Request) {
     results.abandonedCarts = await runAbandonedCartsJob();
   } catch (err: any) {
     results.abandonedCarts = { error: err?.message || 'Failed' };
+  }
+
+  try {
+    // Fallback only — for near-real-time reminders, /api/cron/payment-reminders
+    // should be hit every 15-30 min by an external scheduler (see that route).
+    results.paymentReminders = await runPaymentReminderJob();
+  } catch (err: any) {
+    results.paymentReminders = { error: err?.message || 'Failed' };
   }
 
   try {
