@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { setGtagUserData } from '@/lib/gtag-track';
 
 interface PurchaseTrackerItem {
   product_id: string | null;
@@ -16,6 +17,15 @@ interface PurchaseTrackerProps {
   tax?: number;
   couponCode?: string | null;
   items: PurchaseTrackerItem[];
+  // Enhanced Conversions — customer data used to improve conversion
+  // match rate in Google Ads. All optional; omit whatever isn't
+  // available and Google Ads will use what it gets.
+  customerEmail?: string | null;
+  customerPhone?: string | null;
+  customerName?: string | null;
+  shippingCity?: string | null;
+  shippingState?: string | null;
+  shippingPostalCode?: string | null;
 }
 
 /**
@@ -38,6 +48,12 @@ export default function PurchaseTracker({
   tax,
   couponCode,
   items,
+  customerEmail,
+  customerPhone,
+  customerName,
+  shippingCity,
+  shippingState,
+  shippingPostalCode,
 }: PurchaseTrackerProps) {
   useEffect(() => {
     const dedupeKey = `ga4_purchase_${orderId}`;
@@ -54,6 +70,21 @@ export default function PurchaseTracker({
     const tryFire = () => {
       const gtag = (window as any).gtag;
       if (typeof gtag === 'function') {
+        // Enhanced Conversions: set customer data *before* firing the
+        // conversion event so this "purchase" carries it. gtag.js hashes
+        // email/phone (SHA256) itself — we send plain values.
+        const [firstName, ...rest] = (customerName ?? '').trim().split(/\s+/).filter(Boolean);
+        const lastName = rest.join(' ') || undefined;
+        setGtagUserData({
+          email: customerEmail,
+          phone: customerPhone,
+          firstName: firstName || undefined,
+          lastName,
+          city: shippingCity,
+          region: shippingState,
+          postalCode: shippingPostalCode,
+        });
+
         gtag('event', 'purchase', {
           transaction_id: orderId,
           value,
@@ -85,7 +116,20 @@ export default function PurchaseTracker({
     tryFire();
 
     return () => clearTimeout(timer);
-  }, [orderId, value, shipping, tax, couponCode, items]);
+  }, [
+    orderId,
+    value,
+    shipping,
+    tax,
+    couponCode,
+    items,
+    customerEmail,
+    customerPhone,
+    customerName,
+    shippingCity,
+    shippingState,
+    shippingPostalCode,
+  ]);
 
   return null;
 }

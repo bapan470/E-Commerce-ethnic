@@ -39,6 +39,12 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
           price: item.price,
           quantity: item.quantity,
         }))}
+        customerEmail={order.customer_email}
+        customerPhone={order.customer_phone}
+        customerName={order.customer_name}
+        shippingCity={addr?.city ?? null}
+        shippingState={addr?.state ?? null}
+        shippingPostalCode={addr?.pincode ?? null}
       />
       <TrustpilotInvitation
         orderId={order.id}
