@@ -36,6 +36,7 @@ import {
   PincodeResult,
 } from '@/lib/pincode-api';
 import { trackEvent, getSessionId } from '@/lib/track-api';
+import { fireGtagEvent } from '@/lib/gtag-track';
 import {
   CheckoutBumpSettings,
   DEFAULT_CHECKOUT_BUMP_SETTINGS,
@@ -634,19 +635,18 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (items.length > 0) {
       trackEvent('checkout_start', { metadata: { itemCount: items.length, cartValue: subtotal } });
-      // Fire GA4 / Google Ads begin_checkout event
-      if (typeof window !== 'undefined' && typeof (window as any).gtag === 'function') {
-        (window as any).gtag('event', 'begin_checkout', {
-          currency: 'INR',
-          value: subtotal,
-          items: items.map((item) => ({
-            item_id: item.product.id,
-            item_name: item.product.name,
-            price: item.product.price,
-            quantity: item.quantity ?? 1,
-          })),
-        });
-      }
+      // Fire GA4 / Google Ads begin_checkout event (retries if gtag.js
+      // hasn't finished loading yet — see lib/gtag-track.ts)
+      fireGtagEvent('begin_checkout', {
+        currency: 'INR',
+        value: subtotal,
+        items: items.map((item) => ({
+          item_id: item.product.id,
+          item_name: item.product.name,
+          price: item.product.price,
+          quantity: item.quantity ?? 1,
+        })),
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

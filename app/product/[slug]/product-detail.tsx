@@ -16,6 +16,7 @@ import { fetchProductBySlug } from '@/lib/products-api';
 import { fetchVariantBySlug, fetchVariantsForProduct, ProductVariant, VariantWithSizes } from '@/lib/variants-api';
 import { Product } from '@/lib/types';
 import { formatINR, discountPct } from '@/lib/format';
+import { fireGtagEvent } from '@/lib/gtag-track';
 import {
   FulfillmentSettings,
   DEFAULT_FULFILLMENT_SETTINGS,
@@ -535,20 +536,19 @@ export default function ProductDetail() {
       userId: user?.id ?? null,
       metadata: { size: selectedSize, quantity, color: product.colors?.[0] ?? null },
     });
-    // Fire GA4 / Google Ads add_to_cart event
-    if (typeof window !== 'undefined' && typeof (window as any).gtag === 'function') {
-      (window as any).gtag('event', 'add_to_cart', {
-        currency: 'INR',
-        value: selectedSizePrice * quantity,
-        items: [{
-          item_id: product.id,
-          item_name: product.name,
-          item_category: product.category ?? '',
-          price: selectedSizePrice,
-          quantity,
-        }],
-      });
-    }
+    // Fire GA4 / Google Ads add_to_cart event (retries if gtag.js hasn't
+    // finished loading yet — see lib/gtag-track.ts)
+    fireGtagEvent('add_to_cart', {
+      currency: 'INR',
+      value: selectedSizePrice * quantity,
+      items: [{
+        item_id: product.id,
+        item_name: product.name,
+        item_category: product.category ?? '',
+        price: selectedSizePrice,
+        quantity,
+      }],
+    });
   };
 
   const handleBuyNow = () => {
@@ -579,20 +579,19 @@ export default function ProductDetail() {
       userId: user?.id ?? null,
       metadata: { size: selectedSize, quantity, color: product.colors?.[0] ?? null, via: 'buy_now' },
     });
-    // Fire GA4 / Google Ads add_to_cart event (Buy Now path)
-    if (typeof window !== 'undefined' && typeof (window as any).gtag === 'function') {
-      (window as any).gtag('event', 'add_to_cart', {
-        currency: 'INR',
-        value: selectedSizePrice * quantity,
-        items: [{
-          item_id: product.id,
-          item_name: product.name,
-          item_category: product.category ?? '',
-          price: selectedSizePrice,
-          quantity,
-        }],
-      });
-    }
+    // Fire GA4 / Google Ads add_to_cart event (Buy Now path, retries if
+    // gtag.js hasn't finished loading yet — see lib/gtag-track.ts)
+    fireGtagEvent('add_to_cart', {
+      currency: 'INR',
+      value: selectedSizePrice * quantity,
+      items: [{
+        item_id: product.id,
+        item_name: product.name,
+        item_category: product.category ?? '',
+        price: selectedSizePrice,
+        quantity,
+      }],
+    });
     markCheckoutEntry({ fromBuyNow: true });
     router.push('/checkout');
   };
