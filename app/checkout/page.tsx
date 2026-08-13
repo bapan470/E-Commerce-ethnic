@@ -632,8 +632,17 @@ export default function CheckoutPage() {
   };
 
   // Log the funnel step once — used by Admin > Analytics for conversion rate.
+  //
+  // items comes from the cart context, which hydrates from localStorage in
+  // its own effect *after* mount — so on first render items.length is 0
+  // even when the cart genuinely has items. A [] dependency array here
+  // would fire this exactly once, at that moment, and never again. We
+  // depend on items.length instead (so it re-runs once hydration lands)
+  // and guard with a ref so it still only actually fires once.
+  const beginCheckoutFiredRef = useRef(false);
   useEffect(() => {
-    if (items.length > 0) {
+    if (items.length > 0 && !beginCheckoutFiredRef.current) {
+      beginCheckoutFiredRef.current = true;
       trackEvent('checkout_start', { metadata: { itemCount: items.length, cartValue: subtotal } });
       // Fire GA4 / Google Ads begin_checkout event (retries if gtag.js
       // hasn't finished loading yet — see lib/gtag-track.ts)
@@ -649,7 +658,7 @@ export default function CheckoutPage() {
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [items.length]);
 
   const shipping =
     shippingSettings.free_shipping_threshold > 0 &&
