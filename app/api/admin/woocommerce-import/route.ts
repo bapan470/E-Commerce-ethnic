@@ -34,9 +34,16 @@ export async function GET() {
     // upserted -- the data was already correct in the DB, just truncated
     // on the way out. 20,000 comfortably covers any realistic store size;
     // if that's ever not enough, switch this to real cursor pagination.
+    // Only select the columns the admin panel actually renders. The table
+    // has extra WooCommerce billing/address columns imported for record-
+    // keeping that the UI never reads -- select('*') was shipping all of
+    // that (per row, x up to 20,000 rows, on every panel load) as pure
+    // wasted egress. This trims the payload significantly.
     const { data, error } = await supabase
       .from('woocommerce_customers')
-      .select('*')
+      .select(
+        'id, wc_customer_id, name, email, phone, source, source_store_url, imported_at, opted_out, opted_out_at'
+      )
       .order('imported_at', { ascending: false })
       .range(0, 19999);
     if (error) throw error;

@@ -87,10 +87,42 @@ export default function NotificationBell({ onNavigate }: NotificationBellProps) 
 
   // Poll for "live" updates. This keeps the badge fresh without needing a
   // websocket/Realtime subscription wired up.
+  //
+  // IMPORTANT: this used to poll every 20s unconditionally, including while
+  // the admin tab sat open-but-unfocused in the background for hours. That
+  // silent background polling was a major contributor to monthly Supabase
+  // egress usage. It now pauses while the tab is hidden and immediately
+  // refreshes + resumes polling the moment it becomes visible again.
   useEffect(() => {
-    fetchNotifications();
-    const id = setInterval(fetchNotifications, POLL_INTERVAL_MS);
-    return () => clearInterval(id);
+    let id: ReturnType<typeof setInterval> | null = null;
+
+    const start = () => {
+      if (id) return;
+      fetchNotifications();
+      id = setInterval(fetchNotifications, POLL_INTERVAL_MS);
+    };
+
+    const stop = () => {
+      if (!id) return;
+      clearInterval(id);
+      id = null;
+    };
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        stop();
+      } else {
+        start();
+      }
+    };
+
+    if (!document.hidden) start();
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      stop();
+    };
   }, [fetchNotifications]);
 
   const unreadCount = notifications.filter((n) => new Date(n.created_at).getTime() > lastSeen).length;
