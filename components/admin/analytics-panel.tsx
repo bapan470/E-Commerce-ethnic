@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -157,6 +158,7 @@ const PERF_WINDOW_OPTIONS: { value: PerfWindow; label: string; group: 'hour' | '
 const PERF_PAGE_SIZE = 8;
 
 function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChange: (r: SimpleRange) => void }) {
+  const router = useRouter();
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [perfWindow, setPerfWindow] = useState<PerfWindow>('30d');
@@ -249,6 +251,13 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
       ? new Date(`${dataRange.from}T00:00:00`).toLocaleDateString('en-IN', { dateStyle: 'medium' })
       : `${dataRange.days} days`;
 
+  // Smoothly scrolls an in-page section into view -- used by the summary
+  // cards above so clicking e.g. "Revenue" jumps straight to the chart that
+  // explains it, instead of the click doing nothing.
+  const scrollToSection = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   return (
     <div className="grid gap-6">
       {/* Summary cards */}
@@ -258,53 +267,61 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
           label="Revenue"
           sublabel={rangeLabel}
           value={formatINR(summary.totalRevenue)}
+          onClick={() => scrollToSection('analytics-sales-trend')}
         />
         <SummaryCard
           icon={<ShoppingBag className="h-4 w-4" />}
           label="Orders"
           sublabel={rangeLabel}
           value={String(summary.orderCount)}
+          onClick={() => router.push('/admin?section=orders')}
         />
         <SummaryCard
           icon={<Receipt className="h-4 w-4" />}
           label="Avg. order value"
           sublabel={rangeLabel}
           value={formatINR(summary.avgOrderValue)}
+          onClick={() => scrollToSection('analytics-sales-trend')}
         />
         <SummaryCard
           icon={<Percent className="h-4 w-4" />}
           label="Conversion rate"
           sublabel={rangeLabel}
           value={`${summary.conversionRate}%`}
+          onClick={() => scrollToSection('analytics-conversion-funnel')}
         />
         <SummaryCard
           icon={<ShoppingCart className="h-4 w-4" />}
           label="Add to cart"
           sublabel={rangeLabel}
           value={String(addToCartSessions)}
+          onClick={() => scrollToSection('analytics-product-performance')}
         />
         <SummaryCard
           icon={<CreditCard className="h-4 w-4" />}
           label="Begin checkout"
           sublabel={rangeLabel}
           value={String(checkoutSessions)}
+          onClick={() => scrollToSection('analytics-product-performance')}
         />
         <SummaryCard
           icon={<CheckCircle2 className="h-4 w-4" />}
           label="Purchase"
           sublabel={rangeLabel}
           value={String(purchaseSessions)}
+          onClick={() => scrollToSection('analytics-product-performance')}
         />
         <SummaryCard
           icon={<PackageX className="h-4 w-4" />}
           label="Low stock"
           value={String(summary.lowStockCount)}
           tone={summary.lowStockCount > 0 ? 'warn' : undefined}
+          onClick={() => router.push('/admin?section=restock-alerts')}
         />
       </div>
 
       {/* Sales trend + exact order time & price */}
-      <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+      <div id="analytics-sales-trend" className="scroll-mt-4 rounded-xl border border-border/60 bg-card p-4 shadow-sm">
         <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-serif text-lg font-bold text-primary">Sales Trend & Orders — {rangeLabel}</h3>
         </div>
@@ -366,7 +383,7 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
         </div>
 
         {/* Conversion funnel */}
-        <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+        <div id="analytics-conversion-funnel" className="scroll-mt-4 rounded-xl border border-border/60 bg-card p-4 shadow-sm">
           <h3 className="mb-3 font-serif text-lg font-bold text-primary">Conversion Funnel — {rangeLabel}</h3>
           <ResponsiveContainer width="100%" height={280}>
             <FunnelChart>
@@ -383,7 +400,7 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
       </div>
 
       {/* Product performance: Impressions vs Conversion */}
-      <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+      <div id="analytics-product-performance" className="scroll-mt-4 rounded-xl border border-border/60 bg-card p-4 shadow-sm">
         <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-serif text-lg font-bold text-primary">Product Performance</h3>
           <div className="flex items-center gap-2">
@@ -552,18 +569,23 @@ function SummaryCard({
   sublabel,
   value,
   tone,
+  onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   sublabel?: string;
   value: string;
   tone?: 'warn';
+  onClick?: () => void;
 }) {
+  const Tag = onClick ? 'button' : 'div';
   return (
-    <div
-      className={`rounded-xl border p-4 shadow-sm ${
+    <Tag
+      onClick={onClick}
+      type={onClick ? 'button' : undefined}
+      className={`rounded-xl border p-4 text-left shadow-sm transition-all ${
         tone === 'warn' ? 'border-amber-300 bg-amber-50' : 'border-border/60 bg-card'
-      }`}
+      } ${onClick ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md hover:border-primary/50' : ''}`}
     >
       <div className="flex items-center justify-between text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
@@ -573,7 +595,7 @@ function SummaryCard({
         {sublabel && <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px]">{sublabel}</span>}
       </div>
       <p className="mt-2 text-xl font-semibold">{value}</p>
-    </div>
+    </Tag>
   );
 }
 
