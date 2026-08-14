@@ -16,7 +16,7 @@ import {
   LabelList,
   Cell,
 } from 'recharts';
-import { AlertTriangle, TrendingUp, ShoppingBag, Percent, PackageX, BarChart3, Wifi, Receipt, Search } from 'lucide-react';
+import { AlertTriangle, TrendingUp, ShoppingBag, Percent, PackageX, BarChart3, Wifi, Receipt, Search, ShoppingCart, CreditCard, CheckCircle2 } from 'lucide-react';
 import { format, startOfDay, endOfDay, subDays } from 'date-fns';
 import { fetchAnalytics, AnalyticsData } from '@/lib/analytics-api';
 import { formatINR } from '@/lib/format';
@@ -198,6 +198,12 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
 
   const { summary, salesTrend, orders, topProducts, funnel, lowStock, productPerformance, range: dataRange } = data;
 
+  // Pull the three requested funnel stages out by name so the summary cards
+  // stay correct even if the stage order in the API response ever changes.
+  const addToCartSessions = funnel.find((f) => f.stage === 'Added to cart')?.sessions ?? 0;
+  const checkoutSessions = funnel.find((f) => f.stage === 'Started checkout')?.sessions ?? 0;
+  const purchaseSessions = funnel.find((f) => f.stage === 'Purchased')?.sessions ?? 0;
+
   // Bars: one per day in the selected range, showing that day's total revenue.
   const dayData = salesTrend.map((d) => ({ date: d.date, revenue: d.revenue }));
   // Dots: one per order, positioned on the same day-bucket, at its exact price —
@@ -217,7 +223,7 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
   return (
     <div className="grid gap-6">
       {/* Summary cards */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 xl:grid-cols-8">
         <SummaryCard
           icon={<TrendingUp className="h-4 w-4" />}
           label="Revenue"
@@ -241,6 +247,24 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
           label="Conversion rate"
           sublabel={rangeLabel}
           value={`${summary.conversionRate}%`}
+        />
+        <SummaryCard
+          icon={<ShoppingCart className="h-4 w-4" />}
+          label="Add to cart"
+          sublabel={rangeLabel}
+          value={String(addToCartSessions)}
+        />
+        <SummaryCard
+          icon={<CreditCard className="h-4 w-4" />}
+          label="Begin checkout"
+          sublabel={rangeLabel}
+          value={String(checkoutSessions)}
+        />
+        <SummaryCard
+          icon={<CheckCircle2 className="h-4 w-4" />}
+          label="Purchase"
+          sublabel={rangeLabel}
+          value={String(purchaseSessions)}
         />
         <SummaryCard
           icon={<PackageX className="h-4 w-4" />}

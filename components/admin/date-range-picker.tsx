@@ -2,7 +2,16 @@
 
 import { useState } from 'react';
 import { CalendarDays, ChevronDown } from 'lucide-react';
-import { format, startOfMonth, endOfMonth, subMonths, subDays, startOfDay, endOfDay, isSameDay } from 'date-fns';
+import {
+  format,
+  startOfMonth,
+  endOfMonth,
+  subMonths,
+  subDays,
+  subHours,
+  startOfDay,
+  endOfDay,
+} from 'date-fns';
 import type { DateRange } from 'react-day-picker';
 
 import { Calendar } from '@/components/ui/calendar';
@@ -15,7 +24,21 @@ export interface SimpleRange {
   to: Date;
 }
 
-const PRESETS: { label: string; getRange: () => SimpleRange }[] = [
+interface Preset {
+  label: string;
+  getRange: () => SimpleRange;
+}
+
+// Hour-level presets -- kept as exact timestamps (not startOfDay/endOfDay)
+// so "Last 1 hour" etc. actually means the trailing N hours, not the day.
+const HOUR_PRESETS: Preset[] = [
+  { label: 'Last 1 hour', getRange: () => ({ from: subHours(new Date(), 1), to: new Date() }) },
+  { label: 'Last 6 hours', getRange: () => ({ from: subHours(new Date(), 6), to: new Date() }) },
+  { label: 'Last 12 hours', getRange: () => ({ from: subHours(new Date(), 12), to: new Date() }) },
+  { label: 'Last 24 hours', getRange: () => ({ from: subHours(new Date(), 24), to: new Date() }) },
+];
+
+const DAY_PRESETS: Preset[] = [
   { label: 'Today', getRange: () => ({ from: startOfDay(new Date()), to: endOfDay(new Date()) }) },
   {
     label: 'Last 7 days',
@@ -42,10 +65,7 @@ const PRESETS: { label: string; getRange: () => SimpleRange }[] = [
   },
 ];
 
-function matchesPreset(range: SimpleRange, preset: { getRange: () => SimpleRange }) {
-  const p = preset.getRange();
-  return isSameDay(range.from, p.from) && isSameDay(range.to, p.to);
-}
+const DEFAULT_LABEL = 'Last 30 days';
 
 export function DateRangePicker({
   value,
@@ -56,22 +76,29 @@ export function DateRangePicker({
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<DateRange | undefined>({ from: value.from, to: value.to });
+  // Tracked explicitly (rather than diffed from `value`) so hour-level
+  // presets -- whose `to` is `new Date()` at click time -- still show the
+  // right active label instead of falling back to a raw timestamp range.
+  const [activeLabel, setActiveLabel] = useState<string>(DEFAULT_LABEL);
 
-  const activePreset = PRESETS.find((p) => matchesPreset(value, p));
-  const label = activePreset
-    ? activePreset.label
-    : `${format(value.from, 'dd MMM yyyy')} – ${format(value.to, 'dd MMM yyyy')}`;
+  const isHourRange = HOUR_PRESETS.some((p) => p.label === activeLabel);
+  const label =
+    activeLabel === 'Custom'
+      ? `${format(value.from, 'dd MMM, HH:mm')} – ${format(value.to, 'dd MMM, HH:mm')}`
+      : activeLabel;
 
-  function applyPreset(preset: (typeof PRESETS)[number]) {
+  function applyPreset(preset: Preset) {
     const range = preset.getRange();
     setDraft(range);
     onChange(range);
+    setActiveLabel(preset.label);
     setOpen(false);
   }
 
   function applyDraft() {
     if (draft?.from) {
       onChange({ from: startOfDay(draft.from), to: endOfDay(draft.to ?? draft.from) });
+      setActiveLabel('Custom');
       setOpen(false);
     }
   }
@@ -97,21 +124,52 @@ export function DateRangePicker({
       </PopoverTrigger>
       <PopoverContent align="end" className="w-auto p-0">
         <div className="flex flex-col sm:flex-row">
-          <div className="flex shrink-0 flex-col gap-0.5 border-b border-border/60 p-2 sm:border-b-0 sm:border-r sm:p-3">
-            {PRESETS.map((preset) => (
-              <button
-                key={preset.label}
-                onClick={() => applyPreset(preset)}
-                className={cn(
-                  'rounded-md px-3 py-1.5 text-left text-xs font-medium transition-colors hover:bg-accent',
-                  matchesPreset(value, preset) ? 'bg-primary/10 text-primary' : 'text-muted-foreground'
-                )}
-              >
-                {preset.label}
-              </button>
-            ))}
+          <div className="flex shrink-0 flex-col gap-2 border-b border-border/60 p-2 sm:border-b-0 sm:border-r sm:p-3 sm:w-44">
+            <div>
+              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                By hour
+              </p>
+              <div className="flex flex-col gap-0.5">
+                {HOUR_PRESETS.map((preset) => (
+                  <button
+                    key={preset.label}
+                    onClick={() => applyPreset(preset)}
+                    className={cn(
+                      'rounded-md px-3 py-1.5 text-left text-xs font-medium transition-colors hover:bg-accent',
+                      activeLabel === preset.label ? 'bg-primary/10 text-primary' : 'text-muted-foreground'
+                    )}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                By day
+              </p>
+              <div className="flex flex-col gap-0.5">
+                {DAY_PRESETS.map((preset) => (
+                  <button
+                    key={preset.label}
+                    onClick={() => applyPreset(preset)}
+                    className={cn(
+                      'rounded-md px-3 py-1.5 text-left text-xs font-medium transition-colors hover:bg-accent',
+                      activeLabel === preset.label ? 'bg-primary/10 text-primary' : 'text-muted-foreground'
+                    )}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           <div className="p-3">
+            {isHourRange && (
+              <p className="mb-2 rounded-md bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                Hour filters use exact timestamps; pick a day range below for calendar selection.
+              </p>
+            )}
             <Calendar
               mode="range"
               defaultMonth={draft?.from}
