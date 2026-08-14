@@ -9,6 +9,7 @@ const DEFAULT_RANGE_DAYS = 30;
 const MAX_RANGE_DAYS = 365;
 const MAX_ORDER_POINTS = 1000;
 const ALLOWED_PERF_DAYS = [7, 30, 90];
+const ALLOWED_PERF_HOURS = [1, 6, 12, 24];
 
 function dayKey(dateStr: string) {
   return new Date(dateStr).toISOString().slice(0, 10);
@@ -59,16 +60,23 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const { from, to, rangeDays } = parseRange(url);
 
-  // `?days=7|30|90` only controls the Product Performance table's window
-  // below -- it's independent of the `from`/`to` sales-trend date range.
+  // `?days=7|30|90` or `?hours=1|6|12|24` control the Product Performance
+  // table's window below -- independent of the `from`/`to` sales-trend date
+  // range. `hours` takes priority when both are present.
+  const requestedHours = Number(url.searchParams.get('hours'));
   const requestedDays = Number(url.searchParams.get('days'));
-  const perfDays = ALLOWED_PERF_DAYS.includes(requestedDays) ? requestedDays : DEFAULT_RANGE_DAYS;
+  const perfHours = ALLOWED_PERF_HOURS.includes(requestedHours) ? requestedHours : null;
+  const perfDays = perfHours ? null : ALLOWED_PERF_DAYS.includes(requestedDays) ? requestedDays : DEFAULT_RANGE_DAYS;
 
   try {
     const supabase = getSupabaseAdmin();
 
     const perfSince = new Date();
-    perfSince.setDate(perfSince.getDate() - perfDays);
+    if (perfHours) {
+      perfSince.setHours(perfSince.getHours() - perfHours);
+    } else {
+      perfSince.setDate(perfSince.getDate() - (perfDays as number));
+    }
 
     // Fetch events far enough back to cover whichever window is larger, then
     // filter in-memory per section below so a wider Product Performance
@@ -214,12 +222,20 @@ export async function GET(req: Request) {
         in_stock: p.in_stock,
       }));
 
-    // ---------------- Product performance: Impressions vs Conversion (perfDays window) ----------------
+    // ---------------- Product performance: Impressions vs Conversion (perfDays/perfHours window) ----------------
     const eventsInPerfWindow = events.filter((ev) => ev.created_at && new Date(ev.created_at) >= perfSince);
     const productViewCounts = new Map<string, number>();
+    const productAddToCartCounts = new Map<string, number>();
+    const productCheckoutStartCounts = new Map<string, number>();
     for (const ev of eventsInPerfWindow) {
-      if (ev.event_type !== 'product_view' || !ev.product_id) continue;
-      productViewCounts.set(ev.product_id, (productViewCounts.get(ev.product_id) ?? 0) + 1);
+      if (!ev.product_id) continue;
+      if (ev.event_type === 'product_view') {
+        productViewCounts.set(ev.product_id, (productViewCounts.get(ev.product_id) ?? 0) + 1);
+      } else if (ev.event_type === 'add_to_cart') {
+        productAddToCartCounts.set(ev.product_id, (productAddToCartCounts.get(ev.product_id) ?? 0) + 1);
+      } else if (ev.event_type === 'checkout_start') {
+        productCheckoutStartCounts.set(ev.product_id, (productCheckoutStartCounts.get(ev.product_id) ?? 0) + 1);
+      }
     }
     const productPurchaseCounts = new Map<string, number>();
     for (const o of orders) {
@@ -236,19 +252,24 @@ export async function GET(req: Request) {
     const productPerformance = products
       .map((p) => {
         const impressions = productViewCounts.get(p.id) ?? 0;
-        const conversions = productPurchaseCounts.get(p.id) ?? 0;
+        const addToCart = productAddToCartCounts.get(p.id) ?? 0;
+        const beginCheckout = productCheckoutStartCounts.get(p.id) ?? 0;
+        const purchases = productPurchaseCounts.get(p.id) ?? 0;
         return {
           productId: p.id,
           name: p.name,
           image: p.images?.[0] ?? null,
           impressions,
-          conversions,
-          conversionRate: impressions > 0 ? Number(((conversions / impressions) * 100).toFixed(2)) : 0,
+          addToCart,
+          beginCheckout,
+          purchases,
+          conversions: purchases,
+          conversionRate: impressions > 0 ? Number(((purchases / impressions) * 100).toFixed(2)) : 0,
         };
       })
-      .filter((p) => p.impressions > 0)
+      .filter((p) => p.impressions > 0 || p.addToCart > 0 || p.beginCheckout > 0 || p.purchases > 0)
       .sort((a, b) => b.impressions - a.impressions)
-      .slice(0, 25);
+      .slice(0, 50);
 
     return NextResponse.json({
       summary: {
@@ -270,6 +291,7 @@ export async function GET(req: Request) {
       lowStock,
       productPerformance,
       productPerformanceDays: perfDays,
+      productPerformanceHours: perfHours,
     });
   } catch (err) {
     return NextResponse.json({ error: 'Failed to load analytics' }, { status: 500 });

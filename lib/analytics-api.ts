@@ -31,6 +31,12 @@ export interface ProductPerformance {
   name: string;
   image: string | null;
   impressions: number;
+  /** sessions that added this product to cart, within the window */
+  addToCart: number;
+  /** sessions that reached checkout with this product in cart, within the window */
+  beginCheckout: number;
+  /** completed orders containing this product, within the window */
+  purchases: number;
   conversions: number;
   conversionRate: number;
 }
@@ -65,7 +71,8 @@ export interface AnalyticsData {
   funnel: FunnelStage[];
   lowStock: LowStockProduct[];
   productPerformance: ProductPerformance[];
-  productPerformanceDays: number;
+  productPerformanceDays: number | null;
+  productPerformanceHours: number | null;
 }
 
 export interface FetchAnalyticsOptions {
@@ -75,13 +82,19 @@ export interface FetchAnalyticsOptions {
   to?: string;
   /** window (7 | 30 | 90) for the Product Performance table only */
   productPerformanceDays?: number;
+  /** window (1 | 6 | 12 | 24) for the Product Performance table only -- takes priority over productPerformanceDays when set */
+  productPerformanceHours?: number;
 }
 
 export async function fetchAnalytics(options: FetchAnalyticsOptions = {}): Promise<AnalyticsData> {
   const params = new URLSearchParams();
   if (options.from) params.set('from', options.from);
   if (options.to) params.set('to', options.to);
-  if (options.productPerformanceDays) params.set('days', String(options.productPerformanceDays));
+  if (options.productPerformanceHours) {
+    params.set('hours', String(options.productPerformanceHours));
+  } else if (options.productPerformanceDays) {
+    params.set('days', String(options.productPerformanceDays));
+  }
   const qs = params.toString();
   const res = await fetch(`/api/admin/analytics${qs ? `?${qs}` : ''}`);
   if (!res.ok) {

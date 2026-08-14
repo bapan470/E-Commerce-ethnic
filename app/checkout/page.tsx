@@ -643,7 +643,18 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (items.length > 0 && !beginCheckoutFiredRef.current) {
       beginCheckoutFiredRef.current = true;
-      trackEvent('checkout_start', { metadata: { itemCount: items.length, cartValue: subtotal } });
+      // Fire one checkout_start event per cart item (each tagged with its
+      // productId) instead of a single cart-level event, so Admin >
+      // Analytics > Product Performance can show a per-product "Begin
+      // checkout" count. The session-level funnel is unaffected — it only
+      // checks whether *any* checkout_start event exists for the session,
+      // so firing several here doesn't inflate that count.
+      items.forEach((item) => {
+        trackEvent('checkout_start', {
+          productId: item.product.id,
+          metadata: { itemCount: items.length, cartValue: subtotal, quantity: item.quantity ?? 1 },
+        });
+      });
       // Fire GA4 / Google Ads begin_checkout event (retries if gtag.js
       // hasn't finished loading yet — see lib/gtag-track.ts)
       fireGtagEvent('begin_checkout', {

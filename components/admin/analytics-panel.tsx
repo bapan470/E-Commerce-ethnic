@@ -134,12 +134,35 @@ function SalesTooltip({ active, payload, label }: any) {
 
 // ── Sales panel (existing analytics) ─────────────────────────────────────
 
+// Token like '1h' | '6h' | '12h' | '24h' | '7d' | '30d' | '90d' -- one value
+// that drives the Product Performance window dropdown, mapped below to
+// either the `hours` or `days` param fetchAnalytics expects.
+type PerfWindow = `${number}h` | `${number}d`;
+
+function perfWindowToParams(w: PerfWindow): { productPerformanceHours?: number; productPerformanceDays?: number } {
+  if (w.endsWith('h')) return { productPerformanceHours: Number(w.slice(0, -1)) };
+  return { productPerformanceDays: Number(w.slice(0, -1)) };
+}
+
+const PERF_WINDOW_OPTIONS: { value: PerfWindow; label: string; group: 'hour' | 'day' }[] = [
+  { value: '1h', label: 'Last 1 hour', group: 'hour' },
+  { value: '6h', label: 'Last 6 hours', group: 'hour' },
+  { value: '12h', label: 'Last 12 hours', group: 'hour' },
+  { value: '24h', label: 'Last 24 hours', group: 'hour' },
+  { value: '7d', label: 'Last 7 days', group: 'day' },
+  { value: '30d', label: 'Last 30 days', group: 'day' },
+  { value: '90d', label: 'Last 90 days', group: 'day' },
+];
+
+const PERF_PAGE_SIZE = 8;
+
 function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChange: (r: SimpleRange) => void }) {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [perfDays, setPerfDays] = useState(30);
+  const [perfWindow, setPerfWindow] = useState<PerfWindow>('30d');
   const [perfSearch, setPerfSearch] = useState('');
   const [perfLoading, setPerfLoading] = useState(false);
+  const [perfVisibleCount, setPerfVisibleCount] = useState(PERF_PAGE_SIZE);
 
   // Refetch the whole dashboard whenever the top-right date range changes.
   useEffect(() => {
@@ -147,7 +170,7 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
     fetchAnalytics({
       from: format(range.from, 'yyyy-MM-dd'),
       to: format(range.to, 'yyyy-MM-dd'),
-      productPerformanceDays: perfDays,
+      ...perfWindowToParams(perfWindow),
     })
       .then(setData)
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load analytics'))
@@ -161,22 +184,28 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
   useEffect(() => {
     if (!data) return; // wait for the initial full load above
     setPerfLoading(true);
+    setPerfVisibleCount(PERF_PAGE_SIZE);
     fetchAnalytics({
       from: format(range.from, 'yyyy-MM-dd'),
       to: format(range.to, 'yyyy-MM-dd'),
-      productPerformanceDays: perfDays,
+      ...perfWindowToParams(perfWindow),
     })
       .then((res) =>
         setData((prev) =>
           prev
-            ? { ...prev, productPerformance: res.productPerformance, productPerformanceDays: res.productPerformanceDays }
+            ? {
+                ...prev,
+                productPerformance: res.productPerformance,
+                productPerformanceDays: res.productPerformanceDays,
+                productPerformanceHours: res.productPerformanceHours,
+              }
             : res
         )
       )
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load product performance'))
       .finally(() => setPerfLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [perfDays]);
+  }, [perfWindow]);
 
   if (loading) {
     return (
@@ -359,25 +388,40 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
           <h3 className="font-serif text-lg font-bold text-primary">Product Performance</h3>
           <div className="flex items-center gap-2">
             <select
-              value={perfDays}
-              onChange={(e) => setPerfDays(Number(e.target.value))}
+              value={perfWindow}
+              onChange={(e) => setPerfWindow(e.target.value as PerfWindow)}
               className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs"
             >
-              <option value={7}>Last 7 days</option>
-              <option value={30}>Last 30 days</option>
-              <option value={90}>Last 90 days</option>
+              <optgroup label="By hour">
+                {PERF_WINDOW_OPTIONS.filter((o) => o.group === 'hour').map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="By day">
+                {PERF_WINDOW_OPTIONS.filter((o) => o.group === 'day').map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </optgroup>
             </select>
             <input
               type="text"
               value={perfSearch}
-              onChange={(e) => setPerfSearch(e.target.value)}
+              onChange={(e) => {
+                setPerfSearch(e.target.value);
+                setPerfVisibleCount(PERF_PAGE_SIZE);
+              }}
               placeholder="Search product..."
               className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs"
             />
           </div>
         </div>
         <p className="mb-3 text-xs text-muted-foreground">
-          Impressions = product page views. Conversion = % of those views that led to an order containing this product.
+          Impressions = product page views. Add to cart / Begin checkout / Purchase = how many sessions/orders
+          reached that step with this product. Conversion = % of impressions that led to a purchase.
         </p>
         {(() => {
           const filtered = productPerformance.filter((p) =>
@@ -389,50 +433,70 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
           if (productPerformance.length === 0) {
             return (
               <p className="text-sm text-muted-foreground">
-                No product views recorded in this period yet.
+                No product activity recorded in this period yet.
               </p>
             );
           }
           if (filtered.length === 0) {
             return <p className="text-sm text-muted-foreground">No product matches "{perfSearch}".</p>;
           }
+          const visible = filtered.slice(0, perfVisibleCount);
+          const hasMore = filtered.length > visible.length;
           return (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border/60 text-left text-xs text-muted-foreground">
-                    <th className="pb-2 pr-3 font-medium">Product</th>
-                    <th className="pb-2 pr-3 font-medium">Impressions</th>
-                    <th className="pb-2 font-medium">Conversion</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/40">
-                  {filtered.map((p) => (
-                    <tr key={p.productId}>
-                      <td className="py-2 pr-3">
-                        <div className="flex items-center gap-2">
-                          {p.image ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={p.image} alt={p.name} className="h-8 w-8 rounded-md object-cover" />
-                          ) : (
-                            <div className="h-8 w-8 rounded-md bg-muted" />
-                          )}
-                          <span className="max-w-[220px] truncate font-medium">{p.name}</span>
-                        </div>
-                      </td>
-                      <td className="py-2 pr-3 text-emerald-600">{p.impressions}</td>
-                      <td
-                        className={`py-2 font-medium ${
-                          p.conversionRate > 0 ? 'text-emerald-600' : 'text-destructive'
-                        }`}
-                      >
-                        {p.conversionRate.toFixed(2)}%
-                      </td>
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border/60 text-left text-xs text-muted-foreground">
+                      <th className="pb-2 pr-3 font-medium">Product</th>
+                      <th className="pb-2 pr-3 font-medium">Impressions</th>
+                      <th className="pb-2 pr-3 font-medium">Add to cart</th>
+                      <th className="pb-2 pr-3 font-medium">Begin checkout</th>
+                      <th className="pb-2 pr-3 font-medium">Purchase</th>
+                      <th className="pb-2 font-medium">Conversion</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-border/40">
+                    {visible.map((p) => (
+                      <tr key={p.productId}>
+                        <td className="py-2 pr-3">
+                          <div className="flex items-center gap-2">
+                            {p.image ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={p.image} alt={p.name} className="h-8 w-8 rounded-md object-cover" />
+                            ) : (
+                              <div className="h-8 w-8 rounded-md bg-muted" />
+                            )}
+                            <span className="max-w-[220px] truncate font-medium">{p.name}</span>
+                          </div>
+                        </td>
+                        <td className="py-2 pr-3 text-emerald-600">{p.impressions}</td>
+                        <td className="py-2 pr-3 text-amber-600">{p.addToCart}</td>
+                        <td className="py-2 pr-3 text-sky-600">{p.beginCheckout}</td>
+                        <td className="py-2 pr-3 text-violet-600">{p.purchases}</td>
+                        <td
+                          className={`py-2 font-medium ${
+                            p.conversionRate > 0 ? 'text-emerald-600' : 'text-destructive'
+                          }`}
+                        >
+                          {p.conversionRate.toFixed(2)}%
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {hasMore && (
+                <div className="mt-3 flex justify-center">
+                  <button
+                    onClick={() => setPerfVisibleCount((c) => c + PERF_PAGE_SIZE)}
+                    className="rounded-md border border-border/60 px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  >
+                    Show more ({filtered.length - visible.length} more)
+                  </button>
+                </div>
+              )}
+            </>
           );
         })()}
       </div>
