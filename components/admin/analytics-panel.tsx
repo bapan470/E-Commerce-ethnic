@@ -17,9 +17,10 @@ import {
   LabelList,
   Cell,
 } from 'recharts';
-import { AlertTriangle, TrendingUp, ShoppingBag, Percent, PackageX, BarChart3, Wifi, Receipt, Search, ShoppingCart, CreditCard, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, TrendingUp, ShoppingBag, Percent, PackageX, BarChart3, Wifi, Receipt, Search, ShoppingCart, CreditCard, CheckCircle2, PackagePlus, Loader2 } from 'lucide-react';
 import { format, startOfDay, endOfDay, subDays } from 'date-fns';
 import { fetchAnalytics, AnalyticsData } from '@/lib/analytics-api';
+import { updateProduct, extractErrorMessage } from '@/lib/products-api';
 import { formatINR } from '@/lib/format';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
@@ -156,6 +157,8 @@ const PERF_WINDOW_OPTIONS: { value: PerfWindow; label: string; group: 'hour' | '
 ];
 
 const PERF_PAGE_SIZE = 8;
+const LOW_STOCK_PAGE_SIZE = 8;
+const DEFAULT_RESTOCK_AMOUNT = '10';
 
 function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChange: (r: SimpleRange) => void }) {
   const router = useRouter();
@@ -165,10 +168,15 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
   const [perfSearch, setPerfSearch] = useState('');
   const [perfLoading, setPerfLoading] = useState(false);
   const [perfVisibleCount, setPerfVisibleCount] = useState(PERF_PAGE_SIZE);
+  const [lowStockVisibleCount, setLowStockVisibleCount] = useState(LOW_STOCK_PAGE_SIZE);
+  const [stockEditId, setStockEditId] = useState<string | null>(null);
+  const [stockAddAmount, setStockAddAmount] = useState(DEFAULT_RESTOCK_AMOUNT);
+  const [stockSaving, setStockSaving] = useState(false);
 
   // Refetch the whole dashboard whenever the top-right date range changes.
   useEffect(() => {
     setLoading(true);
+    setLowStockVisibleCount(LOW_STOCK_PAGE_SIZE);
     fetchAnalytics({
       from: format(range.from, 'yyyy-MM-dd'),
       to: format(range.to, 'yyyy-MM-dd'),
@@ -208,6 +216,37 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
       .finally(() => setPerfLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [perfWindow]);
+
+  // Quick "Add stock" action from the Low Stock Alerts list. Updates the
+  // product's stock_quantity via the same admin API the Products panel
+  // uses, then refetches the whole dashboard so the low-stock list,
+  // summary count, and Product Performance table all stay in sync (an item
+  // that's no longer low-stock should simply disappear from the list).
+  const handleAddStock = async (productId: string, currentQty: number) => {
+    const amount = Number(stockAddAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('Enter a valid quantity to add');
+      return;
+    }
+    setStockSaving(true);
+    try {
+      const newQty = currentQty + amount;
+      await updateProduct(productId, { stock_quantity: newQty, in_stock: newQty > 0 });
+      toast.success(`Stock updated to ${newQty}`);
+      setStockEditId(null);
+      setStockAddAmount(DEFAULT_RESTOCK_AMOUNT);
+      const refreshed = await fetchAnalytics({
+        from: format(range.from, 'yyyy-MM-dd'),
+        to: format(range.to, 'yyyy-MM-dd'),
+        ...perfWindowToParams(perfWindow),
+      });
+      setData(refreshed);
+    } catch (err) {
+      toast.error(extractErrorMessage(err, 'Failed to update stock'));
+    } finally {
+      setStockSaving(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -534,29 +573,95 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
         {lowStock.length === 0 ? (
           <p className="text-sm text-muted-foreground">All products are well-stocked.</p>
         ) : (
-          <ul className="divide-y divide-border/40">
-            {lowStock.map((p) => (
-              <li key={p.id} className="flex items-center gap-3 py-2.5">
-                {p.image ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={p.image} alt={p.name} className="h-10 w-10 rounded-md object-cover" />
-                ) : (
-                  <div className="h-10 w-10 rounded-md bg-muted" />
+          (() => {
+            // Lowest stock always first, regardless of the order the API
+            // returned them in.
+            const sorted = [...lowStock].sort((a, b) => a.stock_quantity - b.stock_quantity);
+            const visible = sorted.slice(0, lowStockVisibleCount);
+            const hasMore = sorted.length > visible.length;
+            return (
+              <>
+                <ul className="divide-y divide-border/40">
+                  {visible.map((p) => (
+                    <li key={p.id} className="py-2.5">
+                      <div className="flex items-center gap-3">
+                        {p.image ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={p.image} alt={p.name} className="h-10 w-10 rounded-md object-cover" />
+                        ) : (
+                          <div className="h-10 w-10 rounded-md bg-muted" />
+                        )}
+                        <span className="flex-1 truncate text-sm font-medium">{p.name}</span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                            p.stock_quantity === 0
+                              ? 'bg-destructive/10 text-destructive'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {p.stock_quantity === 0 ? 'Out of stock' : `${p.stock_quantity} left`}
+                        </span>
+                        <span className="hidden text-xs text-muted-foreground sm:inline">
+                          Threshold: {p.low_stock_threshold}
+                        </span>
+                        {stockEditId === p.id ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              min={1}
+                              autoFocus
+                              value={stockAddAmount}
+                              onChange={(e) => setStockAddAmount(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleAddStock(p.id, p.stock_quantity);
+                                if (e.key === 'Escape') setStockEditId(null);
+                              }}
+                              className="w-16 rounded-md border border-border/60 bg-background px-2 py-1 text-xs"
+                            />
+                            <button
+                              onClick={() => handleAddStock(p.id, p.stock_quantity)}
+                              disabled={stockSaving}
+                              className="rounded-md bg-primary px-2 py-1 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
+                            >
+                              {stockSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Save'}
+                            </button>
+                            <button
+                              onClick={() => setStockEditId(null)}
+                              disabled={stockSaving}
+                              className="rounded-md border border-border/60 px-2 py-1 text-xs text-muted-foreground hover:bg-accent"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setStockEditId(p.id);
+                              setStockAddAmount(DEFAULT_RESTOCK_AMOUNT);
+                            }}
+                            className="flex items-center gap-1 rounded-md border border-border/60 px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+                          >
+                            <PackagePlus className="h-3.5 w-3.5" />
+                            Add stock
+                          </button>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                {hasMore && (
+                  <div className="mt-3 flex justify-center">
+                    <button
+                      onClick={() => setLowStockVisibleCount((c) => c + LOW_STOCK_PAGE_SIZE)}
+                      className="rounded-md border border-border/60 px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    >
+                      Show more ({sorted.length - visible.length} more)
+                    </button>
+                  </div>
                 )}
-                <span className="flex-1 text-sm font-medium">{p.name}</span>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                    p.stock_quantity === 0
-                      ? 'bg-destructive/10 text-destructive'
-                      : 'bg-amber-100 text-amber-800'
-                  }`}
-                >
-                  {p.stock_quantity === 0 ? 'Out of stock' : `${p.stock_quantity} left`}
-                </span>
-                <span className="text-xs text-muted-foreground">Threshold: {p.low_stock_threshold}</span>
-              </li>
-            ))}
-          </ul>
+              </>
+            );
+          })()
         )}
       </div>
     </div>

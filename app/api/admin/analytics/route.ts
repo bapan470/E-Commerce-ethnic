@@ -220,7 +220,11 @@ export async function GET(req: Request) {
         stock_quantity: p.stock_quantity,
         low_stock_threshold: p.low_stock_threshold ?? 5,
         in_stock: p.in_stock,
-      }));
+      }))
+      // Explicit sort (rather than relying on the products query's own
+      // ordering) so the lowest-stock item is always first, even if that
+      // upstream ordering ever changes.
+      .sort((a, b) => a.stock_quantity - b.stock_quantity);
 
     // ---------------- Product performance: Impressions vs Conversion (perfDays/perfHours window) ----------------
     const eventsInPerfWindow = events.filter((ev) => ev.created_at && new Date(ev.created_at) >= perfSince);
