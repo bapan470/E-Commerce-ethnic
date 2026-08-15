@@ -17,7 +17,7 @@ import {
   LabelList,
   Cell,
 } from 'recharts';
-import { AlertTriangle, TrendingUp, ShoppingBag, Percent, PackageX, BarChart3, Wifi, Receipt, Search, ShoppingCart, CreditCard, CheckCircle2, PackagePlus, Loader2 } from 'lucide-react';
+import { AlertTriangle, TrendingUp, ShoppingBag, Percent, PackageX, BarChart3, Wifi, Receipt, Search, ShoppingCart, CreditCard, CheckCircle2, PackagePlus, Loader2, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { startOfDay, endOfDay, subDays } from 'date-fns';
 import { fetchAnalytics, AnalyticsData } from '@/lib/analytics-api';
 import { updateProduct, extractErrorMessage } from '@/lib/products-api';
@@ -140,11 +140,55 @@ const PERF_PAGE_SIZE = 8;
 const LOW_STOCK_PAGE_SIZE = 8;
 const DEFAULT_RESTOCK_AMOUNT = '10';
 
+type PerfSortKey = 'name' | 'impressions' | 'addToCart' | 'beginCheckout' | 'purchases' | 'conversionRate';
+
+// Clickable column header with a sort arrow -- same "click to sort,
+// arrow flips between latest-first / earliest-first" pattern used
+// elsewhere in the admin (e.g. Traffic's "Items viewed" column).
+function SortableTh({
+  label,
+  active,
+  dir,
+  onClick,
+  align = 'left',
+}: {
+  label: string;
+  active: boolean;
+  dir: 'asc' | 'desc';
+  onClick: () => void;
+  align?: 'left' | 'right';
+}) {
+  return (
+    <th className={`pb-2 pr-3 font-medium ${align === 'right' ? 'text-right' : 'text-left'}`}>
+      <button
+        type="button"
+        onClick={onClick}
+        className={`inline-flex items-center gap-1 transition-colors hover:text-foreground ${
+          active ? 'text-foreground' : ''
+        }`}
+      >
+        {label}
+        {active ? (
+          dir === 'desc' ? (
+            <ArrowDown className="h-3 w-3" />
+          ) : (
+            <ArrowUp className="h-3 w-3" />
+          )
+        ) : (
+          <ArrowUpDown className="h-3 w-3 opacity-40" />
+        )}
+      </button>
+    </th>
+  );
+}
+
 function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChange: (r: SimpleRange) => void }) {
   const router = useRouter();
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [perfSearch, setPerfSearch] = useState('');
+  const [perfSortKey, setPerfSortKey] = useState<PerfSortKey>('impressions');
+  const [perfSortDir, setPerfSortDir] = useState<'asc' | 'desc'>('desc');
   const [perfVisibleCount, setPerfVisibleCount] = useState(PERF_PAGE_SIZE);
   const [lowStockVisibleCount, setLowStockVisibleCount] = useState(LOW_STOCK_PAGE_SIZE);
   const [stockEditId, setStockEditId] = useState<string | null>(null);
@@ -167,6 +211,19 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range]);
+
+  // Clicking a Product Performance column header: same column again flips
+  // the arrow (desc <-> asc); a new column starts at desc (highest/latest
+  // first), which is what "sort by latest" usually means for count columns.
+  const togglePerfSort = (key: PerfSortKey) => {
+    if (key === perfSortKey) {
+      setPerfSortDir((d) => (d === 'desc' ? 'asc' : 'desc'));
+    } else {
+      setPerfSortKey(key);
+      setPerfSortDir('desc');
+    }
+    setPerfVisibleCount(PERF_PAGE_SIZE);
+  };
 
   // Quick "Add stock" action from the Low Stock Alerts list. Updates the
   // product's stock_quantity via the same admin API the Products panel
@@ -428,20 +485,55 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
           if (filtered.length === 0) {
             return <p className="text-sm text-muted-foreground">No product matches "{perfSearch}".</p>;
           }
-          const visible = filtered.slice(0, perfVisibleCount);
-          const hasMore = filtered.length > visible.length;
+          const sortDirMultiplier = perfSortDir === 'desc' ? -1 : 1;
+          const sorted = [...filtered].sort((a, b) => {
+            if (perfSortKey === 'name') return a.name.localeCompare(b.name) * sortDirMultiplier;
+            return (a[perfSortKey] - b[perfSortKey]) * sortDirMultiplier;
+          });
+          const visible = sorted.slice(0, perfVisibleCount);
+          const hasMore = sorted.length > visible.length;
           return (
             <>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border/60 text-left text-xs text-muted-foreground">
-                      <th className="pb-2 pr-3 font-medium">Product</th>
-                      <th className="pb-2 pr-3 font-medium">Impressions</th>
-                      <th className="pb-2 pr-3 font-medium">Add to cart</th>
-                      <th className="pb-2 pr-3 font-medium">Begin checkout</th>
-                      <th className="pb-2 pr-3 font-medium">Purchase</th>
-                      <th className="pb-2 font-medium">Conversion</th>
+                      <SortableTh
+                        label="Product"
+                        active={perfSortKey === 'name'}
+                        dir={perfSortDir}
+                        onClick={() => togglePerfSort('name')}
+                      />
+                      <SortableTh
+                        label="Impressions"
+                        active={perfSortKey === 'impressions'}
+                        dir={perfSortDir}
+                        onClick={() => togglePerfSort('impressions')}
+                      />
+                      <SortableTh
+                        label="Add to cart"
+                        active={perfSortKey === 'addToCart'}
+                        dir={perfSortDir}
+                        onClick={() => togglePerfSort('addToCart')}
+                      />
+                      <SortableTh
+                        label="Begin checkout"
+                        active={perfSortKey === 'beginCheckout'}
+                        dir={perfSortDir}
+                        onClick={() => togglePerfSort('beginCheckout')}
+                      />
+                      <SortableTh
+                        label="Purchase"
+                        active={perfSortKey === 'purchases'}
+                        dir={perfSortDir}
+                        onClick={() => togglePerfSort('purchases')}
+                      />
+                      <SortableTh
+                        label="Conversion"
+                        active={perfSortKey === 'conversionRate'}
+                        dir={perfSortDir}
+                        onClick={() => togglePerfSort('conversionRate')}
+                      />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/40">
@@ -480,7 +572,7 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
                     onClick={() => setPerfVisibleCount((c) => c + PERF_PAGE_SIZE)}
                     className="rounded-md border border-border/60 px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                   >
-                    Show more ({filtered.length - visible.length} more)
+                    Show more ({sorted.length - visible.length} more)
                   </button>
                 </div>
               )}
