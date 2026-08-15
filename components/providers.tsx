@@ -23,6 +23,7 @@ import SocialProofToast from './growth/social-proof-toast';
 export default function Providers({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isHome = pathname === '/';
+  const isAdminRoute = pathname?.startsWith('/admin');
   const hideChatWidget =
     pathname === '/login' ||
     pathname === '/signup' ||
@@ -30,6 +31,29 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     pathname === '/reset-password' ||
     pathname.startsWith('/cart') ||
     pathname.startsWith('/checkout');
+
+  // Admin panel renders its own full layout (AdminShell: sidebar, sticky
+  // header, main content area). Wrapping it in the storefront chrome below
+  // (Header/FeatureStrip/SiteBanner/Footer) stacked two full-height layouts
+  // on top of each other -- pushing AdminShell's content down and making
+  // pages look cut off / "half shown", especially on short mobile viewports.
+  // Admin still needs the context providers (cart/auth/categories) since
+  // some admin panels reuse storefront hooks, so only the visual chrome is
+  // skipped here, not the providers themselves.
+  if (isAdminRoute) {
+    return (
+      <AuthProvider>
+        <CategoriesProvider>
+          <PaymentDiscountProvider>
+            <CartProvider>
+              {children}
+              <Toaster position="top-center" richColors closeButton />
+            </CartProvider>
+          </PaymentDiscountProvider>
+        </CategoriesProvider>
+      </AuthProvider>
+    );
+  }
 
   return (
     <AuthProvider>
