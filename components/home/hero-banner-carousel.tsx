@@ -97,18 +97,42 @@ export default function HeroBannerCarousel({ banners }: HeroBannerCarouselProps)
       if (el && key !== activeFgKey && key !== activeBgKey) el.pause();
     });
     if (activeMediaType !== 'video') return;
-    [videoRefs.current[activeFgKey], videoRefs.current[activeBgKey]].forEach((el) => {
-      if (!el) return;
+
+    const playFromStart = (el: HTMLVideoElement) => {
       // Mobile Safari/Chrome only allow autoplay when the *property*
       // (not just the muted="" attribute React renders) is true at the
       // moment play() is called — force it here so this never depends
       // on React having synced it correctly during mount/hydration.
       el.muted = true;
-      el.currentTime = 0;
-      el.play().catch(() => {
-        // Autoplay can still be blocked in rare cases even when muted;
-        // the poster frame just stays put then — nothing to advance to.
-      });
+      // Seeking before the browser has loaded metadata throws in Safari
+      // (readyState 0 = HAVE_NOTHING) — that exception, left unguarded,
+      // was aborting this whole function before it ever reached
+      // play(), which is why autoplay was silently failing. Only seek
+      // once metadata is actually known; a fresh element is at 0 anyway.
+      if (el.readyState >= 1) {
+        try {
+          el.currentTime = 0;
+        } catch {
+          // Harmless — playback still proceeds from wherever it is.
+        }
+      }
+      const attempt = el.play();
+      if (attempt && typeof attempt.catch === 'function') {
+        attempt.catch(() => {
+          // Most likely cause on mobile: not enough data buffered yet
+          // for this specific slide. Retry the instant the browser says
+          // it can actually play through, instead of giving up for good.
+          const retry = () => {
+            el.muted = true;
+            el.play().catch(() => {});
+          };
+          el.addEventListener('canplay', retry, { once: true });
+        });
+      }
+    };
+
+    [videoRefs.current[activeFgKey], videoRefs.current[activeBgKey]].forEach((el) => {
+      if (el) playFromStart(el);
     });
   }, [index, activeMediaType]);
 
