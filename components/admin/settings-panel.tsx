@@ -844,8 +844,8 @@ export default function SettingsPanel() {
       <div className="mt-8">
         <h2 className="font-serif text-2xl font-bold text-primary">Site Banner</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          A promotional image shown at the top of every page (except checkout).
-          Upload once and it appears storewide — no code needed.
+          A promotional image shown at the top of the page. Upload it once, then use the
+          toggles below to choose where it appears — home page, product pages, or both.
         </p>
       </div>
 
@@ -896,8 +896,8 @@ export default function SettingsPanel() {
               </label>
             )}
             <p className="text-xs text-muted-foreground">
-              Wide images work best (e.g. 1600×400). Shows on every page except checkout.
-              Remove it and the banner just disappears storewide.
+              Wide images work best (e.g. 1600×400). Use the toggles below to control where it
+              shows. Remove it and the banner disappears everywhere, regardless of the toggles.
             </p>
           </div>
           <div className="grid gap-1.5">
@@ -912,6 +912,34 @@ export default function SettingsPanel() {
             <p className="text-xs text-muted-foreground">
               Where the banner takes people if they click it. Leave blank for a non-clickable banner.
             </p>
+          </div>
+          <div className="flex items-center justify-between gap-4 border-t border-border/60 pt-4">
+            <div>
+              <Label htmlFor="banner-show-home">Show on home page</Label>
+              <p className="text-xs text-muted-foreground">
+                Banner appears at the top of the home page only when this is on.
+              </p>
+            </div>
+            <Switch
+              id="banner-show-home"
+              checked={!!bannerForm.show_on_home}
+              onCheckedChange={(checked) => saveBanner({ ...bannerForm, show_on_home: checked })}
+              disabled={savingBanner}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <Label htmlFor="banner-show-product">Show on product page</Label>
+              <p className="text-xs text-muted-foreground">
+                Banner appears at the top of individual product pages only when this is on.
+              </p>
+            </div>
+            <Switch
+              id="banner-show-product"
+              checked={!!bannerForm.show_on_product}
+              onCheckedChange={(checked) => saveBanner({ ...bannerForm, show_on_product: checked })}
+              disabled={savingBanner}
+            />
           </div>
         </div>
       )}

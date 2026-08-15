@@ -530,11 +530,18 @@ export async function saveReturnAutomationSettings(settings: ReturnAutomationSet
 export interface SiteBanner {
   image_url: string;
   link_url?: string;
+  // Per-page visibility toggles. Both default to false so an existing
+  // banner doesn't suddenly reappear storewide the moment this field
+  // ships — admin has to explicitly turn each one on.
+  show_on_home?: boolean;
+  show_on_product?: boolean;
 }
 
 const DEFAULT_SITE_BANNER: SiteBanner = {
   image_url: '',
   link_url: '',
+  show_on_home: false,
+  show_on_product: false,
 };
 
 export async function fetchSiteBanner(): Promise<SiteBanner> {
