@@ -34,6 +34,7 @@ import { getColorSwatchHex } from '@/lib/color-swatch';
 import { trackEvent } from '@/lib/track-api';
 import { fireGtagEvent } from '@/lib/gtag-track';
 import { blurDataURL } from '@/lib/utils';
+import QuickNavIcons from '@/components/quick-nav-icons';
 
 const ALL_SIZES = [...STANDARD_SIZES];
 
@@ -642,29 +643,32 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
             className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-between gap-3 border-t border-border bg-background/95 px-4 py-3 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] backdrop-blur-sm md:static md:mb-5 md:border-0 md:bg-transparent md:px-0 md:py-0 md:shadow-none md:backdrop-blur-none"
             style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}
           >
-            <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-              <SheetTrigger asChild>
-                <Button variant="outline" className="lg:hidden">
-                  <SlidersHorizontal className="mr-2 h-4 w-4" /> Filters
-                  {activeCount > 0 && (
-                    <span className="ml-1.5 rounded-full bg-primary px-1.5 text-xs text-primary-foreground">
-                      {activeCount}
-                    </span>
-                  )}
-                </Button>
-              </SheetTrigger>
-              <SheetContent
-                side="left"
-                className="w-80 overflow-y-auto bg-background"
-                onOpenAutoFocus={(e) => e.preventDefault()}
-              >
-                <SheetHeader>
-                  <SheetTitle className="font-serif text-primary">Filters</SheetTitle>
-                  <SheetDescription className="sr-only">Filter products</SheetDescription>
-                </SheetHeader>
-                <div className="mt-4">{FiltersPanel}</div>
-              </SheetContent>
-            </Sheet>
+            <div className="flex items-center gap-2">
+              <QuickNavIcons />
+              <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+                <SheetTrigger asChild>
+                  <Button variant="outline" className="lg:hidden">
+                    <SlidersHorizontal className="mr-2 h-4 w-4" /> Filters
+                    {activeCount > 0 && (
+                      <span className="ml-1.5 rounded-full bg-primary px-1.5 text-xs text-primary-foreground">
+                        {activeCount}
+                      </span>
+                    )}
+                  </Button>
+                </SheetTrigger>
+                <SheetContent
+                  side="left"
+                  className="w-80 overflow-y-auto bg-background"
+                  onOpenAutoFocus={(e) => e.preventDefault()}
+                >
+                  <SheetHeader>
+                    <SheetTitle className="font-serif text-primary">Filters</SheetTitle>
+                    <SheetDescription className="sr-only">Filter products</SheetDescription>
+                  </SheetHeader>
+                  <div className="mt-4">{FiltersPanel}</div>
+                </SheetContent>
+              </Sheet>
+            </div>
 
             <div className="ml-auto flex items-center gap-2">
               <Label className="hidden text-sm text-muted-foreground sm:inline">

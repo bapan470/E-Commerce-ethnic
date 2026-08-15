@@ -2,8 +2,8 @@ import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { fetchCategoriesServer, fetchProductsServer } from '@/lib/products-api-server';
-import ProductCard from '@/components/product-card';
 import ViewItemListTracker from '@/components/analytics/view-item-list-tracker';
+import CategoryToolbarGrid from '@/components/category/category-toolbar-grid';
 import { safeJsonLd } from '@/lib/json-ld';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
@@ -187,11 +187,7 @@ export default async function CategoryPage({ params }: Params) {
           </Link>
         </div>
       ) : (
-        <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-          {categoryProducts.map((p, i) => (
-            <ProductCard key={p.id} product={p} priority={i < 4} />
-          ))}
-        </div>
+        <CategoryToolbarGrid products={categoryProducts} categoryName={category.name} />
       )}
       <ViewItemListTracker
         listName={category.name}
