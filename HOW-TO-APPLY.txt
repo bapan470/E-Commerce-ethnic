@@ -1,53 +1,55 @@
-HERO BANNERS — VIDEO + DESKTOP/MOBILE UPLOADS + AUTO-WEBP
-============================================================
+HERO BANNER — SAME 4:5/16:6 SIZE, BUT FULL VIDEO/IMAGE SHOWS + ADVANCE
+ONLY AFTER VIDEO ENDS
+=====================================================================
 
-Is zip me 6 files hain, apne repo (E-Commerce-ethnic) ke andar EXACT
-same path par copy-paste/replace karo (zip ke andar folder structure
-wahi hai):
+Is zip me sirf 1 file hai, apne repo (E-Commerce-ethnic) ke andar EXACT
+same path par copy-paste/replace karo:
 
-  1. lib/hero-banners-api.ts                              (REPLACE)
-  2. components/admin/hero-banners-panel.tsx               (REPLACE)
-  3. components/home/hero-banner-carousel.tsx               (REPLACE)
-  4. app/api/admin/hero-banners/route.ts                    (REPLACE)
-  5. app/api/admin/hero-banners/[id]/route.ts                (REPLACE)
-  6. supabase/migrations/20260815000000_hero_banners_video_support.sql
-                                                            (NEW FILE)
+  1. components/home/hero-banner-carousel.tsx          (REPLACE)
 
-Note: agar pehle wali "video support" zip already apply ki thi, to
-files 1-5 usi jagah dobara overwrite ho jayengi (koi problem nahi),
-aur migration file 6 bhi same naam se hai — agar already apply kar
-chuke ho to ye naya version usi file ko replace karega (isme naye
-mobile_* columns add hain jo pehle wale me nahi the).
+KYA BADLA (updated — box size wahi purana hai)
+------------------------------------------------
+1. Slide box ka SIZE bilkul pehle jaisa hi hai — mobile par 4:5, desktop
+   par (sm: se upar) 16:6. Ye BADLA NAHI hai, jaisa abhi live site par
+   hai waisa hi rahega.
+2. Sirf ek cheez badli: object-cover ki jagah ab object-contain use ho
+   raha hai — isliye is box ke andar pura video/image hamesha dikhega,
+   kuch bhi crop nahi hoga.
+3. Video slide ab apna fixed 5-second timer follow nahi karta — jab tak
+   video pura khatam nahi ho jaata, agli slide par nahi jaata. Video
+   khatam hote hi khud carousel agli slide par chala jaata hai.
+4. Image slide bilkul pehle jaisa hi hai — wahi purana 5 second timer,
+   hover par pause bhi wahi jaisa tha, kuch nahi badla.
+5. Agar kisi position par sirf ek hi banner hoga (list me total 1 item),
+   to us case me video pehle jaisa continuously loop karta rahega.
 
-NAYA KYA HAI IS VERSION ME
----------------------------
-- Har banner me ab "Desktop" aur "Mobile" — do alag tabs hain Admin >
-  Hero Banners > Add/Edit Banner dialog me. Mobile tab optional hai:
-  agar kuch upload nahi karte, phone par bhi desktop wala hi image/
-  video dikhega (kuch tootega nahi).
-- Mobile ke liye apna image YA video independently choose kar sakte
-  ho — matlab desktop par video aur mobile par halka image bhi rakh
-  sakte ho, ya dono jagah alag cheez.
-- Koi bhi image upload karte hi (desktop ho ya mobile, banner image ho
-  ya video ka cover-frame) automatically WebP me convert ho jaata hai
-  browser me hi, upload hone se pehle — chhoti file size, fast loading.
-  (Video files WebP me convert nahi hoti — wo already compressed
-  format hai, wahan koi change nahi.)
+EK ZARURI BAAT — SIZE MATCH KA
+--------------------------------
+Box ka size (4:5 mobile / 16:6 desktop) FIXED rakha hai, jaisa aapne
+maanga. Lekin agar aapka video/image is exact ratio ka nahi hai (jaise
+aapke pehle screenshot me 16:9 desktop / 9:16 mobile export dikha tha),
+to object-contain us extra jagah ko crop NAHI karega — balki box ke
+ek side thoda halka background-color (bg-muted) margin dikhega, taaki
+kuch bhi cut na ho.
 
-STEPS
------
-1. Upar wali 5 code files apne local repo me same path par paste
-   karke overwrite kar do.
-2. 6th file (migration .sql) supabase/migrations/ folder me copy karo.
-3. Supabase par migration apply karo (Dashboard > SQL Editor me paste
-   + run, YA `supabase db push` agar CLI use karte ho).
-   >>> Migration ke bina Mobile tab dikhega zaroor lekin save karte
-       waqt error dega (mobile_image_url column DB me nahi hoga).
-4. `git add .`
-   `git commit -m "Hero banners: mobile-specific media + auto WebP"`
-   `git push`
-5. Deploy hone ke baad test karo: Admin > Hero Banners > Add Banner >
-   Mobile tab > "Add a mobile-specific banner" > upload > save, phir
-   phone (ya Chrome DevTools mobile view) se homepage check karo.
+Agar aap chahte ho ki video/image box ko EDGE-TO-EDGE bilkul fill kare
+(bina kisi margin ke, aur bina kisi crop ke), to sabse accha tareeka:
+apna video/image export/crop karte waqt hi EXACTLY 4:5 (mobile) aur
+16:6 (desktop) ratio me banao — 9:16/16:9 nahi. Us case me contain aur
+cover dono same dikhenge, kyunki tab crop karne ki zaroorat hi nahi
+padegi.
+
+APPLY KARNE KE STEPS
+---------------------
+1. Upar wali file apne local repo me same path par paste karke
+   overwrite/replace kar do.
+2. git add -A
+   git commit -m "Hero carousel: keep 4:5/16:6 box, show full media, advance only after video ends"
+   git push
+3. Koi migration/database change nahi hai is baar — sirf ye 1 component
+   file hai, deploy hote hi live ho jaayega.
+
+Maine local me `tsc --noEmit` aur `next lint` dono chala ke check kar
+liya hai — is file ke against zero errors/warnings.
 
 Koi doubt ho to bata dena.
