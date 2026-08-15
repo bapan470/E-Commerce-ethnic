@@ -844,8 +844,9 @@ export default function SettingsPanel() {
       <div className="mt-8">
         <h2 className="font-serif text-2xl font-bold text-primary">Site Banner</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          A promotional image shown at the top of the page. Upload it once, then use the
-          toggles below to choose where it appears — home page, product pages, or both.
+          A promotional image shown at the top of every page except checkout. The toggles
+          below only control the home page and product pages — every other page (shop,
+          categories, etc.) always shows it whenever an image is set.
         </p>
       </div>
 

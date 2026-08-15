@@ -7,12 +7,14 @@ import Link from 'next/link';
 import { fetchSiteBanner } from '@/lib/settings-api';
 
 /**
- * Promotional banner (set from Admin > Store Settings). Only ever shows
- * on the home page and/or individual product pages, and only on whichever
- * of those two the admin has explicitly switched on (Admin > Settings >
- * Site Banner > "Show on home page" / "Show on product page") — it no
- * longer shows storewide by default. Renders nothing until an image is
- * set and at least one of those toggles is on for the current page.
+ * Promotional banner (set from Admin > Store Settings). Shows on every
+ * page EXCEPT checkout, same as the original storewide behavior — with
+ * one carve-out: the home page and individual product pages are each
+ * gated by their own toggle (Admin > Settings > Site Banner > "Show on
+ * home page" / "Show on product page"), since those two pages often want
+ * the banner turned off independently of everywhere else. Every other
+ * page (shop, category, etc.) always shows the banner whenever one is
+ * set, exactly like before these toggles existed.
  */
 export default function SiteBanner() {
   const pathname = usePathname();
@@ -32,9 +34,12 @@ export default function SiteBanner() {
       .catch(() => {});
   }, []);
 
+  const isCheckout = pathname?.startsWith('/checkout');
   const isHome = pathname === '/';
   const isProduct = pathname?.startsWith('/product/');
-  const allowedHere = (isHome && showOnHome) || (isProduct && showOnProduct);
+  // Home/product are toggle-gated; every other non-checkout page keeps
+  // the original always-on behavior.
+  const allowedHere = isHome ? showOnHome : isProduct ? showOnProduct : !isCheckout;
 
   if (!imageUrl || !allowedHere) return null;
 
