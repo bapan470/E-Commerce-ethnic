@@ -21,13 +21,18 @@ interface HeroBannerCarouselProps {
  * when there's only one image (no dots/arrows needed for one slide).
  *
  * Sizing: the slide box keeps its original on-site dimensions — 4:5 on
- * mobile, 16:6 from `sm:` up — unchanged. What changed is object-fit:
- * cover (crops whatever overflows the box) is now object-contain, so the
- * full video/image always shows inside that same box with nothing cut
- * off. If a banner's native ratio doesn't exactly match 4:5 / 16:6,
- * contain shows a thin bg-muted margin on the sides rather than cropping
- * — export/crop media to exactly 4:5 (mobile) / 16:6 (desktop) to fill
- * the box edge-to-edge with zero margin.
+ * mobile, 16:6 from `sm:` up — unchanged. object-fit stays object-contain,
+ * so the full video/image always shows inside that same box with nothing
+ * cut off. If a banner's native ratio doesn't exactly match 4:5 / 16:6,
+ * the leftover margin is now filled by a blurred, zoomed-in copy of the
+ * same media (object-cover + blur, sitting behind the sharp contain
+ * layer) instead of a flat bg-muted strip — same idea as Spotify/YouTube's
+ * ambient backdrop. Videos reuse their poster frame for that backdrop (one
+ * image, not a second video decode); a video slide with no poster set
+ * just keeps the plain bg-muted margin as before — add a "Cover frame" for
+ * it in Admin > Hero Banners to get the blurred backdrop there too.
+ * Exporting media at exactly 4:5 (mobile) / 16:6 (desktop) still fills the
+ * box edge-to-edge with no backdrop needed at all.
  *
  * Timing: image slides advance on the fixed AUTOPLAY_MS timer, same as
  * before. Video slides ignore that timer entirely and instead advance the
@@ -139,8 +144,24 @@ export default function HeroBannerCarousel({ banners }: HeroBannerCarouselProps)
           const posterSrc = useMobileMedia ? b.mobile_poster_url : b.poster_url;
           const isSoleBanner = banners.length <= 1;
 
+          // Video backdrops reuse the poster frame (one small image) rather
+          // than a second <video>, which would decode the same clip twice
+          // just for a blurred background — not worth the CPU/battery cost.
+          const backdropSrc = mediaType === 'video' ? posterSrc : mediaUrl;
+
           const slide = (
             <div className="relative aspect-[4/5] w-full shrink-0 overflow-hidden bg-muted sm:aspect-[16/6]">
+              {backdropSrc && (
+                <Image
+                  key={`${mediaUrl}-backdrop`}
+                  src={toPublicMediaUrl(backdropSrc) ?? backdropSrc}
+                  alt=""
+                  aria-hidden="true"
+                  fill
+                  sizes="100vw"
+                  className="z-0 scale-110 object-cover object-center blur-2xl brightness-75"
+                />
+              )}
               {mediaType === 'video' ? (
                 // Muted + playsInline is required for autoplay to work at
                 // all on mobile Safari/Chrome (their autoplay policies
@@ -151,7 +172,8 @@ export default function HeroBannerCarousel({ banners }: HeroBannerCarouselProps)
                 // carousel, so a video is always shown in full before the
                 // next slide appears. object-contain (not cover) means
                 // the whole frame always shows inside the same 4:5 /
-                // 16:6 box the image slides use — nothing gets cropped.
+                // 16:6 box the image slides use — nothing gets cropped;
+                // the blurred backdrop above fills whatever margin is left.
                 // eslint-disable-next-line jsx-a11y/media-has-caption
                 <video
                   key={mediaUrl}
@@ -168,7 +190,7 @@ export default function HeroBannerCarousel({ banners }: HeroBannerCarouselProps)
                   onEnded={() => {
                     if (!isSoleBanner && i === index) go(index + 1);
                   }}
-                  className="absolute inset-0 h-full w-full object-contain"
+                  className="absolute inset-0 z-10 h-full w-full object-contain"
                 />
               ) : (
                 <Image
@@ -179,7 +201,7 @@ export default function HeroBannerCarousel({ banners }: HeroBannerCarouselProps)
                   priority={i === 0}
                   fetchPriority={i === 0 ? 'high' : 'auto'}
                   sizes="100vw"
-                  className="object-contain"
+                  className="z-10 object-contain"
                 />
               )}
             </div>
