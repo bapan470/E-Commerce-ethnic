@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { Inter, Playfair_Display } from 'next/font/google';
 import Script from 'next/script';
 import Providers from '@/components/providers';
+import AnalyticsScripts from '@/components/analytics-scripts';
 import { getServerSupabase } from '@/lib/supabase-server';
 import { SeoSettings, AnalyticsSettings } from '@/lib/marketing-api';
 
@@ -163,78 +164,11 @@ export default async function RootLayout({
           </Script>
         )}
 
-        {/* Google Tag Manager — loads GTM container which manages GA4 +
-            Google Ads + all other tags from the GTM dashboard.
-            Set Container ID in Admin > Marketing > Analytics. */}
-        {gtmId && (
-          <Script id="gtm-init" strategy="afterInteractive">
-            {`
-              (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-              new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-              j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-              'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-              })(window,document,'script','dataLayer','${gtmId}');
-            `}
-          </Script>
-        )}
-
-        {/* GA4 + Google Ads gtag.js — used when GTM is NOT configured.
-            If GTM is set above, manage GA4 and Ads from GTM instead. */}
-        {!gtmId && gaId && (
-          <>
-            <Script src={`https://www.googletagmanager.com/gtag/js?id=${gaId}`} strategy="afterInteractive" />
-            <Script id="ga4-init" strategy="afterInteractive">
-              {`
-                window.dataLayer = window.dataLayer || [];
-                function gtag(){dataLayer.push(arguments);}
-                gtag('js', new Date());
-                gtag('config', '${gaId}');
-                ${googleAdsId ? `gtag('config', '${googleAdsId}');` : ''}
-              `}
-            </Script>
-          </>
-        )}
-
-        {pixelId && (
-          <Script id="meta-pixel-init" strategy="afterInteractive">
-            {`
-              !function(f,b,e,v,n,t,s)
-              {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-              n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-              if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-              n.queue=[];t=b.createElement(e);t.async=!0;
-              t.src=v;s=b.getElementsByTagName(e)[0];
-              s.parentNode.insertBefore(t,s)}(window, document,'script',
-              'https://connect.facebook.net/en_US/fbevents.js');
-              fbq('init', '${pixelId}');
-              fbq('track', 'PageView');
-            `}
-          </Script>
-        )}
+        {/* GTM / GA4 / Meta Pixel — gated so they never fire on /admin
+            routes. See components/analytics-scripts.tsx. */}
+        <AnalyticsScripts gaId={gaId} gtmId={gtmId} googleAdsId={googleAdsId} pixelId={pixelId} />
       </head>
       <body className="font-sans antialiased">
-        {/* GTM noscript fallback — required by Google */}
-        {gtmId && (
-          <noscript>
-            <iframe
-              src={`https://www.googletagmanager.com/ns.html?id=${gtmId}`}
-              height="0"
-              width="0"
-              style={{ display: 'none', visibility: 'hidden' }}
-            />
-          </noscript>
-        )}
-        {pixelId && (
-          <noscript>
-            <img
-              height="1"
-              width="1"
-              style={{ display: 'none' }}
-              src={`https://www.facebook.com/tr?id=${pixelId}&ev=PageView&noscript=1`}
-              alt=""
-            />
-          </noscript>
-        )}
         <Providers>{children}</Providers>
       </body>
     </html>
