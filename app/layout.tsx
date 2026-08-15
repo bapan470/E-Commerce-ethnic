@@ -21,14 +21,21 @@ const playfair = Playfair_Display({
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
-// Without this, Next.js statically renders this layout at build time and
-// caches the getSeoSettings()/getAnalyticsSettings() Supabase reads below
-// indefinitely (the Data Cache) -- so toggling GA4/GTM/Meta Pixel etc. in
-// Admin > Marketing > Analytics writes to the DB immediately but the LIVE
-// site keeps serving the old cached <script> tags until the next deploy.
-// force-dynamic makes every request re-fetch these settings fresh, so
-// admin changes take effect on the very next page load.
-export const dynamic = 'force-dynamic';
+// NOTE: force-dynamic used to live here to keep SEO/analytics settings
+// fresh after an admin save. The problem: dynamic = 'force-dynamic' on the
+// ROOT layout overrides every child route's own `revalidate` setting too
+// (see app/page.tsx, app/shop/page.tsx, app/product/[slug]/page.tsx, which
+// all set `export const revalidate = 60`), forcing the ENTIRE site to
+// re-run its Supabase queries and re-render on every single request
+// instead of serving a cached page. That's real, avoidable latency on
+// every page load, site-wide.
+//
+// `revalidate` below gives the same "admin changes go live quickly"
+// behaviour (within 5 minutes) without disabling caching for the whole
+// site. If instant propagation after an admin save is required, replace
+// this with an on-demand `revalidatePath('/', 'layout')` call from the
+// settings-save API route instead of blanket force-dynamic.
+export const revalidate = 300;
 
 const DEFAULT_SEO: SeoSettings = {
   site_title: 'AruhiHandlooms — Handwoven Indian Ethnic Wear & Sarees',
@@ -147,8 +154,6 @@ export default async function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${playfair.variable}`}>
       <head>
-        <script src="https://checkout.razorpay.com/v1/checkout.js" async />
-
         {/* Trustpilot base script — registers window.tp() so
            <TrustpilotInvitation> (order confirmation page) can create
            review-invitation emails after a purchase. Key + on/off toggle

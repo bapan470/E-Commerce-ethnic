@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import dynamic from 'next/dynamic';
 import { usePathname } from 'next/navigation';
 import { CartProvider, CategoriesProvider, PaymentDiscountProvider } from '@/lib/cart-context';
 import { AuthProvider } from '@/lib/auth-context';
@@ -12,13 +13,21 @@ import Footer from './footer';
 import MobileBottomNav from './mobile-bottom-nav';
 import SiteBanner from './site-banner';
 import WhatsAppButton from './whatsapp-button';
-import LiveChatWidget from './live-chat-widget';
-import ActivityTracker from './activity-tracker';
-import AffiliateTracker from './affiliate-tracker';
-import UrgencyBanner from './growth/urgency-banner';
-import SaleCountdownBar from './growth/sale-countdown-bar';
-import ExitIntentModal from './growth/exit-intent-modal';
-import SocialProofToast from './growth/social-proof-toast';
+
+// These were all previously imported statically, which meant their JS
+// shipped in the initial bundle for EVERY page load and had to be
+// parsed/hydrated before the page became interactive — even though none
+// of them are needed for the first paint or the first tap/click. None of
+// them render anything a search-engine crawler needs either (chat widget,
+// popups, toasts), so lazy-loading them costs nothing on SEO and buys back
+// real time-to-interactive, especially on slower mobile devices.
+const LiveChatWidget = dynamic(() => import('./live-chat-widget'), { ssr: false });
+const ActivityTracker = dynamic(() => import('./activity-tracker'), { ssr: false });
+const AffiliateTracker = dynamic(() => import('./affiliate-tracker'), { ssr: false });
+const UrgencyBanner = dynamic(() => import('./growth/urgency-banner'), { ssr: false });
+const SaleCountdownBar = dynamic(() => import('./growth/sale-countdown-bar'), { ssr: false });
+const ExitIntentModal = dynamic(() => import('./growth/exit-intent-modal'), { ssr: false });
+const SocialProofToast = dynamic(() => import('./growth/social-proof-toast'), { ssr: false });
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

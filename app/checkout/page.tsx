@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, FormEvent } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import NextScript from 'next/script';
 import { useRouter } from 'next/navigation';
 import { Lock, Loader2, CreditCard, Tag, X, Wallet, Sparkles, Gift, Store, Minus, Plus } from 'lucide-react';
 import {
@@ -1159,6 +1160,10 @@ export default function CheckoutPage() {
 
   return (
     <div className="container-boutique py-8">
+      {/* Loaded only here (not site-wide in app/layout.tsx) since only the
+          checkout page ever opens the Razorpay popup — this used to load
+          on every single page load across the whole site for no reason. */}
+      <NextScript src="https://checkout.razorpay.com/v1/checkout.js" strategy="afterInteractive" />
       <h1 className="mb-6 font-serif text-3xl font-bold text-primary sm:text-4xl">
         Checkout
       </h1>
