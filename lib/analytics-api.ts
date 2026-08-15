@@ -51,9 +51,12 @@ export interface LowStockProduct {
 }
 
 export interface AnalyticsRange {
+  /** full ISO timestamp, not just a date -- preserves hour-level precision for presets like "Last 1 hour" */
   from: string;
+  /** full ISO timestamp */
   to: string;
   days: number;
+  hours: number;
 }
 
 export interface AnalyticsData {
@@ -70,31 +73,23 @@ export interface AnalyticsData {
   topProducts: TopProduct[];
   funnel: FunnelStage[];
   lowStock: LowStockProduct[];
+  /** Product Performance now shares the same [from, to] window as everything
+   *  else on the dashboard -- there's a single date/time control, not a
+   *  separate one just for this table. */
   productPerformance: ProductPerformance[];
-  productPerformanceDays: number | null;
-  productPerformanceHours: number | null;
 }
 
 export interface FetchAnalyticsOptions {
-  /** yyyy-MM-dd */
+  /** full ISO timestamp (or yyyy-MM-dd for a whole-day range) */
   from?: string;
-  /** yyyy-MM-dd */
+  /** full ISO timestamp (or yyyy-MM-dd for a whole-day range) */
   to?: string;
-  /** window (7 | 30 | 90) for the Product Performance table only */
-  productPerformanceDays?: number;
-  /** window (1 | 6 | 12 | 24) for the Product Performance table only -- takes priority over productPerformanceDays when set */
-  productPerformanceHours?: number;
 }
 
 export async function fetchAnalytics(options: FetchAnalyticsOptions = {}): Promise<AnalyticsData> {
   const params = new URLSearchParams();
   if (options.from) params.set('from', options.from);
   if (options.to) params.set('to', options.to);
-  if (options.productPerformanceHours) {
-    params.set('hours', String(options.productPerformanceHours));
-  } else if (options.productPerformanceDays) {
-    params.set('days', String(options.productPerformanceDays));
-  }
   const qs = params.toString();
   const res = await fetch(`/api/admin/analytics${qs ? `?${qs}` : ''}`);
   if (!res.ok) {

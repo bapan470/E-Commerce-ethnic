@@ -8,31 +8,38 @@ const EXCLUDED_ORDER_STATUSES = ['cancelled', 'failed'];
 const DEFAULT_RANGE_DAYS = 30;
 const MAX_RANGE_DAYS = 365;
 const MAX_ORDER_POINTS = 1000;
-const ALLOWED_PERF_DAYS = [7, 30, 90];
-const ALLOWED_PERF_HOURS = [1, 6, 12, 24];
 
 function dayKey(dateStr: string) {
   return new Date(dateStr).toISOString().slice(0, 10);
 }
 
 /**
- * Reads `?from=YYYY-MM-DD&to=YYYY-MM-DD` from the request. Falls back to the
- * last 30 days (inclusive of today) when either is missing or invalid, so
- * every existing caller that doesn't pass a range keeps working unchanged.
+ * Reads `?from=...&to=...` from the request. Accepts either a full ISO
+ * timestamp (e.g. from the admin dashboard's hour-level presets like
+ * "Last 1 hour", which need real hour/minute precision) or a plain
+ * `YYYY-MM-DD` date (older callers / bookmarked links), which gets padded
+ * to the start/end of that day. Falls back to the last 30 days (inclusive
+ * of today) when either is missing or invalid.
  */
 function parseRange(url: URL) {
   const fromParam = url.searchParams.get('from');
   const toParam = url.searchParams.get('to');
 
-  let to = toParam ? new Date(`${toParam}T23:59:59.999Z`) : new Date();
-  let from = fromParam
-    ? new Date(`${fromParam}T00:00:00.000Z`)
-    : (() => {
-        const d = new Date(to);
-        d.setUTCDate(d.getUTCDate() - (DEFAULT_RANGE_DAYS - 1));
-        d.setUTCHours(0, 0, 0, 0);
-        return d;
-      })();
+  const parseParam = (p: string | null, isEnd: boolean): Date | null => {
+    if (!p) return null;
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(p) ? new Date(`${p}T${isEnd ? '23:59:59.999' : '00:00:00.000'}Z`) : new Date(p);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
+  let to = parseParam(toParam, true) ?? new Date();
+  let from =
+    parseParam(fromParam, false) ??
+    (() => {
+      const d = new Date(to);
+      d.setUTCDate(d.getUTCDate() - (DEFAULT_RANGE_DAYS - 1));
+      d.setUTCHours(0, 0, 0, 0);
+      return d;
+    })();
 
   const invalid = isNaN(from.getTime()) || isNaN(to.getTime()) || from > to;
   if (invalid) {
@@ -42,12 +49,10 @@ function parseRange(url: URL) {
     from.setUTCHours(0, 0, 0, 0);
   }
 
-  const rangeDays = Math.min(
-    MAX_RANGE_DAYS,
-    Math.max(1, Math.round((to.getTime() - from.getTime()) / 86_400_000) + 1)
-  );
+  const rangeHours = Math.max(1, (to.getTime() - from.getTime()) / 3_600_000);
+  const rangeDays = Math.min(MAX_RANGE_DAYS, Math.max(1, Math.ceil(rangeHours / 24)));
 
-  return { from, to, rangeDays };
+  return { from, to, rangeDays, rangeHours };
 }
 
 export async function GET(req: Request) {
@@ -58,31 +63,17 @@ export async function GET(req: Request) {
   }
 
   const url = new URL(req.url);
-  const { from, to, rangeDays } = parseRange(url);
-
-  // `?days=7|30|90` or `?hours=1|6|12|24` control the Product Performance
-  // table's window below -- independent of the `from`/`to` sales-trend date
-  // range. `hours` takes priority when both are present.
-  const requestedHours = Number(url.searchParams.get('hours'));
-  const requestedDays = Number(url.searchParams.get('days'));
-  const perfHours = ALLOWED_PERF_HOURS.includes(requestedHours) ? requestedHours : null;
-  const perfDays = perfHours ? null : ALLOWED_PERF_DAYS.includes(requestedDays) ? requestedDays : DEFAULT_RANGE_DAYS;
+  const { from, to, rangeDays, rangeHours } = parseRange(url);
 
   try {
     const supabase = getSupabaseAdmin();
 
-    const perfSince = new Date();
-    if (perfHours) {
-      perfSince.setHours(perfSince.getHours() - perfHours);
-    } else {
-      perfSince.setDate(perfSince.getDate() - (perfDays as number));
-    }
-
-    // Fetch events far enough back to cover whichever window is larger, then
-    // filter in-memory per section below so a wider Product Performance
-    // window never leaks into the selected-range funnel/summary numbers.
-    const fetchSince = perfSince < from ? perfSince : from;
-
+    // Product Performance used to run on its own separate hours/days window
+    // (independent of the `from`/`to` picker above), which meant its "Last
+    // 1 hour" and the summary cards' "Last 1 hour" could silently mean two
+    // different actual time windows. It now shares the exact same `from`/
+    // `to` range as the summary cards, funnel, and sales trend -- one
+    // control, one window, everywhere on this dashboard.
     const [ordersRes, productsRes, eventsRes] = await Promise.all([
       supabase
         .from('orders')
@@ -95,7 +86,8 @@ export async function GET(req: Request) {
       supabase
         .from('activity_events')
         .select('session_id, event_type, product_id, created_at')
-        .gte('created_at', fetchSince.toISOString()),
+        .gte('created_at', from.toISOString())
+        .lte('created_at', to.toISOString()),
     ]);
 
     if (ordersRes.error) throw ordersRes.error;
@@ -185,9 +177,8 @@ export async function GET(req: Request) {
       .slice(0, 10);
 
     // ---------------- Conversion funnel (session-based, selected range) ----------------
-    const eventsInRange = events.filter(
-      (ev) => ev.created_at && new Date(ev.created_at) >= from && new Date(ev.created_at) <= to
-    );
+    // `events` is already scoped to [from, to] by the Supabase query above.
+    const eventsInRange = events;
     const sessionsByStage: Record<string, Set<string>> = {
       page_view: new Set(),
       product_view: new Set(),
@@ -226,12 +217,11 @@ export async function GET(req: Request) {
       // upstream ordering ever changes.
       .sort((a, b) => a.stock_quantity - b.stock_quantity);
 
-    // ---------------- Product performance: Impressions vs Conversion (perfDays/perfHours window) ----------------
-    const eventsInPerfWindow = events.filter((ev) => ev.created_at && new Date(ev.created_at) >= perfSince);
+    // ---------------- Product performance: Impressions vs Conversion (same [from, to] window as everything else above) ----------------
     const productViewCounts = new Map<string, number>();
     const productAddToCartCounts = new Map<string, number>();
     const productCheckoutStartCounts = new Map<string, number>();
-    for (const ev of eventsInPerfWindow) {
+    for (const ev of eventsInRange) {
       if (!ev.product_id) continue;
       if (ev.event_type === 'product_view') {
         productViewCounts.set(ev.product_id, (productViewCounts.get(ev.product_id) ?? 0) + 1);
@@ -242,9 +232,8 @@ export async function GET(req: Request) {
       }
     }
     const productPurchaseCounts = new Map<string, number>();
-    for (const o of orders) {
+    for (const o of ordersInRange) {
       if (!REVENUE_STATUSES.includes(o.status)) continue;
-      if (!o.created_at || new Date(o.created_at) < perfSince) continue;
       const items = Array.isArray(o.items) ? o.items : [];
       const countedInThisOrder = new Set<string>();
       for (const it of items) {
@@ -284,9 +273,13 @@ export async function GET(req: Request) {
         lowStockCount: lowStock.length,
       },
       range: {
-        from: from.toISOString().slice(0, 10),
-        to: to.toISOString().slice(0, 10),
+        // Full ISO timestamps (not just the date) so the dashboard can tell
+        // apart e.g. "Last 1 hour" from "Today" -- both used to collapse
+        // to the same date-only string and get treated identically.
+        from: from.toISOString(),
+        to: to.toISOString(),
         days: rangeDays,
+        hours: Math.round(rangeHours * 10) / 10,
       },
       salesTrend,
       orders: orderPoints,
@@ -294,8 +287,6 @@ export async function GET(req: Request) {
       funnel,
       lowStock,
       productPerformance,
-      productPerformanceDays: perfDays,
-      productPerformanceHours: perfHours,
     });
   } catch (err) {
     return NextResponse.json({ error: 'Failed to load analytics' }, { status: 500 });

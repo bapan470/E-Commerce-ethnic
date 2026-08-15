@@ -18,7 +18,7 @@ import {
   Cell,
 } from 'recharts';
 import { AlertTriangle, TrendingUp, ShoppingBag, Percent, PackageX, BarChart3, Wifi, Receipt, Search, ShoppingCart, CreditCard, CheckCircle2, PackagePlus, Loader2 } from 'lucide-react';
-import { format, startOfDay, endOfDay, subDays } from 'date-fns';
+import { startOfDay, endOfDay, subDays } from 'date-fns';
 import { fetchAnalytics, AnalyticsData } from '@/lib/analytics-api';
 import { updateProduct, extractErrorMessage } from '@/lib/products-api';
 import { formatINR } from '@/lib/format';
@@ -136,26 +136,6 @@ function SalesTooltip({ active, payload, label }: any) {
 
 // ── Sales panel (existing analytics) ─────────────────────────────────────
 
-// Token like '1h' | '6h' | '12h' | '24h' | '7d' | '30d' | '90d' -- one value
-// that drives the Product Performance window dropdown, mapped below to
-// either the `hours` or `days` param fetchAnalytics expects.
-type PerfWindow = `${number}h` | `${number}d`;
-
-function perfWindowToParams(w: PerfWindow): { productPerformanceHours?: number; productPerformanceDays?: number } {
-  if (w.endsWith('h')) return { productPerformanceHours: Number(w.slice(0, -1)) };
-  return { productPerformanceDays: Number(w.slice(0, -1)) };
-}
-
-const PERF_WINDOW_OPTIONS: { value: PerfWindow; label: string; group: 'hour' | 'day' }[] = [
-  { value: '1h', label: 'Last 1 hour', group: 'hour' },
-  { value: '6h', label: 'Last 6 hours', group: 'hour' },
-  { value: '12h', label: 'Last 12 hours', group: 'hour' },
-  { value: '24h', label: 'Last 24 hours', group: 'hour' },
-  { value: '7d', label: 'Last 7 days', group: 'day' },
-  { value: '30d', label: 'Last 30 days', group: 'day' },
-  { value: '90d', label: 'Last 90 days', group: 'day' },
-];
-
 const PERF_PAGE_SIZE = 8;
 const LOW_STOCK_PAGE_SIZE = 8;
 const DEFAULT_RESTOCK_AMOUNT = '10';
@@ -164,58 +144,29 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
   const router = useRouter();
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [perfWindow, setPerfWindow] = useState<PerfWindow>('30d');
   const [perfSearch, setPerfSearch] = useState('');
-  const [perfLoading, setPerfLoading] = useState(false);
   const [perfVisibleCount, setPerfVisibleCount] = useState(PERF_PAGE_SIZE);
   const [lowStockVisibleCount, setLowStockVisibleCount] = useState(LOW_STOCK_PAGE_SIZE);
   const [stockEditId, setStockEditId] = useState<string | null>(null);
   const [stockAddAmount, setStockAddAmount] = useState(DEFAULT_RESTOCK_AMOUNT);
   const [stockSaving, setStockSaving] = useState(false);
 
-  // Refetch the whole dashboard whenever the top-right date range changes.
+  // Refetch the whole dashboard -- including Product Performance, which now
+  // shares this exact same range instead of its own separate window --
+  // whenever the top-right date range changes. One control, one fetch.
   useEffect(() => {
     setLoading(true);
+    setPerfVisibleCount(PERF_PAGE_SIZE);
     setLowStockVisibleCount(LOW_STOCK_PAGE_SIZE);
     fetchAnalytics({
-      from: format(range.from, 'yyyy-MM-dd'),
-      to: format(range.to, 'yyyy-MM-dd'),
-      ...perfWindowToParams(perfWindow),
+      from: range.from.toISOString(),
+      to: range.to.toISOString(),
     })
       .then(setData)
       .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load analytics'))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range]);
-
-  // Only re-fetches when the Product Performance window changes (not on
-  // every keystroke of the search box) -- and only swaps in the new
-  // productPerformance slice so the rest of the dashboard doesn't flicker.
-  useEffect(() => {
-    if (!data) return; // wait for the initial full load above
-    setPerfLoading(true);
-    setPerfVisibleCount(PERF_PAGE_SIZE);
-    fetchAnalytics({
-      from: format(range.from, 'yyyy-MM-dd'),
-      to: format(range.to, 'yyyy-MM-dd'),
-      ...perfWindowToParams(perfWindow),
-    })
-      .then((res) =>
-        setData((prev) =>
-          prev
-            ? {
-                ...prev,
-                productPerformance: res.productPerformance,
-                productPerformanceDays: res.productPerformanceDays,
-                productPerformanceHours: res.productPerformanceHours,
-              }
-            : res
-        )
-      )
-      .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed to load product performance'))
-      .finally(() => setPerfLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [perfWindow]);
 
   // Quick "Add stock" action from the Low Stock Alerts list. Updates the
   // product's stock_quantity via the same admin API the Products panel
@@ -236,9 +187,8 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
       setStockEditId(null);
       setStockAddAmount(DEFAULT_RESTOCK_AMOUNT);
       const refreshed = await fetchAnalytics({
-        from: format(range.from, 'yyyy-MM-dd'),
-        to: format(range.to, 'yyyy-MM-dd'),
-        ...perfWindowToParams(perfWindow),
+        from: range.from.toISOString(),
+        to: range.to.toISOString(),
       });
       setData(refreshed);
     } catch (err) {
@@ -285,9 +235,13 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
     status: o.status,
   }));
 
+  // Under 24h -> show the precise hour count (matches the picker's "Last 1
+  // hour" / "Last 6 hours" etc. presets). 24h+ -> day-based label as before.
   const rangeLabel =
-    dataRange.days === 1
-      ? new Date(`${dataRange.from}T00:00:00`).toLocaleDateString('en-IN', { dateStyle: 'medium' })
+    dataRange.hours < 24
+      ? `Last ${Math.round(dataRange.hours)} hour${Math.round(dataRange.hours) === 1 ? '' : 's'}`
+      : dataRange.days === 1
+      ? new Date(dataRange.from).toLocaleDateString('en-IN', { dateStyle: 'medium' })
       : `${dataRange.days} days`;
 
   // Smoothly scrolls an in-page section into view -- used by the summary
@@ -443,26 +397,6 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
         <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
           <h3 className="font-serif text-lg font-bold text-primary">Product Performance</h3>
           <div className="flex items-center gap-2">
-            <select
-              value={perfWindow}
-              onChange={(e) => setPerfWindow(e.target.value as PerfWindow)}
-              className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs"
-            >
-              <optgroup label="By hour">
-                {PERF_WINDOW_OPTIONS.filter((o) => o.group === 'hour').map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="By day">
-                {PERF_WINDOW_OPTIONS.filter((o) => o.group === 'day').map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </optgroup>
-            </select>
             <input
               type="text"
               value={perfSearch}
@@ -477,15 +411,13 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
         </div>
         <p className="mb-3 text-xs text-muted-foreground">
           Impressions = product page views. Add to cart / Begin checkout / Purchase = how many sessions/orders
-          reached that step with this product. Conversion = % of impressions that led to a purchase.
+          reached that step with this product, in the {rangeLabel.toLowerCase()} window selected above. Conversion =
+          % of impressions that led to a purchase.
         </p>
         {(() => {
           const filtered = productPerformance.filter((p) =>
             p.name.toLowerCase().includes(perfSearch.trim().toLowerCase())
           );
-          if (perfLoading) {
-            return <Skeleton className="h-40 rounded-lg" />;
-          }
           if (productPerformance.length === 0) {
             return (
               <p className="text-sm text-muted-foreground">
