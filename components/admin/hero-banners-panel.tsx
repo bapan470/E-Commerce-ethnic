@@ -37,6 +37,9 @@ const emptyForm: HeroBannerInput = {
   is_active: true,
   media_type: 'image',
   poster_url: null,
+  mobile_image_url: null,
+  mobile_media_type: null,
+  mobile_poster_url: null,
 };
 
 export default function HeroBannersPanel() {
@@ -91,10 +94,13 @@ export default function HeroBannersPanel() {
     }
   };
 
+  const [deviceTab, setDeviceTab] = useState<'desktop' | 'mobile'>('desktop');
+
   const openNew = () => {
     setEditing(null);
     setForm(emptyForm);
     setSizeWarning(null);
+    setDeviceTab('desktop');
     loadReferenceDimensions();
     setOpen(true);
   };
@@ -107,8 +113,12 @@ export default function HeroBannersPanel() {
       is_active: b.is_active,
       media_type: b.media_type ?? 'image',
       poster_url: b.poster_url ?? null,
+      mobile_image_url: b.mobile_image_url ?? null,
+      mobile_media_type: b.mobile_media_type ?? null,
+      mobile_poster_url: b.mobile_poster_url ?? null,
     });
     setSizeWarning(null);
+    setDeviceTab('desktop');
     loadReferenceDimensions(b.id);
     setOpen(true);
   };
@@ -117,6 +127,12 @@ export default function HeroBannersPanel() {
     e.preventDefault();
     if (!form.image_url) {
       toast.error(form.media_type === 'video' ? 'Upload a banner video' : 'Upload a banner image');
+      return;
+    }
+    if (form.mobile_media_type !== null && !form.mobile_image_url) {
+      toast.error(
+        form.mobile_media_type === 'video' ? 'Upload a mobile banner video' : 'Upload a mobile banner image'
+      );
       return;
     }
     setSaving(true);
@@ -200,6 +216,69 @@ export default function HeroBannersPanel() {
       toast.error(err instanceof Error ? err.message : 'Cover frame upload failed');
     } finally {
       setUploadingPoster(false);
+    }
+  };
+
+  // --- Mobile-specific media (optional). Mirrors the desktop handlers
+  // above, but writes into mobile_image_url / mobile_poster_url instead,
+  // so a banner can show a different crop/video on phones vs desktop. ---
+  const [uploadingMobileImage, setUploadingMobileImage] = useState(false);
+  const [uploadingMobileVideo, setUploadingMobileVideo] = useState(false);
+  const [uploadingMobilePoster, setUploadingMobilePoster] = useState(false);
+  const mobileEnabled = form.mobile_media_type !== null;
+
+  const enableMobileOverride = () => {
+    setForm((f) => ({ ...f, mobile_media_type: f.media_type }));
+  };
+  const removeMobileOverride = () => {
+    setForm((f) => ({ ...f, mobile_image_url: null, mobile_media_type: null, mobile_poster_url: null }));
+  };
+
+  const onUploadMobileImage = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploadingMobileImage(true);
+    try {
+      const url = await uploadHeroBannerImage(file);
+      setForm((f) => ({ ...f, mobile_image_url: url }));
+      toast.success('Mobile image uploaded');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Mobile image upload failed');
+    } finally {
+      setUploadingMobileImage(false);
+    }
+  };
+
+  const onUploadMobileVideo = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploadingMobileVideo(true);
+    try {
+      const url = await uploadHeroBannerVideo(file);
+      setForm((f) => ({ ...f, mobile_image_url: url }));
+      toast.success('Mobile video uploaded');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Mobile video upload failed');
+    } finally {
+      setUploadingMobileVideo(false);
+    }
+  };
+
+  const onUploadMobilePoster = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploadingMobilePoster(true);
+    try {
+      const url = await uploadHeroBannerImage(file);
+      setForm((f) => ({ ...f, mobile_poster_url: url }));
+      toast.success('Mobile cover frame uploaded');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Mobile cover frame upload failed');
+    } finally {
+      setUploadingMobilePoster(false);
     }
   };
 
@@ -335,6 +414,11 @@ export default function HeroBannersPanel() {
                         <Images className="h-3.5 w-3.5 shrink-0 text-secondary" />
                       )}
                       Banner {index + 1}
+                      {b.mobile_media_type && (
+                        <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                          +mobile
+                        </span>
+                      )}
                     </p>
                   </div>
                 </td>
@@ -388,155 +472,348 @@ export default function HeroBannersPanel() {
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={onSubmit} className="grid gap-4">
-            <div className="grid gap-1.5">
-              <Label>Media type</Label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setForm((f) => ({ ...f, media_type: 'image', image_url: '', poster_url: null }))}
-                  className={`flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
-                    form.media_type === 'image'
-                      ? 'border-primary bg-primary/5 text-primary'
-                      : 'border-border/60 text-muted-foreground hover:bg-muted/40'
-                  }`}
-                >
-                  <ImageIcon className="h-4 w-4" /> Image
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setForm((f) => ({ ...f, media_type: 'video', image_url: '', poster_url: null }))}
-                  className={`flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
-                    form.media_type === 'video'
-                      ? 'border-primary bg-primary/5 text-primary'
-                      : 'border-border/60 text-muted-foreground hover:bg-muted/40'
-                  }`}
-                >
-                  <Film className="h-4 w-4" /> Video
-                </button>
-              </div>
-              {form.media_type === 'video' && (
-                <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                  <VolumeX className="h-3 w-3" /> Always plays muted &amp; on loop on the homepage — no sound,
-                  matches browser autoplay rules.
-                </p>
-              )}
+            <div className="flex gap-1 border-b border-border/60">
+              <button
+                type="button"
+                onClick={() => setDeviceTab('desktop')}
+                className={`px-3 py-2 text-sm font-medium transition-colors ${
+                  deviceTab === 'desktop'
+                    ? 'border-b-2 border-primary text-primary'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Desktop
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeviceTab('mobile')}
+                className={`px-3 py-2 text-sm font-medium transition-colors ${
+                  deviceTab === 'mobile'
+                    ? 'border-b-2 border-primary text-primary'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Mobile {mobileEnabled ? '' : '(optional)'}
+              </button>
             </div>
 
-            {form.media_type === 'image' ? (
-              <div className="grid gap-1.5">
-                <Label htmlFor="banner-image">Image *</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="banner-image"
-                    value={form.image_url}
-                    onChange={(e) => setForm((f) => ({ ...f, image_url: e.target.value }))}
-                    placeholder="https://… or upload below"
-                    className="flex-1"
-                  />
-                  <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border/60 px-3 py-2 text-sm hover:bg-muted/40">
-                    {uploading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Upload className="h-4 w-4" />
-                    )}
-                    <span>{uploading ? 'Uploading…' : 'Upload'}</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={onUpload}
-                      disabled={uploading}
-                    />
-                  </label>
-                </div>
-                {form.image_url && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={form.image_url}
-                    alt="Preview"
-                    className="mt-1 h-32 w-full rounded-md border border-border/60 object-cover"
-                  />
-                )}
-                {sizeWarning && (
-                  <div className="mt-1 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    <span>{sizeWarning}</span>
-                  </div>
-                )}
-              </div>
-            ) : (
+            {deviceTab === 'desktop' ? (
               <>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="banner-video">Video * (.mp4 or .webm, max 45MB)</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="banner-video"
-                      value={form.image_url}
-                      onChange={(e) => setForm((f) => ({ ...f, image_url: e.target.value }))}
-                      placeholder="https://… or upload below"
-                      className="flex-1"
-                    />
-                    <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border/60 px-3 py-2 text-sm hover:bg-muted/40">
-                      {uploadingVideo ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Upload className="h-4 w-4" />
-                      )}
-                      <span>{uploadingVideo ? 'Uploading…' : 'Upload'}</span>
-                      <input
-                        type="file"
-                        accept="video/mp4,video/webm"
-                        className="hidden"
-                        onChange={onUploadVideo}
-                        disabled={uploadingVideo}
-                      />
-                    </label>
+                  <Label>Media type</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, media_type: 'image', image_url: '', poster_url: null }))}
+                      className={`flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                        form.media_type === 'image'
+                          ? 'border-primary bg-primary/5 text-primary'
+                          : 'border-border/60 text-muted-foreground hover:bg-muted/40'
+                      }`}
+                    >
+                      <ImageIcon className="h-4 w-4" /> Image
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setForm((f) => ({ ...f, media_type: 'video', image_url: '', poster_url: null }))}
+                      className={`flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                        form.media_type === 'video'
+                          ? 'border-primary bg-primary/5 text-primary'
+                          : 'border-border/60 text-muted-foreground hover:bg-muted/40'
+                      }`}
+                    >
+                      <Film className="h-4 w-4" /> Video
+                    </button>
                   </div>
-                  {form.image_url && (
-                    // eslint-disable-next-line jsx-a11y/media-has-caption
-                    <video
-                      src={form.image_url}
-                      poster={form.poster_url || undefined}
-                      muted
-                      loop
-                      autoPlay
-                      playsInline
-                      className="mt-1 h-32 w-full rounded-md border border-border/60 bg-black object-cover"
-                    />
+                  {form.media_type === 'video' && (
+                    <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <VolumeX className="h-3 w-3" /> Always plays muted &amp; on loop on the homepage — no
+                      sound, matches browser autoplay rules.
+                    </p>
                   )}
                 </div>
 
-                <div className="grid gap-1.5">
-                  <Label htmlFor="banner-poster">Cover frame (optional)</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="banner-poster"
-                      value={form.poster_url ?? ''}
-                      onChange={(e) => setForm((f) => ({ ...f, poster_url: e.target.value || null }))}
-                      placeholder="https://… or upload below"
-                      className="flex-1"
-                    />
-                    <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border/60 px-3 py-2 text-sm hover:bg-muted/40">
-                      {uploadingPoster ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Upload className="h-4 w-4" />
-                      )}
-                      <span>{uploadingPoster ? 'Uploading…' : 'Upload'}</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={onUploadPoster}
-                        disabled={uploadingPoster}
+                {form.media_type === 'image' ? (
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="banner-image">Image *</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="banner-image"
+                        value={form.image_url}
+                        onChange={(e) => setForm((f) => ({ ...f, image_url: e.target.value }))}
+                        placeholder="https://… or upload below"
+                        className="flex-1"
                       />
-                    </label>
+                      <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border/60 px-3 py-2 text-sm hover:bg-muted/40">
+                        {uploading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Upload className="h-4 w-4" />
+                        )}
+                        <span>{uploading ? 'Uploading…' : 'Upload'}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={onUpload}
+                          disabled={uploading}
+                        />
+                      </label>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Uploaded images are auto-converted to WebP for faster loading.
+                    </p>
+                    {form.image_url && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={form.image_url}
+                        alt="Preview"
+                        className="mt-1 h-32 w-full rounded-md border border-border/60 object-cover"
+                      />
+                    )}
+                    {sizeWarning && (
+                      <div className="mt-1 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span>{sizeWarning}</span>
+                      </div>
+                    )}
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Shown for an instant while the video loads, and on any browser that blocks autoplay.
-                    Recommended: a still frame the same size as the video.
-                  </p>
-                </div>
+                ) : (
+                  <>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="banner-video">Video * (.mp4 or .webm, max 45MB)</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="banner-video"
+                          value={form.image_url}
+                          onChange={(e) => setForm((f) => ({ ...f, image_url: e.target.value }))}
+                          placeholder="https://… or upload below"
+                          className="flex-1"
+                        />
+                        <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border/60 px-3 py-2 text-sm hover:bg-muted/40">
+                          {uploadingVideo ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Upload className="h-4 w-4" />
+                          )}
+                          <span>{uploadingVideo ? 'Uploading…' : 'Upload'}</span>
+                          <input
+                            type="file"
+                            accept="video/mp4,video/webm"
+                            className="hidden"
+                            onChange={onUploadVideo}
+                            disabled={uploadingVideo}
+                          />
+                        </label>
+                      </div>
+                      {form.image_url && (
+                        // eslint-disable-next-line jsx-a11y/media-has-caption
+                        <video
+                          src={form.image_url}
+                          poster={form.poster_url || undefined}
+                          muted
+                          loop
+                          autoPlay
+                          playsInline
+                          className="mt-1 h-32 w-full rounded-md border border-border/60 bg-black object-cover"
+                        />
+                      )}
+                    </div>
+
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="banner-poster">Cover frame (optional)</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="banner-poster"
+                          value={form.poster_url ?? ''}
+                          onChange={(e) => setForm((f) => ({ ...f, poster_url: e.target.value || null }))}
+                          placeholder="https://… or upload below"
+                          className="flex-1"
+                        />
+                        <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border/60 px-3 py-2 text-sm hover:bg-muted/40">
+                          {uploadingPoster ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Upload className="h-4 w-4" />
+                          )}
+                          <span>{uploadingPoster ? 'Uploading…' : 'Upload'}</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={onUploadPoster}
+                            disabled={uploadingPoster}
+                          />
+                        </label>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Shown for an instant while the video loads, and on any browser that blocks autoplay.
+                        Recommended: a still frame the same size as the video.
+                      </p>
+                    </div>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                {!mobileEnabled ? (
+                  <div className="rounded-md border border-dashed border-border/60 p-4 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      No mobile-specific banner yet — phones will show the desktop image/video above.
+                    </p>
+                    <Button type="button" variant="outline" size="sm" className="mt-2" onClick={enableMobileOverride}>
+                      Add a mobile-specific banner
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid gap-1.5">
+                      <Label>Mobile media type</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setForm((f) => ({ ...f, mobile_media_type: 'image', mobile_image_url: '', mobile_poster_url: null }))
+                          }
+                          className={`flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                            form.mobile_media_type === 'image'
+                              ? 'border-primary bg-primary/5 text-primary'
+                              : 'border-border/60 text-muted-foreground hover:bg-muted/40'
+                          }`}
+                        >
+                          <ImageIcon className="h-4 w-4" /> Image
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setForm((f) => ({ ...f, mobile_media_type: 'video', mobile_image_url: '', mobile_poster_url: null }))
+                          }
+                          className={`flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                            form.mobile_media_type === 'video'
+                              ? 'border-primary bg-primary/5 text-primary'
+                              : 'border-border/60 text-muted-foreground hover:bg-muted/40'
+                          }`}
+                        >
+                          <Film className="h-4 w-4" /> Video
+                        </button>
+                      </div>
+                    </div>
+
+                    {form.mobile_media_type === 'image' ? (
+                      <div className="grid gap-1.5">
+                        <Label htmlFor="banner-mobile-image">Mobile image *</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            id="banner-mobile-image"
+                            value={form.mobile_image_url ?? ''}
+                            onChange={(e) => setForm((f) => ({ ...f, mobile_image_url: e.target.value || null }))}
+                            placeholder="https://… or upload below"
+                            className="flex-1"
+                          />
+                          <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border/60 px-3 py-2 text-sm hover:bg-muted/40">
+                            {uploadingMobileImage ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Upload className="h-4 w-4" />
+                            )}
+                            <span>{uploadingMobileImage ? 'Uploading…' : 'Upload'}</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={onUploadMobileImage}
+                              disabled={uploadingMobileImage}
+                            />
+                          </label>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Auto-converted to WebP. Tip: a tall crop (portrait) usually works better for phones.
+                        </p>
+                        {form.mobile_image_url && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={form.mobile_image_url}
+                            alt="Mobile preview"
+                            className="mt-1 h-40 w-28 rounded-md border border-border/60 object-cover"
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        <div className="grid gap-1.5">
+                          <Label htmlFor="banner-mobile-video">Mobile video * (.mp4 or .webm, max 45MB)</Label>
+                          <div className="flex gap-2">
+                            <Input
+                              id="banner-mobile-video"
+                              value={form.mobile_image_url ?? ''}
+                              onChange={(e) => setForm((f) => ({ ...f, mobile_image_url: e.target.value || null }))}
+                              placeholder="https://… or upload below"
+                              className="flex-1"
+                            />
+                            <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border/60 px-3 py-2 text-sm hover:bg-muted/40">
+                              {uploadingMobileVideo ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Upload className="h-4 w-4" />
+                              )}
+                              <span>{uploadingMobileVideo ? 'Uploading…' : 'Upload'}</span>
+                              <input
+                                type="file"
+                                accept="video/mp4,video/webm"
+                                className="hidden"
+                                onChange={onUploadMobileVideo}
+                                disabled={uploadingMobileVideo}
+                              />
+                            </label>
+                          </div>
+                          {form.mobile_image_url && (
+                            // eslint-disable-next-line jsx-a11y/media-has-caption
+                            <video
+                              src={form.mobile_image_url}
+                              poster={form.mobile_poster_url || undefined}
+                              muted
+                              loop
+                              autoPlay
+                              playsInline
+                              className="mt-1 h-40 w-28 rounded-md border border-border/60 bg-black object-cover"
+                            />
+                          )}
+                        </div>
+                        <div className="grid gap-1.5">
+                          <Label htmlFor="banner-mobile-poster">Mobile cover frame (optional)</Label>
+                          <div className="flex gap-2">
+                            <Input
+                              id="banner-mobile-poster"
+                              value={form.mobile_poster_url ?? ''}
+                              onChange={(e) => setForm((f) => ({ ...f, mobile_poster_url: e.target.value || null }))}
+                              placeholder="https://… or upload below"
+                              className="flex-1"
+                            />
+                            <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border/60 px-3 py-2 text-sm hover:bg-muted/40">
+                              {uploadingMobilePoster ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Upload className="h-4 w-4" />
+                              )}
+                              <span>{uploadingMobilePoster ? 'Uploading…' : 'Upload'}</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={onUploadMobilePoster}
+                                disabled={uploadingMobilePoster}
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    <Button type="button" variant="ghost" size="sm" className="justify-self-start text-muted-foreground" onClick={removeMobileOverride}>
+                      Remove mobile-specific banner (use desktop image/video on phones)
+                    </Button>
+                  </>
+                )}
               </>
             )}
 
@@ -570,7 +847,11 @@ export default function HeroBannersPanel() {
                   Cancel
                 </Button>
               </DialogClose>
-              <Button type="submit" disabled={saving || uploading} className="bg-primary">
+              <Button
+                type="submit"
+                disabled={saving || uploading || uploadingVideo || uploadingPoster || uploadingMobileImage || uploadingMobileVideo || uploadingMobilePoster}
+                className="bg-primary"
+              >
                 {saving ? 'Saving…' : editing ? 'Save Changes' : 'Add Banner'}
               </Button>
             </DialogFooter>

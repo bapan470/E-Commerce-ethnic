@@ -37,13 +37,16 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json().catch(() => ({}));
-  const { position, image_url, link_url, is_active, media_type, poster_url } = body || {};
+  const { position, image_url, link_url, is_active, media_type, poster_url, mobile_image_url, mobile_media_type, mobile_poster_url } = body || {};
 
   if (!image_url || !String(image_url).trim()) {
     return NextResponse.json({ error: 'image_url is required' }, { status: 400 });
   }
   if (media_type !== undefined && media_type !== 'image' && media_type !== 'video') {
     return NextResponse.json({ error: "media_type must be 'image' or 'video'" }, { status: 400 });
+  }
+  if (mobile_media_type !== undefined && mobile_media_type !== null && mobile_media_type !== 'image' && mobile_media_type !== 'video') {
+    return NextResponse.json({ error: "mobile_media_type must be 'image', 'video', or null" }, { status: 400 });
   }
 
   const supabase = getSupabaseAdmin();
@@ -67,6 +70,9 @@ export async function POST(req: Request) {
       is_active: is_active ?? true,
       media_type: media_type === 'video' ? 'video' : 'image',
       poster_url: poster_url && String(poster_url).trim() ? String(poster_url).trim() : null,
+      mobile_image_url: mobile_image_url && String(mobile_image_url).trim() ? String(mobile_image_url).trim() : null,
+      mobile_media_type: mobile_media_type === 'video' ? 'video' : mobile_media_type === 'image' ? 'image' : null,
+      mobile_poster_url: mobile_poster_url && String(mobile_poster_url).trim() ? String(mobile_poster_url).trim() : null,
     });
     if (error) throw error;
     revalidatePath('/');

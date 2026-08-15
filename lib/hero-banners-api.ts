@@ -10,6 +10,12 @@ export interface HeroBanner {
   is_active: boolean;
   media_type: HeroBannerMediaType;
   poster_url: string | null;
+  // Optional mobile-specific override. When null, the storefront falls
+  // back to the desktop fields above for phone-sized screens too — so
+  // adding mobile media is always optional, never required.
+  mobile_image_url: string | null;
+  mobile_media_type: HeroBannerMediaType | null;
+  mobile_poster_url: string | null;
   created_at?: string;
 }
 
@@ -19,6 +25,9 @@ export interface HeroBannerInput {
   is_active: boolean;
   media_type: HeroBannerMediaType;
   poster_url: string | null;
+  mobile_image_url: string | null;
+  mobile_media_type: HeroBannerMediaType | null;
+  mobile_poster_url: string | null;
 }
 
 // ---------------------------------------------------------------------
@@ -77,16 +86,56 @@ export async function reorderHeroBanners(orderedIds: string[]) {
   });
 }
 
+// Converts any uploaded image (jpg/png/heic-from-browser/etc.) to WebP
+// in the browser before it ever leaves the device — smaller files,
+// faster homepage loads, no manual "save as webp" step for whoever is
+// uploading. Skipped for formats where re-encoding would lose something
+// a banner needs: GIF (would flatten an animation to one frame) and
+// files already WebP (nothing to do).
+export async function convertImageToWebp(file: File, quality = 0.85): Promise<File> {
+  if (file.type === 'image/webp' || file.type === 'image/gif') return file;
+  if (typeof document === 'undefined') return file; // SSR guard, never hit in practice (upload is browser-only)
+
+  try {
+    const dims = await readImageDimensions(file);
+    const canvas = document.createElement('canvas');
+    canvas.width = dims.width;
+    canvas.height = dims.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return file;
+
+    const objectUrl = URL.createObjectURL(file);
+    const img = new window.Image();
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error('Could not decode image'));
+      img.src = objectUrl;
+    });
+    ctx.drawImage(img, 0, 0);
+    URL.revokeObjectURL(objectUrl);
+
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/webp', quality));
+    if (!blob) return file; // browser couldn't encode webp — fall back to the original file untouched
+
+    const newName = file.name.replace(/\.[^./]+$/, '') + '.webp';
+    return new File([blob], newName, { type: 'image/webp' });
+  } catch {
+    return file; // any decode/canvas failure -> upload the original rather than blocking the admin
+  }
+}
+
 // Uploads a hero banner image straight to Supabase Storage from the
 // browser, the same way homepage-tile photos are uploaded (reuses the
 // existing public "product-images" bucket so no new bucket/migration is
-// needed just for banners).
+// needed just for banners). Auto-converts to WebP first via
+// convertImageToWebp() above.
 export async function uploadHeroBannerImage(file: File): Promise<string> {
-  const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+  const webpFile = await convertImageToWebp(file);
+  const ext = webpFile.type === 'image/webp' ? 'webp' : webpFile.name.split('.').pop()?.toLowerCase() || 'jpg';
   const path = `hero-banners/${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
   const { error } = await supabase.storage
     .from('product-images')
-    .upload(path, file, { cacheControl: '3600', upsert: false });
+    .upload(path, webpFile, { cacheControl: '3600', upsert: false });
   if (error) throw error;
   const { data } = supabase.storage.from('product-images').getPublicUrl(path);
   return data.publicUrl;

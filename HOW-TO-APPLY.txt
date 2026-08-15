@@ -1,47 +1,53 @@
-ORIGINAL FILES RESTORE — Revert Dropshipping SEO Changes
+HERO BANNERS — VIDEO + DESKTOP/MOBILE UPLOADS + AUTO-WEBP
 ============================================================
 
-Ye zip aapko wapas PEHLE JAISA state me le jaayega — matlab wahi
-dropshipping-related changes jo humne reseller-registration page pe
-kiye the, sab hata diye gaye hain. Reseller page ab apne original
-text/wording pe wapas hai.
+Is zip me 6 files hain, apne repo (E-Commerce-ethnic) ke andar EXACT
+same path par copy-paste/replace karo (zip ke andar folder structure
+wahi hai):
 
-FILES → WAHAN COPY KARO (same path, overwrite):
+  1. lib/hero-banners-api.ts                              (REPLACE)
+  2. components/admin/hero-banners-panel.tsx               (REPLACE)
+  3. components/home/hero-banner-carousel.tsx               (REPLACE)
+  4. app/api/admin/hero-banners/route.ts                    (REPLACE)
+  5. app/api/admin/hero-banners/[id]/route.ts                (REPLACE)
+  6. supabase/migrations/20260815000000_hero_banners_video_support.sql
+                                                            (NEW FILE)
 
-1. lib/settings-api.ts
-   → E-Commerce-ethnic\lib\settings-api.ts
-   (IMPORTANT: lib FOLDER KE ANDAR daalna — root me NAHI. Pichli baar
-   yahi galti hui thi jisse build fail hui thi.)
+Note: agar pehle wali "video support" zip already apply ki thi, to
+files 1-5 usi jagah dobara overwrite ho jayengi (koi problem nahi),
+aur migration file 6 bhi same naam se hai — agar already apply kar
+chuke ho to ye naya version usi file ko replace karega (isme naye
+mobile_* columns add hain jo pehle wale me nahi the).
 
-2. reseller-registration/page.tsx
-   → E-Commerce-ethnic\app\reseller-registration\page.tsx
+NAYA KYA HAI IS VERSION ME
+---------------------------
+- Har banner me ab "Desktop" aur "Mobile" — do alag tabs hain Admin >
+  Hero Banners > Add/Edit Banner dialog me. Mobile tab optional hai:
+  agar kuch upload nahi karte, phone par bhi desktop wala hi image/
+  video dikhega (kuch tootega nahi).
+- Mobile ke liye apna image YA video independently choose kar sakte
+  ho — matlab desktop par video aur mobile par halka image bhi rakh
+  sakte ho, ya dono jagah alag cheez.
+- Koi bhi image upload karte hi (desktop ho ya mobile, banner image ho
+  ya video ka cover-frame) automatically WebP me convert ho jaata hai
+  browser me hi, upload hone se pehle — chhoti file size, fast loading.
+  (Video files WebP me convert nahi hoti — wo already compressed
+  format hai, wahan koi change nahi.)
 
-APPLY KAISE KARO
------------------
-1. Dono files ko exact upar diye gaye paths pe copy-paste karke
-   overwrite karo.
-2. Git se push karo:
-     git add lib/settings-api.ts app/reseller-registration/page.tsx
-     git commit -m "Revert: restore original reseller-registration wording"
-     git push
-3. Deploy hone do.
+STEPS
+-----
+1. Upar wali 5 code files apne local repo me same path par paste
+   karke overwrite kar do.
+2. 6th file (migration .sql) supabase/migrations/ folder me copy karo.
+3. Supabase par migration apply karo (Dashboard > SQL Editor me paste
+   + run, YA `supabase db push` agar CLI use karte ho).
+   >>> Migration ke bina Mobile tab dikhega zaroor lekin save karte
+       waqt error dega (mobile_image_url column DB me nahi hoga).
+4. `git add .`
+   `git commit -m "Hero banners: mobile-specific media + auto WebP"`
+   `git push`
+5. Deploy hone ke baad test karo: Admin > Hero Banners > Add Banner >
+   Mobile tab > "Add a mobile-specific banner" > upload > save, phir
+   phone (ya Chrome DevTools mobile view) se homepage check karo.
 
-AGAR ADMIN PANEL SE BHI KABHI EDIT/SAVE KIYA THA
----------------------------------------------------
-Agar aapne pehle Admin > Marketing > Partner Pages me jaake reseller
-page ka koi text manually edit karke Save kiya tha (dropshipping wale
-naye text ke saath), to wo text database me bhi saved hai — sirf ye
-file replace karne se wo apne aap nahi hategga (DB ka value priority
-leta hai). Us case me:
-  Admin panel > Marketing > Partner Pages > Reseller Registration tab
-  > "Reset to default text" button dabao > Save.
-Agar admin panel se kabhi edit nahi kiya tha, to ye step zaroori nahi.
-
-AB KYA STATUS HAI
--------------------
-- Reseller registration page ab apne original wording pe hai (koi
-  "dropshipping" keyword forced nahi hai).
-- Vendor page pehle se hi untouched tha, use kuch nahi karna.
-- Jab aap alag se dedicated dropshipping system banana chahoge, hum
-  usko poori tarah naye pages/flow ke saath bana sakte hain — reseller
-  system ko touch kiye bina.
+Koi doubt ho to bata dena.

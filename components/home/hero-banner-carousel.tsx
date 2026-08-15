@@ -25,6 +25,20 @@ export default function HeroBannerCarousel({ banners }: HeroBannerCarouselProps)
   const pausedRef = useRef(false);
   const touchStartX = useRef<number | null>(null);
 
+  // Tracks whether we're below the `sm` breakpoint so banners with a
+  // mobile-specific image/video (set in Admin > Hero Banners) can swap
+  // to it. Starts as `false` (desktop) to match the server-rendered
+  // output, then corrects itself the instant the component mounts —
+  // avoids the layout ever depending on a guess about the device.
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 639px)');
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+
   useEffect(() => {
     if (banners.length <= 1) return;
     const id = setInterval(() => {
@@ -67,9 +81,17 @@ export default function HeroBannerCarousel({ banners }: HeroBannerCarouselProps)
         style={{ transform: `translateX(-${index * 100}%)` }}
       >
         {banners.map((b, i) => {
+          // Use the mobile-specific media only on phones and only when
+          // the admin actually set one — otherwise every screen size
+          // just uses the desktop fields, same as before this feature.
+          const useMobileMedia = isMobile && b.mobile_media_type !== null && !!b.mobile_image_url;
+          const mediaType = useMobileMedia ? b.mobile_media_type! : b.media_type;
+          const mediaUrl = useMobileMedia ? b.mobile_image_url! : b.image_url;
+          const posterSrc = useMobileMedia ? b.mobile_poster_url : b.poster_url;
+
           const slide = (
             <div className="relative aspect-[4/5] w-full shrink-0 overflow-hidden sm:aspect-[16/6]">
-              {b.media_type === 'video' ? (
+              {mediaType === 'video' ? (
                 // Muted + loop + playsInline is required for autoplay to
                 // work at all on mobile Safari/Chrome (their autoplay
                 // policies block unmuted video outright) -- this also
@@ -80,8 +102,9 @@ export default function HeroBannerCarousel({ banners }: HeroBannerCarouselProps)
                 // desktop and mobile.
                 // eslint-disable-next-line jsx-a11y/media-has-caption
                 <video
-                  src={toPublicMediaUrl(b.image_url) ?? b.image_url}
-                  poster={b.poster_url ? toPublicMediaUrl(b.poster_url) ?? b.poster_url : undefined}
+                  key={mediaUrl}
+                  src={toPublicMediaUrl(mediaUrl) ?? mediaUrl}
+                  poster={posterSrc ? toPublicMediaUrl(posterSrc) ?? posterSrc : undefined}
                   autoPlay
                   muted
                   loop
@@ -91,7 +114,8 @@ export default function HeroBannerCarousel({ banners }: HeroBannerCarouselProps)
                 />
               ) : (
                 <Image
-                  src={toPublicMediaUrl(b.image_url) ?? b.image_url}
+                  key={mediaUrl}
+                  src={toPublicMediaUrl(mediaUrl) ?? mediaUrl}
                   alt=""
                   fill
                   priority={i === 0}

@@ -39,6 +39,20 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (body.poster_url !== undefined) {
     update.poster_url = body.poster_url && String(body.poster_url).trim() ? String(body.poster_url).trim() : null;
   }
+  if (body.mobile_image_url !== undefined) {
+    update.mobile_image_url =
+      body.mobile_image_url && String(body.mobile_image_url).trim() ? String(body.mobile_image_url).trim() : null;
+  }
+  if (body.mobile_media_type !== undefined) {
+    if (body.mobile_media_type !== null && body.mobile_media_type !== 'image' && body.mobile_media_type !== 'video') {
+      return NextResponse.json({ error: "mobile_media_type must be 'image', 'video', or null" }, { status: 400 });
+    }
+    update.mobile_media_type = body.mobile_media_type;
+  }
+  if (body.mobile_poster_url !== undefined) {
+    update.mobile_poster_url =
+      body.mobile_poster_url && String(body.mobile_poster_url).trim() ? String(body.mobile_poster_url).trim() : null;
+  }
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: 'No fields to update' }, { status: 400 });

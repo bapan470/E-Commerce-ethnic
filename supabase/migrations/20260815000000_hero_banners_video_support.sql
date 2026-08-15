@@ -21,7 +21,26 @@ ALTER TABLE hero_banners
 ALTER TABLE hero_banners
   ADD COLUMN IF NOT EXISTS poster_url text;
 
+-- Optional mobile-specific media. NULL means "use the desktop columns
+-- above on phones too" — so every existing banner keeps working exactly
+-- as before, and adding mobile media is opt-in per banner.
+ALTER TABLE hero_banners
+  ADD COLUMN IF NOT EXISTS mobile_image_url text;
+
+ALTER TABLE hero_banners
+  ADD COLUMN IF NOT EXISTS mobile_media_type text
+    CHECK (mobile_media_type IS NULL OR mobile_media_type IN ('image', 'video'));
+
+ALTER TABLE hero_banners
+  ADD COLUMN IF NOT EXISTS mobile_poster_url text;
+
 COMMENT ON COLUMN hero_banners.media_type IS
   'image (default) or video. Video banners render muted/autoplay/loop on the storefront.';
 COMMENT ON COLUMN hero_banners.poster_url IS
   'Optional still-frame shown while a video banner loads. Ignored for image banners.';
+COMMENT ON COLUMN hero_banners.mobile_image_url IS
+  'Optional phone-only override of image_url. NULL = reuse the desktop image_url on mobile.';
+COMMENT ON COLUMN hero_banners.mobile_media_type IS
+  'Optional phone-only override of media_type. NULL = reuse the desktop media_type on mobile.';
+COMMENT ON COLUMN hero_banners.mobile_poster_url IS
+  'Optional phone-only override of poster_url. NULL = reuse the desktop poster_url on mobile.';
