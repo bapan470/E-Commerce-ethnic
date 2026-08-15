@@ -21,18 +21,14 @@ interface HeroBannerCarouselProps {
  * when there's only one image (no dots/arrows needed for one slide).
  *
  * Sizing: the slide box keeps its original on-site dimensions — 4:5 on
- * mobile, 16:6 from `sm:` up — unchanged. object-fit stays object-contain,
- * so the full video/image always shows inside that same box with nothing
- * cut off. If a banner's native ratio doesn't exactly match 4:5 / 16:6,
- * the leftover margin is now filled by a blurred, zoomed-in copy of the
- * same media (object-cover + blur, sitting behind the sharp contain
- * layer) instead of a flat bg-muted strip — same idea as Spotify/YouTube's
- * ambient backdrop. Videos reuse their poster frame for that backdrop (one
- * image, not a second video decode); a video slide with no poster set
- * just keeps the plain bg-muted margin as before — add a "Cover frame" for
- * it in Admin > Hero Banners to get the blurred backdrop there too.
- * Exporting media at exactly 4:5 (mobile) / 16:6 (desktop) still fills the
- * box edge-to-edge with no backdrop needed at all.
+ * mobile, 16:6 from `sm:` up — unchanged. Every slide is actually two
+ * stacked layers of the *same* media: a blurred, zoomed-in copy behind
+ * (object-cover, so it always fills the box edge-to-edge) and the crisp
+ * original in front (object-contain, so nothing is ever cropped). If a
+ * banner's native ratio doesn't exactly match 4:5 / 16:6, the blurred
+ * copy fills what would otherwise be an empty gap instead of a flat
+ * color — export/crop media to exactly 4:5 (mobile) / 16:6 (desktop) if
+ * you'd rather it fill the box edge-to-edge with no blur showing at all.
  *
  * Timing: image slides advance on the fixed AUTOPLAY_MS timer, same as
  * before. Video slides ignore that timer entirely and instead advance the
@@ -43,7 +39,10 @@ export default function HeroBannerCarousel({ banners }: HeroBannerCarouselProps)
   const [index, setIndex] = useState(0);
   const pausedRef = useRef(false);
   const touchStartX = useRef<number | null>(null);
-  const videoRefs = useRef<Record<number, HTMLVideoElement | null>>({});
+  // Keyed "fg-<i>" / "bg-<i>" — each video slide renders two <video>
+  // elements (crisp foreground + blurred background twin), kept in
+  // lockstep by the effect below.
+  const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
 
   // Tracks whether we're below the `sm` breakpoint so banners with a
   // mobile-specific image/video (set in Admin > Hero Banners) can swap
@@ -85,21 +84,31 @@ export default function HeroBannerCarousel({ banners }: HeroBannerCarouselProps)
     return () => clearInterval(id);
   }, [banners.length, index, activeMediaType]);
 
-  // Video slides: only the active slide plays. Every other video stays
-  // paused (no point burning bandwidth/battery off-screen), and whenever
-  // a video becomes the active slide it restarts from 0 — so the viewer
-  // always sees the whole clip, start to finish, before it advances.
+  // Video slides: only the active slide's pair (crisp foreground + its
+  // blurred background twin) plays, restarted together. Every other
+  // video stays paused (no point burning bandwidth/battery off-screen),
+  // and whenever a video becomes the active slide both layers restart
+  // from 0 — so the viewer always sees the whole clip, start to finish,
+  // before it advances.
   useEffect(() => {
+    const activeFgKey = `fg-${index}`;
+    const activeBgKey = `bg-${index}`;
     Object.entries(videoRefs.current).forEach(([key, el]) => {
-      if (el && Number(key) !== index) el.pause();
+      if (el && key !== activeFgKey && key !== activeBgKey) el.pause();
     });
     if (activeMediaType !== 'video') return;
-    const el = videoRefs.current[index];
-    if (!el) return;
-    el.currentTime = 0;
-    el.play().catch(() => {
-      // Autoplay can still be blocked in rare cases even when muted;
-      // the poster frame just stays put then — nothing to advance to.
+    [videoRefs.current[activeFgKey], videoRefs.current[activeBgKey]].forEach((el) => {
+      if (!el) return;
+      // Mobile Safari/Chrome only allow autoplay when the *property*
+      // (not just the muted="" attribute React renders) is true at the
+      // moment play() is called — force it here so this never depends
+      // on React having synced it correctly during mount/hydration.
+      el.muted = true;
+      el.currentTime = 0;
+      el.play().catch(() => {
+        // Autoplay can still be blocked in rare cases even when muted;
+        // the poster frame just stays put then — nothing to advance to.
+      });
     });
   }, [index, activeMediaType]);
 
@@ -143,66 +152,92 @@ export default function HeroBannerCarousel({ banners }: HeroBannerCarouselProps)
           const mediaUrl = useMobileMedia ? b.mobile_image_url! : b.image_url;
           const posterSrc = useMobileMedia ? b.mobile_poster_url : b.poster_url;
           const isSoleBanner = banners.length <= 1;
-
-          // Video backdrops reuse the poster frame (one small image) rather
-          // than a second <video>, which would decode the same clip twice
-          // just for a blurred background — not worth the CPU/battery cost.
-          const backdropSrc = mediaType === 'video' ? posterSrc : mediaUrl;
+          const resolvedUrl = toPublicMediaUrl(mediaUrl) ?? mediaUrl;
 
           const slide = (
-            <div className="relative aspect-[4/5] w-full shrink-0 overflow-hidden bg-muted sm:aspect-[16/6]">
-              {backdropSrc && (
-                <Image
-                  key={`${mediaUrl}-backdrop`}
-                  src={toPublicMediaUrl(backdropSrc) ?? backdropSrc}
-                  alt=""
-                  aria-hidden="true"
-                  fill
-                  sizes="100vw"
-                  className="z-0 scale-110 object-cover object-center blur-2xl brightness-75"
-                />
-              )}
+            <div className="relative aspect-[4/5] w-full shrink-0 overflow-hidden bg-primary sm:aspect-[16/6]">
               {mediaType === 'video' ? (
-                // Muted + playsInline is required for autoplay to work at
-                // all on mobile Safari/Chrome (their autoplay policies
-                // block unmuted video outright). Only the active slide
-                // (i === index) actually plays — see the effect above —
-                // and it only loops on its own when it's the sole banner;
-                // otherwise it plays once and `onEnded` advances the
-                // carousel, so a video is always shown in full before the
-                // next slide appears. object-contain (not cover) means
-                // the whole frame always shows inside the same 4:5 /
-                // 16:6 box the image slides use — nothing gets cropped;
-                // the blurred backdrop above fills whatever margin is left.
-                // eslint-disable-next-line jsx-a11y/media-has-caption
-                <video
-                  key={mediaUrl}
-                  ref={(el) => {
-                    videoRefs.current[i] = el;
-                  }}
-                  src={toPublicMediaUrl(mediaUrl) ?? mediaUrl}
-                  poster={posterSrc ? toPublicMediaUrl(posterSrc) ?? posterSrc : undefined}
-                  autoPlay={i === index}
-                  muted
-                  loop={isSoleBanner}
-                  playsInline
-                  preload={i === index ? 'auto' : 'metadata'}
-                  onEnded={() => {
-                    if (!isSoleBanner && i === index) go(index + 1);
-                  }}
-                  className="absolute inset-0 z-10 h-full w-full object-contain"
-                />
+                <>
+                  {/* Blurred, zoomed-in copy — fills the box completely
+                      (object-cover) so there's never a flat empty gap,
+                      even when the video's own ratio doesn't match the
+                      box's. Purely decorative: hidden from assistive
+                      tech, never drives navigation. */}
+                  {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                  <video
+                    key={`${mediaUrl}-bg`}
+                    aria-hidden="true"
+                    tabIndex={-1}
+                    ref={(el) => {
+                      videoRefs.current[`bg-${i}`] = el;
+                      if (el) el.muted = true;
+                    }}
+                    src={resolvedUrl}
+                    muted
+                    loop={isSoleBanner}
+                    playsInline
+                    webkit-playsinline="true"
+                    preload={i === index ? 'auto' : 'metadata'}
+                    className="absolute inset-0 h-full w-full scale-110 object-cover blur-2xl"
+                  />
+                  {/* Crisp foreground — the actual banner. Muted +
+                      playsInline is required for autoplay to work at all
+                      on mobile Safari/Chrome (their autoplay policies
+                      block unmuted video outright). Only the active
+                      slide (i === index) actually plays — see the effect
+                      above — and it only loops on its own when it's the
+                      sole banner; otherwise it plays once and `onEnded`
+                      advances the carousel, so a video is always shown
+                      in full before the next slide appears.
+                      object-contain (not cover) means the whole frame
+                      always shows — nothing gets cropped. */}
+                  {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                  <video
+                    key={mediaUrl}
+                    ref={(el) => {
+                      videoRefs.current[`fg-${i}`] = el;
+                      if (el) el.muted = true;
+                    }}
+                    src={resolvedUrl}
+                    poster={posterSrc ? toPublicMediaUrl(posterSrc) ?? posterSrc : undefined}
+                    autoPlay={i === index}
+                    muted
+                    loop={isSoleBanner}
+                    playsInline
+                    webkit-playsinline="true"
+                    preload={i === index ? 'auto' : 'metadata'}
+                    onEnded={() => {
+                      if (!isSoleBanner && i === index) go(index + 1);
+                    }}
+                    className="absolute inset-0 h-full w-full object-contain"
+                  />
+                </>
               ) : (
-                <Image
-                  key={mediaUrl}
-                  src={toPublicMediaUrl(mediaUrl) ?? mediaUrl}
-                  alt=""
-                  fill
-                  priority={i === 0}
-                  fetchPriority={i === 0 ? 'high' : 'auto'}
-                  sizes="100vw"
-                  className="z-10 object-contain"
-                />
+                <>
+                  {/* Blurred, zoomed-in copy — same purpose as the video
+                      case above: fills the box completely so there's
+                      never a flat empty gap. Loaded small (sizes="20vw")
+                      since blur hides the extra detail anyway. */}
+                  <Image
+                    key={`${mediaUrl}-bg`}
+                    aria-hidden="true"
+                    src={resolvedUrl}
+                    alt=""
+                    fill
+                    sizes="20vw"
+                    className="scale-110 object-cover blur-2xl"
+                  />
+                  <Image
+                    key={mediaUrl}
+                    src={resolvedUrl}
+                    alt=""
+                    fill
+                    priority={i === 0}
+                    fetchPriority={i === 0 ? 'high' : 'auto'}
+                    sizes="100vw"
+                    className="object-contain"
+                  />
+                </>
               )}
             </div>
           );

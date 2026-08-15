@@ -1,5 +1,5 @@
-HERO BANNER — SAME 4:5/16:6 SIZE, BUT FULL VIDEO/IMAGE SHOWS + ADVANCE
-ONLY AFTER VIDEO ENDS
+HERO BANNER — 4:5/16:6 SIZE + FULL MEDIA SHOW + BLURRED GAP FILL +
+ADVANCE ONLY AFTER VIDEO ENDS + MOBILE AUTOPLAY FIX
 =====================================================================
 
 Is zip me sirf 1 file hai, apne repo (E-Commerce-ethnic) ke andar EXACT
@@ -7,47 +7,43 @@ same path par copy-paste/replace karo:
 
   1. components/home/hero-banner-carousel.tsx          (REPLACE)
 
-KYA BADLA (updated — box size wahi purana hai)
-------------------------------------------------
+KYA HAI IS VERSION ME
+------------------------
 1. Slide box ka SIZE bilkul pehle jaisa hi hai — mobile par 4:5, desktop
-   par (sm: se upar) 16:6. Ye BADLA NAHI hai, jaisa abhi live site par
-   hai waisa hi rahega.
-2. Sirf ek cheez badli: object-cover ki jagah ab object-contain use ho
-   raha hai — isliye is box ke andar pura video/image hamesha dikhega,
-   kuch bhi crop nahi hoga.
-3. Video slide ab apna fixed 5-second timer follow nahi karta — jab tak
+   par (sm: se upar) 16:6.
+2. object-contain — box ke andar pura video/image hamesha dikhega, kuch
+   bhi crop nahi hoga.
+3. Agar video/image ka ratio box se exactly match nahi karta, gap me ab
+   plain color nahi — usi photo/video ka thoda zoomed + BLURRED version
+   dikhega (jaise Spotify/YouTube me hota hai), taaki gap empty na lage.
+4. Video slide apna fixed 5-second timer follow nahi karta — jab tak
    video pura khatam nahi ho jaata, agli slide par nahi jaata. Video
    khatam hote hi khud carousel agli slide par chala jaata hai.
-4. Image slide bilkul pehle jaisa hi hai — wahi purana 5 second timer,
-   hover par pause bhi wahi jaisa tha, kuch nahi badla.
-5. Agar kisi position par sirf ek hi banner hoga (list me total 1 item),
+5. Image slide bilkul pehle jaisa hi hai — wahi purana 5 second timer,
+   hover par pause bhi wahi jaisa tha.
+6. MOBILE AUTOPLAY FIX (naya): pehle mobile par video autoplay nahi ho
+   raha tha aur beech me play/pause button dikh raha tha — ye isliye ho
+   raha tha kyunki browser (khaaskar mobile Safari/Chrome) autoplay tabhi
+   allow karta hai jab video ka "muted" asal me JS property se bhi set ho,
+   sirf HTML attribute se kaafi nahi hota, aur React kabhi-kabhi ye
+   property reliably set nahi karta. Ab code explicitly `video.muted =
+   true` set karta hai element mount hote hi aur play() call karne se
+   theek pehle bhi — is se mobile par autoplay reliably chalega.
+7. Agar kisi position par sirf ek hi banner hoga (list me total 1 item),
    to us case me video pehle jaisa continuously loop karta rahega.
-
-EK ZARURI BAAT — SIZE MATCH KA
---------------------------------
-Box ka size (4:5 mobile / 16:6 desktop) FIXED rakha hai, jaisa aapne
-maanga. Lekin agar aapka video/image is exact ratio ka nahi hai (jaise
-aapke pehle screenshot me 16:9 desktop / 9:16 mobile export dikha tha),
-to object-contain us extra jagah ko crop NAHI karega — balki box ke
-ek side thoda halka background-color (bg-muted) margin dikhega, taaki
-kuch bhi cut na ho.
-
-Agar aap chahte ho ki video/image box ko EDGE-TO-EDGE bilkul fill kare
-(bina kisi margin ke, aur bina kisi crop ke), to sabse accha tareeka:
-apna video/image export/crop karte waqt hi EXACTLY 4:5 (mobile) aur
-16:6 (desktop) ratio me banao — 9:16/16:9 nahi. Us case me contain aur
-cover dono same dikhenge, kyunki tab crop karne ki zaroorat hi nahi
-padegi.
 
 APPLY KARNE KE STEPS
 ---------------------
 1. Upar wali file apne local repo me same path par paste karke
    overwrite/replace kar do.
 2. git add -A
-   git commit -m "Hero carousel: keep 4:5/16:6 box, show full media, advance only after video ends"
+   git commit -m "Hero carousel: blurred gap fill + mobile autoplay fix"
    git push
 3. Koi migration/database change nahi hai is baar — sirf ye 1 component
    file hai, deploy hote hi live ho jaayega.
+4. Apply karne ke baad ACTUAL MOBILE PHONE par (sirf desktop browser ke
+   "mobile view" par nahi) ek video banner khol ke dekh lena ki autoplay
+   sahi se chal raha hai.
 
 Maine local me `tsc --noEmit` aur `next lint` dono chala ke check kar
 liya hai — is file ke against zero errors/warnings.
