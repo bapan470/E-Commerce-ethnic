@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, FormEvent, ChangeEvent } from 'react';
-import { Plus, Pencil, Trash2, Images, ArrowUp, ArrowDown, ImageOff, Upload, Loader2, AlertTriangle } from 'lucide-react';
+import { Plus, Pencil, Trash2, Images, ArrowUp, ArrowDown, ImageOff, Upload, Loader2, AlertTriangle, Film, ImageIcon, VolumeX } from 'lucide-react';
 import {
   HeroBanner,
   HeroBannerInput,
@@ -12,6 +12,7 @@ import {
   setHeroBannerActive,
   reorderHeroBanners,
   uploadHeroBannerImage,
+  uploadHeroBannerVideo,
   readImageDimensions,
   readRemoteImageDimensions,
 } from '@/lib/hero-banners-api';
@@ -34,6 +35,8 @@ const emptyForm: HeroBannerInput = {
   image_url: '',
   link_url: null,
   is_active: true,
+  media_type: 'image',
+  poster_url: null,
 };
 
 export default function HeroBannersPanel() {
@@ -102,6 +105,8 @@ export default function HeroBannersPanel() {
       image_url: b.image_url,
       link_url: b.link_url,
       is_active: b.is_active,
+      media_type: b.media_type ?? 'image',
+      poster_url: b.poster_url ?? null,
     });
     setSizeWarning(null);
     loadReferenceDimensions(b.id);
@@ -111,7 +116,7 @@ export default function HeroBannersPanel() {
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!form.image_url) {
-      toast.error('Upload a banner image');
+      toast.error(form.media_type === 'video' ? 'Upload a banner video' : 'Upload a banner image');
       return;
     }
     setSaving(true);
@@ -157,6 +162,44 @@ export default function HeroBannersPanel() {
       toast.error(err instanceof Error ? err.message : 'Image upload failed');
     } finally {
       setUploading(false);
+    }
+  };
+
+  const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [uploadingPoster, setUploadingPoster] = useState(false);
+
+  const onUploadVideo = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploadingVideo(true);
+    try {
+      const url = await uploadHeroBannerVideo(file);
+      setForm((f) => ({ ...f, image_url: url }));
+      toast.success('Video uploaded');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Video upload failed');
+    } finally {
+      setUploadingVideo(false);
+    }
+  };
+
+  // Optional cover-frame image shown while the video loads / on browsers
+  // that block autoplay — reuses the same image upload path as regular
+  // banner images, just written into poster_url instead of image_url.
+  const onUploadPoster = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setUploadingPoster(true);
+    try {
+      const url = await uploadHeroBannerImage(file);
+      setForm((f) => ({ ...f, poster_url: url }));
+      toast.success('Cover frame uploaded');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Cover frame upload failed');
+    } finally {
+      setUploadingPoster(false);
     }
   };
 
@@ -261,19 +304,36 @@ export default function HeroBannersPanel() {
                 <td className="px-4 py-3 text-sm">
                   <div className="flex items-center gap-2.5">
                     {b.image_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={b.image_url}
-                        alt=""
-                        className="h-10 w-16 shrink-0 rounded-md border border-border/60 object-cover"
-                      />
+                      b.media_type === 'video' ? (
+                        <div className="relative h-10 w-16 shrink-0 overflow-hidden rounded-md border border-border/60 bg-black">
+                          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                          <video
+                            src={b.image_url}
+                            poster={b.poster_url || undefined}
+                            muted
+                            className="h-full w-full object-cover"
+                          />
+                          <Film className="absolute bottom-0.5 right-0.5 h-3 w-3 text-white drop-shadow" />
+                        </div>
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={b.image_url}
+                          alt=""
+                          className="h-10 w-16 shrink-0 rounded-md border border-border/60 object-cover"
+                        />
+                      )
                     ) : (
                       <div className="flex h-10 w-16 shrink-0 items-center justify-center rounded-md border border-dashed border-border/60 text-muted-foreground">
                         <ImageOff className="h-4 w-4" />
                       </div>
                     )}
                     <p className="flex items-center gap-1.5 font-semibold">
-                      <Images className="h-3.5 w-3.5 shrink-0 text-secondary" />
+                      {b.media_type === 'video' ? (
+                        <Film className="h-3.5 w-3.5 shrink-0 text-secondary" />
+                      ) : (
+                        <Images className="h-3.5 w-3.5 shrink-0 text-secondary" />
+                      )}
                       Banner {index + 1}
                     </p>
                   </div>
@@ -329,46 +389,156 @@ export default function HeroBannersPanel() {
           </DialogHeader>
           <form onSubmit={onSubmit} className="grid gap-4">
             <div className="grid gap-1.5">
-              <Label htmlFor="banner-image">Image *</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="banner-image"
-                  value={form.image_url}
-                  onChange={(e) => setForm((f) => ({ ...f, image_url: e.target.value }))}
-                  placeholder="https://… or upload below"
-                  className="flex-1"
-                />
-                <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border/60 px-3 py-2 text-sm hover:bg-muted/40">
-                  {uploading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Upload className="h-4 w-4" />
-                  )}
-                  <span>{uploading ? 'Uploading…' : 'Upload'}</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={onUpload}
-                    disabled={uploading}
-                  />
-                </label>
+              <Label>Media type</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, media_type: 'image', image_url: '', poster_url: null }))}
+                  className={`flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                    form.media_type === 'image'
+                      ? 'border-primary bg-primary/5 text-primary'
+                      : 'border-border/60 text-muted-foreground hover:bg-muted/40'
+                  }`}
+                >
+                  <ImageIcon className="h-4 w-4" /> Image
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, media_type: 'video', image_url: '', poster_url: null }))}
+                  className={`flex items-center justify-center gap-1.5 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                    form.media_type === 'video'
+                      ? 'border-primary bg-primary/5 text-primary'
+                      : 'border-border/60 text-muted-foreground hover:bg-muted/40'
+                  }`}
+                >
+                  <Film className="h-4 w-4" /> Video
+                </button>
               </div>
-              {form.image_url && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={form.image_url}
-                  alt="Preview"
-                  className="mt-1 h-32 w-full rounded-md border border-border/60 object-cover"
-                />
-              )}
-              {sizeWarning && (
-                <div className="mt-1 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  <span>{sizeWarning}</span>
-                </div>
+              {form.media_type === 'video' && (
+                <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <VolumeX className="h-3 w-3" /> Always plays muted &amp; on loop on the homepage — no sound,
+                  matches browser autoplay rules.
+                </p>
               )}
             </div>
+
+            {form.media_type === 'image' ? (
+              <div className="grid gap-1.5">
+                <Label htmlFor="banner-image">Image *</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="banner-image"
+                    value={form.image_url}
+                    onChange={(e) => setForm((f) => ({ ...f, image_url: e.target.value }))}
+                    placeholder="https://… or upload below"
+                    className="flex-1"
+                  />
+                  <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border/60 px-3 py-2 text-sm hover:bg-muted/40">
+                    {uploading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4" />
+                    )}
+                    <span>{uploading ? 'Uploading…' : 'Upload'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={onUpload}
+                      disabled={uploading}
+                    />
+                  </label>
+                </div>
+                {form.image_url && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={form.image_url}
+                    alt="Preview"
+                    className="mt-1 h-32 w-full rounded-md border border-border/60 object-cover"
+                  />
+                )}
+                {sizeWarning && (
+                  <div className="mt-1 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>{sizeWarning}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="banner-video">Video * (.mp4 or .webm, max 45MB)</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="banner-video"
+                      value={form.image_url}
+                      onChange={(e) => setForm((f) => ({ ...f, image_url: e.target.value }))}
+                      placeholder="https://… or upload below"
+                      className="flex-1"
+                    />
+                    <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border/60 px-3 py-2 text-sm hover:bg-muted/40">
+                      {uploadingVideo ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Upload className="h-4 w-4" />
+                      )}
+                      <span>{uploadingVideo ? 'Uploading…' : 'Upload'}</span>
+                      <input
+                        type="file"
+                        accept="video/mp4,video/webm"
+                        className="hidden"
+                        onChange={onUploadVideo}
+                        disabled={uploadingVideo}
+                      />
+                    </label>
+                  </div>
+                  {form.image_url && (
+                    // eslint-disable-next-line jsx-a11y/media-has-caption
+                    <video
+                      src={form.image_url}
+                      poster={form.poster_url || undefined}
+                      muted
+                      loop
+                      autoPlay
+                      playsInline
+                      className="mt-1 h-32 w-full rounded-md border border-border/60 bg-black object-cover"
+                    />
+                  )}
+                </div>
+
+                <div className="grid gap-1.5">
+                  <Label htmlFor="banner-poster">Cover frame (optional)</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="banner-poster"
+                      value={form.poster_url ?? ''}
+                      onChange={(e) => setForm((f) => ({ ...f, poster_url: e.target.value || null }))}
+                      placeholder="https://… or upload below"
+                      className="flex-1"
+                    />
+                    <label className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-border/60 px-3 py-2 text-sm hover:bg-muted/40">
+                      {uploadingPoster ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Upload className="h-4 w-4" />
+                      )}
+                      <span>{uploadingPoster ? 'Uploading…' : 'Upload'}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={onUploadPoster}
+                        disabled={uploadingPoster}
+                      />
+                    </label>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Shown for an instant while the video loads, and on any browser that blocks autoplay.
+                    Recommended: a still frame the same size as the video.
+                  </p>
+                </div>
+              </>
+            )}
 
             <div className="grid gap-1.5">
               <Label htmlFor="banner-link">Link (optional)</Label>

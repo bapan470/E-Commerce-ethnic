@@ -30,6 +30,15 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     update.link_url = body.link_url && String(body.link_url).trim() ? String(body.link_url).trim() : null;
   }
   if (body.is_active !== undefined) update.is_active = body.is_active;
+  if (body.media_type !== undefined) {
+    if (body.media_type !== 'image' && body.media_type !== 'video') {
+      return NextResponse.json({ error: "media_type must be 'image' or 'video'" }, { status: 400 });
+    }
+    update.media_type = body.media_type;
+  }
+  if (body.poster_url !== undefined) {
+    update.poster_url = body.poster_url && String(body.poster_url).trim() ? String(body.poster_url).trim() : null;
+  }
 
   if (Object.keys(update).length === 0) {
     return NextResponse.json({ error: 'No fields to update' }, { status: 400 });

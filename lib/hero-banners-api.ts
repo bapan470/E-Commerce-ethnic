@@ -1,11 +1,15 @@
 import { supabase } from '@/lib/supabase';
 
+export type HeroBannerMediaType = 'image' | 'video';
+
 export interface HeroBanner {
   id: string;
   position: number;
   image_url: string;
   link_url: string | null;
   is_active: boolean;
+  media_type: HeroBannerMediaType;
+  poster_url: string | null;
   created_at?: string;
 }
 
@@ -13,6 +17,8 @@ export interface HeroBannerInput {
   image_url: string;
   link_url: string | null;
   is_active: boolean;
+  media_type: HeroBannerMediaType;
+  poster_url: string | null;
 }
 
 // ---------------------------------------------------------------------
@@ -84,6 +90,41 @@ export async function uploadHeroBannerImage(file: File): Promise<string> {
   if (error) throw error;
   const { data } = supabase.storage.from('product-images').getPublicUrl(path);
   return data.publicUrl;
+}
+
+// Uploads a hero banner VIDEO. Reuses the same signed-upload-URL flow as
+// product videos (app/api/upload-video + the `product-videos` bucket) —
+// the video bytes go straight from the browser to Supabase Storage, never
+// through the Vercel function, since Vercel caps request bodies at
+// ~4.5MB and a banner video easily exceeds that. See
+// uploadProductVideo() in lib/products-api.ts for the original pattern
+// and the reasoning behind it.
+export async function uploadHeroBannerVideo(file: File): Promise<string> {
+  const ALLOWED_TYPES = new Set(['video/mp4', 'video/webm']);
+  const contentType = file.type || 'video/mp4';
+  if (!ALLOWED_TYPES.has(contentType)) {
+    throw new Error('Only .mp4 or .webm videos are supported.');
+  }
+  const MAX_BYTES = 45 * 1024 * 1024; // keep in sync with the product-videos bucket's 50MB cap
+  if (file.size > MAX_BYTES) {
+    throw new Error('Video is too large (max 45MB) — trim it or compress before uploading.');
+  }
+
+  const res = await fetch('/api/upload-video', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ seoName: 'hero-banner', contentType }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Video upload failed');
+
+  const { path, token, url } = json as { path: string; token: string; url: string };
+  const { error: uploadError } = await supabase.storage
+    .from('product-videos')
+    .uploadToSignedUrl(path, token, file);
+  if (uploadError) throw new Error(uploadError.message || 'Video upload failed');
+
+  return url;
 }
 
 // Reads an image file's natural pixel dimensions in the browser, used by

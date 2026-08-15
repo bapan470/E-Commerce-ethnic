@@ -69,15 +69,37 @@ export default function HeroBannerCarousel({ banners }: HeroBannerCarouselProps)
         {banners.map((b, i) => {
           const slide = (
             <div className="relative aspect-[4/5] w-full shrink-0 overflow-hidden sm:aspect-[16/6]">
-              <Image
-                src={toPublicMediaUrl(b.image_url) ?? b.image_url}
-                alt=""
-                fill
-                priority={i === 0}
-                fetchPriority={i === 0 ? 'high' : 'auto'}
-                sizes="100vw"
-                className="object-cover"
-              />
+              {b.media_type === 'video' ? (
+                // Muted + loop + playsInline is required for autoplay to
+                // work at all on mobile Safari/Chrome (their autoplay
+                // policies block unmuted video outright) -- this also
+                // means the banner can never surprise someone with sound.
+                // Same responsive box as the image case (aspect-[4/5] on
+                // mobile, aspect-[16/6] from sm: up) via object-cover, so
+                // video and image banners line up identically on both
+                // desktop and mobile.
+                // eslint-disable-next-line jsx-a11y/media-has-caption
+                <video
+                  src={toPublicMediaUrl(b.image_url) ?? b.image_url}
+                  poster={b.poster_url ? toPublicMediaUrl(b.poster_url) ?? b.poster_url : undefined}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  preload={i === 0 ? 'auto' : 'metadata'}
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              ) : (
+                <Image
+                  src={toPublicMediaUrl(b.image_url) ?? b.image_url}
+                  alt=""
+                  fill
+                  priority={i === 0}
+                  fetchPriority={i === 0 ? 'high' : 'auto'}
+                  sizes="100vw"
+                  className="object-cover"
+                />
+              )}
             </div>
           );
           return b.link_url ? (

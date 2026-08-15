@@ -37,10 +37,13 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json().catch(() => ({}));
-  const { position, image_url, link_url, is_active } = body || {};
+  const { position, image_url, link_url, is_active, media_type, poster_url } = body || {};
 
   if (!image_url || !String(image_url).trim()) {
     return NextResponse.json({ error: 'image_url is required' }, { status: 400 });
+  }
+  if (media_type !== undefined && media_type !== 'image' && media_type !== 'video') {
+    return NextResponse.json({ error: "media_type must be 'image' or 'video'" }, { status: 400 });
   }
 
   const supabase = getSupabaseAdmin();
@@ -62,6 +65,8 @@ export async function POST(req: Request) {
       image_url: String(image_url).trim(),
       link_url: link_url && String(link_url).trim() ? String(link_url).trim() : null,
       is_active: is_active ?? true,
+      media_type: media_type === 'video' ? 'video' : 'image',
+      poster_url: poster_url && String(poster_url).trim() ? String(poster_url).trim() : null,
     });
     if (error) throw error;
     revalidatePath('/');
