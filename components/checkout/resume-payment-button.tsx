@@ -12,6 +12,50 @@ declare global {
   }
 }
 
+// Loads https://checkout.razorpay.com/v1/checkout.js on demand and
+// resolves once window.Razorpay is actually available. The main
+// /checkout page loads this script itself (via next/script), but this
+// button also renders on /checkout/resume/[id] -- a separate route that
+// never includes that script -- which is why "Complete Payment" here was
+// throwing "window.Razorpay is not a constructor". Loading it here makes
+// this button self-sufficient regardless of which page it's used on, and
+// also avoids the race where next/script's "afterInteractive" hasn't
+// finished loading yet by the time someone clicks Pay.
+let razorpayScriptPromise: Promise<void> | null = null;
+function loadRazorpayScript(): Promise<void> {
+  if (typeof window !== 'undefined' && window.Razorpay) {
+    return Promise.resolve();
+  }
+  if (razorpayScriptPromise) return razorpayScriptPromise;
+
+  razorpayScriptPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>(
+      'script[src="https://checkout.razorpay.com/v1/checkout.js"]'
+    );
+    if (existing) {
+      // Script tag already in the DOM (e.g. added by the main checkout
+      // page) — just wait for window.Razorpay to show up rather than
+      // adding a duplicate <script>.
+      existing.addEventListener('load', () => resolve());
+      existing.addEventListener('error', () => reject(new Error('Failed to load Razorpay checkout script')));
+      if (window.Razorpay) resolve();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Failed to load Razorpay checkout script'));
+    document.body.appendChild(script);
+  }).catch((err) => {
+    // Don't cache a rejected promise — let the next click retry the load.
+    razorpayScriptPromise = null;
+    throw err;
+  });
+
+  return razorpayScriptPromise;
+}
+
 // Reopens Razorpay checkout for an order that was already created by
 // place_order_with_items() (stock reserved, address saved) but never got
 // paid — the customer closed the popup or the payment failed. This does
@@ -48,6 +92,10 @@ export default function ResumePaymentButton({
       if (!createOrderRes.ok) {
         throw new Error(createOrderData.error || 'Failed to start payment');
       }
+
+      // Make sure window.Razorpay actually exists before constructing it —
+      // this page doesn't load the checkout.js script on its own.
+      await loadRazorpayScript();
 
       await new Promise<void>((resolve, reject) => {
         const rzp = new window.Razorpay({
