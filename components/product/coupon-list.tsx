@@ -52,26 +52,21 @@ export default function CouponList({ productPrice, appliedCode, onApply, onRemov
 
   return (
     <div>
-      <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
-        <Tag className="h-4 w-4 text-secondary" />
+      <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-foreground">
+        <Tag className="h-3.5 w-3.5 text-muted-foreground" />
         Available Coupons
       </div>
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
         {coupons.map((c) => {
           const isApplied = appliedCode === c.code;
           return (
-            <div
-              key={c.id}
-              className={`relative flex items-center justify-between gap-3 overflow-hidden rounded-lg border border-dashed px-3 py-2.5 transition-colors ${
-                isApplied ? 'border-green-600 bg-green-50' : 'border-secondary/60 bg-secondary/10'
-              }`}
-            >
+            <div key={c.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-sm font-bold tracking-wide text-primary">{c.code}</span>
-                  <span className="text-xs font-semibold text-secondary-foreground">
-                    {describeDiscount(c)}
+                  <span className="font-mono text-sm font-semibold tracking-wide text-foreground">
+                    {c.code}
                   </span>
+                  <span className="text-xs text-muted-foreground">{describeDiscount(c)}</span>
                 </div>
                 <p className="mt-0.5 truncate text-xs text-muted-foreground">
                   {c.min_order_value > 0
@@ -83,16 +78,14 @@ export default function CouponList({ productPrice, appliedCode, onApply, onRemov
                 type="button"
                 onClick={() => handleClick(c)}
                 disabled={applying === c.code}
-                className={`flex shrink-0 items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-60 ${
-                  isApplied
-                    ? 'border-green-600 bg-green-600 text-white hover:bg-green-700'
-                    : 'border-primary bg-background text-primary hover:bg-primary hover:text-primary-foreground'
+                className={`shrink-0 text-xs font-semibold transition-colors disabled:opacity-60 ${
+                  isApplied ? 'text-emerald-600' : 'text-primary hover:underline'
                 }`}
               >
                 {isApplied ? (
-                  <>
+                  <span className="flex items-center gap-1">
                     <Check className="h-3.5 w-3.5" /> Applied
-                  </>
+                  </span>
                 ) : applying === c.code ? (
                   'Applying…'
                 ) : (

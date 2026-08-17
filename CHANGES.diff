@@ -1,260 +1,126 @@
-diff --git a/app/account/addresses/page.tsx b/app/account/addresses/page.tsx
-index ce6a6c5..1a05533 100644
---- a/app/account/addresses/page.tsx
-+++ b/app/account/addresses/page.tsx
-@@ -1,6 +1,6 @@
+diff --git a/app/product/[slug]/product-detail.tsx b/app/product/[slug]/product-detail.tsx
+index 38d176c..7b4a905 100644
+--- a/app/product/[slug]/product-detail.tsx
++++ b/app/product/[slug]/product-detail.tsx
+@@ -9,7 +9,6 @@ import {
+   Truck,
+   ShieldCheck,
+   RefreshCw,
+-  Wallet,
+   Gift,
+ } from 'lucide-react';
+ import { useProducts, usePaymentDiscount, useCart, getVisibleBogoPromotion, formatBogoLabel } from '@/lib/cart-context';
+@@ -948,20 +947,16 @@ function ProductInfo({
+       )}
+ 
+       {onlinePaymentSavings > 0 && (
+-        <div className="flex w-fit flex-col gap-1 rounded-xl border border-emerald-200/70 bg-gradient-to-br from-emerald-50 via-emerald-50/60 to-white px-3.5 py-2.5 shadow-sm">
+-          <div className="flex items-baseline gap-1.5">
+-            <Wallet className="h-3.5 w-3.5 shrink-0 self-center text-emerald-600" />
+-            <span className="text-[11px] font-medium uppercase tracking-wide text-emerald-700/80">
+-              Get this at
+-            </span>
+-            <span className="font-serif text-base font-bold text-emerald-700">
+-              {formatINR(Math.max(0, priceAfterCoupon - onlinePaymentSavings))}
+-            </span>
+-          </div>
+-          <p className="text-[11px] leading-snug text-emerald-700/80">
+-            Save an extra {formatINR(onlinePaymentSavings)} ({paymentDiscount.percent}%) when you pay via{' '}
+-            {paymentDiscount.label} — applied automatically at checkout
+-          </p>
++        <div className="flex w-fit items-baseline gap-2 border-l-2 border-emerald-600 py-0.5 pl-3">
++          <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
++            Get this at
++          </span>
++          <span className="text-base font-semibold text-emerald-700">
++            {formatINR(Math.max(0, priceAfterCoupon - onlinePaymentSavings))}
++          </span>
++          <span className="text-[11px] text-muted-foreground">
++            via {paymentDiscount.label}
++          </span>
+         </div>
+       )}
+ 
+diff --git a/components/growth/low-stock-badge.tsx b/components/growth/low-stock-badge.tsx
+index 78aafa7..b16ce25 100644
+--- a/components/growth/low-stock-badge.tsx
++++ b/components/growth/low-stock-badge.tsx
+@@ -1,7 +1,7 @@
  'use client';
  
--import { useEffect, useState } from 'react';
-+import { useEffect, useRef, useState } from 'react';
- import { Plus, Loader2, Trash2, Pencil, Star } from 'lucide-react';
- import { fetchAddresses, upsertAddress, deleteAddress } from '@/lib/addresses-api';
- import type { Address } from '@/lib/types';
-@@ -17,6 +17,7 @@ import {
-   DialogFooter,
- } from '@/components/ui/dialog';
- import { toast } from 'sonner';
-+import { fetchAddressSuggestions, AddressSuggestion } from '@/lib/address-suggest';
- 
- const emptyForm = {
-   full_name: '',
-@@ -36,6 +37,12 @@ export default function AddressesPage() {
-   const [editing, setEditing] = useState<Address | null>(null);
-   const [form, setForm] = useState(emptyForm);
-   const [saving, setSaving] = useState(false);
-+  // Free street-address autosuggest (OpenStreetMap Nominatim) for the
-+  // "Address line 1" field — no API key needed, see lib/address-suggest.ts.
-+  const [line1Suggestions, setLine1Suggestions] = useState<AddressSuggestion[]>([]);
-+  const [showLine1Suggestions, setShowLine1Suggestions] = useState(false);
-+  const [line1SearchedEmpty, setLine1SearchedEmpty] = useState(false);
-+  const suggestionJustPickedRef = useRef(false);
- 
-   const load = async () => {
-     setLoading(true);
-@@ -52,6 +59,46 @@ export default function AddressesPage() {
-     load();
-   }, []);
- 
-+  // Debounced free address-autosuggest as the user types Address line 1.
-+  useEffect(() => {
-+    if (suggestionJustPickedRef.current) {
-+      suggestionJustPickedRef.current = false;
-+      return;
-+    }
-+    if (form.line1.trim().length < 3) {
-+      setLine1Suggestions([]);
-+      setShowLine1Suggestions(false);
-+      setLine1SearchedEmpty(false);
-+      return;
-+    }
-+    const controller = new AbortController();
-+    const timer = setTimeout(() => {
-+      fetchAddressSuggestions(form.line1, controller.signal).then((results) => {
-+        setLine1Suggestions(results);
-+        setShowLine1Suggestions(results.length > 0);
-+        setLine1SearchedEmpty(results.length === 0);
-+      });
-+    }, 400);
-+    return () => {
-+      clearTimeout(timer);
-+      controller.abort();
-+    };
-+  }, [form.line1]);
+ import { useEffect, useState } from 'react';
+-import { Flame } from 'lucide-react';
 +
-+  const pickLine1Suggestion = (s: AddressSuggestion) => {
-+    suggestionJustPickedRef.current = true;
-+    setShowLine1Suggestions(false);
-+    setLine1Suggestions([]);
-+    setLine1SearchedEmpty(false);
-+    setForm((f) => ({
-+      ...f,
-+      line1: s.line1,
-+      city: s.city || f.city,
-+      state: s.state || f.state,
-+      pincode: s.pincode || f.pincode,
-+    }));
-+  };
-+
-   const openNew = () => {
-     setEditing(null);
-     setForm(emptyForm);
-@@ -163,12 +210,37 @@ export default function AddressesPage() {
-                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
-               />
-             </div>
--            <div className="space-y-1.5 sm:col-span-2">
-+            <div className="relative space-y-1.5 sm:col-span-2">
-               <Label>Address line 1</Label>
-               <Input
-+                autoComplete="off"
-                 value={form.line1}
-                 onChange={(e) => setForm({ ...form, line1: e.target.value })}
-+                onFocus={() => {
-+                  if (line1Suggestions.length > 0) setShowLine1Suggestions(true);
-+                }}
-+                onBlur={() => setTimeout(() => setShowLine1Suggestions(false), 150)}
-               />
-+              {showLine1Suggestions && line1Suggestions.length > 0 && (
-+                <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-auto rounded-md border border-border bg-popover shadow-md">
-+                  {line1Suggestions.map((s, i) => (
-+                    <li key={i}>
-+                      <button
-+                        type="button"
-+                        onClick={() => pickLine1Suggestion(s)}
-+                        className="block w-full px-3 py-2 text-left text-sm hover:bg-muted"
-+                      >
-+                        {s.label}
-+                      </button>
-+                    </li>
-+                  ))}
-+                </ul>
-+              )}
-+              {!showLine1Suggestions && line1SearchedEmpty && (
-+                <p className="text-[11px] text-muted-foreground">
-+                  No matches found — you can type your full address in manually.
-+                </p>
-+              )}
-             </div>
-             <div className="space-y-1.5 sm:col-span-2">
-               <Label>Address line 2 (optional)</Label>
-diff --git a/app/checkout/page.tsx b/app/checkout/page.tsx
-index 91074f0..7bacdb8 100644
---- a/app/checkout/page.tsx
-+++ b/app/checkout/page.tsx
-@@ -36,6 +36,7 @@ import {
-   PincodeResult,
- } from '@/lib/pincode-api';
- import { trackEvent, getSessionId } from '@/lib/track-api';
-+import { fetchAddressSuggestions, AddressSuggestion } from '@/lib/address-suggest';
- import {
-   CheckoutBumpSettings,
-   DEFAULT_CHECKOUT_BUMP_SETTINGS,
-@@ -204,6 +205,19 @@ export default function CheckoutPage() {
-   // false the moment the shopper edits either field themselves.
-   const cityAutoFilledRef = useRef(false);
-   const stateAutoFilledRef = useRef(false);
-+  // Free street-address autosuggest (OpenStreetMap Nominatim) — shows a
-+  // dropdown of matching addresses under the Street address field as the
-+  // shopper types, so they can tap one instead of typing the whole thing
-+  // and re-typing city/state/pincode by hand.
-+  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
-+  const [showAddressSuggestions, setShowAddressSuggestions] = useState(false);
-+  const [suggestLoading, setSuggestLoading] = useState(false);
-+  // True once a search has actually run and come back empty, so we can show
-+  // a "no matches — type it in manually" hint instead of just nothing.
-+  const [suggestSearchedEmpty, setSuggestSearchedEmpty] = useState(false);
-+  // True right after the shopper picks a suggestion, so the debounce effect
-+  // below doesn't immediately re-query and reopen the dropdown.
-+  const suggestionJustPickedRef = useRef(false);
+ import { fetchGrowthSettings } from '@/lib/growth-api';
  
-   // Bug fix: clicking "Log In" / "Create Account" from the resell prompt used
-   // to send the shopper to /login or /signup and back, which remounts this
-@@ -523,6 +537,57 @@ export default function CheckoutPage() {
-     // eslint-disable-next-line react-hooks/exhaustive-deps
-   }, [pincode]);
+ export default function LowStockBadge({ stockQuantity }: { stockQuantity: number }) {
+@@ -20,8 +20,8 @@ export default function LowStockBadge({ stockQuantity }: { stockQuantity: number
+   if (!enabled || stockQuantity <= 0 || stockQuantity > threshold) return null;
  
-+  // Debounced free address-autosuggest as the shopper types the street
-+  // address (see lib/address-suggest.ts). Waits 400ms after typing stops,
-+  // then queries OpenStreetMap Nominatim — no API key needed.
-+  useEffect(() => {
-+    if (suggestionJustPickedRef.current) {
-+      suggestionJustPickedRef.current = false;
-+      return;
-+    }
-+    if (addressLine1.trim().length < 3) {
-+      setAddressSuggestions([]);
-+      setShowAddressSuggestions(false);
-+      setSuggestSearchedEmpty(false);
-+      return;
-+    }
-+    const controller = new AbortController();
-+    setSuggestLoading(true);
-+    const timer = setTimeout(() => {
-+      fetchAddressSuggestions(addressLine1, controller.signal)
-+        .then((results) => {
-+          setAddressSuggestions(results);
-+          setShowAddressSuggestions(results.length > 0);
-+          setSuggestSearchedEmpty(results.length === 0);
-+        })
-+        .finally(() => setSuggestLoading(false));
-+    }, 400);
-+    return () => {
-+      clearTimeout(timer);
-+      controller.abort();
-+      setSuggestLoading(false);
-+    };
-+  }, [addressLine1]);
-+
-+  const pickAddressSuggestion = (s: AddressSuggestion) => {
-+    suggestionJustPickedRef.current = true;
-+    setAddressLine1(s.line1);
-+    setShowAddressSuggestions(false);
-+    setAddressSuggestions([]);
-+    setSuggestSearchedEmpty(false);
-+    if (s.city) {
-+      cityAutoFilledRef.current = true;
-+      setCity(s.city);
-+    }
-+    if (s.state) {
-+      stateAutoFilledRef.current = true;
-+      setStateName(s.state);
-+    }
-+    if (s.pincode) {
-+      setPincode(s.pincode);
-+    }
-+  };
-+
-   useEffect(() => {
-     fetchLoyaltySettings().then(setLoyaltySettings).catch(() => {
-       // fall back to defaults already set above
-@@ -1317,17 +1382,48 @@ export default function CheckoutPage() {
-               <h2 className="font-serif text-lg font-bold text-primary">Shipping Address</h2>
-             </div>
-             <div className="grid gap-4">
--              <div className="grid gap-1.5">
-+              <div className="relative grid gap-1.5">
-                 <Label htmlFor="address">Street address *</Label>
-                 <Input
-                   id="address"
-                   name="address"
--                  autoComplete="address-line1"
-+                  autoComplete="off"
-                   required
-                   placeholder="12, MG Road, Apt 304"
-                   value={addressLine1}
-                   onChange={(e) => setAddressLine1(e.target.value)}
-+                  onFocus={() => {
-+                    if (addressSuggestions.length > 0) setShowAddressSuggestions(true);
-+                  }}
-+                  onBlur={() => {
-+                    // Slight delay so a click on a suggestion registers
-+                    // before the dropdown unmounts.
-+                    setTimeout(() => setShowAddressSuggestions(false), 150);
-+                  }}
-                 />
-+                {suggestLoading && (
-+                  <p className="text-[11px] text-muted-foreground">Searching addresses…</p>
-+                )}
-+                {!suggestLoading && suggestSearchedEmpty && (
-+                  <p className="text-[11px] text-muted-foreground">
-+                    No matches found — you can type your full address in manually.
-+                  </p>
-+                )}
-+                {showAddressSuggestions && addressSuggestions.length > 0 && (
-+                  <ul className="absolute left-0 right-0 top-full z-20 mt-1 max-h-56 overflow-auto rounded-md border border-border bg-popover shadow-md">
-+                    {addressSuggestions.map((s, i) => (
-+                      <li key={i}>
-+                        <button
-+                          type="button"
-+                          onClick={() => pickAddressSuggestion(s)}
-+                          className="block w-full px-3 py-2 text-left text-sm hover:bg-muted"
-+                        >
-+                          {s.label}
-+                        </button>
-+                      </li>
-+                    ))}
-+                  </ul>
-+                )}
-               </div>
-               <div className="grid gap-1.5">
-                 <Label htmlFor="address2">Apartment, suite, etc. (optional)</Label>
+   return (
+-    <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2.5 py-1 text-xs font-semibold text-destructive">
+-      <Flame className="h-3.5 w-3.5" />
++    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-destructive">
++      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-destructive" />
+       Only {stockQuantity} left in stock — order soon
+     </span>
+   );
+diff --git a/components/product/coupon-list.tsx b/components/product/coupon-list.tsx
+index a05fcbc..7b14a9c 100644
+--- a/components/product/coupon-list.tsx
++++ b/components/product/coupon-list.tsx
+@@ -52,26 +52,21 @@ export default function CouponList({ productPrice, appliedCode, onApply, onRemov
+ 
+   return (
+     <div>
+-      <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold">
+-        <Tag className="h-4 w-4 text-secondary" />
++      <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-foreground">
++        <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+         Available Coupons
+       </div>
+-      <div className="flex flex-col gap-2">
++      <div className="flex flex-col divide-y divide-border rounded-lg border border-border">
+         {coupons.map((c) => {
+           const isApplied = appliedCode === c.code;
+           return (
+-            <div
+-              key={c.id}
+-              className={`relative flex items-center justify-between gap-3 overflow-hidden rounded-lg border border-dashed px-3 py-2.5 transition-colors ${
+-                isApplied ? 'border-green-600 bg-green-50' : 'border-secondary/60 bg-secondary/10'
+-              }`}
+-            >
++            <div key={c.id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+               <div className="min-w-0">
+                 <div className="flex flex-wrap items-center gap-2">
+-                  <span className="font-mono text-sm font-bold tracking-wide text-primary">{c.code}</span>
+-                  <span className="text-xs font-semibold text-secondary-foreground">
+-                    {describeDiscount(c)}
++                  <span className="font-mono text-sm font-semibold tracking-wide text-foreground">
++                    {c.code}
+                   </span>
++                  <span className="text-xs text-muted-foreground">{describeDiscount(c)}</span>
+                 </div>
+                 <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                   {c.min_order_value > 0
+@@ -83,16 +78,14 @@ export default function CouponList({ productPrice, appliedCode, onApply, onRemov
+                 type="button"
+                 onClick={() => handleClick(c)}
+                 disabled={applying === c.code}
+-                className={`flex shrink-0 items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-60 ${
+-                  isApplied
+-                    ? 'border-green-600 bg-green-600 text-white hover:bg-green-700'
+-                    : 'border-primary bg-background text-primary hover:bg-primary hover:text-primary-foreground'
++                className={`shrink-0 text-xs font-semibold transition-colors disabled:opacity-60 ${
++                  isApplied ? 'text-emerald-600' : 'text-primary hover:underline'
+                 }`}
+               >
+                 {isApplied ? (
+-                  <>
++                  <span className="flex items-center gap-1">
+                     <Check className="h-3.5 w-3.5" /> Applied
+-                  </>
++                  </span>
+                 ) : applying === c.code ? (
+                   'Applying…'
+                 ) : (
