@@ -126,7 +126,6 @@ export default async function OrdersPage() {
                             work out, it&apos;s covered under our{' '}
                             <Link
                               href="/legal/refund-policy"
-                              onClick={(e) => e.stopPropagation()}
                               className="font-medium text-amber-950 underline underline-offset-2"
                             >
                               Refund &amp; Cancellation Policy
