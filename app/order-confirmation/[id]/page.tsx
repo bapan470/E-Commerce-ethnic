@@ -10,6 +10,18 @@ import OrderTracking from '@/components/order/order-tracking';
 import PurchaseTracker from '@/components/analytics/purchase-tracker';
 import TrustpilotInvitation from '@/components/analytics/trustpilot-invitation';
 
+// Badge styling per order.status. Keeps this page in sync with whatever
+// the admin last set from Admin -> Orders (paid/shipped/delivered/
+// cancelled/failed), instead of always reading "placed successfully".
+const STATUS_BADGE: Record<string, { label: string; className: string }> = {
+  pending: { label: 'Pending', className: 'bg-amber-100 text-amber-700' },
+  paid: { label: 'Payment Confirmed', className: 'bg-emerald-100 text-emerald-700' },
+  shipped: { label: 'Shipped', className: 'bg-sky-100 text-sky-700' },
+  delivered: { label: 'Delivered', className: 'bg-green-100 text-green-700' },
+  cancelled: { label: 'Cancelled', className: 'bg-red-100 text-red-700' },
+  failed: { label: 'Payment Failed', className: 'bg-red-100 text-red-700' },
+};
+
 export default async function OrderConfirmationPage({ params }: { params: { id: string } }) {
   const supabase = getSupabaseAdmin();
   const { data: order } = await supabase.from('orders').select('*').eq('id', params.id).single();
@@ -56,11 +68,24 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
           <CheckCircle2 className="h-10 w-10 text-secondary" />
         </div>
         <h1 className="font-serif text-3xl font-bold text-primary">Thank you for your order!</h1>
+        {STATUS_BADGE[order.status] && (
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${STATUS_BADGE[order.status].className}`}
+          >
+            {STATUS_BADGE[order.status].label}
+          </span>
+        )}
         <p className="max-w-md text-sm text-muted-foreground">
           Order #{order.id.slice(0, 8).toUpperCase()} has been placed successfully. A confirmation
           email is on its way to {order.customer_email}. Your handwoven pieces will be dispatched
           soon.
-          {order.payment_method === 'cod' && (
+          {order.status === 'cancelled' && (
+            <>
+              {' '}
+              This order has since been <strong>cancelled</strong>.
+            </>
+          )}
+          {order.payment_method === 'cod' && order.status !== 'cancelled' && (
             <>
               {' '}
               Please keep <strong>{formatINR(order.total_amount)}</strong> ready in cash for our

@@ -272,6 +272,71 @@ export function orderShippedEmail(order: {
   return { subject, html };
 }
 
+// Generic "your order status changed" email — sent on every status change
+// made from Admin -> Orders (the status dropdown / order detail view),
+// covering statuses that don't already have a dedicated email (paid,
+// delivered, cancelled, failed, pending/back-to-pending). 'shipped' also
+// goes through here when the admin flips status manually on an order that
+// already has a tracking number; the dedicated "just shipped from
+// Delhivery" email (orderShippedEmail) is still sent separately by the
+// create-shipment route the first time a waybill is generated.
+export function orderStatusUpdateEmail(order: {
+  id: string;
+  customer_name?: string;
+  status: string;
+  tracking_number?: string | null;
+  courier_name?: string | null;
+}) {
+  const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
+  const name = order.customer_name || 'there';
+
+  const copy: Record<string, { subject: string; heading: string; body: string }> = {
+    pending: {
+      subject: `Order ${shortId} is now pending`,
+      heading: `Hi ${name}, your order is pending`,
+      body: `Your order <strong>${shortId}</strong> has been moved back to <strong>pending</strong>. We'll update you again as soon as it progresses.`,
+    },
+    paid: {
+      subject: `Payment confirmed — ${shortId}`,
+      heading: `Thanks, ${name} — payment received!`,
+      body: `We've confirmed payment for your order <strong>${shortId}</strong>. It's now being prepared for dispatch.`,
+    },
+    shipped: {
+      subject: `Your order has shipped — ${shortId}`,
+      heading: `Good news, ${name} — it's on the way!`,
+      body: `Your order <strong>${shortId}</strong> has been shipped${order.courier_name ? ` via ${order.courier_name}` : ''}.${order.tracking_number ? ` <br/><strong>Tracking number:</strong> ${order.tracking_number}` : ''}`,
+    },
+    delivered: {
+      subject: `Delivered! — ${shortId}`,
+      heading: `Your order has arrived, ${name}!`,
+      body: `Your order <strong>${shortId}</strong> has been marked as <strong>delivered</strong>. We hope you love it — thank you for shopping with us.`,
+    },
+    cancelled: {
+      subject: `Order cancelled — ${shortId}`,
+      heading: `Your order has been cancelled`,
+      body: `Your order <strong>${shortId}</strong> has been <strong>cancelled</strong>. If you've already paid online, any eligible refund will be processed to your original payment method. If you didn't request this, please reply to this email or contact support.`,
+    },
+    failed: {
+      subject: `Payment issue with order ${shortId}`,
+      heading: `There was an issue with your order`,
+      body: `We weren't able to confirm payment for your order <strong>${shortId}</strong>. Please try again or contact support if you were charged.`,
+    },
+  };
+
+  const c = copy[order.status] || {
+    subject: `Order ${shortId} update`,
+    heading: `Update on your order, ${name}`,
+    body: `The status of your order <strong>${shortId}</strong> is now <strong>${order.status}</strong>.`,
+  };
+
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">${c.heading}</h2>
+    <p>${c.body}</p>
+    <p>You can view full order details and live tracking anytime from your account's Order History page.</p>
+  `);
+  return { subject: c.subject, html };
+}
+
 export function returnStatusEmail(ret: {
   id: string;
   order_id: string;

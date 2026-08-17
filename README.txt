@@ -1,36 +1,32 @@
-Part 2b — BOGO discount wired into cart state + UI
-====================================================
+Kya change hua (Hinglish):
+1. lib/email-templates.ts -> naya function `orderStatusUpdateEmail` add kiya
+   (pending/paid/shipped/delivered/cancelled/failed sabke liye alag email copy).
+2. lib/orders-api.ts -> `updateOrderStatus()` ab order update karne se pehle
+   customer_email fetch karta hai, aur status badalne par customer ko email
+   bhejta hai (best-effort - email fail ho bhi to status update nahi rukega).
+   Ye function Admin > Orders ke status dropdown se hi call hota hai, isliye
+   ab HAR status change (cancelled, paid, delivered, etc.) par email jayega.
+3. app/order-confirmation/[id]/page.tsx -> "Thank you" page par ab order ka
+   live status (Pending/Payment Confirmed/Shipped/Delivered/Cancelled) ek
+   badge ke roop me dikhta hai, jo admin ke status change ke turant baad
+   reflect hoga (page refresh/dobara open karne par).
 
-Files changed (drop these into your repo, same paths):
-- lib/cart-context.tsx        -> fetches active promotions on mount, computes
-                                  bogoDiscount via computeBogoDiscount(), exposes
-                                  activePromotions + bogoDiscount from CartContext.
-- components/cart-drawer.tsx  -> Total = subtotal - couponDiscount - bogoDiscount.
-                                  New "BOGO offer applied: -₹X" line in Price details,
-                                  next to the coupon line, same styling. Savings strip
-                                  and payment-discount base updated too.
-- app/checkout/page.tsx       -> Same total formula. Buy Now flow recomputes
-                                  bogoDiscount locally (mirrors how couponDiscount is
-                                  already recomputed for Buy Now) since it checks out
-                                  buyNowItem, not the persistent cart. New "BOGO offer
-                                  applied" line in the order summary sidebar.
+Apply kaise kare:
+Option A (recommended, fast): apne project folder me jaake terminal me:
+    git apply CHANGES.patch
+  (agar conflict aaye to Option B use karein)
 
-Also included: part2b.patch — a git diff of all three files, in case you'd rather
-apply it with `git apply part2b.patch` from your repo root instead of copying files.
+Option B (manual replace): is zip ke andar ke 3 files ko seedha apne
+project ke same path par copy-paste/replace kar dein:
+    - app/order-confirmation/[id]/page.tsx
+    - lib/email-templates.ts
+    - lib/orders-api.ts
 
-Verified: `npx tsc --noEmit` passes with 0 errors across the whole project after
-these changes.
+Uske baad:
+    git add -A
+    git commit -m "Send email on every order status change + show live status on thank you page"
+    git push
 
-Test before pushing:
-1. npm run dev
-2. Make sure at least one active promotion exists with scope='all' (or 'collection'
-   matching a product you'll test with).
-3. Add 2+ qualifying items to the cart (enough to satisfy buy_qty + get_qty).
-4. Open the cart drawer -> Price details -> confirm "BOGO offer applied: -₹X" shows
-   with the correct amount, and Total reflects it.
-5. Go to checkout with those same cart items -> confirm the same line + total in the
-   order summary sidebar.
-6. Try "Buy Now" on a single qualifying product with quantity >= buy_qty+get_qty (or
-   add checkout-bump extras that push it over) to confirm the Buy Now path recomputes
-   correctly too.
-7. git add -A && git commit -m "Part 2b: wire BOGO discount into cart state + UI" && git push
+Note: Email bhejne ke liye Admin > Settings > Email Notifications me
+provider (Resend ya ZeptoMail) already configured hona chahiye -- wahi
+provider is naye status-change email ke liye bhi use hoga.

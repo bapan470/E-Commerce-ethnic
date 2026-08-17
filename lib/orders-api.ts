@@ -1,4 +1,6 @@
 import { getSupabaseAdmin } from './supabase-admin';
+import { sendEmail } from './email';
+import { orderStatusUpdateEmail } from './email-templates';
 
 // SECURITY NOTE: this now uses the service-role client instead of the
 // anon-key client. Both callers of this file (app/api/admin/orders and
@@ -78,10 +80,44 @@ export async function fetchOrders() {
   return attachItemSources(supabase, data ?? []);
 }
 
+// Called from Admin -> Orders whenever the admin changes an order's status
+// (the dropdown in the orders table, or the order detail view). Besides
+// writing the new status, this sends the customer a "your order status
+// changed" email (best-effort -- a failed/unconfigured email provider
+// never blocks the status update itself). The order_status_history table
+// is populated separately by a DB trigger, so this function doesn't need
+// to touch that.
 export async function updateOrderStatus(id: string, status: string) {
   const supabase = getSupabaseAdmin();
+
+  // Fetch first so we know the customer's email + previous status. Also
+  // lets us skip the email entirely if the status isn't actually changing
+  // (e.g. the admin re-selects the same value).
+  const { data: existing, error: fetchError } = await supabase
+    .from('orders')
+    .select('id, status, customer_email, customer_name, tracking_number, courier_name')
+    .eq('id', id)
+    .maybeSingle();
+  if (fetchError) throw fetchError;
+
   const { data, error } = await supabase.from('orders').update({ status }).eq('id', id);
   if (error) throw error;
+
+  if (existing && existing.status !== status && existing.customer_email) {
+    const { subject, html } = orderStatusUpdateEmail({
+      id: existing.id,
+      customer_name: existing.customer_name,
+      status,
+      tracking_number: existing.tracking_number,
+      courier_name: existing.courier_name,
+    });
+    // Best-effort -- never let a slow/broken email provider fail the
+    // admin's status update.
+    sendEmail({ to: existing.customer_email, subject, html }).catch((err) => {
+      console.error('[updateOrderStatus] status-change email failed:', err);
+    });
+  }
+
   return data;
 }
 

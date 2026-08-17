@@ -1,158 +1,181 @@
-diff --git a/app/icon.tsx b/app/icon.tsx
-index fcbd40a..0ed7adc 100644
---- a/app/icon.tsx
-+++ b/app/icon.tsx
-@@ -1,7 +1,10 @@
- import { ImageResponse } from 'next/server';
- import { getServerSupabase } from '@/lib/supabase-server';
+diff --git a/app/order-confirmation/[id]/page.tsx b/app/order-confirmation/[id]/page.tsx
+index fcf7d1a..0a334fe 100644
+--- a/app/order-confirmation/[id]/page.tsx
++++ b/app/order-confirmation/[id]/page.tsx
+@@ -10,6 +10,18 @@ import OrderTracking from '@/components/order/order-tracking';
+ import PurchaseTracker from '@/components/analytics/purchase-tracker';
+ import TrustpilotInvitation from '@/components/analytics/trustpilot-invitation';
  
--export const size = { width: 32, height: 32 };
-+// Google requires a square favicon of at least 48x48px to reliably show it
-+// next to search results (32x32 is fine for browser tabs but too small for
-+// Google Search).
-+export const size = { width: 48, height: 48 };
- export const contentType = 'image/png';
- 
- async function getFaviconUrl(): Promise<string> {
-@@ -54,7 +57,7 @@ export default async function Icon() {
-           borderRadius: 6,
-         }}
-       >
--        <span style={{ fontSize: 20, fontWeight: 700, color: '#DAAA2F' }}>A</span>
-+        <span style={{ fontSize: 28, fontWeight: 700, color: '#DAAA2F' }}>A</span>
-       </div>
-     ),
-     { ...size }
-diff --git a/components/admin/marketing-panel.tsx b/components/admin/marketing-panel.tsx
-index dec4f8a..2a51fa5 100644
---- a/components/admin/marketing-panel.tsx
-+++ b/components/admin/marketing-panel.tsx
-@@ -1,7 +1,8 @@
- 'use client';
- 
- import { useEffect, useState, FormEvent } from 'react';
--import { Save, Download, Trash2, ExternalLink, Copy } from 'lucide-react';
-+import { Save, Download, Trash2, ExternalLink, Copy, Upload, Loader2 } from 'lucide-react';
-+import Image from 'next/image';
- import {
-   LegalPages,
-   LEGAL_PAGE_TITLES,
-@@ -44,7 +45,7 @@ import {
-   fetchCheckoutBumpSettings,
-   saveCheckoutBumpSettings,
- } from '@/lib/checkout-bump-api';
--import { fetchProducts } from '@/lib/products-api';
-+import { fetchProducts, uploadProductImage } from '@/lib/products-api';
- import { Product } from '@/lib/types';
- import { Button } from '@/components/ui/button';
- import { Input } from '@/components/ui/input';
-@@ -594,6 +595,7 @@ function NewsletterTab() {
- function SeoTab() {
-   const [seo, setSeo] = useState<SeoSettings | null>(null);
-   const [saving, setSaving] = useState(false);
-+  const [uploadingFavicon, setUploadingFavicon] = useState(false);
- 
-   useEffect(() => {
-     fetchSeoSettings()
-@@ -615,6 +617,36 @@ function SeoTab() {
-     }
-   };
- 
-+  const onUploadFavicon = async (e: React.ChangeEvent<HTMLInputElement>) => {
-+    const file = e.target.files?.[0];
-+    if (!file || !seo) return;
-+    setUploadingFavicon(true);
-+    try {
-+      const url = await uploadProductImage(file, 'favicon');
-+      const next = { ...seo, favicon_url: url };
-+      setSeo(next);
-+      await saveSeoSettings(next);
-+      toast.success('Favicon uploaded');
-+    } catch (err) {
-+      toast.error(err instanceof Error ? err.message : 'Favicon upload failed');
-+    } finally {
-+      setUploadingFavicon(false);
-+      e.target.value = '';
-+    }
-+  };
++// Badge styling per order.status. Keeps this page in sync with whatever
++// the admin last set from Admin -> Orders (paid/shipped/delivered/
++// cancelled/failed), instead of always reading "placed successfully".
++const STATUS_BADGE: Record<string, { label: string; className: string }> = {
++  pending: { label: 'Pending', className: 'bg-amber-100 text-amber-700' },
++  paid: { label: 'Payment Confirmed', className: 'bg-emerald-100 text-emerald-700' },
++  shipped: { label: 'Shipped', className: 'bg-sky-100 text-sky-700' },
++  delivered: { label: 'Delivered', className: 'bg-green-100 text-green-700' },
++  cancelled: { label: 'Cancelled', className: 'bg-red-100 text-red-700' },
++  failed: { label: 'Payment Failed', className: 'bg-red-100 text-red-700' },
++};
 +
-+  const removeFavicon = async () => {
-+    if (!seo) return;
-+    const next = { ...seo, favicon_url: '' };
-+    setSeo(next);
-+    try {
-+      await saveSeoSettings(next);
-+      toast.success('Favicon removed');
-+    } catch (err) {
-+      toast.error(err instanceof Error ? err.message : 'Failed to remove favicon');
-+    }
-+  };
-+
-   if (!seo) return <p className="py-6 text-sm text-muted-foreground">Loading...</p>;
- 
-   return (
-@@ -671,17 +703,57 @@ function SeoTab() {
-       </div>
- 
-       <div className="space-y-2">
--        <Label htmlFor="seo-favicon">Favicon / logo image URL</Label>
-+        <Label>Favicon</Label>
-+        {seo.favicon_url ? (
-+          <div className="flex items-center gap-3">
-+            <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md border border-border bg-muted">
-+              <Image
-+                src={seo.favicon_url}
-+                alt="Favicon preview"
-+                fill
-+                sizes="48px"
-+                className="object-contain"
-+              />
-+            </div>
-+            <Button
-+              type="button"
-+              variant="outline"
-+              size="sm"
-+              onClick={removeFavicon}
-+              className="gap-1.5 text-destructive"
-+            >
-+              <Trash2 className="h-3.5 w-3.5" />
-+              Remove favicon
-+            </Button>
-+          </div>
-+        ) : (
-+          <label className="flex w-fit cursor-pointer items-center gap-2 rounded-md border border-dashed border-border bg-muted/40 px-4 py-2 text-sm hover:border-primary/50">
-+            {uploadingFavicon ? (
-+              <Loader2 className="h-4 w-4 animate-spin" />
-+            ) : (
-+              <Upload className="h-4 w-4" />
-+            )}
-+            <span>{uploadingFavicon ? 'Uploading…' : 'Upload favicon image'}</span>
-+            <input
-+              type="file"
-+              accept="image/png,image/x-icon,image/svg+xml,image/jpeg,image/webp"
-+              className="hidden"
-+              onChange={onUploadFavicon}
-+              disabled={uploadingFavicon}
-+            />
-+          </label>
+ export default async function OrderConfirmationPage({ params }: { params: { id: string } }) {
+   const supabase = getSupabaseAdmin();
+   const { data: order } = await supabase.from('orders').select('*').eq('id', params.id).single();
+@@ -56,11 +68,24 @@ export default async function OrderConfirmationPage({ params }: { params: { id:
+           <CheckCircle2 className="h-10 w-10 text-secondary" />
+         </div>
+         <h1 className="font-serif text-3xl font-bold text-primary">Thank you for your order!</h1>
++        {STATUS_BADGE[order.status] && (
++          <span
++            className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${STATUS_BADGE[order.status].className}`}
++          >
++            {STATUS_BADGE[order.status].label}
++          </span>
 +        )}
-+        <p className="text-xs text-muted-foreground">
-+          Used as the browser tab icon and phone home-screen icon. Square image, at least 180×180px
-+          (PNG recommended). Leave empty to use the default monogram icon.
-+        </p>
-         <Input
--          id="seo-favicon"
-           value={seo.favicon_url}
-           onChange={(e) => setSeo({ ...seo, favicon_url: e.target.value })}
--          placeholder="https://your-cdn.com/logo-square.png"
-+          onBlur={() => seo && saveSeoSettings(seo).catch(() => toast.error('Save failed'))}
-+          placeholder="Or paste an image URL directly"
-+          className="text-xs"
-         />
--        <p className="text-xs text-muted-foreground">
--          Used as the browser tab icon and phone home-screen icon. Square image, at least 180×180px.
--          Leave blank to use the default monogram icon.
--        </p>
-       </div>
+         <p className="max-w-md text-sm text-muted-foreground">
+           Order #{order.id.slice(0, 8).toUpperCase()} has been placed successfully. A confirmation
+           email is on its way to {order.customer_email}. Your handwoven pieces will be dispatched
+           soon.
+-          {order.payment_method === 'cod' && (
++          {order.status === 'cancelled' && (
++            <>
++              {' '}
++              This order has since been <strong>cancelled</strong>.
++            </>
++          )}
++          {order.payment_method === 'cod' && order.status !== 'cancelled' && (
+             <>
+               {' '}
+               Please keep <strong>{formatINR(order.total_amount)}</strong> ready in cash for our
+diff --git a/lib/email-templates.ts b/lib/email-templates.ts
+index 99c8838..5e7be2f 100644
+--- a/lib/email-templates.ts
++++ b/lib/email-templates.ts
+@@ -272,6 +272,71 @@ export function orderShippedEmail(order: {
+   return { subject, html };
+ }
  
-       <div className="space-y-2">
++// Generic "your order status changed" email — sent on every status change
++// made from Admin -> Orders (the status dropdown / order detail view),
++// covering statuses that don't already have a dedicated email (paid,
++// delivered, cancelled, failed, pending/back-to-pending). 'shipped' also
++// goes through here when the admin flips status manually on an order that
++// already has a tracking number; the dedicated "just shipped from
++// Delhivery" email (orderShippedEmail) is still sent separately by the
++// create-shipment route the first time a waybill is generated.
++export function orderStatusUpdateEmail(order: {
++  id: string;
++  customer_name?: string;
++  status: string;
++  tracking_number?: string | null;
++  courier_name?: string | null;
++}) {
++  const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
++  const name = order.customer_name || 'there';
++
++  const copy: Record<string, { subject: string; heading: string; body: string }> = {
++    pending: {
++      subject: `Order ${shortId} is now pending`,
++      heading: `Hi ${name}, your order is pending`,
++      body: `Your order <strong>${shortId}</strong> has been moved back to <strong>pending</strong>. We'll update you again as soon as it progresses.`,
++    },
++    paid: {
++      subject: `Payment confirmed — ${shortId}`,
++      heading: `Thanks, ${name} — payment received!`,
++      body: `We've confirmed payment for your order <strong>${shortId}</strong>. It's now being prepared for dispatch.`,
++    },
++    shipped: {
++      subject: `Your order has shipped — ${shortId}`,
++      heading: `Good news, ${name} — it's on the way!`,
++      body: `Your order <strong>${shortId}</strong> has been shipped${order.courier_name ? ` via ${order.courier_name}` : ''}.${order.tracking_number ? ` <br/><strong>Tracking number:</strong> ${order.tracking_number}` : ''}`,
++    },
++    delivered: {
++      subject: `Delivered! — ${shortId}`,
++      heading: `Your order has arrived, ${name}!`,
++      body: `Your order <strong>${shortId}</strong> has been marked as <strong>delivered</strong>. We hope you love it — thank you for shopping with us.`,
++    },
++    cancelled: {
++      subject: `Order cancelled — ${shortId}`,
++      heading: `Your order has been cancelled`,
++      body: `Your order <strong>${shortId}</strong> has been <strong>cancelled</strong>. If you've already paid online, any eligible refund will be processed to your original payment method. If you didn't request this, please reply to this email or contact support.`,
++    },
++    failed: {
++      subject: `Payment issue with order ${shortId}`,
++      heading: `There was an issue with your order`,
++      body: `We weren't able to confirm payment for your order <strong>${shortId}</strong>. Please try again or contact support if you were charged.`,
++    },
++  };
++
++  const c = copy[order.status] || {
++    subject: `Order ${shortId} update`,
++    heading: `Update on your order, ${name}`,
++    body: `The status of your order <strong>${shortId}</strong> is now <strong>${order.status}</strong>.`,
++  };
++
++  const html = wrapper(`
++    <h2 style="margin-top:0; color:${BRAND_COLOR};">${c.heading}</h2>
++    <p>${c.body}</p>
++    <p>You can view full order details and live tracking anytime from your account's Order History page.</p>
++  `);
++  return { subject: c.subject, html };
++}
++
+ export function returnStatusEmail(ret: {
+   id: string;
+   order_id: string;
+diff --git a/lib/orders-api.ts b/lib/orders-api.ts
+index 6dc3f80..0c0b90b 100644
+--- a/lib/orders-api.ts
++++ b/lib/orders-api.ts
+@@ -1,4 +1,6 @@
+ import { getSupabaseAdmin } from './supabase-admin';
++import { sendEmail } from './email';
++import { orderStatusUpdateEmail } from './email-templates';
+ 
+ // SECURITY NOTE: this now uses the service-role client instead of the
+ // anon-key client. Both callers of this file (app/api/admin/orders and
+@@ -78,10 +80,44 @@ export async function fetchOrders() {
+   return attachItemSources(supabase, data ?? []);
+ }
+ 
++// Called from Admin -> Orders whenever the admin changes an order's status
++// (the dropdown in the orders table, or the order detail view). Besides
++// writing the new status, this sends the customer a "your order status
++// changed" email (best-effort -- a failed/unconfigured email provider
++// never blocks the status update itself). The order_status_history table
++// is populated separately by a DB trigger, so this function doesn't need
++// to touch that.
+ export async function updateOrderStatus(id: string, status: string) {
+   const supabase = getSupabaseAdmin();
++
++  // Fetch first so we know the customer's email + previous status. Also
++  // lets us skip the email entirely if the status isn't actually changing
++  // (e.g. the admin re-selects the same value).
++  const { data: existing, error: fetchError } = await supabase
++    .from('orders')
++    .select('id, status, customer_email, customer_name, tracking_number, courier_name')
++    .eq('id', id)
++    .maybeSingle();
++  if (fetchError) throw fetchError;
++
+   const { data, error } = await supabase.from('orders').update({ status }).eq('id', id);
+   if (error) throw error;
++
++  if (existing && existing.status !== status && existing.customer_email) {
++    const { subject, html } = orderStatusUpdateEmail({
++      id: existing.id,
++      customer_name: existing.customer_name,
++      status,
++      tracking_number: existing.tracking_number,
++      courier_name: existing.courier_name,
++    });
++    // Best-effort -- never let a slow/broken email provider fail the
++    // admin's status update.
++    sendEmail({ to: existing.customer_email, subject, html }).catch((err) => {
++      console.error('[updateOrderStatus] status-change email failed:', err);
++    });
++  }
++
+   return data;
+ }
+ 
