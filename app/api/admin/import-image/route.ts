@@ -24,6 +24,15 @@ const EXT_BY_MIME: Record<string, string> = {
 // size and visual quality for product photography.
 const WEBP_QUALITY = 82;
 
+// Product/variant photos never need to display wider than this anywhere on
+// the storefront -- the biggest use is the product page gallery/zoom, which
+// tops out well under this. Phone-camera originals commonly come in at
+// 3000-4000px wide; without capping here, WebP re-encoding alone still left
+// files at 300-600kB+ each because the pixel dimensions never shrank, only
+// the format did. `withoutEnlargement: true` means a source already
+// narrower than this is left untouched instead of being upscaled.
+const MAX_DIMENSION = 1600;
+
 /**
  * Trims the bottom BOTTOM_TRIM_FRACTION of the image's height, no matter
  * what size or aspect ratio the source image is. Full width is always kept;
@@ -54,6 +63,7 @@ async function cropToProductFrame(buffer: Buffer): Promise<{ buffer: Buffer; con
 
   const out = await image
     .extract({ left: 0, top: 0, width: w, height: cropHeight })
+    .resize({ width: MAX_DIMENSION, height: MAX_DIMENSION, fit: 'inside', withoutEnlargement: true })
     .webp({ quality: WEBP_QUALITY })
     .toBuffer();
   return { buffer: out, contentType: 'image/webp', ext: 'webp' };
@@ -70,6 +80,7 @@ async function convertToWebp(buffer: Buffer): Promise<{ buffer: Buffer; contentT
   // Same failOn: 'none' + rotate() reasoning as cropToProductFrame() above.
   const out = await sharp(buffer, { failOn: 'none' })
     .rotate()
+    .resize({ width: MAX_DIMENSION, height: MAX_DIMENSION, fit: 'inside', withoutEnlargement: true })
     .webp({ quality: WEBP_QUALITY })
     .toBuffer();
   return { buffer: out, contentType: 'image/webp', ext: 'webp' };

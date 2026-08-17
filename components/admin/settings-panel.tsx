@@ -94,7 +94,7 @@ export default function SettingsPanel() {
 
   const [webpRunning, setWebpRunning] = useState(false);
   const [webpDone, setWebpDone] = useState(false);
-  const [webpStats, setWebpStats] = useState({ total: 0, converted: 0, skipped: 0, remaining: 0 });
+  const [webpStats, setWebpStats] = useState({ total: 0, converted: 0, skipped: 0, alreadyOptimal: 0, remaining: 0 });
 
   const [aiChatForm, setAiChatForm] = useState<AiChatSettings | null>(null);
   const [savingAiChat, setSavingAiChat] = useState(false);
@@ -523,10 +523,11 @@ export default function SettingsPanel() {
   const runWebpConversion = async () => {
     setWebpRunning(true);
     setWebpDone(false);
-    setWebpStats({ total: 0, converted: 0, skipped: 0, remaining: 0 });
+    setWebpStats({ total: 0, converted: 0, skipped: 0, alreadyOptimal: 0, remaining: 0 });
     const excludeUrls: string[] = [];
     let convertedTotal = 0;
     let skippedTotal = 0;
+    let alreadyOptimalTotal = 0;
     let firstTotal: number | null = null;
 
     try {
@@ -547,12 +548,14 @@ export default function SettingsPanel() {
         if (firstTotal === null) firstTotal = data.totalRemainingBeforeBatch ?? 0;
         convertedTotal += data.converted ?? 0;
         skippedTotal += data.skipped ?? 0;
+        alreadyOptimalTotal += data.alreadyOptimal ?? 0;
         excludeUrls.push(...((data.attemptedUrls as string[]) ?? []));
 
         setWebpStats({
           total: firstTotal ?? 0,
           converted: convertedTotal,
           skipped: skippedTotal,
+          alreadyOptimal: alreadyOptimalTotal,
           remaining: data.remainingAfterBatch ?? 0,
         });
 
@@ -560,9 +563,9 @@ export default function SettingsPanel() {
       }
       setWebpDone(true);
       if (convertedTotal === 0 && skippedTotal === 0) {
-        toast.success('Nothing to convert — every image is already WebP');
+        toast.success('Nothing to convert — every image is already optimized');
       } else {
-        toast.success(`Done — ${convertedTotal} converted, ${skippedTotal} skipped`);
+        toast.success(`Done — ${convertedTotal} resized/converted, ${alreadyOptimalTotal} already optimal, ${skippedTotal} failed`);
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Conversion failed');
@@ -975,8 +978,10 @@ export default function SettingsPanel() {
       <div className="mt-8">
         <h2 className="font-serif text-2xl font-bold text-primary">Bulk Image Optimization</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Converts every product and variant image still stored as JPEG/PNG into WebP, and gives
-          it a descriptive filename (product/colour name instead of a random hash) for better
+          Converts every product and variant image to WebP and resizes anything wider than 1600px
+          down to fit — including images that are already WebP but were uploaded before this size
+          cap existed, which is why some product photos can be 300-600kB+ today. Also gives each
+          file a descriptive filename (product/colour name instead of a random hash) for better
           image SEO. Old files are deleted after each one converts successfully. Each image's{' '}
           <span className="italic">alt</span> text is already generated automatically from the
           product's name, fabric and category wherever it's shown — there's nothing separate to
@@ -996,7 +1001,7 @@ export default function SettingsPanel() {
             ? 'Converting…'
             : webpDone
               ? 'Run again'
-              : 'Convert all images to WebP'}
+              : 'Optimize all images'}
         </Button>
 
         {(webpRunning || webpDone) && (
@@ -1008,7 +1013,11 @@ export default function SettingsPanel() {
                   style={{
                     width: `${Math.min(
                       100,
-                      Math.round(((webpStats.converted + webpStats.skipped) / webpStats.total) * 100)
+                      Math.round(
+                        ((webpStats.converted + webpStats.skipped + webpStats.alreadyOptimal) /
+                          webpStats.total) *
+                          100
+                      )
                     )}%`,
                   }}
                 />
@@ -1019,11 +1028,15 @@ export default function SettingsPanel() {
                 Found: <span className="font-medium text-foreground">{webpStats.total}</span>
               </span>
               <span>
-                Converted:{' '}
+                Resized/converted:{' '}
                 <span className="font-medium text-green-600">{webpStats.converted}</span>
               </span>
               <span>
-                Skipped: <span className="font-medium text-amber-600">{webpStats.skipped}</span>
+                Already optimal:{' '}
+                <span className="font-medium text-foreground">{webpStats.alreadyOptimal}</span>
+              </span>
+              <span>
+                Failed: <span className="font-medium text-amber-600">{webpStats.skipped}</span>
               </span>
               {webpRunning && (
                 <span>
@@ -1033,8 +1046,8 @@ export default function SettingsPanel() {
             </div>
             {webpDone && webpStats.skipped > 0 && (
               <p className="text-xs text-muted-foreground">
-                Skipped images failed to download or convert (check server logs for details) —
-                they were left untouched, nothing was lost.
+                Failed images couldn't be downloaded or converted (check server logs for details)
+                — they were left untouched, nothing was lost.
               </p>
             )}
           </div>

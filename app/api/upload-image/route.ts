@@ -23,6 +23,11 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 const MAX_BYTES = 15 * 1024 * 1024; // 15MB safety cap, same as import-image
 const WEBP_QUALITY = 82;
+// Same reasoning as import-image/route.ts's MAX_DIMENSION -- caps pixel
+// dimensions so WebP re-encoding actually shrinks phone-camera-sized
+// originals (often 3000-4000px wide) instead of just changing the format
+// while leaving files at 300-600kB+ each.
+const MAX_DIMENSION = 1600;
 const ALLOWED_TYPES = new Set([
   'image/jpeg',
   'image/jpg',
@@ -86,6 +91,7 @@ export async function POST(req: Request) {
     try {
       uploadBuffer = await sharp(uploadBuffer, { failOn: 'none' })
         .rotate()
+        .resize({ width: MAX_DIMENSION, height: MAX_DIMENSION, fit: 'inside', withoutEnlargement: true })
         .webp({ quality: WEBP_QUALITY })
         .toBuffer();
       uploadContentType = 'image/webp';

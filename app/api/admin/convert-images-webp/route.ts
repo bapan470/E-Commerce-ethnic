@@ -33,6 +33,11 @@ export const maxDuration = 60;
 
 const BATCH_SIZE = 8;
 const WEBP_QUALITY = 82;
+// Same cap as app/api/upload-image/route.ts and app/api/admin/import-image
+// /route.ts -- this tool re-processes images uploaded BEFORE that cap
+// existed, which is exactly the batch that's still sitting at full
+// phone-camera resolution (300-600kB+ each) despite already being .webp.
+const MAX_DIMENSION = 1600;
 const MAX_BYTES = 15 * 1024 * 1024;
 const BUCKET = 'product-images';
 const BUCKET_MARKER = `/storage/v1/object/public/${BUCKET}/`;
@@ -101,7 +106,13 @@ export async function POST(req: Request) {
   for (const row of products ?? []) {
     const images: string[] = row.images ?? [];
     images.forEach((url, index) => {
-      if (!url || isWebp(url) || excludeUrls.has(url)) return;
+      // Previously this skipped any URL already ending in .webp -- but a
+      // webp file uploaded before the MAX_DIMENSION resize existed can
+      // still be 300-600kB+ at full phone-camera resolution. Every image
+      // is now a candidate; the per-image dimension check inside the
+      // processing loop below is what actually decides whether a webp
+      // file needs re-encoding or is already small enough to leave alone.
+      if (!url || excludeUrls.has(url)) return;
       const path = storagePathFromUrl(url);
       if (!path) return; // not one of our own storage files -- leave untouched
       candidates.push({ table: 'products', id: row.id, index, url, path, slugSource: row.name || 'product' });
@@ -111,7 +122,7 @@ export async function POST(req: Request) {
   for (const row of variants ?? []) {
     const images: string[] = row.images ?? [];
     images.forEach((url, index) => {
-      if (!url || isWebp(url) || excludeUrls.has(url)) return;
+      if (!url || excludeUrls.has(url)) return;
       const path = storagePathFromUrl(url);
       if (!path) return;
       candidates.push({
@@ -130,6 +141,7 @@ export async function POST(req: Request) {
 
   let converted = 0;
   let skipped = 0;
+  let alreadyOptimal = 0;
   const attempted: string[] = [];
 
   // Group the batch by row so each row only gets ONE update() call even if
@@ -144,8 +156,24 @@ export async function POST(req: Request) {
       const arrayBuffer = await sourceRes.arrayBuffer();
       if (arrayBuffer.byteLength > MAX_BYTES) throw new Error('source too large');
 
-      const webpBuffer = await sharp(Buffer.from(arrayBuffer), { failOn: 'none' })
-        .rotate()
+      const srcBuffer = Buffer.from(arrayBuffer);
+      const probe = sharp(srcBuffer, { failOn: 'none' }).rotate();
+      const meta = await probe.metadata();
+
+      // Already a webp file, and already within the target dimensions --
+      // nothing to gain from re-encoding it, so leave it (and its file
+      // size) exactly as-is instead of doing pointless work every run.
+      if (
+        isWebp(c.url) &&
+        meta.width && meta.width <= MAX_DIMENSION &&
+        meta.height && meta.height <= MAX_DIMENSION
+      ) {
+        alreadyOptimal++;
+        continue;
+      }
+
+      const webpBuffer = await probe
+        .resize({ width: MAX_DIMENSION, height: MAX_DIMENSION, fit: 'inside', withoutEnlargement: true })
         .webp({ quality: WEBP_QUALITY })
         .toBuffer();
 
@@ -208,6 +236,7 @@ export async function POST(req: Request) {
     batchSize: batch.length,
     converted,
     skipped,
+    alreadyOptimal,
     attemptedUrls: attempted,
     remainingAfterBatch: Math.max(0, totalRemaining - batch.length),
     done: batch.length === 0,
