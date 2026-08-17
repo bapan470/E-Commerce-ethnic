@@ -95,11 +95,22 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                   mid-checkout never had this, so it doesn't get this
                   explanation. */}
               {order.original_payment_method === 'cod' ? (
-                <p className="mt-1 text-amber-800/80">
-                  This particular piece isn't kept ready-made at all times — it's specially prepared
-                  once an order comes in. Because of that, we're not able to offer Cash on Delivery on
-                  this order, and need the payment made online before we start preparing it.
-                </p>
+                <>
+                  <p className="mt-1 text-amber-800/80">
+                    This particular piece isn't kept ready-made at all times — it's specially prepared
+                    once an order comes in. Because of that, we're not able to offer Cash on Delivery on
+                    this order, and kindly request the payment be made online before we begin preparing
+                    it. We're sorry for the extra step, and truly appreciate your patience here.
+                  </p>
+                  <p className="mt-2 text-amber-800/80">
+                    Your payment is fully protected — if anything about this order doesn't work out,
+                    it's covered under our{' '}
+                    <Link href="/legal/refund-policy" className="font-medium text-amber-900 underline underline-offset-2">
+                      Refund &amp; Cancellation Policy
+                    </Link>
+                    , and we're always here if you have questions.
+                  </p>
+                </>
               ) : (
                 <p className="mt-1 text-amber-800/80">Nothing's been charged yet — complete the payment to confirm this order.</p>
               )}

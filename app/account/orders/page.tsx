@@ -113,12 +113,27 @@ export default async function OrdersPage() {
                     <div className="flex gap-2 text-xs text-amber-900">
                       <CreditCard className="h-4 w-4 shrink-0 text-amber-600" />
                       {wasConvertedFromCod ? (
-                        <p>
-                          This particular piece isn&apos;t kept ready-made at all times — it&apos;s
-                          specially prepared once an order comes in. Because of that, we&apos;re not
-                          able to offer Cash on Delivery on this order, and need the payment made
-                          online before we start preparing it.
-                        </p>
+                        <div className="space-y-1.5">
+                          <p>
+                            This particular piece isn&apos;t kept ready-made at all times — it&apos;s
+                            specially prepared once an order comes in. Because of that, we&apos;re not
+                            able to offer Cash on Delivery on this order, and kindly request the
+                            payment be made online before we begin preparing it. We&apos;re sorry for
+                            the extra step, and truly appreciate your patience here.
+                          </p>
+                          <p>
+                            Your payment is fully protected — if anything about this order doesn&apos;t
+                            work out, it&apos;s covered under our{' '}
+                            <Link
+                              href="/legal/refund-policy"
+                              onClick={(e) => e.stopPropagation()}
+                              className="font-medium text-amber-950 underline underline-offset-2"
+                            >
+                              Refund &amp; Cancellation Policy
+                            </Link>
+                            , and we&apos;re always here if you have questions.
+                          </p>
+                        </div>
                       ) : (
                         <p>Nothing&apos;s been charged yet — complete the payment to confirm this order.</p>
                       )}

@@ -786,10 +786,16 @@ export function codToPrepaidRequestEmail(order: {
         <td style="padding: 14px 16px; font-size: 14px; color:#4a3d34; line-height:1.55;">
           This particular piece isn't kept ready-made at all times — it's specially prepared once an
           order comes in. Because of that, we're not able to offer Cash on Delivery on this order, and
-          need the payment made online before we start preparing it.
+          kindly request the payment be made online before we begin preparing it. We're sorry for the
+          extra step, and truly appreciate your patience here.
         </td>
       </tr>
     </table>
+
+    <p style="margin: 0 0 20px; font-size: 13px; color:#6b5f57; line-height:1.55;">
+      Your payment is fully protected — if anything about this order doesn't work out, it's covered
+      under our <a href="${siteUrl}/legal/refund-policy" style="color:${BRAND_COLOR}; font-weight:bold;">Refund &amp; Cancellation Policy</a>, and we're always just a message away if you have questions.
+    </p>
 
     <p style="margin: 0 0 4px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #a89a8f;">Order Summary</p>
     ${itemsTable(order.items)}
