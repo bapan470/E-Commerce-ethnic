@@ -97,6 +97,7 @@ export function orderConfirmationEmail(order: {
   // see app/api/orders/[id]/cancel/route.ts) where the actual Cancel
   // Order button lives, with its own confirmation dialog.
   const orderUrl = `${process.env.NEXT_PUBLIC_SITE_URL || ''}/order-confirmation/${order.id}`;
+  const trackUrl = `${process.env.NEXT_PUBLIC_SITE_URL || ''}/track/${order.id}`;
   const html = wrapper(`
     <h2 style="margin-top:0; color:${BRAND_COLOR};">Thank you for your order, ${order.customer_name || 'there'}!</h2>
     <p>We've received your order <strong>#${order.id.slice(0, 8)}</strong> and it's being prepared.</p>
@@ -106,11 +107,14 @@ export function orderConfirmationEmail(order: {
       Payment method: ${order.payment_method === 'cod' ? 'Cash on Delivery' : 'Paid Online'}
     </p>
     <p style="text-align:center; margin-top: 20px;">
-      <a href="${orderUrl}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
-        View / Cancel Order
+      <a href="${trackUrl}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+        Track My Order
       </a>
     </p>
-    <p>You can track your order, or cancel it if you've changed your mind, anytime from the link above.</p>
+    <p style="font-size:13px; color:#6b5f57; text-align:center;">
+      Need to cancel or view the full invoice? <a href="${orderUrl}" style="color:${BRAND_COLOR};">Open your order page</a>.
+    </p>
+    <p>No account or login needed — the link above always works, even for a guest checkout.</p>
   `);
   return { subject, html };
 }
@@ -172,7 +176,12 @@ export function orderTrackingSummaryEmail(order: {
     ${expected ? `<p style="font-size:14px;">Expected delivery: <strong>${expected}</strong></p>` : ''}
     ${itemsTable(order.items)}
     <p style="text-align:right; font-size:16px; font-weight:bold;">Total: ${formatINR(order.total_amount)}</p>
-    <p style="font-size:13px; color:#6b5f57;">You can also check live status anytime from My Account &gt; Orders.</p>
+    <p style="text-align:center; margin-top: 16px;">
+      <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/track/${order.id}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+        Track My Order
+      </a>
+    </p>
+    <p style="font-size:13px; color:#6b5f57; text-align:center;">No login needed — this works for guest orders too.</p>
   `);
   return { subject, html };
 }
@@ -277,7 +286,12 @@ export function orderShippedEmail(order: {
     <h2 style="margin-top:0; color:${BRAND_COLOR};">Good news, ${order.customer_name || 'there'} — it's on the way!</h2>
     <p>Your order <strong>#${order.id.slice(0, 8)}</strong> has been shipped${order.courier_name ? ` via ${order.courier_name}` : ''}.</p>
     ${order.tracking_number ? `<p style="font-size:16px;"><strong>Tracking number:</strong> ${order.tracking_number}</p>` : ''}
-    <p>You can track live status from your account's Order History page.</p>
+    <p style="text-align:center; margin-top: 16px;">
+      <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/track/${order.id}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+        Track My Order
+      </a>
+    </p>
+    <p style="font-size:13px; color:#6b5f57; text-align:center;">No login needed — this works for guest orders too.</p>
   `);
   return { subject, html };
 }
@@ -342,9 +356,77 @@ export function orderStatusUpdateEmail(order: {
   const html = wrapper(`
     <h2 style="margin-top:0; color:${BRAND_COLOR};">${c.heading}</h2>
     <p>${c.body}</p>
-    <p>You can view full order details and live tracking anytime from your account's Order History page.</p>
+    <p style="text-align:center; margin-top: 16px;">
+      <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/track/${order.id}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+        Track My Order
+      </a>
+    </p>
+    <p style="font-size:13px; color:#6b5f57; text-align:center;">No login needed — this works for guest orders too.</p>
   `);
   return { subject: c.subject, html };
+}
+
+// Sent once, automatically, as soon as we learn (from the courier's live
+// tracking response) what date the shipment is expected to arrive --
+// i.e. before it's actually delivered. Deduped by orders.arriving_email_sent_at
+// (see lib/cron-jobs.ts -> runForwardShipmentTrackingJob) so it only ever
+// goes out once per order, even though the cron job checks tracking every
+// ~15 minutes.
+export function orderArrivingEmail(order: {
+  id: string;
+  customer_name?: string;
+  expected_delivery_date: string;
+  courier_name?: string | null;
+  tracking_number?: string | null;
+}) {
+  const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
+  const name = order.customer_name || 'there';
+  const expected = new Date(order.expected_delivery_date).toLocaleDateString('en-IN', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
+  const subject = `Arriving ${expected} — your order ${shortId}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Hi ${name}, your order is on its way!</h2>
+    <p>Your order <strong>${shortId}</strong> is expected to be delivered on <strong>${expected}</strong>.</p>
+    ${order.tracking_number ? `<p style="font-size:13px; color:#6b5f57;">Tracking number: <strong>${order.tracking_number}</strong>${order.courier_name ? ` (${order.courier_name})` : ''}</p>` : ''}
+    <p>We'll email you again once it's out for delivery, and once more the moment it's delivered — no need to keep checking.</p>
+    <p style="text-align:center; margin-top: 16px;">
+      <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/track/${order.id}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+        Track My Order
+      </a>
+    </p>
+  `);
+  return { subject, html };
+}
+
+// Sent once, automatically, the moment the courier's live tracking status
+// first shows "out for delivery" -- the closest same-day, near-real-time
+// signal we get from Delhivery's polling API that the package is genuinely
+// close (courier's don't expose a precise ETA, so this is the practical
+// stand-in for "shortly before it arrives"). Deduped by
+// orders.out_for_delivery_email_sent_at.
+export function orderOutForDeliveryEmail(order: {
+  id: string;
+  customer_name?: string;
+  courier_name?: string | null;
+  tracking_number?: string | null;
+}) {
+  const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
+  const name = order.customer_name || 'there';
+  const subject = `Out for delivery today — ${shortId}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Hi ${name}, your order is out for delivery!</h2>
+    <p>Your order <strong>${shortId}</strong> is with our delivery partner${order.courier_name ? ` (${order.courier_name})` : ''} and should reach you shortly today. Please keep your phone nearby in case the delivery person needs to reach you.</p>
+    ${order.tracking_number ? `<p style="font-size:13px; color:#6b5f57;">Tracking number: <strong>${order.tracking_number}</strong></p>` : ''}
+    <p style="text-align:center; margin-top: 16px;">
+      <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/track/${order.id}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+        Track My Order
+      </a>
+    </p>
+  `);
+  return { subject, html };
 }
 
 export function returnStatusEmail(ret: {

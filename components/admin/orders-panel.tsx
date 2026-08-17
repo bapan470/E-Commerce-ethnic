@@ -25,6 +25,7 @@ import {
 import { toast } from 'sonner';
 import OrderTracking from '@/components/order/order-tracking';
 import OrderStatusHistory from '@/components/admin/order-status-history';
+import DeliveryNotificationTester from '@/components/admin/delivery-notification-tester';
 import CreateShipmentModal, {
   type CreateShipmentPayload,
 } from '@/components/admin/create-shipment-modal';
@@ -37,6 +38,7 @@ type Order = {
   payment_method?: string;
   tracking_number?: string | null;
   courier_name?: string | null;
+  expected_delivery_date?: string | null;
   shipping_address?: any;
   customer_name?: string;
   customer_email?: string;
@@ -687,6 +689,13 @@ function OrderRow({
                 orderId={order.id}
                 initialTrackingNumber={order.tracking_number}
                 initialCourierName={order.courier_name}
+              />
+            </div>
+            <div className="mt-4">
+              <DeliveryNotificationTester
+                orderId={order.id}
+                customerEmail={order.customer_email}
+                initialExpectedDate={order.expected_delivery_date}
               />
             </div>
           </td>

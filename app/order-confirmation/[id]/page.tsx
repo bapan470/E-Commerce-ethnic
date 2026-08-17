@@ -230,7 +230,7 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
           <Link href="/shop">Continue Shopping</Link>
         </Button>
         <Button asChild variant="outline">
-          <Link href={`/account/orders/${order.id}`}>Track this order</Link>
+          <Link href={`/track/${order.id}`}>Track this order</Link>
         </Button>
       </div>
     </div>

@@ -36,6 +36,11 @@ import { checkPickupStatusForReturn, getReturnAutomationMode } from '@/lib/retur
 import { trackDelhiveryShipment } from '@/lib/delhivery-api';
 import { recordReturnRiskIncident } from '@/lib/return-risk-api';
 import { runWooCommerceDripJob as runWooCommerceDripJobImpl } from '@/lib/woocommerce-automation';
+import {
+  sendArrivingNotification,
+  sendOutForDeliveryNotification,
+  sendDeliveredNotification,
+} from '@/lib/delivery-notifications';
 
 // -------------------- WooCommerce imported-customer drip --------------------
 // Thin wrapper so this job is listed alongside the others here and picked
@@ -636,7 +641,9 @@ export async function runForwardShipmentTrackingJob() {
 
   const { data: allTracked, error } = await supabase
     .from('orders')
-    .select('id, customer_phone, tracking_number, status, delivery_status')
+    .select(
+      'id, customer_phone, tracking_number, status, delivery_status, expected_delivery_date, arriving_email_sent_at, out_for_delivery_email_sent_at'
+    )
     .not('tracking_number', 'is', null);
   if (error) throw error;
 
@@ -664,6 +671,15 @@ export async function runForwardShipmentTrackingJob() {
         .update({ delivery_last_checked_at: new Date().toISOString() })
         .eq('id', order.id);
 
+      // Arriving email: fires once, the first time we learn (or the
+      // courier revises) the expected delivery date -- independent of
+      // whatever delivery_status ends up being below.
+      if (tracking.expectedDeliveryDate && !order.arriving_email_sent_at) {
+        sendArrivingNotification(order.id, { expectedDeliveryDate: tracking.expectedDeliveryDate }).catch(
+          (err) => errors.push(`order ${order.id} arriving-email: ${err?.message || err}`)
+        );
+      }
+
       if (!tracking.tracked || !tracking.currentStatus) continue;
 
       const statusText = tracking.currentStatus.toLowerCase();
@@ -676,6 +692,17 @@ export async function runForwardShipmentTrackingJob() {
         nextStatus = statusText.includes('deliver') ? 'rto_delivered' : 'rto_initiated';
       } else if (statusText.includes('deliver')) {
         nextStatus = 'delivered';
+      } else if (statusText.includes('out for delivery')) {
+        nextStatus = 'in_transit';
+        // Closest same-day, near-real-time signal the courier gives us --
+        // this is the practical stand-in for "shortly before it arrives"
+        // (see lib/delivery-notifications.ts for why an exact 30-min
+        // countdown isn't possible from courier polling data).
+        if (!order.out_for_delivery_email_sent_at) {
+          sendOutForDeliveryNotification(order.id).catch((err) =>
+            errors.push(`order ${order.id} out-for-delivery-email: ${err?.message || err}`)
+          );
+        }
       } else if (statusText.includes('transit') || statusText.includes('dispatch') || statusText.includes('pending')) {
         nextStatus = 'in_transit';
       }
@@ -692,7 +719,19 @@ export async function runForwardShipmentTrackingJob() {
         rto++;
         recordReturnRiskIncident(supabase, order.customer_phone, 'rto').catch(() => {});
       }
-      if (nextStatus === 'delivered') delivered++;
+      if (nextStatus === 'delivered') {
+        delivered++;
+        // Flips order.status -> 'delivered' too (it only lived in
+        // delivery_status until now) and sends the "Delivered!" email via
+        // the exact same path as the admin manually picking "delivered"
+        // from the Orders dropdown -- so there's only one delivered-email
+        // code path total, automatic or manual.
+        if (order.status !== 'delivered') {
+          sendDeliveredNotification(order.id).catch((err) =>
+            errors.push(`order ${order.id} delivered-email: ${err?.message || err}`)
+          );
+        }
+      }
     } catch (err: any) {
       errors.push(`order ${order.id}: ${err?.message || err}`);
     }
