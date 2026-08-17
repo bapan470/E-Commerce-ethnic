@@ -133,6 +133,12 @@ export default async function OrdersPage() {
                             </Link>
                             , and we&apos;re always here if you have questions.
                           </p>
+                          {order.online_payment_discount > 0 && (
+                            <p className="font-medium text-green-700">
+                              You&apos;re saving {formatINR(order.online_payment_discount)} by paying online
+                              instead of Cash on Delivery — already applied to the total below.
+                            </p>
+                          )}
                         </div>
                       ) : (
                         <p>Nothing&apos;s been charged yet — complete the payment to confirm this order.</p>

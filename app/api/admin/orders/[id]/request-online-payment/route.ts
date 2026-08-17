@@ -49,9 +49,36 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: 'This order has no customer email to send the request to' }, { status: 400 });
   }
 
+  // Same "extra % off for paying online" incentive as a fresh checkout
+  // (Admin > Settings > Online Payment Discount, 'payment_discount' key) --
+  // a COD order converted here is, from this point on, exactly an online
+  // order, so it should get exactly the same discount a customer who'd
+  // chosen "pay online" at checkout would have. Computed on the order's
+  // current total_amount (the COD price already reflects every other
+  // discount that applied at checkout), then baked into a NEW total_amount
+  // + online_payment_discount so every downstream reader (this email, the
+  // resume-payment page, /api/razorpay/create-order's authoritative
+  // amount lookup, the account order page, invoices) just shows/charges
+  // the already-discounted number without needing to know why.
+  const { data: discountSetting } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'payment_discount')
+    .maybeSingle();
+  const discountConfig = (discountSetting?.value as { enabled?: boolean; percent?: number } | null) || null;
+  const discountPercent =
+    discountConfig?.enabled && discountConfig.percent && discountConfig.percent > 0 ? discountConfig.percent : 0;
+  const originalTotal = order.total_amount;
+  const onlinePaymentDiscount = discountPercent > 0 ? Math.round((originalTotal * discountPercent) / 100) : 0;
+  const newTotal = Math.max(0, originalTotal - onlinePaymentDiscount);
+
   const { error: updateError } = await supabase
     .from('orders')
-    .update({ payment_method: 'online' })
+    .update({
+      payment_method: 'online',
+      total_amount: newTotal,
+      online_payment_discount: onlinePaymentDiscount,
+    })
     .eq('id', order.id)
     .eq('status', 'pending');
   if (updateError) {
@@ -85,7 +112,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const { subject, html } = codToPrepaidRequestEmail({
     id: order.id,
     items: Array.isArray(order.items) ? order.items : [],
-    total_amount: order.total_amount,
+    total_amount: newTotal,
+    original_total: originalTotal,
+    online_payment_discount: onlinePaymentDiscount,
     customer_name: order.customer_name,
     trackingId,
     store,

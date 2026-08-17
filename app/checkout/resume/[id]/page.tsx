@@ -24,7 +24,9 @@ export default async function ResumePaymentPage({
   const supabase = getSupabaseAdmin();
   const { data: order } = await supabase
     .from('orders')
-    .select('id, status, payment_method, items, total_amount, customer_name, customer_email, customer_phone')
+    .select(
+      'id, status, payment_method, items, total_amount, online_payment_discount, customer_name, customer_email, customer_phone'
+    )
     .eq('id', params.id)
     .maybeSingle();
 
@@ -96,11 +98,37 @@ export default async function ResumePaymentPage({
             </div>
           );
         })}
-        <div className="flex items-center justify-between border-t border-border/60 pt-3 text-base font-bold">
-          <span>Total</span>
-          <span>{formatINR(order.total_amount)}</span>
-        </div>
+        {order.online_payment_discount > 0 ? (
+          <div className="space-y-1.5 border-t border-border/60 pt-3">
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>COD total</span>
+              <span className="line-through">
+                {formatINR(order.total_amount + order.online_payment_discount)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-sm text-green-700">
+              <span>Online payment discount</span>
+              <span>-{formatINR(order.online_payment_discount)}</span>
+            </div>
+            <div className="flex items-center justify-between text-base font-bold">
+              <span>Total</span>
+              <span>{formatINR(order.total_amount)}</span>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between border-t border-border/60 pt-3 text-base font-bold">
+            <span>Total</span>
+            <span>{formatINR(order.total_amount)}</span>
+          </div>
+        )}
       </div>
+
+      {order.online_payment_discount > 0 && (
+        <p className="mt-3 rounded-md bg-green-50 px-3 py-2 text-center text-xs text-green-800">
+          You&apos;re saving {formatINR(order.online_payment_discount)} by paying online instead of Cash on
+          Delivery.
+        </p>
+      )}
 
       <div className="mt-6">
         <ResumePaymentButton

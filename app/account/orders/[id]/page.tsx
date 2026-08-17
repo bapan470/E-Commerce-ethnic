@@ -205,6 +205,12 @@ export default async function OrderDetailPage({ params }: { params: { id: string
               <span>Shipping</span>
               <span>{order.shipping_charge ? formatINR(order.shipping_charge) : 'Free'}</span>
             </div>
+            {order.online_payment_discount > 0 && (
+              <div className="flex justify-between text-green-700">
+                <span>Online payment discount</span>
+                <span>-{formatINR(order.online_payment_discount)}</span>
+              </div>
+            )}
             <div className="flex justify-between font-semibold text-foreground">
               <span>Total</span>
               <span>{formatINR(order.total_amount)}</span>

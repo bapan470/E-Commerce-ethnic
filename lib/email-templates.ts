@@ -731,7 +731,17 @@ export function cartRecoveryEmail(cart: { items: any[]; cart_value: number }) {
 // but the Razorpay popup was closed/abandoned before payment finished. The
 // link goes straight to a resume page for THIS exact order (not /cart), so
 // the customer doesn't have to rebuild their cart or re-enter their address.
-export function paymentReminderEmail(order: { id: string; items: any[]; total_amount: number; customer_name?: string }) {
+export function paymentReminderEmail(order: {
+  id: string;
+  items: any[];
+  total_amount: number;
+  // Same meaning as in codToPrepaidRequestEmail -- optional, and
+  // total_amount already has this baked in either way (it's read straight
+  // from the DB, which is already the discounted number), this is only
+  // used to show *why* the total is what it is.
+  online_payment_discount?: number;
+  customer_name?: string;
+}) {
   const subject = `Your order is waiting — complete your payment`;
   const resumeUrl = `${process.env.NEXT_PUBLIC_SITE_URL || ''}/checkout/resume/${order.id}`;
   const html = wrapper(`
@@ -739,6 +749,11 @@ export function paymentReminderEmail(order: { id: string; items: any[]; total_am
     <p>We've saved your order below, but the payment didn't go through. No need to start over — just complete the payment to confirm it.</p>
     ${itemsTable(order.items)}
     <p style="text-align:right; font-size:16px; font-weight:bold;">Order total: ${formatINR(order.total_amount)}</p>
+    ${
+      order.online_payment_discount && order.online_payment_discount > 0
+        ? `<p style="text-align:right; font-size:13px; color:#1f7a3d; margin-top:-8px;">Includes ${formatINR(order.online_payment_discount)} off for paying online</p>`
+        : ''
+    }
     <p style="text-align:center; margin-top: 20px;">
       <a href="${resumeUrl}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
         Complete your payment
@@ -762,6 +777,14 @@ export function codToPrepaidRequestEmail(order: {
   id: string;
   items: any[];
   total_amount: number;
+  // Present only when an online-payment discount (Admin > Settings >
+  // Online Payment Discount) was applied when converting this order from
+  // COD -- original_total is what it was under COD, total_amount above is
+  // already original_total - online_payment_discount. Both optional so
+  // existing callers (and admin Preview/Send-test, which don't compute a
+  // discount) keep working unchanged.
+  original_total?: number;
+  online_payment_discount?: number;
   customer_name?: string;
   // The id of the 'email_sent' row in order_payment_request_events for
   // THIS particular send -- when present, the CTA link is routed through
@@ -812,12 +835,44 @@ export function codToPrepaidRequestEmail(order: {
     <p style="margin: 0 0 4px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #a89a8f;">Order Summary</p>
     ${itemsTable(order.items)}
     <table role="presentation" style="width:100%; margin: 4px 0 24px;">
+      ${
+        order.online_payment_discount && order.online_payment_discount > 0
+          ? `
+      <tr>
+        <td style="text-align:right; font-size:13px; color:#6b5f57; padding-top: 6px; border-top: 2px solid ${BRAND_COLOR};">
+          COD total: <span style="text-decoration:line-through; color:#a89a8f;">${formatINR(order.original_total ?? order.total_amount + order.online_payment_discount)}</span>
+        </td>
+      </tr>
+      <tr>
+        <td style="text-align:right; font-size:13px; color:#1f7a3d; padding-top: 2px;">
+          Online payment discount: -${formatINR(order.online_payment_discount)}
+        </td>
+      </tr>
+      <tr>
+        <td style="text-align:right; font-size:16px; font-weight:bold; padding-top: 6px;">
+          Order total: ${formatINR(order.total_amount)}
+        </td>
+      </tr>`
+          : `
       <tr>
         <td style="text-align:right; font-size:16px; font-weight:bold; padding-top: 6px; border-top: 2px solid ${BRAND_COLOR};">
           Order total: ${formatINR(order.total_amount)}
         </td>
-      </tr>
+      </tr>`
+      }
     </table>
+    ${
+      order.online_payment_discount && order.online_payment_discount > 0
+        ? `
+    <table role="presentation" style="width:100%; border-collapse:collapse; margin: 0 0 20px; background:#f0f9f1; border:1px solid #d5ecd8; border-radius: 6px;">
+      <tr>
+        <td style="padding: 10px 14px; font-size: 13px; color:#1f7a3d; line-height:1.5;">
+          You're saving ${formatINR(order.online_payment_discount)} by paying online instead of Cash on Delivery — already applied to the total above.
+        </td>
+      </tr>
+    </table>`
+        : ''
+    }
 
     <table role="presentation" style="width:100%;">
       <tr>
