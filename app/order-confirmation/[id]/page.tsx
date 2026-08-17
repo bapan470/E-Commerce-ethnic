@@ -11,6 +11,16 @@ import PurchaseTracker from '@/components/analytics/purchase-tracker';
 import TrustpilotInvitation from '@/components/analytics/trustpilot-invitation';
 import CancelOrderButton from '@/components/account/cancel-order-button';
 
+// This page reads live order status (payment status, cancellation, ship
+// status) straight from the DB, and the Cancel Order button on this same
+// page needs the very next visit to reflect the new status. Next.js's
+// App Router caches server-component fetches by default (force-cache),
+// which was serving a stale "pending" snapshot even after the order had
+// actually been cancelled in the DB. Forcing this route to be fully
+// dynamic (no caching, always re-fetch) fixes that.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // Kept in sync with CANCELLABLE_STATUSES in
 // app/api/orders/[id]/cancel/route.ts -- once an order moves past these
 // (shipped/delivered/etc.) it must go through returns/exchange instead,

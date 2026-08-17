@@ -69,14 +69,24 @@ index edb6d4b..ba5a8cc 100644
      .from('orders')
      .update({ status: 'cancelled' })
 diff --git a/app/order-confirmation/[id]/page.tsx b/app/order-confirmation/[id]/page.tsx
-index fcf7d1a..f4be3b5 100644
+index fcf7d1a..610072a 100644
 --- a/app/order-confirmation/[id]/page.tsx
 +++ b/app/order-confirmation/[id]/page.tsx
-@@ -9,6 +9,25 @@ import { Separator } from '@/components/ui/separator';
+@@ -9,6 +9,35 @@ import { Separator } from '@/components/ui/separator';
  import OrderTracking from '@/components/order/order-tracking';
  import PurchaseTracker from '@/components/analytics/purchase-tracker';
  import TrustpilotInvitation from '@/components/analytics/trustpilot-invitation';
 +import CancelOrderButton from '@/components/account/cancel-order-button';
++
++// This page reads live order status (payment status, cancellation, ship
++// status) straight from the DB, and the Cancel Order button on this same
++// page needs the very next visit to reflect the new status. Next.js's
++// App Router caches server-component fetches by default (force-cache),
++// which was serving a stale "pending" snapshot even after the order had
++// actually been cancelled in the DB. Forcing this route to be fully
++// dynamic (no caching, always re-fetch) fixes that.
++export const dynamic = 'force-dynamic';
++export const revalidate = 0;
 +
 +// Kept in sync with CANCELLABLE_STATUSES in
 +// app/api/orders/[id]/cancel/route.ts -- once an order moves past these
@@ -98,7 +108,7 @@ index fcf7d1a..f4be3b5 100644
  
  export default async function OrderConfirmationPage({ params }: { params: { id: string } }) {
    const supabase = getSupabaseAdmin();
-@@ -56,11 +75,24 @@ export default async function OrderConfirmationPage({ params }: { params: { id:
+@@ -56,11 +85,24 @@ export default async function OrderConfirmationPage({ params }: { params: { id:
            <CheckCircle2 className="h-10 w-10 text-secondary" />
          </div>
          <h1 className="font-serif text-3xl font-bold text-primary">Thank you for your order!</h1>
@@ -124,7 +134,7 @@ index fcf7d1a..f4be3b5 100644
              <>
                {' '}
                Please keep <strong>{formatINR(order.total_amount)}</strong> ready in cash for our
-@@ -68,6 +100,9 @@ export default async function OrderConfirmationPage({ params }: { params: { id:
+@@ -68,6 +110,9 @@ export default async function OrderConfirmationPage({ params }: { params: { id:
              </>
            )}
          </p>

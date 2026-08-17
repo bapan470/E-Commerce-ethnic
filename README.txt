@@ -67,3 +67,18 @@ hona chahiye (SETUP-README.md ke hisaab se). Agar set nahi hai, to
 Vercel -> Project -> Settings -> Environment Variables me add kar dena:
     NEXT_PUBLIC_SITE_URL=https://aruhihandlooms.com
 (apna actual domain daalna) -- warna email ka button broken link banayega.
+
+---
+UPDATE 2 (bug fix): Cancel karne ke baad bhi thank-you page purana status
+("Pending") dikha raha tha, jabki admin panel me "cancelled" already ho
+chuka tha. Wajah: Next.js is page ko cache kar raha tha (page me koi
+"dynamic"/"no caching" instruction nahi thi), isliye purana snapshot hi
+baar baar dikhta raha.
+
+Fix: app/order-confirmation/[id]/page.tsx me ye 2 lines add ki hain (top
+par, imports ke baad):
+    export const dynamic = 'force-dynamic';
+    export const revalidate = 0;
+
+Isse ye page ab HAMESHA live/fresh data DB se fetch karega -- status
+badge aur Cancel button dono turant sahi state dikhayenge.
