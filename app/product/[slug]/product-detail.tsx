@@ -50,7 +50,12 @@ import CouponList from '@/components/product/coupon-list';
 import WishlistButton from '@/components/wishlist-button';
 import ShareButton from '@/components/share-button';
 import { Coupon, validateCoupon } from '@/lib/coupons-api';
-import { fetchLoyaltySettings, DEFAULT_LOYALTY_SETTINGS, type LoyaltySettings } from '@/lib/loyalty-api';
+import {
+  fetchLoyaltySettings,
+  fetchMyLoyaltyBalance,
+  DEFAULT_LOYALTY_SETTINGS,
+  type LoyaltySettings,
+} from '@/lib/loyalty-api';
 import FrequentlyBoughtTogether from '@/components/product/frequently-bought-together';
 import { addRecentlyViewed } from '@/lib/recently-viewed';
 import { trackEvent } from '@/lib/track-api';
@@ -137,6 +142,7 @@ export default function ProductDetail() {
   // listings still show their seeded social-proof numbers.
   const [liveSummary, setLiveSummary] = useState<RatingSummary | null>(null);
   const [loyaltySettings, setLoyaltySettings] = useState<LoyaltySettings>(DEFAULT_LOYALTY_SETTINGS);
+  const [loyaltyBalance, setLoyaltyBalance] = useState(0);
   useEffect(() => {
     let cancelled = false;
     fetchLoyaltySettings()
@@ -148,6 +154,20 @@ export default function ProductDetail() {
       cancelled = true;
     };
   }, []);
+  useEffect(() => {
+    let cancelled = false;
+    // Current usable balance — shown on the product page so customers can
+    // see they can apply it as a discount at checkout right now, instead of
+    // only being told what they'd *earn* from this purchase.
+    fetchMyLoyaltyBalance()
+      .then((b) => {
+        if (!cancelled) setLoyaltyBalance(b);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
   useEffect(() => {
     let cancelled = false;
     Promise.all([fetchFulfillmentSettings(), fetchShippingSettings()])
@@ -677,6 +697,7 @@ export default function ProductDetail() {
           couponDiscount={couponDiscount}
           fulfillment={fulfillment}
           isLoggedIn={!!user}
+          loyaltyBalance={loyaltyBalance}
           loyaltySettings={loyaltySettings}
           onCouponApply={(c, d) => {
             setAppliedCoupon(c);
@@ -797,6 +818,7 @@ function ProductInfo({
   fulfillment,
   isLoggedIn,
   loyaltySettings,
+  loyaltyBalance,
 }: {
   product: Product;
   displayName: string;
@@ -819,6 +841,7 @@ function ProductInfo({
   fulfillment: FulfillmentSettings;
   isLoggedIn: boolean;
   loyaltySettings: LoyaltySettings;
+  loyaltyBalance: number;
 }) {
   const discount = discountPct(selectedSizePrice, product.mrp);
   const { paymentDiscount } = usePaymentDiscount();
@@ -832,10 +855,10 @@ function ProductInfo({
     paymentDiscount.enabled && paymentDiscount.percent > 0
       ? Math.round((priceAfterCoupon * paymentDiscount.percent) / 100)
       : 0;
-  const loyaltyBasisPrice = Math.max(0, priceAfterCoupon - onlinePaymentSavings);
-  const projectedLoyaltyPoints = Math.floor(
-    (loyaltyBasisPrice * loyaltySettings.points_per_100_rupees) / 100
-  );
+  // Points the customer already holds and can redeem right now at checkout
+  // (subject to the same minimum-redeem rule enforced there).
+  const canRedeemNow = loyaltyBalance >= loyaltySettings.min_redeem_points;
+  const loyaltyBalanceWorth = Math.round(loyaltyBalance * loyaltySettings.redeem_value_per_point);
 
   return (
     <div className="flex flex-col gap-3">
@@ -942,7 +965,7 @@ function ProductInfo({
         </div>
       )}
 
-      {isLoggedIn && loyaltySettings.enabled && projectedLoyaltyPoints > 0 && (
+      {isLoggedIn && loyaltySettings.enabled && loyaltyBalance > 0 && (
         <div className="flex w-fit flex-col gap-1 rounded-xl border border-secondary/30 bg-secondary/5 px-3.5 py-2.5">
           <div className="flex items-center gap-1.5">
             <Gift className="h-3.5 w-3.5 shrink-0 text-secondary" />
@@ -950,10 +973,18 @@ function ProductInfo({
               Loyalty Points
             </span>
           </div>
-          <p className="text-[11px] leading-snug text-muted-foreground">
-            Earn <strong className="text-foreground">{projectedLoyaltyPoints} points</strong> on this
-            purchase — credited once your order is delivered.
-          </p>
+          {canRedeemNow ? (
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              You have <strong className="text-foreground">{loyaltyBalance} points</strong> (worth{' '}
+              {formatINR(loyaltyBalanceWorth)}) ready to use — apply them at checkout for an instant
+              discount.
+            </p>
+          ) : (
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              You have <strong className="text-foreground">{loyaltyBalance} points</strong>. Reach{' '}
+              {loyaltySettings.min_redeem_points} points to redeem them for a discount at checkout.
+            </p>
+          )}
         </div>
       )}
 
