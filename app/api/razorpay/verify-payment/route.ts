@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { sendEmail } from '@/lib/email';
 import { orderStatusUpdateEmail } from '@/lib/email-templates';
+import { isInPaymentRequestFlow, logPaymentRequestEvent } from '@/lib/order-payment-events';
 
 // SECURITY: this route now does the `orders` status update itself,
 // using the service-role client, instead of just returning
@@ -47,6 +48,11 @@ export async function POST(req: NextRequest) {
       .digest('hex');
 
     if (expectedSignature !== razorpay_signature) {
+      isInPaymentRequestFlow(internalOrderId)
+        .then((inFlow) => {
+          if (inFlow) return logPaymentRequestEvent(internalOrderId, 'payment_failed', { meta: { reason: 'signature_mismatch' } });
+        })
+        .catch(() => {});
       return NextResponse.json(
         { error: 'Payment signature verification failed' },
         { status: 400 }
@@ -95,6 +101,12 @@ export async function POST(req: NextRequest) {
     if (updateError) {
       return NextResponse.json({ error: 'Failed to update order status' }, { status: 500 });
     }
+
+    isInPaymentRequestFlow(internalOrderId)
+      .then((inFlow) => {
+        if (inFlow) return logPaymentRequestEvent(internalOrderId, 'payment_verified', { meta: { razorpay_payment_id } });
+      })
+      .catch(() => {});
 
     // Was previously silent: this route writes status:'paid' directly
     // (see the security note above for why), which bypasses

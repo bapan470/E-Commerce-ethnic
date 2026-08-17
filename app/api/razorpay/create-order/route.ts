@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { isInPaymentRequestFlow, logPaymentRequestEvent } from '@/lib/order-payment-events';
 
 // SECURITY: amount is NEVER taken from the request body anymore. It is
 // looked up server-side from the `orders` row (total_amount, set by the
@@ -78,6 +79,19 @@ export async function POST(req: NextRequest) {
     if (updateError) {
       return NextResponse.json({ error: 'Failed to link payment order' }, { status: 500 });
     }
+
+    // Best-effort, and only for orders that went through Admin >
+    // "Request Online Payment" -- ordinary checkout/resume-cart online
+    // orders never touch order_payment_request_events.
+    isInPaymentRequestFlow(internalOrderId)
+      .then((inFlow) => {
+        if (inFlow) {
+          return logPaymentRequestEvent(internalOrderId, 'payment_attempt_created', {
+            meta: { razorpay_order_id: rzpOrder.id },
+          });
+        }
+      })
+      .catch(() => {});
 
     return NextResponse.json({
       success: true,

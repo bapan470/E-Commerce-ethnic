@@ -685,11 +685,25 @@ export function codToPrepaidRequestEmail(order: {
   items: any[];
   total_amount: number;
   customer_name?: string;
+  // The id of the 'email_sent' row in order_payment_request_events for
+  // THIS particular send -- when present, the CTA link is routed through
+  // /api/track/order-payment/click/<trackingId> (so a click can be logged
+  // before redirecting to the real resume page) and an invisible pixel is
+  // embedded for open tracking. Left undefined for admin "Preview"/"Send
+  // test" -- those don't write to the DB, so there's nothing to track.
+  trackingId?: string;
 }) {
   const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
   const name = order.customer_name || 'there';
   const subject = `Action needed on your order ${shortId} — online payment required`;
-  const resumeUrl = `${process.env.NEXT_PUBLIC_SITE_URL || ''}/checkout/resume/${order.id}`;
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';
+  const directResumeUrl = `${siteUrl}/checkout/resume/${order.id}`;
+  const resumeUrl = order.trackingId
+    ? `${siteUrl}/api/track/order-payment/click/${order.trackingId}`
+    : directResumeUrl;
+  const pixel = order.trackingId
+    ? `<img src="${siteUrl}/api/track/order-payment/open/${order.trackingId}" width="1" height="1" alt="" style="display:block;border:0;" />`
+    : '';
   const html = wrapper(`
     <h2 style="margin-top:0; color:${BRAND_COLOR};">Hi ${name}, one quick thing about your order</h2>
     <p>
@@ -709,6 +723,7 @@ export function codToPrepaidRequestEmail(order: {
       Once we receive the payment, we'll start preparing your order right away — thank you for your
       patience.
     </p>
+    ${pixel}
   `);
   return { subject, html };
 }

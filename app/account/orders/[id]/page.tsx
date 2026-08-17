@@ -1,7 +1,8 @@
 import { notFound } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import { PackageCheck } from 'lucide-react';
+import { PackageCheck, CreditCard } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { getSupabaseServer, getCurrentUser } from '@/lib/supabase-server-auth';
 import { formatINR } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
@@ -73,6 +74,27 @@ export default async function OrderDetailPage({ params }: { params: { id: string
           initialCourierName={order.courier_name}
         />
       </div>
+
+      {/* Covers both: an ordinary online order the customer abandoned
+          mid-checkout, and one Admin flipped from COD -> online via
+          "Request Online Payment" -- either way, still 'pending' +
+          payment_method 'online' means nothing's been charged yet and
+          /checkout/resume/[id] can pick it back up. ?src=account lets
+          the admin-side timeline tell this apart from the email link. */}
+      {order.status === 'pending' && order.payment_method !== 'cod' && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <div className="flex gap-3 text-sm text-amber-900">
+            <CreditCard className="h-5 w-5 shrink-0 text-amber-600" />
+            <div>
+              <p className="font-medium">Payment pending</p>
+              <p className="mt-1 text-amber-800/80">Nothing's been charged yet — complete the payment to confirm this order.</p>
+            </div>
+          </div>
+          <Button asChild size="sm">
+            <Link href={`/checkout/resume/${order.id}?src=account`}>Complete Payment</Link>
+          </Button>
+        </div>
+      )}
 
       {order.status === 'paid' && (
         <div className="mt-4 flex gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">

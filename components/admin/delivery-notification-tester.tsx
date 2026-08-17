@@ -1,10 +1,48 @@
 'use client';
 
 import { useState } from 'react';
-import { Eye, Send, Loader2, CalendarClock, Truck, PackageCheck, Home, Wallet } from 'lucide-react';
+import {
+  Eye,
+  Send,
+  Loader2,
+  CalendarClock,
+  Truck,
+  PackageCheck,
+  Home,
+  Wallet,
+  History,
+  MailOpen,
+  MousePointerClick,
+  DoorOpen,
+  CreditCard,
+  CheckCircle2,
+  XCircle,
+  MailWarning,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+
+type PaymentRequestEvent = {
+  id: string;
+  event_type: string;
+  source: 'email' | 'account' | null;
+  opened_at: string | null;
+  open_count: number;
+  meta: Record<string, any> | null;
+  created_at: string;
+};
+
+const EVENT_LABELS: Record<string, { label: string; icon: any }> = {
+  requested: { label: 'Admin requested online payment', icon: Wallet },
+  email_sent: { label: 'Email sent to customer', icon: Send },
+  email_send_failed: { label: 'Email failed to send', icon: MailWarning },
+  link_clicked: { label: 'Customer clicked the email link', icon: MousePointerClick },
+  page_visited: { label: 'Customer opened the payment page', icon: DoorOpen },
+  payment_attempt_created: { label: 'Customer tried to pay (Razorpay opened)', icon: CreditCard },
+  payment_verified: { label: 'Payment succeeded', icon: CheckCircle2 },
+  payment_failed: { label: 'Payment attempt failed', icon: XCircle },
+};
 
 // Admin > Orders > (expand a row) > "Test Notifications". Lets you:
 //  1. Preview exactly what each lifecycle email looks like (opens the real
@@ -28,6 +66,25 @@ export default function DeliveryNotificationTester({
   const [expectedDate, setExpectedDate] = useState(initialExpectedDate || '');
   const [testTo, setTestTo] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
+  const [events, setEvents] = useState<PaymentRequestEvent[] | null>(null);
+  const [eventsLoading, setEventsLoading] = useState(false);
+
+  const loadEvents = async () => {
+    setEventsLoading(true);
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}/payment-request-events`);
+      const body = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setEvents(body.events || []);
+      } else {
+        toast.error(body.error || 'Failed to load payment request activity');
+      }
+    } catch {
+      toast.error('Failed to load payment request activity');
+    } finally {
+      setEventsLoading(false);
+    }
+  };
 
   const preview = (type: string) => {
     const url = `/api/admin/orders/${orderId}/preview-email?type=${type}${
@@ -92,6 +149,7 @@ export default function DeliveryNotificationTester({
     { key: 'arriving', label: 'Arriving', icon: CalendarClock },
     { key: 'out_for_delivery', label: 'Out for Delivery', icon: Truck },
     { key: 'delivered', label: 'Delivered', icon: Home },
+    { key: 'cod_to_prepaid', label: 'Request Online Payment', icon: Wallet },
   ];
 
   return (
@@ -206,6 +264,54 @@ export default function DeliveryNotificationTester({
         These buttons send real emails to the customer above and (for "Out for Delivery" / "Delivered") update the
         order's actual status — use a test order if you don't want to touch a real customer's order.
       </p>
+
+      <div className="my-4 border-t border-border/60" />
+
+      {/* "Request Online Payment" activity timeline — kab email gaya, khola,
+          link click hua (email/account), aur payment try/success/fail kab
+          hua. Loaded on demand since most orders never entered this flow. */}
+      <div className="flex items-center justify-between">
+        <h5 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Online payment request activity
+        </h5>
+        <Button type="button" size="sm" variant="outline" className="gap-1.5" disabled={eventsLoading} onClick={loadEvents}>
+          {eventsLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <History className="h-3.5 w-3.5" />}
+          {events === null ? 'Load activity' : 'Refresh'}
+        </Button>
+      </div>
+
+      {events !== null && (
+        <div className="mt-3">
+          {events.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              "Request Online Payment" was never used on this order — nothing to show.
+            </p>
+          ) : (
+            <ol className="space-y-2">
+              {events.map((ev) => {
+                const info = EVENT_LABELS[ev.event_type] || { label: ev.event_type, icon: History };
+                const Icon = info.icon;
+                return (
+                  <li key={ev.id} className="flex items-start gap-2 text-xs">
+                    <Icon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-secondary" />
+                    <div>
+                      <span className="font-medium">{info.label}</span>
+                      {ev.source && <span className="text-muted-foreground"> · via {ev.source}</span>}
+                      <div className="text-muted-foreground">{new Date(ev.created_at).toLocaleString()}</div>
+                      {ev.event_type === 'email_sent' && ev.opened_at && (
+                        <div className="mt-0.5 flex items-center gap-1 text-muted-foreground">
+                          <MailOpen className="h-3 w-3" /> Opened {new Date(ev.opened_at).toLocaleString()}
+                          {ev.open_count > 1 ? ` (seen ${ev.open_count}×)` : ''}
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </div>
+      )}
     </div>
   );
 }

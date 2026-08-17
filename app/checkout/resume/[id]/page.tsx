@@ -4,14 +4,23 @@ import { CreditCard } from 'lucide-react';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { formatINR } from '@/lib/format';
 import ResumePaymentButton from '@/components/checkout/resume-payment-button';
+import { isInPaymentRequestFlow, logPaymentRequestEvent, type PaymentRequestSource } from '@/lib/order-payment-events';
 
 // Landing page for the "complete your payment" reminder email
-// (lib/email-templates.ts -> paymentReminderEmail) and for anyone who
-// just wants to retry payment on an order they abandoned mid-checkout.
-// Same security model as /order-confirmation/[id]: the order id itself
-// (an unguessable UUID) is the access token, exactly like every other
-// order-lookup-by-id page in this app.
-export default async function ResumePaymentPage({ params }: { params: { id: string } }) {
+// (lib/email-templates.ts -> paymentReminderEmail), for the admin's
+// "Request Online Payment" flow (?src=email from the click-tracking
+// redirect, ?src=account from the account order page's "Complete
+// Payment" button), and for anyone who just wants to retry payment on
+// an order they abandoned mid-checkout. Same security model as
+// /order-confirmation/[id]: the order id itself (an unguessable UUID)
+// is the access token, exactly like every other order-lookup-by-id page.
+export default async function ResumePaymentPage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams?: { src?: string };
+}) {
   const supabase = getSupabaseAdmin();
   const { data: order } = await supabase
     .from('orders')
@@ -33,6 +42,19 @@ export default async function ResumePaymentPage({ params }: { params: { id: stri
   // doesn't belong on this page.
   if (order.status !== 'pending' || order.payment_method === 'cod') {
     notFound();
+  }
+
+  // Only log into order_payment_request_events for orders that actually
+  // went through Admin > "Request Online Payment" -- an ordinary
+  // abandoned-checkout retry (no admin conversion involved) shouldn't
+  // show up in that timeline. Best-effort, never blocks the page render.
+  const src = searchParams?.src === 'email' || searchParams?.src === 'account' ? (searchParams.src as PaymentRequestSource) : undefined;
+  try {
+    if (await isInPaymentRequestFlow(order.id)) {
+      await logPaymentRequestEvent(order.id, 'page_visited', { source: src });
+    }
+  } catch {
+    // best-effort — never block the page render
   }
 
   const items = Array.isArray(order.items) ? order.items : [];

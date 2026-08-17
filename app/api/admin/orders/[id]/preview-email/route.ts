@@ -8,6 +8,7 @@ import {
   orderStatusUpdateEmail,
   orderArrivingEmail,
   orderOutForDeliveryEmail,
+  codToPrepaidRequestEmail,
 } from '@/lib/email-templates';
 
 // Used by the "Test" panel on Admin > Orders (see
@@ -80,6 +81,17 @@ async function buildPreview(orderId: string, type: string, dateOverride?: string
         customer_name: order.customer_name,
         courier_name: testCourier,
         tracking_number: testTracking,
+        items: previewItems,
+        total_amount: previewTotal,
+      });
+    case 'cod_to_prepaid':
+      // No trackingId here on purpose -- this is a dry-run preview/test
+      // send, it never touches order_payment_request_events, so there's
+      // nothing to open/click-track. The link in a preview goes straight
+      // to the resume page.
+      return codToPrepaidRequestEmail({
+        id: order.id,
+        customer_name: order.customer_name,
         items: previewItems,
         total_amount: previewTotal,
       });

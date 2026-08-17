@@ -4,6 +4,7 @@ import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { sendEmail } from '@/lib/email';
 import { codToPrepaidRequestEmail } from '@/lib/email-templates';
+import { logPaymentRequestEvent } from '@/lib/order-payment-events';
 
 // Admin > Orders > "Request Online Payment" -- for a COD order whose item
 // isn't kept ready-made (needs to be prepared before it can ship), this
@@ -53,14 +54,35 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: 'Failed to update the order' }, { status: 500 });
   }
 
+  // Marks the moment the admin clicked this button -- this row's
+  // created_at is "kab admin ne request kiya". Also unlocks the
+  // razorpay create-order/verify-payment routes below to log this
+  // order's later payment attempts (they're gated on a 'requested' row
+  // existing, so ordinary online checkouts never get logged here).
+  await logPaymentRequestEvent(order.id, 'requested');
+
+  // Reserve the tracking row BEFORE building the email, since its id gets
+  // embedded in the email itself (open pixel + click-through link) --
+  // see lib/email-templates.ts -> codToPrepaidRequestEmail.
+  const { data: sentEvent } = await supabase
+    .from('order_payment_request_events')
+    .insert({ order_id: order.id, event_type: 'email_sent' })
+    .select('id')
+    .maybeSingle();
+  const trackingId = sentEvent?.id;
+
   const { subject, html } = codToPrepaidRequestEmail({
     id: order.id,
     items: Array.isArray(order.items) ? order.items : [],
     total_amount: order.total_amount,
     customer_name: order.customer_name,
+    trackingId,
   });
   const sendResult = await sendEmail({ to: order.customer_email, subject, html });
   if (!sendResult.success) {
+    await logPaymentRequestEvent(order.id, 'email_send_failed', {
+      meta: { error: 'error' in sendResult ? String(sendResult.error) : 'Email failed to send' },
+    });
     // The order is already converted at this point -- don't silently
     // leave the admin thinking nothing happened, but don't roll back
     // either (they can use "Send test" / resend some other way).
