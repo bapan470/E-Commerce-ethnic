@@ -50,3 +50,20 @@ Security note: Guest cancel sirf tab allow hota hai jab order kisi bhi
 account se linked na ho (guest checkout). Agar customer ne login karke
 order kiya tha, cancel ke liye wahi account login zaroori rahega -- warna
 koi bhi leaked link se logged-in customer ka order cancel kar sakta tha.
+
+---
+UPDATE: Order confirmation EMAIL me bhi ab ek "View / Cancel Order" button
+add kiya hai (lib/email-templates.ts -> orderConfirmationEmail). Email me
+seedha cancel action nahi ho sakta (JS/API call allow nahi hoti emails
+me, aur ye insecure bhi hoga -- link khulte hi order cancel ho jayega
+bina confirm kiye). Isliye button click karne par customer thank-you page
+(/order-confirmation/[id]) par pahunchega, jahan hamara naya Cancel Order
+button already hai (with confirm dialog) -- guest ho ya login wala, dono
+kaam karega.
+
+IMPORTANT: Ye button link banane ke liye NEXT_PUBLIC_SITE_URL env
+variable use hota hai. Ye aapke Vercel project settings me pehle se set
+hona chahiye (SETUP-README.md ke hisaab se). Agar set nahi hai, to
+Vercel -> Project -> Settings -> Environment Variables me add kar dena:
+    NEXT_PUBLIC_SITE_URL=https://aruhihandlooms.com
+(apna actual domain daalna) -- warna email ka button broken link banayega.

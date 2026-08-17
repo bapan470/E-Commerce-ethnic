@@ -92,6 +92,11 @@ export function orderConfirmationEmail(order: {
   payment_method?: string;
 }) {
   const subject = `Order confirmed — #${order.id.slice(0, 8)}`;
+  // Emails can't run JS or POST to our API directly, so this links back to
+  // the order-confirmation page (works with no login for guest orders --
+  // see app/api/orders/[id]/cancel/route.ts) where the actual Cancel
+  // Order button lives, with its own confirmation dialog.
+  const orderUrl = `${process.env.NEXT_PUBLIC_SITE_URL || ''}/order-confirmation/${order.id}`;
   const html = wrapper(`
     <h2 style="margin-top:0; color:${BRAND_COLOR};">Thank you for your order, ${order.customer_name || 'there'}!</h2>
     <p>We've received your order <strong>#${order.id.slice(0, 8)}</strong> and it's being prepared.</p>
@@ -100,7 +105,12 @@ export function orderConfirmationEmail(order: {
     <p style="font-size:13px; color:#6b5f57;">
       Payment method: ${order.payment_method === 'cod' ? 'Cash on Delivery' : 'Paid Online'}
     </p>
-    <p>You can track your order anytime from your account's Order History page.</p>
+    <p style="text-align:center; margin-top: 20px;">
+      <a href="${orderUrl}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+        View / Cancel Order
+      </a>
+    </p>
+    <p>You can track your order, or cancel it if you've changed your mind, anytime from the link above.</p>
   `);
   return { subject, html };
 }
