@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { SlidersHorizontal, TrendingDown, Flame, Gift, Camera, ChevronRight, ImageOff } from 'lucide-react';
+import { SlidersHorizontal, TrendingDown, Flame, Gift, Camera, ChevronRight, ImageOff, Video, VideoOff } from 'lucide-react';
 import { Product, CategoryRow } from '@/lib/types';
 import ProductCard from '@/components/product-card';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -35,6 +36,9 @@ import { trackEvent } from '@/lib/track-api';
 import { fireGtagEvent } from '@/lib/gtag-track';
 import { blurDataURL } from '@/lib/utils';
 import QuickNavIcons from '@/components/quick-nav-icons';
+import { fetchCatalogVideoSettings } from '@/lib/settings-api';
+
+const CATALOG_VIDEO_PREF_KEY = 'aruhi-catalog-video-enabled';
 
 const ALL_SIZES = [...STANDARD_SIZES];
 
@@ -93,6 +97,40 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
   const [query, setQuery] = useState(initialQuery);
   const [sort, setSort] = useState<SortKey>(initialSort);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Shopper-facing "Video" toggle (next to Filters/Sort) — lets them turn
+  // the autoplaying catalog video previews on/off for their own browsing.
+  // Starts from the admin's master default (Admin > Settings > Catalog
+  // Video Autoplay) the first time this browser visits; after that, their
+  // own choice is remembered in localStorage and wins over the admin
+  // default on later visits, same as the sort/filter state on this page
+  // being per-shopper rather than server-dictated.
+  const [videoEnabled, setVideoEnabled] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    const stored = typeof window !== 'undefined' ? window.localStorage.getItem(CATALOG_VIDEO_PREF_KEY) : null;
+    if (stored === 'on' || stored === 'off') {
+      setVideoEnabled(stored === 'on');
+      return;
+    }
+    fetchCatalogVideoSettings()
+      .then((s) => {
+        if (!cancelled) setVideoEnabled(s.default_enabled);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const toggleVideoEnabled = (checked: boolean) => {
+    setVideoEnabled(checked);
+    try {
+      window.localStorage.setItem(CATALOG_VIDEO_PREF_KEY, checked ? 'on' : 'off');
+    } catch {
+      // Private browsing / storage blocked -- toggle still works for this
+      // page view, it just won't be remembered next visit.
+    }
+  };
 
   // Filter option lists are derived from whatever products/admin have
   // actually tagged, so the panel never shows an empty or stale option.
@@ -671,6 +709,37 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
             </div>
 
             <div className="ml-auto flex items-center gap-2">
+              {/* Compact icon-only toggle on mobile (fixed bottom bar is tight
+                  on space); full switch + label from sm/tablet upward. */}
+              <button
+                type="button"
+                onClick={() => toggleVideoEnabled(!videoEnabled)}
+                aria-label={videoEnabled ? 'Turn off video previews' : 'Turn on video previews'}
+                aria-pressed={videoEnabled}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-colors sm:hidden ${
+                  videoEnabled
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border bg-background text-foreground/70'
+                }`}
+              >
+                {videoEnabled ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+              </button>
+              <div className="hidden items-center gap-1.5 sm:flex">
+                {videoEnabled ? (
+                  <Video className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <VideoOff className="h-4 w-4 text-muted-foreground" />
+                )}
+                <Label htmlFor="catalog-video-toggle" className="text-sm text-muted-foreground">
+                  Video
+                </Label>
+                <Switch
+                  id="catalog-video-toggle"
+                  checked={videoEnabled}
+                  onCheckedChange={toggleVideoEnabled}
+                  aria-label="Toggle autoplay video previews in the catalog"
+                />
+              </div>
               <Label className="hidden text-sm text-muted-foreground sm:inline">
                 Sort by
               </Label>
@@ -717,7 +786,7 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
                   <p className="mb-3 text-sm font-semibold text-muted-foreground uppercase tracking-wider">You might like</p>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                     {products.filter((p) => p.featured).slice(0, 3).map((p, idx) => (
-                      <ProductCard key={p.id} product={p} priority={idx === 0} disableAutoplayVideo={isSearchPage} />
+                      <ProductCard key={p.id} product={p} priority={idx === 0} disableAutoplayVideo={isSearchPage || !videoEnabled} />
                     ))}
                   </div>
                 </div>
@@ -745,7 +814,9 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
                     // matched colour variant's photo when the query matched
                     // one) instead of the autoplaying catalog video -- the
                     // video preview stays on /shop, category pages, etc.
-                    disableAutoplayVideo={isSearchPage}
+                    // Also off whenever the shopper has switched the
+                    // catalog "Video" toggle off for this browsing session.
+                    disableAutoplayVideo={isSearchPage || !videoEnabled}
                   />
                 );
               })}

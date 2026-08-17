@@ -1,13 +1,15 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { SlidersHorizontal } from 'lucide-react';
+import { SlidersHorizontal, Video, VideoOff } from 'lucide-react';
 import { Product } from '@/lib/types';
 import ProductCard from '@/components/product-card';
 import QuickNavIcons from '@/components/quick-nav-icons';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { fetchCatalogVideoSettings } from '@/lib/settings-api';
 import {
   Select,
   SelectContent,
@@ -15,6 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+
+const CATALOG_VIDEO_PREF_KEY = 'aruhi-catalog-video-enabled';
 
 type SortKey = 'featured' | 'price-asc' | 'price-desc' | 'rating' | 'newest';
 
@@ -38,6 +42,37 @@ interface CategoryToolbarGridProps {
  */
 export default function CategoryToolbarGrid({ products, categoryName }: CategoryToolbarGridProps) {
   const [sort, setSort] = useState<SortKey>('featured');
+
+  // Same shopper-facing "Video" toggle as /shop (see app/shop/shop-content.tsx
+  // for the fuller rationale) -- shares the same localStorage key so a
+  // shopper's choice carries across /shop and every category page instead
+  // of resetting per page.
+  const [videoEnabled, setVideoEnabled] = useState(true);
+  useEffect(() => {
+    let cancelled = false;
+    const stored = typeof window !== 'undefined' ? window.localStorage.getItem(CATALOG_VIDEO_PREF_KEY) : null;
+    if (stored === 'on' || stored === 'off') {
+      setVideoEnabled(stored === 'on');
+      return;
+    }
+    fetchCatalogVideoSettings()
+      .then((s) => {
+        if (!cancelled) setVideoEnabled(s.default_enabled);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const toggleVideoEnabled = (checked: boolean) => {
+    setVideoEnabled(checked);
+    try {
+      window.localStorage.setItem(CATALOG_VIDEO_PREF_KEY, checked ? 'on' : 'off');
+    } catch {
+      // Private browsing / storage blocked -- toggle still works for this
+      // page view, it just won't be remembered next visit.
+    }
+  };
 
   const sorted = useMemo(() => {
     const list = [...products];
@@ -76,6 +111,35 @@ export default function CategoryToolbarGrid({ products, categoryName }: Category
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => toggleVideoEnabled(!videoEnabled)}
+            aria-label={videoEnabled ? 'Turn off video previews' : 'Turn on video previews'}
+            aria-pressed={videoEnabled}
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-colors sm:hidden ${
+              videoEnabled
+                ? 'border-primary bg-primary text-primary-foreground'
+                : 'border-border bg-background text-foreground/70'
+            }`}
+          >
+            {videoEnabled ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+          </button>
+          <div className="hidden items-center gap-1.5 sm:flex">
+            {videoEnabled ? (
+              <Video className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <VideoOff className="h-4 w-4 text-muted-foreground" />
+            )}
+            <Label htmlFor="category-video-toggle" className="text-sm text-muted-foreground">
+              Video
+            </Label>
+            <Switch
+              id="category-video-toggle"
+              checked={videoEnabled}
+              onCheckedChange={toggleVideoEnabled}
+              aria-label="Toggle autoplay video previews in the catalog"
+            />
+          </div>
           <Label className="hidden text-sm text-muted-foreground sm:inline">Sort by</Label>
           <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
             <SelectTrigger className="w-44">
@@ -94,7 +158,7 @@ export default function CategoryToolbarGrid({ products, categoryName }: Category
 
       <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
         {sorted.map((p, i) => (
-          <ProductCard key={p.id} product={p} priority={i < 4} />
+          <ProductCard key={p.id} product={p} priority={i < 4} disableAutoplayVideo={!videoEnabled} />
         ))}
       </div>
     </>

@@ -40,6 +40,9 @@ import {
   MediaDeliverySettings,
   fetchMediaDeliverySettings,
   saveMediaDeliverySettings,
+  CatalogVideoSettings,
+  fetchCatalogVideoSettings,
+  saveCatalogVideoSettings,
 } from '@/lib/settings-api';
 import { uploadProductImage } from '@/lib/products-api';
 import {
@@ -108,6 +111,8 @@ export default function SettingsPanel() {
 
   const [paymentDiscountForm, setPaymentDiscountForm] = useState<PaymentDiscountSettings | null>(null);
   const [savingPaymentDiscount, setSavingPaymentDiscount] = useState(false);
+  const [catalogVideoForm, setCatalogVideoForm] = useState<CatalogVideoSettings | null>(null);
+  const [savingCatalogVideo, setSavingCatalogVideo] = useState(false);
   const [refundAutomationForm, setRefundAutomationForm] = useState<RefundAutomationSettings | null>(null);
   const [savingRefundAutomation, setSavingRefundAutomation] = useState(false);
   const [mediaDeliveryForm, setMediaDeliveryForm] = useState<MediaDeliverySettings | null>(null);
@@ -162,6 +167,10 @@ export default function SettingsPanel() {
     fetchPaymentDiscountSettings()
       .then(setPaymentDiscountForm)
       .catch(() => toast.error('Failed to load online payment discount settings'));
+
+    fetchCatalogVideoSettings()
+      .then(setCatalogVideoForm)
+      .catch(() => toast.error('Failed to load catalog video settings'));
 
     fetchRefundAutomationSettings()
       .then(setRefundAutomationForm)
@@ -307,6 +316,24 @@ export default function SettingsPanel() {
       toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSavingPaymentDiscount(false);
+    }
+  };
+
+  // Single master toggle -- saves the moment it's flipped, same as other
+  // one-switch settings (e.g. media delivery), no separate Save button.
+  const onToggleCatalogVideoDefault = async (checked: boolean) => {
+    if (!catalogVideoForm) return;
+    const next = { ...catalogVideoForm, default_enabled: checked };
+    setCatalogVideoForm(next);
+    setSavingCatalogVideo(true);
+    try {
+      await saveCatalogVideoSettings(next);
+      toast.success('Catalog video default saved');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+      setCatalogVideoForm(catalogVideoForm);
+    } finally {
+      setSavingCatalogVideo(false);
     }
   };
 
@@ -1171,6 +1198,36 @@ export default function SettingsPanel() {
             {savingPaymentDiscount ? 'Saving…' : 'Save Payment Discount'}
           </Button>
         </form>
+      )}
+
+      <div className="mt-8">
+        <h2 className="font-serif text-2xl font-bold text-primary">Catalog Video Autoplay</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Master switch for the shop/category grid. This decides the DEFAULT state of the
+          "Video" toggle shoppers see next to Filters/Sort — they can still flip it for their own
+          browsing session either way. Individual products still need "Autoplay video in catalog"
+          turned on in Admin &gt; Products before they show a video at all.
+        </p>
+      </div>
+
+      {!catalogVideoForm ? (
+        <p className="py-4 text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <div className="mt-4 flex max-w-xl items-center justify-between gap-4 rounded-lg border border-border/60 bg-card p-5">
+          <div>
+            <Label htmlFor="catalog-video-default">Autoplay videos by default</Label>
+            <p className="text-xs text-muted-foreground">
+              On: shoppers see autoplaying video previews unless they switch it off themselves.
+              Off: shoppers see still photos unless they switch it on themselves.
+            </p>
+          </div>
+          <Switch
+            id="catalog-video-default"
+            checked={catalogVideoForm.default_enabled}
+            disabled={savingCatalogVideo}
+            onCheckedChange={onToggleCatalogVideoDefault}
+          />
+        </div>
       )}
 
       <div className="mt-8">

@@ -780,3 +780,38 @@ export async function fetchImageSearchAiSettingsServer(): Promise<ImageSearchAiS
   if (error || !data) return DEFAULT_IMAGE_SEARCH_AI_SETTINGS;
   return { ...DEFAULT_IMAGE_SEARCH_AI_SETTINGS, ...(data.value as Partial<ImageSearchAiSettings>) };
 }
+
+// ---------------------------------------------------------------------
+// Catalog video autoplay — a single master toggle (Admin > Settings)
+// that decides the DEFAULT state of the shopper-facing "Video" switch
+// shown next to Filters/Sort on /shop and category pages (see
+// app/shop/shop-content.tsx). The per-product `autoplay_video_in_catalog`
+// flag (Admin > Products) still decides WHICH products are even eligible
+// to show a video at all -- this setting only decides whether that
+// preview starts ON or OFF by default for shoppers, who can still flip
+// their own session's toggle either way regardless of this default.
+// ---------------------------------------------------------------------
+export interface CatalogVideoSettings {
+  default_enabled: boolean;
+}
+
+export const DEFAULT_CATALOG_VIDEO_SETTINGS: CatalogVideoSettings = {
+  default_enabled: true,
+};
+
+export async function fetchCatalogVideoSettings(): Promise<CatalogVideoSettings> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'catalog_video_autoplay')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_CATALOG_VIDEO_SETTINGS;
+  return { ...DEFAULT_CATALOG_VIDEO_SETTINGS, ...(data.value as Partial<CatalogVideoSettings>) };
+}
+
+export async function saveCatalogVideoSettings(settings: CatalogVideoSettings) {
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ key: 'catalog_video_autoplay', value: settings }, { onConflict: 'key' });
+  if (error) throw error;
+}
