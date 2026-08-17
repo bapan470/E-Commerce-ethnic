@@ -37,11 +37,16 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get('next') || '/account';
+  // Prefilled when arriving from the guest tracking page's "Log in with
+  // this email" button (?email=...) -- a guest checkout has no password,
+  // so OTP is the method that'll actually work for them, and we jump
+  // straight to it instead of defaulting to the password tab.
+  const prefillEmail = searchParams.get('email') || '';
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [facebookLoading, setFacebookLoading] = useState(false);
 
-  const [method, setMethod] = useState<LoginMethod>('password');
+  const [method, setMethod] = useState<LoginMethod>(prefillEmail ? 'otp' : 'password');
   const [otpStep, setOtpStep] = useState<OtpStep>('enter-email');
   const [otpEmail, setOtpEmail] = useState('');
   const [otpCode, setOtpCode] = useState('');
@@ -167,7 +172,9 @@ function LoginForm() {
             Login or Signup
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Login to your AruhiHandlooms account
+            {prefillEmail
+              ? 'Log in to see full order details and manage your account'
+              : 'Login to your AruhiHandlooms account'}
           </p>
         </div>
 
@@ -254,6 +261,7 @@ function LoginForm() {
                   name="otp-email"
                   type="email"
                   required
+                  defaultValue={prefillEmail}
                   placeholder="you@example.com"
                 />
               </div>

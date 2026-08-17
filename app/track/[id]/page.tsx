@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { CheckCircle2, Circle, Package, Truck, Home, XCircle } from 'lucide-react';
+import { CheckCircle2, Circle, Package, Truck, Home, XCircle, LogIn } from 'lucide-react';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -134,6 +134,25 @@ export default async function TrackOrderPage({ params }: { params: { id: string 
           <span className="font-serif text-primary">{formatINR(order.total_amount)}</span>
         </div>
       </div>
+
+      {order.customer_email && (
+        <div className="mt-6 flex flex-col items-center gap-2 rounded-lg border border-dashed border-secondary/50 bg-secondary/5 p-4 text-center">
+          <LogIn className="h-5 w-5 text-secondary" />
+          <p className="text-sm">
+            Want more order detail, or to manage returns, addresses and your account from here on?
+          </p>
+          <Button asChild size="sm" className="bg-primary">
+            <Link
+              href={`/login?next=${encodeURIComponent(`/account/orders/${order.id}`)}&email=${encodeURIComponent(order.customer_email)}`}
+            >
+              Log in with {order.customer_email}
+            </Link>
+          </Button>
+          <p className="text-[11px] text-muted-foreground">
+            We'll email a one-time code to this address — no password needed.
+          </p>
+        </div>
+      )}
 
       <div className="mt-6 flex flex-wrap justify-center gap-3">
         <Button asChild variant="outline">

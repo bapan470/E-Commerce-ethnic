@@ -88,9 +88,24 @@ used at checkout). It reuses the exact same lookup logic your chat widget's
 This is what someone lands on if they don't have the order-confirmation
 email handy and just clicks "Track Order" from anywhere on the site.
 
+## 5. "Log in with this email" from the tracking page
+On `/track/[id]`, if the order has a customer email, there's now a card:
+**"Log in with [email]"** — clicking it goes to `/login?next=/account/orders/[id]&email=...`,
+which:
+- Prefills the email and jumps straight to the **Email OTP** tab (a guest
+  checkout has no password, so OTP — which auto-creates the account on
+  first use — is the method that actually works for them).
+- After verifying the code, lands them on `/account/orders/[id]` — the
+  fuller account order-detail view (return requests, cancel/help, delivered
+  review, etc.), which already grants access whenever the logged-in user's
+  email matches `order.customer_email` (this matching already existed in
+  your codebase — `ownsByEmail` in `app/account/orders/[id]/page.tsx` —
+  no changes needed there).
+
 ## Files changed/added
-- `app/track/[id]/page.tsx` — new, public tracking page for a specific order
+- `app/track/[id]/page.tsx` — new, public tracking page for a specific order; now includes the "Log in with this email" card
 - `app/track/page.tsx` — new, public Order ID + email lookup page (footer links here)
+- `app/login/page.tsx` — accepts `?email=` to prefill + auto-select OTP login
 - `components/footer.tsx` — new "Track Order" link in the Help column
 - `app/order-confirmation/[id]/page.tsx` — "Track this order" now points to `/track/[id]`
 - `lib/email-templates.ts` — new `orderArrivingEmail` / `orderOutForDeliveryEmail` templates; existing templates now link to `/track/[id]`
