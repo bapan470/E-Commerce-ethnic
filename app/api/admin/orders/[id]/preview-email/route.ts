@@ -84,17 +84,20 @@ async function buildPreview(orderId: string, type: string, dateOverride?: string
         items: previewItems,
         total_amount: previewTotal,
       });
-    case 'cod_to_prepaid':
+    case 'cod_to_prepaid': {
       // No trackingId here on purpose -- this is a dry-run preview/test
       // send, it never touches order_payment_request_events, so there's
       // nothing to open/click-track. The link in a preview goes straight
       // to the resume page.
+      const { data: storeSetting } = await supabase.from('settings').select('value').eq('key', 'store_info').maybeSingle();
       return codToPrepaidRequestEmail({
         id: order.id,
         customer_name: order.customer_name,
         items: previewItems,
         total_amount: previewTotal,
+        store: (storeSetting?.value as any) || undefined,
       });
+    }
     case 'delivered':
     case 'paid':
     case 'cancelled':

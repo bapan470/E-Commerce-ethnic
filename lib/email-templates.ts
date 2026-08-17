@@ -1,21 +1,80 @@
 import { formatINR } from './format';
 
 const BRAND_COLOR = '#7c3a1d';
+const BRAND_COLOR_DARK = '#5c2a14';
+const GOLD_ACCENT = '#c9a15a';
 const SITE_NAME = 'AruhiHandlooms';
 
-function wrapper(bodyHtml: string) {
-  return `
-  <div style="font-family: Georgia, 'Times New Roman', serif; max-width: 560px; margin: 0 auto; color: #2b2320;">
-    <div style="background: ${BRAND_COLOR}; padding: 24px; text-align: center;">
-      <h1 style="color: #fff; margin: 0; font-size: 22px; letter-spacing: 0.05em;">${SITE_NAME}</h1>
-    </div>
-    <div style="padding: 28px 24px; background: #fffaf5;">
-      ${bodyHtml}
-    </div>
-    <div style="padding: 16px 24px; text-align: center; font-size: 11px; color: #9a8f87;">
-      You're receiving this email because of a recent activity on ${SITE_NAME}.
-    </div>
-  </div>`;
+// Shared shell for every transactional email in the app. Redesigned to
+// look like an actual boutique brand sent it (full html/body doc so
+// clients never fall back to a default white/grey canvas around the
+// card, a proper wordmark + gold rule instead of a flat colour bar, a
+// bordered/rounded "card" for the body, and a real footer with an
+// address/GSTIN line + support contact instead of one throwaway
+// sentence) -- this is what previously made every email in the app
+// (not just the COD->prepaid one) read as generic/templated enough that
+// a customer could reasonably mistake it for spam.
+function wrapper(
+  bodyHtml: string,
+  opts: { footerNote?: string; store?: { address?: string; gstin?: string; support_email?: string; support_phone?: string } } = {}
+) {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';
+  const store = opts.store;
+  const footerNote = opts.footerNote || `You're receiving this email because of a recent activity on your ${SITE_NAME} account.`;
+  const year = new Date().getFullYear();
+  return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${SITE_NAME}</title>
+  </head>
+  <body style="margin:0; padding:0; background:#f2ebe3; font-family: Georgia, 'Times New Roman', serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2ebe3; padding: 32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px; max-width:100%; background:#ffffff; border-radius:10px; overflow:hidden; border:1px solid #ecdfd2; box-shadow: 0 2px 10px rgba(92,42,20,0.06);">
+            <tr>
+              <td style="background:linear-gradient(135deg, ${BRAND_COLOR} 0%, ${BRAND_COLOR_DARK} 100%); padding: 30px 24px; text-align:center;">
+                <div style="font-family: Georgia, 'Times New Roman', serif; color:#fff; font-size: 24px; font-weight:bold; letter-spacing: 0.08em; text-transform: uppercase;">${SITE_NAME}</div>
+                <div style="margin: 6px auto 0; width: 48px; border-top: 2px solid ${GOLD_ACCENT};"></div>
+                <div style="margin-top: 8px; color: rgba(255,255,255,0.75); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;">Handwoven Ethnic Wear</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 32px 32px 28px; background:#fffaf5; color:#2b2320; font-size: 15px; line-height: 1.6;">
+                ${bodyHtml}
+              </td>
+            </tr>
+            <tr>
+              <td style="padding: 20px 32px; background:#fbf6f0; border-top: 1px solid #ecdfd2;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="font-size: 12px; color: #8a7c72; line-height: 1.6;">
+                      ${
+                        store?.support_email || store?.support_phone
+                          ? `<p style="margin:0 0 6px;">Need help? <strong style="color:${BRAND_COLOR};">${
+                              store?.support_email ? `Email <a href="mailto:${store.support_email}" style="color:${BRAND_COLOR};">${store.support_email}</a>` : ''
+                            }${store?.support_email && store?.support_phone ? ' or ' : ''}${
+                              store?.support_phone ? `call ${store.support_phone}` : ''
+                            }</strong></p>`
+                          : ''
+                      }
+                      <p style="margin:0 0 6px;">${footerNote}</p>
+                      ${store?.address ? `<p style="margin:0 0 4px;">${store.address}</p>` : ''}
+                      ${store?.gstin ? `<p style="margin:0 0 4px;">GSTIN: ${store.gstin}</p>` : ''}
+                      <p style="margin:8px 0 0; color:#a89a8f;">© ${year} ${SITE_NAME}. All rights reserved.${siteUrl ? ` · <a href="${siteUrl}" style="color:#a89a8f;">${siteUrl.replace(/^https?:\/\//, '')}</a>` : ''}</p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
 }
 
 function itemsTable(items: any[]) {
@@ -24,30 +83,37 @@ function itemsTable(items: any[]) {
     .map((it) => {
       const img = it.image_url || it.image || it.images?.[0] || '';
       const thumb = img
-        ? `<img src="${img}" alt="" width="48" height="48" style="width:48px; height:48px; object-fit:cover; border-radius:6px; border:1px solid #eee; display:block;" />`
-        : `<div style="width:48px; height:48px; border-radius:6px; background:#f1e9e2;"></div>`;
+        ? `<img src="${img}" alt="" width="52" height="52" style="width:52px; height:52px; object-fit:cover; border-radius:8px; border:1px solid #ecdfd2; display:block;" />`
+        : `<div style="width:52px; height:52px; border-radius:8px; background:#f1e9e2;"></div>`;
       // Links straight to the exact colour/variant the customer bought
       // (it.slug is the variant's own SEO slug, saved on the order item at
       // checkout) rather than a generic product page, so "click the item"
       // from an email always opens what was actually ordered.
       const productUrl = it.slug ? `${siteUrl}/product/${it.slug}` : null;
-      const name = `${it.product_name || it.name || 'Item'}${it.size ? ` <span style="color:#9a8f87;">(Size: ${it.size})</span>` : ''}`;
+      const name = `${it.product_name || it.name || 'Item'}${it.size ? ` <span style="color:#9a8f87; font-size:12px;">(Size: ${it.size})</span>` : ''}`;
       const thumbCell = productUrl ? `<a href="${productUrl}">${thumb}</a>` : thumb;
       const nameCell = productUrl
-        ? `<a href="${productUrl}" style="color:#2b2320; text-decoration:none;">${name}</a>`
-        : name;
+        ? `<a href="${productUrl}" style="color:#2b2320; text-decoration:none; font-weight:500;">${name}</a>`
+        : `<span style="font-weight:500;">${name}</span>`;
       return `
       <tr>
-        <td style="padding: 8px 8px 8px 0; border-bottom: 1px solid #eee; width:48px;">${thumbCell}</td>
-        <td style="padding: 8px 0; border-bottom: 1px solid #eee;">
+        <td style="padding: 10px 10px 10px 0; border-bottom: 1px solid #f1e9e2; width:52px;">${thumbCell}</td>
+        <td style="padding: 10px 0; border-bottom: 1px solid #f1e9e2; font-size: 14px;">
           ${nameCell}
         </td>
-        <td style="padding: 8px 0; border-bottom: 1px solid #eee; text-align: center;">x${it.quantity || 1}</td>
-        <td style="padding: 8px 0; border-bottom: 1px solid #eee; text-align: right;">${formatINR((it.price || 0) * (it.quantity || 1))}</td>
+        <td style="padding: 10px 0; border-bottom: 1px solid #f1e9e2; text-align: center; font-size: 13px; color:#6b5f57;">x${it.quantity || 1}</td>
+        <td style="padding: 10px 0; border-bottom: 1px solid #f1e9e2; text-align: right; font-size: 14px; font-weight:500;">${formatINR((it.price || 0) * (it.quantity || 1))}</td>
       </tr>`;
     })
     .join('');
-  return `<table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">${rows}</table>`;
+  return `<table role="presentation" style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+    <tr>
+      <td colspan="2" style="padding: 0 0 6px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #a89a8f; border-bottom: 1px solid #ecdfd2;">Item</td>
+      <td style="padding: 0 0 6px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #a89a8f; text-align:center; border-bottom: 1px solid #ecdfd2;">Qty</td>
+      <td style="padding: 0 0 6px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #a89a8f; text-align:right; border-bottom: 1px solid #ecdfd2;">Price</td>
+    </tr>
+    ${rows}
+  </table>`;
 }
 
 export function signupVerificationEmail(user: { full_name?: string; verify_url: string }) {
@@ -692,6 +758,10 @@ export function codToPrepaidRequestEmail(order: {
   // embedded for open tracking. Left undefined for admin "Preview"/"Send
   // test" -- those don't write to the DB, so there's nothing to track.
   trackingId?: string;
+  // Store info (Admin > Settings > Store Info) for the footer's support
+  // line/address/GSTIN -- optional and best-effort: if the caller doesn't
+  // fetch it, the footer just shows fewer lines instead of erroring.
+  store?: { address?: string; gstin?: string; support_email?: string; support_phone?: string };
 }) {
   const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
   const name = order.customer_name || 'there';
@@ -704,27 +774,60 @@ export function codToPrepaidRequestEmail(order: {
   const pixel = order.trackingId
     ? `<img src="${siteUrl}/api/track/order-payment/open/${order.trackingId}" width="1" height="1" alt="" style="display:block;border:0;" />`
     : '';
-  const html = wrapper(`
-    <h2 style="margin-top:0; color:${BRAND_COLOR};">Hi ${name}, one quick thing about your order</h2>
-    <p>
-      Sorry for the inconvenience — your order <strong>${shortId}</strong> includes a piece that isn't
-      kept ready-made at all times, so it needs to be prepared specially before it can ship. Because of
-      that, we're not able to offer Cash on Delivery on this order and need the payment to be made
-      online first.
+  const html = wrapper(
+    `
+    <h2 style="margin:0 0 4px; color:${BRAND_COLOR}; font-size: 21px;">Hi ${name}, one quick thing about your order</h2>
+    <p style="margin: 0 0 18px; color:#6b5f57; font-size: 13px;">
+      Order <strong style="color:#2b2320;">${shortId}</strong> · placed with ${SITE_NAME}
     </p>
+
+    <table role="presentation" style="width:100%; border-collapse:collapse; margin: 0 0 20px; background:#fbf1e7; border:1px solid #ecdfd2; border-left: 4px solid ${GOLD_ACCENT}; border-radius: 6px;">
+      <tr>
+        <td style="padding: 14px 16px; font-size: 14px; color:#4a3d34; line-height:1.55;">
+          This particular piece isn't kept ready-made at all times — it's specially prepared once an
+          order comes in. Because of that, we're not able to offer Cash on Delivery on this order, and
+          need the payment made online before we start preparing it.
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin: 0 0 4px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #a89a8f;">Order Summary</p>
     ${itemsTable(order.items)}
-    <p style="text-align:right; font-size:16px; font-weight:bold;">Order total: ${formatINR(order.total_amount)}</p>
-    <p style="text-align:center; margin-top: 20px;">
-      <a href="${resumeUrl}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
-        Pay online to confirm this order
-      </a>
+    <table role="presentation" style="width:100%; margin: 4px 0 24px;">
+      <tr>
+        <td style="text-align:right; font-size:16px; font-weight:bold; padding-top: 6px; border-top: 2px solid ${BRAND_COLOR};">
+          Order total: ${formatINR(order.total_amount)}
+        </td>
+      </tr>
+    </table>
+
+    <table role="presentation" style="width:100%;">
+      <tr>
+        <td align="center">
+          <a href="${resumeUrl}" style="background:${BRAND_COLOR}; color:#fff; padding: 14px 36px; text-decoration:none; border-radius: 6px; font-size: 15px; font-weight:bold; display:inline-block; letter-spacing:0.02em;">
+            Pay Online to Confirm This Order →
+          </a>
+        </td>
+      </tr>
+    </table>
+
+    <p style="text-align:center; font-size:12px; color:#9a8f87; margin: 12px 0 0;">
+      Prefer not to click email links? Log in to your account and open
+      <a href="${siteUrl}/account/orders/${order.id}" style="color:${BRAND_COLOR}; font-weight:bold;">My Orders → ${shortId}</a> to pay from there instead.
     </p>
-    <p style="font-size:13px; color:#6b5f57; text-align:center;">
-      Once we receive the payment, we'll start preparing your order right away — thank you for your
-      patience.
-    </p>
+
+    <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #ecdfd2; text-align:center;">
+      <p style="font-size:13px; color:#6b5f57; margin: 0;">
+        Once we receive the payment, we'll start preparing your order right away — thank you for your patience.
+      </p>
+      <p style="font-size:11px; color:#a89a8f; margin: 10px 0 0;">
+        For your security, this link only opens the payment step for order ${shortId} — it will never ask for your ${SITE_NAME} password.
+      </p>
+    </div>
     ${pixel}
-  `);
+  `,
+    { store: order.store }
+  );
   return { subject, html };
 }
 

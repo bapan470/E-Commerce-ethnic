@@ -71,12 +71,20 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     .maybeSingle();
   const trackingId = sentEvent?.id;
 
+  // Best-effort -- footer just shows fewer lines if this fails, never
+  // blocks the actual "convert to online + notify customer" flow. Same
+  // 'settings' table read as app/about/page.tsx's getStoreInfo(), just
+  // via the already-open service-role client instead of a second one.
+  const { data: storeSetting } = await supabase.from('settings').select('value').eq('key', 'store_info').maybeSingle();
+  const store = (storeSetting?.value as any) || undefined;
+
   const { subject, html } = codToPrepaidRequestEmail({
     id: order.id,
     items: Array.isArray(order.items) ? order.items : [],
     total_amount: order.total_amount,
     customer_name: order.customer_name,
     trackingId,
+    store,
   });
   const sendResult = await sendEmail({ to: order.customer_email, subject, html });
   if (!sendResult.success) {
