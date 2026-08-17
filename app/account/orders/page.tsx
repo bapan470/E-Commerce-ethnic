@@ -148,6 +148,12 @@ export default async function OrdersPage() {
                     </Button>
                   </div>
                 )}
+
+                <div className="mt-3 flex justify-end">
+                  <Button asChild size="sm" variant="outline">
+                    <Link href={`/account/orders/${order.id}`}>View Order</Link>
+                  </Button>
+                </div>
               </div>
             );
           })}
