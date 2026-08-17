@@ -1,12 +1,13 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { CheckCircle2, Circle, Package, Truck, Home, XCircle, LogIn, Gift } from 'lucide-react';
+import { CheckCircle2, Circle, Package, Truck, Home, XCircle, LogIn, Gift, Users } from 'lucide-react';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import OrderTracking from '@/components/order/order-tracking';
 import { fetchLoyaltySettings } from '@/lib/loyalty-api';
+import { DEFAULT_REFERRAL_SETTINGS, type ReferralSettings } from '@/lib/referrals-api';
 
 // Guest-friendly tracking page. Uses the exact same trust model already used
 // by /order-confirmation/[id] and the self-cancel API: the order UUID itself
@@ -48,6 +49,19 @@ export default async function TrackOrderPage({ params }: { params: { id: string 
     (order.total_amount * loyaltySettings.points_per_100_rupees) / 100
   );
   const pointsValue = projectedPoints * loyaltySettings.redeem_value_per_point;
+
+  // Referral program preview — see order-confirmation/[id]/page.tsx for
+  // why this reads via the admin client instead of lib/referrals-api's
+  // browser client.
+  const { data: referralSettingsRow } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'referral_program')
+    .maybeSingle();
+  const referralSettings: ReferralSettings = {
+    ...DEFAULT_REFERRAL_SETTINGS,
+    ...((referralSettingsRow?.value as Partial<ReferralSettings>) ?? {}),
+  };
 
   const expected = order.expected_delivery_date
     ? new Date(order.expected_delivery_date).toLocaleDateString('en-IN', {
@@ -166,6 +180,25 @@ export default async function TrackOrderPage({ params }: { params: { id: string 
               </p>
             </>
           )}
+        </div>
+      )}
+
+      {referralSettings.enabled && (
+        <div className="mt-5 rounded-lg border border-border/60 bg-card p-4 sm:p-5">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-secondary" />
+            <h3 className="font-serif text-sm font-semibold text-primary">Refer &amp; Earn</h3>
+          </div>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            Invite a friend to AruhiHandlooms — you'll earn{' '}
+            <strong className="text-foreground">{referralSettings.referrer_reward_points} points</strong>{' '}
+            and they'll get{' '}
+            <strong className="text-foreground">{referralSettings.referred_reward_points} points</strong>{' '}
+            the moment their first order is confirmed.
+          </p>
+          <Button asChild size="sm" variant="outline" className="mt-3">
+            <Link href="/refer-earn">Refer a friend</Link>
+          </Button>
         </div>
       )}
 

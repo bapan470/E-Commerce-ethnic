@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
-import { CheckCircle2, Download, Truck, ShieldCheck, LogIn, Gift } from 'lucide-react';
+import { CheckCircle2, Download, Truck, ShieldCheck, LogIn, Gift, Users } from 'lucide-react';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import TrustpilotInvitation from '@/components/analytics/trustpilot-invitation';
 import CancelOrHelp from '@/components/order/cancel-or-help';
 import { fetchFulfillmentSettings } from '@/lib/marketing-api';
 import { fetchLoyaltySettings } from '@/lib/loyalty-api';
+import { DEFAULT_REFERRAL_SETTINGS, type ReferralSettings } from '@/lib/referrals-api';
 
 // This page reads live order status (payment status, cancellation, ship
 // status) straight from the DB, and the Cancel Order button on this same
@@ -53,6 +54,20 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
     (order.total_amount * loyaltySettings.points_per_100_rupees) / 100
   );
   const pointsValue = projectedPoints * loyaltySettings.redeem_value_per_point;
+
+  // Referral program preview — reads via the already-instantiated admin
+  // client (service role) rather than lib/referrals-api's browser client,
+  // since that client's cookie-based storage isn't safe to construct in a
+  // server component.
+  const { data: referralSettingsRow } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'referral_program')
+    .maybeSingle();
+  const referralSettings: ReferralSettings = {
+    ...DEFAULT_REFERRAL_SETTINGS,
+    ...((referralSettingsRow?.value as Partial<ReferralSettings>) ?? {}),
+  };
 
   const items = Array.isArray(order.items) ? order.items : [];
   const addr = order.shipping_address as {
@@ -235,6 +250,25 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
               </p>
             </>
           )}
+        </div>
+      )}
+
+      {referralSettings.enabled && (
+        <div className="mt-5 rounded-lg border border-border/60 bg-card p-4 sm:p-5">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-secondary" />
+            <h3 className="font-serif text-sm font-semibold text-primary">Refer &amp; Earn</h3>
+          </div>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            Invite a friend to AruhiHandlooms — you'll earn{' '}
+            <strong className="text-foreground">{referralSettings.referrer_reward_points} points</strong>{' '}
+            and they'll get{' '}
+            <strong className="text-foreground">{referralSettings.referred_reward_points} points</strong>{' '}
+            the moment their first order is confirmed.
+          </p>
+          <Button asChild size="sm" variant="outline" className="mt-3">
+            <Link href="/refer-earn">Refer a friend</Link>
+          </Button>
         </div>
       )}
 
