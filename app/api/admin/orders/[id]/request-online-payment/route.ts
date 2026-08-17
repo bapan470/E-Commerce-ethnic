@@ -13,6 +13,10 @@ import { logPaymentRequestEvent } from '@/lib/order-payment-events';
 //      which is the exact combination /checkout/resume/[id] and
 //      /api/razorpay/create-order already require -- so the customer's
 //      normal Razorpay flow just works from here with no other changes.
+//      original_payment_method is NOT touched here -- it was already set
+//      to 'cod' by the DB trigger when the order was placed, and stays
+//      that way forever, so the admin can still tell this was originally
+//      a COD order even after payment_method flips to 'online'.
 //   2. Emails the customer an apology + a link to that resume-payment
 //      page (codToPrepaidRequestEmail).
 // Once they actually pay, /api/razorpay/verify-payment takes over as

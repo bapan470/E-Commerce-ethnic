@@ -37,6 +37,11 @@ type Order = {
   total_amount: number;
   status: string;
   payment_method?: string;
+  // Set once at order-placement time by a DB trigger and never touched
+  // again -- survives "Request Online Payment" flipping payment_method
+  // 'cod' -> 'online', so the admin can still tell this order was
+  // originally COD. See 20260923000000_orders_original_payment_method.sql.
+  original_payment_method?: string;
   tracking_number?: string | null;
   courier_name?: string | null;
   expected_delivery_date?: string | null;
@@ -620,6 +625,14 @@ function OrderRow({
           >
             {order.payment_method === 'cod' ? 'COD' : 'Online'}
           </span>
+          {order.payment_method !== 'cod' && order.original_payment_method === 'cod' && (
+            <span
+              className="ml-1 inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700"
+              title="Placed as Cash on Delivery, then converted to online payment via 'Request Online Payment'"
+            >
+              was COD
+            </span>
+          )}
           {order.payment_method === 'cod' && order.status === 'pending' && (
             <Button
               type="button"
