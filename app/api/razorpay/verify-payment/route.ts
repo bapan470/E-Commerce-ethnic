@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { cookies } from 'next/headers';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { sendEmail } from '@/lib/email';
+import { orderStatusUpdateEmail } from '@/lib/email-templates';
 
 // SECURITY: this route now does the `orders` status update itself,
 // using the service-role client, instead of just returning
@@ -54,7 +56,9 @@ export async function POST(req: NextRequest) {
     const admin = getSupabaseAdmin();
     const { data: order, error: orderError } = await admin
       .from('orders')
-      .select('id, status, razorpay_order_id, total_amount')
+      .select(
+        'id, status, razorpay_order_id, total_amount, customer_name, customer_email, tracking_number, courier_name, items'
+      )
       .eq('id', internalOrderId)
       .maybeSingle();
 
@@ -90,6 +94,29 @@ export async function POST(req: NextRequest) {
 
     if (updateError) {
       return NextResponse.json({ error: 'Failed to update order status' }, { status: 500 });
+    }
+
+    // Was previously silent: this route writes status:'paid' directly
+    // (see the security note above for why), which bypasses
+    // updateOrderStatus() in lib/orders-api.ts -- the function that
+    // normally sends the "payment confirmed" email on any admin-driven
+    // status change. That meant a customer who paid online never
+    // actually got a "we've received your payment" email. Best-effort,
+    // same as every other lifecycle email here: a slow/broken email
+    // provider must never fail the payment itself.
+    if (order.customer_email) {
+      const { subject, html } = orderStatusUpdateEmail({
+        id: order.id,
+        customer_name: order.customer_name,
+        status: 'paid',
+        tracking_number: order.tracking_number,
+        courier_name: order.courier_name,
+        items: order.items,
+        total_amount: order.total_amount,
+      });
+      sendEmail({ to: order.customer_email, subject, html }).catch((err) => {
+        console.error('[verify-payment] payment-confirmed email failed:', err);
+      });
     }
 
     // Self-hosted blog conversion attribution — if this browser visited a

@@ -314,6 +314,14 @@ export default function ProductDetail() {
     const variantStockQty = variant.sizes.reduce((sum, s) => sum + s.stock_quantity, 0);
     return {
       ...baseProduct,
+      // Was falling through to `...baseProduct`'s own slug here, so a
+      // customer viewing/buying a colour variant (its own /product/<slug>
+      // page) ended up with the BASE product's slug baked into the cart
+      // item -- and from there into the order -- instead of this exact
+      // variant's. That's why an order-item link opened the default
+      // colour instead of the one actually bought. Now it always matches
+      // whatever slug is in the address bar.
+      slug: variant.slug,
       price: variant.price_override ?? baseProduct.price,
       images: variant.images.length > 0 ? variant.images : baseProduct.images,
       video_url: variant.video || baseProduct.video_url,

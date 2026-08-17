@@ -22,10 +22,30 @@ async function buildPreview(orderId: string, type: string, dateOverride?: string
   const supabase = getSupabaseAdmin();
   const { data: order, error } = await supabase
     .from('orders')
-    .select('id, customer_name, customer_email, tracking_number, courier_name, expected_delivery_date')
+    .select(
+      'id, customer_name, customer_email, tracking_number, courier_name, expected_delivery_date, items, total_amount'
+    )
     .eq('id', orderId)
     .maybeSingle();
   if (error || !order) return null;
+
+  // Test/preview orders (or real orders with no line items yet) still get
+  // a couple of placeholder rows here, so the admin can see exactly what
+  // the "premium" product-image layout looks like without needing a real
+  // order full of items on hand.
+  const previewItems =
+    Array.isArray(order.items) && order.items.length > 0
+      ? order.items
+      : [
+          {
+            product_name: 'Sample Saree',
+            image_url: 'https://placehold.co/96x96/7c3a1d/fff?text=Aruhi',
+            size: 'Free Size',
+            quantity: 1,
+            price: order.total_amount || 1999,
+          },
+        ];
+  const previewTotal = order.total_amount || previewItems.reduce((s: number, it: any) => s + it.price * it.quantity, 0);
 
   const testTracking = order.tracking_number || 'TEST123456789';
   const testCourier = order.courier_name || 'Delhivery';
@@ -41,6 +61,8 @@ async function buildPreview(orderId: string, type: string, dateOverride?: string
         customer_name: order.customer_name,
         tracking_number: testTracking,
         courier_name: testCourier,
+        items: previewItems,
+        total_amount: previewTotal,
       });
     case 'arriving':
       return orderArrivingEmail({
@@ -49,6 +71,8 @@ async function buildPreview(orderId: string, type: string, dateOverride?: string
         expected_delivery_date: testExpected,
         courier_name: testCourier,
         tracking_number: testTracking,
+        items: previewItems,
+        total_amount: previewTotal,
       });
     case 'out_for_delivery':
       return orderOutForDeliveryEmail({
@@ -56,6 +80,8 @@ async function buildPreview(orderId: string, type: string, dateOverride?: string
         customer_name: order.customer_name,
         courier_name: testCourier,
         tracking_number: testTracking,
+        items: previewItems,
+        total_amount: previewTotal,
       });
     case 'delivered':
     case 'paid':
@@ -68,6 +94,8 @@ async function buildPreview(orderId: string, type: string, dateOverride?: string
         status: type,
         tracking_number: testTracking,
         courier_name: testCourier,
+        items: previewItems,
+        total_amount: previewTotal,
       });
     default:
       return null;

@@ -1,5 +1,7 @@
 import { notFound } from 'next/navigation';
 import Image from 'next/image';
+import Link from 'next/link';
+import { PackageCheck } from 'lucide-react';
 import { getSupabaseServer, getCurrentUser } from '@/lib/supabase-server-auth';
 import { formatINR } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
@@ -72,6 +74,20 @@ export default async function OrderDetailPage({ params }: { params: { id: string
         />
       </div>
 
+      {order.status === 'paid' && (
+        <div className="mt-4 flex gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+          <PackageCheck className="h-5 w-5 shrink-0 text-emerald-600" />
+          <div className="text-sm text-emerald-900">
+            <p className="font-medium">Payment received — your order is being prepared</p>
+            <p className="mt-1 text-emerald-800/80">
+              Sorry for the inconvenience — a few of our pieces are made/kept ready only once an order
+              comes in, so preparing this one for shipment may take a little extra time. We'll email you
+              the moment it ships.
+            </p>
+          </div>
+        </div>
+      )}
+
       <Separator className="my-6" />
 
       <h2 className="font-serif text-lg font-semibold">Items</h2>
@@ -90,7 +106,13 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                   />
                 </div>
                 <div>
-                  <p className="font-medium">{item.product_name}</p>
+                  {item.slug ? (
+                    <Link href={`/product/${item.slug}`} className="font-medium hover:underline">
+                      {item.product_name}
+                    </Link>
+                  ) : (
+                    <p className="font-medium">{item.product_name}</p>
+                  )}
                   <p className="text-muted-foreground">
                     Size: {item.size} &middot; Qty: {item.quantity}
                   </p>

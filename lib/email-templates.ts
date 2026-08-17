@@ -19,17 +19,28 @@ function wrapper(bodyHtml: string) {
 }
 
 function itemsTable(items: any[]) {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';
   const rows = (items || [])
     .map((it) => {
       const img = it.image_url || it.image || it.images?.[0] || '';
       const thumb = img
         ? `<img src="${img}" alt="" width="48" height="48" style="width:48px; height:48px; object-fit:cover; border-radius:6px; border:1px solid #eee; display:block;" />`
         : `<div style="width:48px; height:48px; border-radius:6px; background:#f1e9e2;"></div>`;
+      // Links straight to the exact colour/variant the customer bought
+      // (it.slug is the variant's own SEO slug, saved on the order item at
+      // checkout) rather than a generic product page, so "click the item"
+      // from an email always opens what was actually ordered.
+      const productUrl = it.slug ? `${siteUrl}/product/${it.slug}` : null;
+      const name = `${it.product_name || it.name || 'Item'}${it.size ? ` <span style="color:#9a8f87;">(Size: ${it.size})</span>` : ''}`;
+      const thumbCell = productUrl ? `<a href="${productUrl}">${thumb}</a>` : thumb;
+      const nameCell = productUrl
+        ? `<a href="${productUrl}" style="color:#2b2320; text-decoration:none;">${name}</a>`
+        : name;
       return `
       <tr>
-        <td style="padding: 8px 8px 8px 0; border-bottom: 1px solid #eee; width:48px;">${thumb}</td>
+        <td style="padding: 8px 8px 8px 0; border-bottom: 1px solid #eee; width:48px;">${thumbCell}</td>
         <td style="padding: 8px 0; border-bottom: 1px solid #eee;">
-          ${it.product_name || it.name || 'Item'}${it.size ? ` <span style="color:#9a8f87;">(Size: ${it.size})</span>` : ''}
+          ${nameCell}
         </td>
         <td style="padding: 8px 0; border-bottom: 1px solid #eee; text-align: center;">x${it.quantity || 1}</td>
         <td style="padding: 8px 0; border-bottom: 1px solid #eee; text-align: right;">${formatINR((it.price || 0) * (it.quantity || 1))}</td>
@@ -280,12 +291,20 @@ export function orderShippedEmail(order: {
   customer_name?: string;
   tracking_number?: string | null;
   courier_name?: string | null;
+  items?: any[];
+  total_amount?: number;
 }) {
   const subject = `Your order has shipped — #${order.id.slice(0, 8)}`;
   const html = wrapper(`
     <h2 style="margin-top:0; color:${BRAND_COLOR};">Good news, ${order.customer_name || 'there'} — it's on the way!</h2>
     <p>Your order <strong>#${order.id.slice(0, 8)}</strong> has been shipped${order.courier_name ? ` via ${order.courier_name}` : ''}.</p>
     ${order.tracking_number ? `<p style="font-size:16px;"><strong>Tracking number:</strong> ${order.tracking_number}</p>` : ''}
+    ${order.items?.length ? itemsTable(order.items) : ''}
+    ${
+      order.items?.length && typeof order.total_amount === 'number'
+        ? `<p style="text-align:right; font-size:16px; font-weight:bold;">Total: ${formatINR(order.total_amount)}</p>`
+        : ''
+    }
     <p style="text-align:center; margin-top: 16px;">
       <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/track/${order.id}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
         Track My Order
@@ -310,6 +329,8 @@ export function orderStatusUpdateEmail(order: {
   status: string;
   tracking_number?: string | null;
   courier_name?: string | null;
+  items?: any[];
+  total_amount?: number;
 }) {
   const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
   const name = order.customer_name || 'there';
@@ -323,7 +344,12 @@ export function orderStatusUpdateEmail(order: {
     paid: {
       subject: `Payment confirmed — ${shortId}`,
       heading: `Thanks, ${name} — payment received!`,
-      body: `We've confirmed payment for your order <strong>${shortId}</strong>. It's now being prepared for dispatch.`,
+      body: `We've confirmed payment for your order <strong>${shortId}</strong> and it's now being prepared.
+        <br /><br />
+        Sorry for the inconvenience, but a couple of our pieces are made/kept ready only once an order comes
+        in, rather than sitting pre-packed at all times — so preparing your order for shipment may take a
+        little extra time. We'll email you the moment it ships, and you're welcome to check the latest
+        status here any time.`,
     },
     shipped: {
       subject: `Your order has shipped — ${shortId}`,
@@ -356,6 +382,12 @@ export function orderStatusUpdateEmail(order: {
   const html = wrapper(`
     <h2 style="margin-top:0; color:${BRAND_COLOR};">${c.heading}</h2>
     <p>${c.body}</p>
+    ${order.items?.length ? itemsTable(order.items) : ''}
+    ${
+      order.items?.length && typeof order.total_amount === 'number'
+        ? `<p style="text-align:right; font-size:16px; font-weight:bold;">Total: ${formatINR(order.total_amount)}</p>`
+        : ''
+    }
     <p style="text-align:center; margin-top: 16px;">
       <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/track/${order.id}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
         Track My Order
@@ -378,6 +410,8 @@ export function orderArrivingEmail(order: {
   expected_delivery_date: string;
   courier_name?: string | null;
   tracking_number?: string | null;
+  items?: any[];
+  total_amount?: number;
 }) {
   const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
   const name = order.customer_name || 'there';
@@ -391,6 +425,12 @@ export function orderArrivingEmail(order: {
     <h2 style="margin-top:0; color:${BRAND_COLOR};">Hi ${name}, your order is on its way!</h2>
     <p>Your order <strong>${shortId}</strong> is expected to be delivered on <strong>${expected}</strong>.</p>
     ${order.tracking_number ? `<p style="font-size:13px; color:#6b5f57;">Tracking number: <strong>${order.tracking_number}</strong>${order.courier_name ? ` (${order.courier_name})` : ''}</p>` : ''}
+    ${order.items?.length ? itemsTable(order.items) : ''}
+    ${
+      order.items?.length && typeof order.total_amount === 'number'
+        ? `<p style="text-align:right; font-size:16px; font-weight:bold;">Total: ${formatINR(order.total_amount)}</p>`
+        : ''
+    }
     <p>We'll email you again once it's out for delivery, and once more the moment it's delivered — no need to keep checking.</p>
     <p style="text-align:center; margin-top: 16px;">
       <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/track/${order.id}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
@@ -412,6 +452,8 @@ export function orderOutForDeliveryEmail(order: {
   customer_name?: string;
   courier_name?: string | null;
   tracking_number?: string | null;
+  items?: any[];
+  total_amount?: number;
 }) {
   const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
   const name = order.customer_name || 'there';
@@ -420,6 +462,12 @@ export function orderOutForDeliveryEmail(order: {
     <h2 style="margin-top:0; color:${BRAND_COLOR};">Hi ${name}, your order is out for delivery!</h2>
     <p>Your order <strong>${shortId}</strong> is with our delivery partner${order.courier_name ? ` (${order.courier_name})` : ''} and should reach you shortly today. Please keep your phone nearby in case the delivery person needs to reach you.</p>
     ${order.tracking_number ? `<p style="font-size:13px; color:#6b5f57;">Tracking number: <strong>${order.tracking_number}</strong></p>` : ''}
+    ${order.items?.length ? itemsTable(order.items) : ''}
+    ${
+      order.items?.length && typeof order.total_amount === 'number'
+        ? `<p style="text-align:right; font-size:16px; font-weight:bold;">Total: ${formatINR(order.total_amount)}</p>`
+        : ''
+    }
     <p style="text-align:center; margin-top: 16px;">
       <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/track/${order.id}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
         Track My Order

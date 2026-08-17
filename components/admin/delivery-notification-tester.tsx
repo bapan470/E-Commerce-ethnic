@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Eye, Send, Loader2, CalendarClock, Truck, PackageCheck, Home } from 'lucide-react';
+import { Eye, Send, Loader2, CalendarClock, Truck, PackageCheck, Home, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
@@ -87,6 +87,7 @@ export default function DeliveryNotificationTester({
   };
 
   const emailTypes: { key: string; label: string; icon: any }[] = [
+    { key: 'paid', label: 'Payment Confirmed', icon: Wallet },
     { key: 'shipped', label: 'Shipped', icon: Truck },
     { key: 'arriving', label: 'Arriving', icon: CalendarClock },
     { key: 'out_for_delivery', label: 'Out for Delivery', icon: Truck },
@@ -106,7 +107,7 @@ export default function DeliveryNotificationTester({
       <div className="grid gap-2">
         {emailTypes.map(({ key, label, icon: Icon }) => (
           <div key={key} className="flex flex-wrap items-center gap-2">
-            <span className="flex w-36 items-center gap-1.5 text-xs font-medium">
+            <span className="flex w-40 items-center gap-1.5 text-xs font-medium">
               <Icon className="h-3.5 w-3.5 text-secondary" /> {label}
             </span>
             <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => preview(key)}>

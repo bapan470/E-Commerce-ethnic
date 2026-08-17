@@ -95,7 +95,7 @@ export async function updateOrderStatus(id: string, status: string) {
   // (e.g. the admin re-selects the same value).
   const { data: existing, error: fetchError } = await supabase
     .from('orders')
-    .select('id, status, customer_email, customer_name, tracking_number, courier_name')
+    .select('id, status, customer_email, customer_name, tracking_number, courier_name, items, total_amount')
     .eq('id', id)
     .maybeSingle();
   if (fetchError) throw fetchError;
@@ -110,6 +110,8 @@ export async function updateOrderStatus(id: string, status: string) {
       status,
       tracking_number: existing.tracking_number,
       courier_name: existing.courier_name,
+      items: existing.items,
+      total_amount: existing.total_amount,
     });
     // Best-effort -- never let a slow/broken email provider fail the
     // admin's status update.

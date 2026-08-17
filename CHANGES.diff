@@ -1,5 +1,196 @@
+diff --git a/app/account/orders/[id]/page.tsx b/app/account/orders/[id]/page.tsx
+index 1bf26cf..d1d6ee3 100644
+--- a/app/account/orders/[id]/page.tsx
++++ b/app/account/orders/[id]/page.tsx
+@@ -1,5 +1,7 @@
+ import { notFound } from 'next/navigation';
+ import Image from 'next/image';
++import Link from 'next/link';
++import { PackageCheck } from 'lucide-react';
+ import { getSupabaseServer, getCurrentUser } from '@/lib/supabase-server-auth';
+ import { formatINR } from '@/lib/format';
+ import { Badge } from '@/components/ui/badge';
+@@ -72,6 +74,20 @@ export default async function OrderDetailPage({ params }: { params: { id: string
+         />
+       </div>
+ 
++      {order.status === 'paid' && (
++        <div className="mt-4 flex gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
++          <PackageCheck className="h-5 w-5 shrink-0 text-emerald-600" />
++          <div className="text-sm text-emerald-900">
++            <p className="font-medium">Payment received — your order is being prepared</p>
++            <p className="mt-1 text-emerald-800/80">
++              Sorry for the inconvenience — a few of our pieces are made/kept ready only once an order
++              comes in, so preparing this one for shipment may take a little extra time. We'll email you
++              the moment it ships.
++            </p>
++          </div>
++        </div>
++      )}
++
+       <Separator className="my-6" />
+ 
+       <h2 className="font-serif text-lg font-semibold">Items</h2>
+@@ -90,7 +106,13 @@ export default async function OrderDetailPage({ params }: { params: { id: string
+                   />
+                 </div>
+                 <div>
+-                  <p className="font-medium">{item.product_name}</p>
++                  {item.slug ? (
++                    <Link href={`/product/${item.slug}`} className="font-medium hover:underline">
++                      {item.product_name}
++                    </Link>
++                  ) : (
++                    <p className="font-medium">{item.product_name}</p>
++                  )}
+                   <p className="text-muted-foreground">
+                     Size: {item.size} &middot; Qty: {item.quantity}
+                   </p>
+diff --git a/app/api/admin/orders/[id]/preview-email/route.ts b/app/api/admin/orders/[id]/preview-email/route.ts
+index b28549e..d8b873e 100644
+--- a/app/api/admin/orders/[id]/preview-email/route.ts
++++ b/app/api/admin/orders/[id]/preview-email/route.ts
+@@ -22,11 +22,31 @@ async function buildPreview(orderId: string, type: string, dateOverride?: string
+   const supabase = getSupabaseAdmin();
+   const { data: order, error } = await supabase
+     .from('orders')
+-    .select('id, customer_name, customer_email, tracking_number, courier_name, expected_delivery_date')
++    .select(
++      'id, customer_name, customer_email, tracking_number, courier_name, expected_delivery_date, items, total_amount'
++    )
+     .eq('id', orderId)
+     .maybeSingle();
+   if (error || !order) return null;
+ 
++  // Test/preview orders (or real orders with no line items yet) still get
++  // a couple of placeholder rows here, so the admin can see exactly what
++  // the "premium" product-image layout looks like without needing a real
++  // order full of items on hand.
++  const previewItems =
++    Array.isArray(order.items) && order.items.length > 0
++      ? order.items
++      : [
++          {
++            product_name: 'Sample Saree',
++            image_url: 'https://placehold.co/96x96/7c3a1d/fff?text=Aruhi',
++            size: 'Free Size',
++            quantity: 1,
++            price: order.total_amount || 1999,
++          },
++        ];
++  const previewTotal = order.total_amount || previewItems.reduce((s: number, it: any) => s + it.price * it.quantity, 0);
++
+   const testTracking = order.tracking_number || 'TEST123456789';
+   const testCourier = order.courier_name || 'Delhivery';
+   const testExpected =
+@@ -41,6 +61,8 @@ async function buildPreview(orderId: string, type: string, dateOverride?: string
+         customer_name: order.customer_name,
+         tracking_number: testTracking,
+         courier_name: testCourier,
++        items: previewItems,
++        total_amount: previewTotal,
+       });
+     case 'arriving':
+       return orderArrivingEmail({
+@@ -49,6 +71,8 @@ async function buildPreview(orderId: string, type: string, dateOverride?: string
+         expected_delivery_date: testExpected,
+         courier_name: testCourier,
+         tracking_number: testTracking,
++        items: previewItems,
++        total_amount: previewTotal,
+       });
+     case 'out_for_delivery':
+       return orderOutForDeliveryEmail({
+@@ -56,6 +80,8 @@ async function buildPreview(orderId: string, type: string, dateOverride?: string
+         customer_name: order.customer_name,
+         courier_name: testCourier,
+         tracking_number: testTracking,
++        items: previewItems,
++        total_amount: previewTotal,
+       });
+     case 'delivered':
+     case 'paid':
+@@ -68,6 +94,8 @@ async function buildPreview(orderId: string, type: string, dateOverride?: string
+         status: type,
+         tracking_number: testTracking,
+         courier_name: testCourier,
++        items: previewItems,
++        total_amount: previewTotal,
+       });
+     default:
+       return null;
+diff --git a/app/api/razorpay/verify-payment/route.ts b/app/api/razorpay/verify-payment/route.ts
+index 960814b..910b619 100644
+--- a/app/api/razorpay/verify-payment/route.ts
++++ b/app/api/razorpay/verify-payment/route.ts
+@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
+ import crypto from 'crypto';
+ import { cookies } from 'next/headers';
+ import { getSupabaseAdmin } from '@/lib/supabase-admin';
++import { sendEmail } from '@/lib/email';
++import { orderStatusUpdateEmail } from '@/lib/email-templates';
+ 
+ // SECURITY: this route now does the `orders` status update itself,
+ // using the service-role client, instead of just returning
+@@ -54,7 +56,9 @@ export async function POST(req: NextRequest) {
+     const admin = getSupabaseAdmin();
+     const { data: order, error: orderError } = await admin
+       .from('orders')
+-      .select('id, status, razorpay_order_id, total_amount')
++      .select(
++        'id, status, razorpay_order_id, total_amount, customer_name, customer_email, tracking_number, courier_name, items'
++      )
+       .eq('id', internalOrderId)
+       .maybeSingle();
+ 
+@@ -92,6 +96,29 @@ export async function POST(req: NextRequest) {
+       return NextResponse.json({ error: 'Failed to update order status' }, { status: 500 });
+     }
+ 
++    // Was previously silent: this route writes status:'paid' directly
++    // (see the security note above for why), which bypasses
++    // updateOrderStatus() in lib/orders-api.ts -- the function that
++    // normally sends the "payment confirmed" email on any admin-driven
++    // status change. That meant a customer who paid online never
++    // actually got a "we've received your payment" email. Best-effort,
++    // same as every other lifecycle email here: a slow/broken email
++    // provider must never fail the payment itself.
++    if (order.customer_email) {
++      const { subject, html } = orderStatusUpdateEmail({
++        id: order.id,
++        customer_name: order.customer_name,
++        status: 'paid',
++        tracking_number: order.tracking_number,
++        courier_name: order.courier_name,
++        items: order.items,
++        total_amount: order.total_amount,
++      });
++      sendEmail({ to: order.customer_email, subject, html }).catch((err) => {
++        console.error('[verify-payment] payment-confirmed email failed:', err);
++      });
++    }
++
+     // Self-hosted blog conversion attribution — if this browser visited a
+     // blog post in the last 30 minutes (see BlogViewTracker), credit this
+     // sale to that post in blog_analytics_events. Best-effort: a failure
+diff --git a/app/checkout/page.tsx b/app/checkout/page.tsx
+index 1d9269d..013bb54 100644
+--- a/app/checkout/page.tsx
++++ b/app/checkout/page.tsx
+@@ -913,6 +913,11 @@ export default function CheckoutPage() {
+       const orderItems = items.map((i) => ({
+         product_id: i.product.id,
+         product_name: i.product.name,
++        // The exact colour-variant slug the shopper actually bought, so an
++        // order-item link (admin, account, email) opens that same
++        // variation instead of falling back to the product's default
++        // colour. See the `slug: variant.slug` fix in product-detail.tsx.
++        slug: i.product.slug,
+         image_url: i.product.images?.[0] ?? null,
+         color: i.product.colors?.[0] ?? null,
+         size: i.size,
 diff --git a/app/product/[slug]/product-detail.tsx b/app/product/[slug]/product-detail.tsx
-index 38d176c..7b4a905 100644
+index 38d176c..67d31ba 100644
 --- a/app/product/[slug]/product-detail.tsx
 +++ b/app/product/[slug]/product-detail.tsx
 @@ -9,7 +9,6 @@ import {
@@ -10,7 +201,22 @@ index 38d176c..7b4a905 100644
    Gift,
  } from 'lucide-react';
  import { useProducts, usePaymentDiscount, useCart, getVisibleBogoPromotion, formatBogoLabel } from '@/lib/cart-context';
-@@ -948,20 +947,16 @@ function ProductInfo({
+@@ -315,6 +314,14 @@ export default function ProductDetail() {
+     const variantStockQty = variant.sizes.reduce((sum, s) => sum + s.stock_quantity, 0);
+     return {
+       ...baseProduct,
++      // Was falling through to `...baseProduct`'s own slug here, so a
++      // customer viewing/buying a colour variant (its own /product/<slug>
++      // page) ended up with the BASE product's slug baked into the cart
++      // item -- and from there into the order -- instead of this exact
++      // variant's. That's why an order-item link opened the default
++      // colour instead of the one actually bought. Now it always matches
++      // whatever slug is in the address bar.
++      slug: variant.slug,
+       price: variant.price_override ?? baseProduct.price,
+       images: variant.images.length > 0 ? variant.images : baseProduct.images,
+       video_url: variant.video || baseProduct.video_url,
+@@ -948,20 +955,16 @@ function ProductInfo({
        )}
  
        {onlinePaymentSavings > 0 && (
@@ -41,6 +247,140 @@ index 38d176c..7b4a905 100644
          </div>
        )}
  
+diff --git a/app/track/[id]/page.tsx b/app/track/[id]/page.tsx
+index e7a78e0..0ad1257 100644
+--- a/app/track/[id]/page.tsx
++++ b/app/track/[id]/page.tsx
+@@ -1,6 +1,6 @@
+ import Link from 'next/link';
+ import { notFound } from 'next/navigation';
+-import { CheckCircle2, Circle, Package, Truck, Home, XCircle, LogIn, Gift, Users } from 'lucide-react';
++import { CheckCircle2, Circle, Package, Truck, Home, XCircle, LogIn, Gift, Users, PackageCheck } from 'lucide-react';
+ import { getSupabaseAdmin } from '@/lib/supabase-admin';
+ import { formatINR } from '@/lib/format';
+ import { Button } from '@/components/ui/button';
+@@ -158,6 +158,20 @@ export default async function TrackOrderPage({ params }: { params: { id: string
+         />
+       </div>
+ 
++      {order.status === 'paid' && (
++        <div className="mt-5 flex gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
++          <PackageCheck className="h-5 w-5 shrink-0 text-emerald-600" />
++          <div className="text-sm text-emerald-900">
++            <p className="font-medium">Payment received — your order is being prepared</p>
++            <p className="mt-1 text-emerald-800/80">
++              Sorry for the inconvenience — a few of our pieces are made/kept ready only once an order
++              comes in, so preparing this one for shipment may take a little extra time. We'll email you
++              the moment it ships.
++            </p>
++          </div>
++        </div>
++      )}
++
+       <Separator className="my-6" />
+ 
+       <div className="rounded-lg border border-border/60 bg-card p-4 sm:p-5">
+@@ -166,7 +180,13 @@ export default async function TrackOrderPage({ params }: { params: { id: string
+           {items.map((item: any, i: number) => (
+             <div key={i} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+               <div>
+-                <p className="font-medium">{item.product_name}</p>
++                {item.slug ? (
++                  <Link href={`/product/${item.slug}`} className="font-medium hover:underline">
++                    {item.product_name}
++                  </Link>
++                ) : (
++                  <p className="font-medium">{item.product_name}</p>
++                )}
+                 <p className="text-xs text-muted-foreground">
+                   Size: {item.size} · Qty: {item.quantity}
+                 </p>
+diff --git a/components/admin/delivery-notification-tester.tsx b/components/admin/delivery-notification-tester.tsx
+index 31d97c6..610ce35 100644
+--- a/components/admin/delivery-notification-tester.tsx
++++ b/components/admin/delivery-notification-tester.tsx
+@@ -1,7 +1,7 @@
+ 'use client';
+ 
+ import { useState } from 'react';
+-import { Eye, Send, Loader2, CalendarClock, Truck, PackageCheck, Home } from 'lucide-react';
++import { Eye, Send, Loader2, CalendarClock, Truck, PackageCheck, Home, Wallet } from 'lucide-react';
+ import { Button } from '@/components/ui/button';
+ import { Input } from '@/components/ui/input';
+ import { toast } from 'sonner';
+@@ -87,6 +87,7 @@ export default function DeliveryNotificationTester({
+   };
+ 
+   const emailTypes: { key: string; label: string; icon: any }[] = [
++    { key: 'paid', label: 'Payment Confirmed', icon: Wallet },
+     { key: 'shipped', label: 'Shipped', icon: Truck },
+     { key: 'arriving', label: 'Arriving', icon: CalendarClock },
+     { key: 'out_for_delivery', label: 'Out for Delivery', icon: Truck },
+@@ -106,7 +107,7 @@ export default function DeliveryNotificationTester({
+       <div className="grid gap-2">
+         {emailTypes.map(({ key, label, icon: Icon }) => (
+           <div key={key} className="flex flex-wrap items-center gap-2">
+-            <span className="flex w-36 items-center gap-1.5 text-xs font-medium">
++            <span className="flex w-40 items-center gap-1.5 text-xs font-medium">
+               <Icon className="h-3.5 w-3.5 text-secondary" /> {label}
+             </span>
+             <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => preview(key)}>
+diff --git a/components/admin/orders-panel.tsx b/components/admin/orders-panel.tsx
+index 1b86132..8bdded3 100644
+--- a/components/admin/orders-panel.tsx
++++ b/components/admin/orders-panel.tsx
+@@ -1,7 +1,8 @@
+ 'use client';
+ 
+ import { useEffect, useMemo, useState } from 'react';
+-import { Loader2, Truck, Search, X, Copy, Check, Trash2 } from 'lucide-react';
++import Link from 'next/link';
++import { Loader2, Truck, Search, X, Copy, Check, Trash2, ExternalLink } from 'lucide-react';
+ import { formatINR } from '@/lib/format';
+ import { Button } from '@/components/ui/button';
+ import { Input } from '@/components/ui/input';
+@@ -545,7 +546,19 @@ function OrderRow({
+               <div className="h-9 w-9 flex-shrink-0 rounded-md border border-border/60 bg-muted" />
+             )}
+             <div className="text-xs">
+-              <div className="max-w-[9rem] truncate font-medium">{order.items[0]?.product_name || '—'}</div>
++              {order.items[0]?.slug ? (
++                <Link
++                  href={`/product/${order.items[0].slug}`}
++                  target="_blank"
++                  className="flex max-w-[9rem] items-center gap-1 truncate font-medium hover:underline"
++                  title="Open the exact colour/variation ordered"
++                >
++                  <span className="truncate">{order.items[0]?.product_name || '—'}</span>
++                  <ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground" />
++                </Link>
++              ) : (
++                <div className="max-w-[9rem] truncate font-medium">{order.items[0]?.product_name || '—'}</div>
++              )}
+               {order.items.length > 1 && (
+                 <div className="text-muted-foreground">+{order.items.length - 1} more</div>
+               )}
+@@ -653,7 +666,19 @@ function OrderRow({
+                         <div className="h-12 w-12 flex-shrink-0 rounded-md border border-border/60 bg-muted" />
+                       )}
+                       <div className="flex-1">
+-                        <div className="font-medium">{it.product_name}</div>
++                        {it.slug ? (
++                          <Link
++                            href={`/product/${it.slug}`}
++                            target="_blank"
++                            className="inline-flex items-center gap-1 font-medium hover:underline"
++                            title="Open the exact colour/variation ordered"
++                          >
++                            {it.product_name}
++                            <ExternalLink className="h-3 w-3 text-muted-foreground" />
++                          </Link>
++                        ) : (
++                          <div className="font-medium">{it.product_name}</div>
++                        )}
+                         <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
+                           {it.color && (
+                             <span className="rounded-full bg-muted px-2 py-0.5">Color: {it.color}</span>
 diff --git a/components/growth/low-stock-badge.tsx b/components/growth/low-stock-badge.tsx
 index 78aafa7..b16ce25 100644
 --- a/components/growth/low-stock-badge.tsx
@@ -124,3 +464,201 @@ index a05fcbc..7b14a9c 100644
                  ) : applying === c.code ? (
                    'Applying…'
                  ) : (
+diff --git a/lib/delivery-notifications.ts b/lib/delivery-notifications.ts
+index 9146d76..9184f9f 100644
+--- a/lib/delivery-notifications.ts
++++ b/lib/delivery-notifications.ts
+@@ -22,7 +22,7 @@ async function getOrder(id: string) {
+   const { data, error } = await supabase
+     .from('orders')
+     .select(
+-      'id, customer_name, customer_email, status, tracking_number, courier_name, expected_delivery_date, arriving_email_sent_at, out_for_delivery_email_sent_at, out_for_delivery'
++      'id, customer_name, customer_email, status, tracking_number, courier_name, expected_delivery_date, arriving_email_sent_at, out_for_delivery_email_sent_at, out_for_delivery, items, total_amount'
+     )
+     .eq('id', id)
+     .maybeSingle();
+@@ -59,6 +59,8 @@ export async function sendArrivingNotification(
+     expected_delivery_date: expected,
+     courier_name: order.courier_name,
+     tracking_number: order.tracking_number,
++    items: order.items,
++    total_amount: order.total_amount,
+   });
+   await sendEmail({ to: order.customer_email, subject, html });
+ 
+@@ -96,6 +98,8 @@ export async function sendOutForDeliveryNotification(
+     customer_name: order.customer_name,
+     courier_name: order.courier_name,
+     tracking_number: order.tracking_number,
++    items: order.items,
++    total_amount: order.total_amount,
+   });
+   await sendEmail({ to: order.customer_email, subject, html });
+ 
+@@ -137,6 +141,8 @@ export async function sendDeliveredNotification(
+     status: 'delivered',
+     tracking_number: order.tracking_number,
+     courier_name: order.courier_name,
++    items: order.items,
++    total_amount: order.total_amount,
+   });
+   await sendEmail({ to: order.customer_email, subject, html });
+   return { sent: true };
+diff --git a/lib/email-templates.ts b/lib/email-templates.ts
+index fb7f3d1..6794853 100644
+--- a/lib/email-templates.ts
++++ b/lib/email-templates.ts
+@@ -19,17 +19,28 @@ function wrapper(bodyHtml: string) {
+ }
+ 
+ function itemsTable(items: any[]) {
++  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';
+   const rows = (items || [])
+     .map((it) => {
+       const img = it.image_url || it.image || it.images?.[0] || '';
+       const thumb = img
+         ? `<img src="${img}" alt="" width="48" height="48" style="width:48px; height:48px; object-fit:cover; border-radius:6px; border:1px solid #eee; display:block;" />`
+         : `<div style="width:48px; height:48px; border-radius:6px; background:#f1e9e2;"></div>`;
++      // Links straight to the exact colour/variant the customer bought
++      // (it.slug is the variant's own SEO slug, saved on the order item at
++      // checkout) rather than a generic product page, so "click the item"
++      // from an email always opens what was actually ordered.
++      const productUrl = it.slug ? `${siteUrl}/product/${it.slug}` : null;
++      const name = `${it.product_name || it.name || 'Item'}${it.size ? ` <span style="color:#9a8f87;">(Size: ${it.size})</span>` : ''}`;
++      const thumbCell = productUrl ? `<a href="${productUrl}">${thumb}</a>` : thumb;
++      const nameCell = productUrl
++        ? `<a href="${productUrl}" style="color:#2b2320; text-decoration:none;">${name}</a>`
++        : name;
+       return `
+       <tr>
+-        <td style="padding: 8px 8px 8px 0; border-bottom: 1px solid #eee; width:48px;">${thumb}</td>
++        <td style="padding: 8px 8px 8px 0; border-bottom: 1px solid #eee; width:48px;">${thumbCell}</td>
+         <td style="padding: 8px 0; border-bottom: 1px solid #eee;">
+-          ${it.product_name || it.name || 'Item'}${it.size ? ` <span style="color:#9a8f87;">(Size: ${it.size})</span>` : ''}
++          ${nameCell}
+         </td>
+         <td style="padding: 8px 0; border-bottom: 1px solid #eee; text-align: center;">x${it.quantity || 1}</td>
+         <td style="padding: 8px 0; border-bottom: 1px solid #eee; text-align: right;">${formatINR((it.price || 0) * (it.quantity || 1))}</td>
+@@ -280,12 +291,20 @@ export function orderShippedEmail(order: {
+   customer_name?: string;
+   tracking_number?: string | null;
+   courier_name?: string | null;
++  items?: any[];
++  total_amount?: number;
+ }) {
+   const subject = `Your order has shipped — #${order.id.slice(0, 8)}`;
+   const html = wrapper(`
+     <h2 style="margin-top:0; color:${BRAND_COLOR};">Good news, ${order.customer_name || 'there'} — it's on the way!</h2>
+     <p>Your order <strong>#${order.id.slice(0, 8)}</strong> has been shipped${order.courier_name ? ` via ${order.courier_name}` : ''}.</p>
+     ${order.tracking_number ? `<p style="font-size:16px;"><strong>Tracking number:</strong> ${order.tracking_number}</p>` : ''}
++    ${order.items?.length ? itemsTable(order.items) : ''}
++    ${
++      order.items?.length && typeof order.total_amount === 'number'
++        ? `<p style="text-align:right; font-size:16px; font-weight:bold;">Total: ${formatINR(order.total_amount)}</p>`
++        : ''
++    }
+     <p style="text-align:center; margin-top: 16px;">
+       <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/track/${order.id}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+         Track My Order
+@@ -310,6 +329,8 @@ export function orderStatusUpdateEmail(order: {
+   status: string;
+   tracking_number?: string | null;
+   courier_name?: string | null;
++  items?: any[];
++  total_amount?: number;
+ }) {
+   const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
+   const name = order.customer_name || 'there';
+@@ -323,7 +344,12 @@ export function orderStatusUpdateEmail(order: {
+     paid: {
+       subject: `Payment confirmed — ${shortId}`,
+       heading: `Thanks, ${name} — payment received!`,
+-      body: `We've confirmed payment for your order <strong>${shortId}</strong>. It's now being prepared for dispatch.`,
++      body: `We've confirmed payment for your order <strong>${shortId}</strong> and it's now being prepared.
++        <br /><br />
++        Sorry for the inconvenience, but a couple of our pieces are made/kept ready only once an order comes
++        in, rather than sitting pre-packed at all times — so preparing your order for shipment may take a
++        little extra time. We'll email you the moment it ships, and you're welcome to check the latest
++        status here any time.`,
+     },
+     shipped: {
+       subject: `Your order has shipped — ${shortId}`,
+@@ -356,6 +382,12 @@ export function orderStatusUpdateEmail(order: {
+   const html = wrapper(`
+     <h2 style="margin-top:0; color:${BRAND_COLOR};">${c.heading}</h2>
+     <p>${c.body}</p>
++    ${order.items?.length ? itemsTable(order.items) : ''}
++    ${
++      order.items?.length && typeof order.total_amount === 'number'
++        ? `<p style="text-align:right; font-size:16px; font-weight:bold;">Total: ${formatINR(order.total_amount)}</p>`
++        : ''
++    }
+     <p style="text-align:center; margin-top: 16px;">
+       <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/track/${order.id}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+         Track My Order
+@@ -378,6 +410,8 @@ export function orderArrivingEmail(order: {
+   expected_delivery_date: string;
+   courier_name?: string | null;
+   tracking_number?: string | null;
++  items?: any[];
++  total_amount?: number;
+ }) {
+   const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
+   const name = order.customer_name || 'there';
+@@ -391,6 +425,12 @@ export function orderArrivingEmail(order: {
+     <h2 style="margin-top:0; color:${BRAND_COLOR};">Hi ${name}, your order is on its way!</h2>
+     <p>Your order <strong>${shortId}</strong> is expected to be delivered on <strong>${expected}</strong>.</p>
+     ${order.tracking_number ? `<p style="font-size:13px; color:#6b5f57;">Tracking number: <strong>${order.tracking_number}</strong>${order.courier_name ? ` (${order.courier_name})` : ''}</p>` : ''}
++    ${order.items?.length ? itemsTable(order.items) : ''}
++    ${
++      order.items?.length && typeof order.total_amount === 'number'
++        ? `<p style="text-align:right; font-size:16px; font-weight:bold;">Total: ${formatINR(order.total_amount)}</p>`
++        : ''
++    }
+     <p>We'll email you again once it's out for delivery, and once more the moment it's delivered — no need to keep checking.</p>
+     <p style="text-align:center; margin-top: 16px;">
+       <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/track/${order.id}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+@@ -412,6 +452,8 @@ export function orderOutForDeliveryEmail(order: {
+   customer_name?: string;
+   courier_name?: string | null;
+   tracking_number?: string | null;
++  items?: any[];
++  total_amount?: number;
+ }) {
+   const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
+   const name = order.customer_name || 'there';
+@@ -420,6 +462,12 @@ export function orderOutForDeliveryEmail(order: {
+     <h2 style="margin-top:0; color:${BRAND_COLOR};">Hi ${name}, your order is out for delivery!</h2>
+     <p>Your order <strong>${shortId}</strong> is with our delivery partner${order.courier_name ? ` (${order.courier_name})` : ''} and should reach you shortly today. Please keep your phone nearby in case the delivery person needs to reach you.</p>
+     ${order.tracking_number ? `<p style="font-size:13px; color:#6b5f57;">Tracking number: <strong>${order.tracking_number}</strong></p>` : ''}
++    ${order.items?.length ? itemsTable(order.items) : ''}
++    ${
++      order.items?.length && typeof order.total_amount === 'number'
++        ? `<p style="text-align:right; font-size:16px; font-weight:bold;">Total: ${formatINR(order.total_amount)}</p>`
++        : ''
++    }
+     <p style="text-align:center; margin-top: 16px;">
+       <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/track/${order.id}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+         Track My Order
+diff --git a/lib/orders-api.ts b/lib/orders-api.ts
+index 0c0b90b..8166c64 100644
+--- a/lib/orders-api.ts
++++ b/lib/orders-api.ts
+@@ -95,7 +95,7 @@ export async function updateOrderStatus(id: string, status: string) {
+   // (e.g. the admin re-selects the same value).
+   const { data: existing, error: fetchError } = await supabase
+     .from('orders')
+-    .select('id, status, customer_email, customer_name, tracking_number, courier_name')
++    .select('id, status, customer_email, customer_name, tracking_number, courier_name, items, total_amount')
+     .eq('id', id)
+     .maybeSingle();
+   if (fetchError) throw fetchError;
+@@ -110,6 +110,8 @@ export async function updateOrderStatus(id: string, status: string) {
+       status,
+       tracking_number: existing.tracking_number,
+       courier_name: existing.courier_name,
++      items: existing.items,
++      total_amount: existing.total_amount,
+     });
+     // Best-effort -- never let a slow/broken email provider fail the
+     // admin's status update.

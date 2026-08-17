@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { CheckCircle2, Circle, Package, Truck, Home, XCircle, LogIn, Gift, Users } from 'lucide-react';
+import { CheckCircle2, Circle, Package, Truck, Home, XCircle, LogIn, Gift, Users, PackageCheck } from 'lucide-react';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -158,6 +158,20 @@ export default async function TrackOrderPage({ params }: { params: { id: string 
         />
       </div>
 
+      {order.status === 'paid' && (
+        <div className="mt-5 flex gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+          <PackageCheck className="h-5 w-5 shrink-0 text-emerald-600" />
+          <div className="text-sm text-emerald-900">
+            <p className="font-medium">Payment received — your order is being prepared</p>
+            <p className="mt-1 text-emerald-800/80">
+              Sorry for the inconvenience — a few of our pieces are made/kept ready only once an order
+              comes in, so preparing this one for shipment may take a little extra time. We'll email you
+              the moment it ships.
+            </p>
+          </div>
+        </div>
+      )}
+
       <Separator className="my-6" />
 
       <div className="rounded-lg border border-border/60 bg-card p-4 sm:p-5">
@@ -166,7 +180,13 @@ export default async function TrackOrderPage({ params }: { params: { id: string 
           {items.map((item: any, i: number) => (
             <div key={i} className="flex items-center justify-between gap-3 py-2.5 text-sm">
               <div>
-                <p className="font-medium">{item.product_name}</p>
+                {item.slug ? (
+                  <Link href={`/product/${item.slug}`} className="font-medium hover:underline">
+                    {item.product_name}
+                  </Link>
+                ) : (
+                  <p className="font-medium">{item.product_name}</p>
+                )}
                 <p className="text-xs text-muted-foreground">
                   Size: {item.size} · Qty: {item.quantity}
                 </p>

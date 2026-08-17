@@ -22,7 +22,7 @@ async function getOrder(id: string) {
   const { data, error } = await supabase
     .from('orders')
     .select(
-      'id, customer_name, customer_email, status, tracking_number, courier_name, expected_delivery_date, arriving_email_sent_at, out_for_delivery_email_sent_at, out_for_delivery'
+      'id, customer_name, customer_email, status, tracking_number, courier_name, expected_delivery_date, arriving_email_sent_at, out_for_delivery_email_sent_at, out_for_delivery, items, total_amount'
     )
     .eq('id', id)
     .maybeSingle();
@@ -59,6 +59,8 @@ export async function sendArrivingNotification(
     expected_delivery_date: expected,
     courier_name: order.courier_name,
     tracking_number: order.tracking_number,
+    items: order.items,
+    total_amount: order.total_amount,
   });
   await sendEmail({ to: order.customer_email, subject, html });
 
@@ -96,6 +98,8 @@ export async function sendOutForDeliveryNotification(
     customer_name: order.customer_name,
     courier_name: order.courier_name,
     tracking_number: order.tracking_number,
+    items: order.items,
+    total_amount: order.total_amount,
   });
   await sendEmail({ to: order.customer_email, subject, html });
 
@@ -137,6 +141,8 @@ export async function sendDeliveredNotification(
     status: 'delivered',
     tracking_number: order.tracking_number,
     courier_name: order.courier_name,
+    items: order.items,
+    total_amount: order.total_amount,
   });
   await sendEmail({ to: order.customer_email, subject, html });
   return { sent: true };

@@ -913,6 +913,11 @@ export default function CheckoutPage() {
       const orderItems = items.map((i) => ({
         product_id: i.product.id,
         product_name: i.product.name,
+        // The exact colour-variant slug the shopper actually bought, so an
+        // order-item link (admin, account, email) opens that same
+        // variation instead of falling back to the product's default
+        // colour. See the `slug: variant.slug` fix in product-detail.tsx.
+        slug: i.product.slug,
         image_url: i.product.images?.[0] ?? null,
         color: i.product.colors?.[0] ?? null,
         size: i.size,

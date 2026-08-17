@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Loader2, Truck, Search, X, Copy, Check, Trash2 } from 'lucide-react';
+import Link from 'next/link';
+import { Loader2, Truck, Search, X, Copy, Check, Trash2, ExternalLink } from 'lucide-react';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -545,7 +546,19 @@ function OrderRow({
               <div className="h-9 w-9 flex-shrink-0 rounded-md border border-border/60 bg-muted" />
             )}
             <div className="text-xs">
-              <div className="max-w-[9rem] truncate font-medium">{order.items[0]?.product_name || '—'}</div>
+              {order.items[0]?.slug ? (
+                <Link
+                  href={`/product/${order.items[0].slug}`}
+                  target="_blank"
+                  className="flex max-w-[9rem] items-center gap-1 truncate font-medium hover:underline"
+                  title="Open the exact colour/variation ordered"
+                >
+                  <span className="truncate">{order.items[0]?.product_name || '—'}</span>
+                  <ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground" />
+                </Link>
+              ) : (
+                <div className="max-w-[9rem] truncate font-medium">{order.items[0]?.product_name || '—'}</div>
+              )}
               {order.items.length > 1 && (
                 <div className="text-muted-foreground">+{order.items.length - 1} more</div>
               )}
@@ -653,7 +666,19 @@ function OrderRow({
                         <div className="h-12 w-12 flex-shrink-0 rounded-md border border-border/60 bg-muted" />
                       )}
                       <div className="flex-1">
-                        <div className="font-medium">{it.product_name}</div>
+                        {it.slug ? (
+                          <Link
+                            href={`/product/${it.slug}`}
+                            target="_blank"
+                            className="inline-flex items-center gap-1 font-medium hover:underline"
+                            title="Open the exact colour/variation ordered"
+                          >
+                            {it.product_name}
+                            <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                          </Link>
+                        ) : (
+                          <div className="font-medium">{it.product_name}</div>
+                        )}
                         <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
                           {it.color && (
                             <span className="rounded-full bg-muted px-2 py-0.5">Color: {it.color}</span>
