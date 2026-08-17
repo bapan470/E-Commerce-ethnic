@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CalendarDays, ChevronDown } from 'lucide-react';
 import {
   format,
@@ -76,6 +76,16 @@ export function DateRangePicker({
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<DateRange | undefined>({ from: value.from, to: value.to });
+  // Two full-width months don't fit a phone screen -- show one on narrow
+  // viewports, two on everything wide enough (matches Tailwind's sm: 640px).
+  const [isNarrow, setIsNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 639px)');
+    setIsNarrow(mq.matches);
+    const listener = (e: MediaQueryListEvent) => setIsNarrow(e.matches);
+    mq.addEventListener('change', listener);
+    return () => mq.removeEventListener('change', listener);
+  }, []);
   // Tracked explicitly (rather than diffed from `value`) so hour-level
   // presets -- whose `to` is `new Date()` at click time -- still show the
   // right active label instead of falling back to a raw timestamp range.
@@ -122,8 +132,8 @@ export function DateRangePicker({
           <ChevronDown className="h-3.5 w-3.5 opacity-60" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-auto p-0">
-        <div className="flex flex-col sm:flex-row">
+      <PopoverContent align="end" className="w-[calc(100vw-2rem)] max-w-sm p-0 sm:w-auto sm:max-w-none">
+        <div className="flex max-h-[80vh] flex-col overflow-y-auto sm:max-h-none sm:flex-row sm:overflow-visible">
           <div className="flex shrink-0 flex-col gap-2 border-b border-border/60 p-2 sm:border-b-0 sm:border-r sm:p-3 sm:w-44">
             <div>
               <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -175,10 +185,10 @@ export function DateRangePicker({
               defaultMonth={draft?.from}
               selected={draft}
               onSelect={setDraft}
-              numberOfMonths={2}
+              numberOfMonths={isNarrow ? 1 : 2}
               disabled={{ after: new Date() }}
             />
-            <div className="mt-2 flex items-center justify-between gap-2 border-t border-border/60 pt-3">
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-3">
               <p className="text-xs text-muted-foreground">
                 {draft?.from ? format(draft.from, 'dd MMM yyyy') : 'Start date'}
                 {' – '}

@@ -274,26 +274,26 @@ export default function OrdersPanel() {
 
   return (
     <div className="grid gap-6">
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <div className="rounded-lg border border-border/60 bg-card p-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <div className="rounded-lg border border-border/60 bg-card p-3 sm:p-4">
           <p className="text-xs text-muted-foreground">Total Orders</p>
-          <p className="mt-2 text-2xl font-semibold">
+          <p className="mt-2 text-lg font-semibold sm:text-2xl">
             {filtersActive ? `${filteredOrders.length} / ${totalOrders}` : totalOrders}
           </p>
         </div>
-        <div className="rounded-lg border border-border/60 bg-card p-4">
+        <div className="rounded-lg border border-border/60 bg-card p-3 sm:p-4">
           <p className="text-xs text-muted-foreground">Total Order Value</p>
-          <p className="mt-2 text-2xl font-semibold">
+          <p className="mt-2 truncate text-lg font-semibold sm:text-2xl">
             {formatINR(filtersActive ? filteredTotal : totalOrderValue)}
           </p>
         </div>
-        <div className="rounded-lg border border-border/60 bg-card p-4">
+        <div className="rounded-lg border border-border/60 bg-card p-3 sm:p-4">
           <p className="text-xs text-muted-foreground">Revenue (paid/shipped/delivered)</p>
-          <p className="mt-2 text-2xl font-semibold">{formatINR(revenue)}</p>
+          <p className="mt-2 truncate text-lg font-semibold sm:text-2xl">{formatINR(revenue)}</p>
         </div>
-        <div className="rounded-lg border border-border/60 bg-card p-4">
+        <div className="rounded-lg border border-border/60 bg-card p-3 sm:p-4">
           <p className="text-xs text-muted-foreground">Pending</p>
-          <p className="mt-2 text-2xl font-semibold">{pendingCount}</p>
+          <p className="mt-2 text-lg font-semibold sm:text-2xl">{pendingCount}</p>
         </div>
       </div>
 
@@ -382,8 +382,8 @@ export default function OrdersPanel() {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-lg border border-border/60 bg-card">
-        <table className="w-full table-auto">
+      <div className="overflow-x-auto rounded-lg border border-border/60 bg-card">
+        <table className="w-full min-w-[900px] table-auto">
           <thead className="bg-muted/40 text-left text-xs uppercase tracking-wider text-muted-foreground">
             <tr>
               <th className="w-10 px-4 py-3">

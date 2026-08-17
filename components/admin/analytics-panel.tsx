@@ -47,7 +47,7 @@ function TabBar({
 }) {
   return (
     <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-      <div className="flex gap-1 rounded-xl border border-border/60 bg-muted/40 p-1 w-fit">
+      <div className="flex w-fit max-w-full gap-1 overflow-x-auto rounded-xl border border-border/60 bg-muted/40 p-1">
         <TabButton value="sales" active={active} onChange={onChange} icon={<BarChart3 className="h-4 w-4" />}>
           Sales Analytics
         </TabButton>
@@ -80,7 +80,7 @@ function TabButton({
   return (
     <button
       onClick={() => onChange(value)}
-      className={`flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+      className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors sm:px-4 ${
         isActive
           ? 'bg-white text-primary shadow-sm'
           : 'text-muted-foreground hover:text-foreground'
@@ -311,7 +311,7 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
   return (
     <div className="grid gap-6">
       {/* Summary cards */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 xl:grid-cols-8">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4 xl:grid-cols-8">
         <SummaryCard
           icon={<TrendingUp className="h-4 w-4" />}
           label="Revenue"
@@ -495,7 +495,7 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
           return (
             <>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full min-w-[640px] text-sm">
                   <thead>
                     <tr className="border-b border-border/60 text-left text-xs text-muted-foreground">
                       <SortableTh
@@ -608,16 +608,21 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
                 <ul className="divide-y divide-border/40">
                   {visible.map((p) => (
                     <li key={p.id} className="py-2.5">
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-3">
                         {p.image ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={p.image} alt={p.name} className="h-10 w-10 rounded-md object-cover" />
+                          <img src={p.image} alt={p.name} className="h-10 w-10 shrink-0 rounded-md object-cover" />
                         ) : (
-                          <div className="h-10 w-10 rounded-md bg-muted" />
+                          <div className="h-10 w-10 shrink-0 rounded-md bg-muted" />
                         )}
-                        <span className="flex-1 truncate text-sm font-medium">{p.name}</span>
+                        <div className="min-w-[120px] flex-1">
+                          <span className="block truncate text-sm font-medium">{p.name}</span>
+                          <span className="text-xs text-muted-foreground sm:hidden">
+                            Threshold: {p.low_stock_threshold}
+                          </span>
+                        </div>
                         <span
-                          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                          className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
                             p.stock_quantity === 0
                               ? 'bg-destructive/10 text-destructive'
                               : 'bg-amber-100 text-amber-800'
@@ -629,7 +634,7 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
                           Threshold: {p.low_stock_threshold}
                         </span>
                         {stockEditId === p.id ? (
-                          <div className="flex items-center gap-1">
+                          <div className="flex flex-wrap items-center gap-1">
                             <input
                               type="number"
                               min={1}
@@ -663,7 +668,7 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
                               setStockEditId(p.id);
                               setStockAddAmount(DEFAULT_RESTOCK_AMOUNT);
                             }}
-                            className="flex items-center gap-1 rounded-md border border-border/60 px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+                            className="flex shrink-0 items-center gap-1 rounded-md border border-border/60 px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
                           >
                             <PackagePlus className="h-3.5 w-3.5" />
                             Add stock
@@ -712,18 +717,20 @@ function SummaryCard({
     <Tag
       onClick={onClick}
       type={onClick ? 'button' : undefined}
-      className={`rounded-xl border p-4 text-left shadow-sm transition-all ${
+      className={`min-w-0 rounded-xl border p-3 text-left shadow-sm transition-all sm:p-4 ${
         tone === 'warn' ? 'border-amber-300 bg-amber-50' : 'border-border/60 bg-card'
       } ${onClick ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-md hover:border-primary/50' : ''}`}
     >
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span className="flex items-center gap-1.5">
+      <div className="flex items-center justify-between gap-1.5 text-xs text-muted-foreground">
+        <span className="flex min-w-0 items-center gap-1.5 truncate">
           {icon}
-          {label}
+          <span className="truncate">{label}</span>
         </span>
-        {sublabel && <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px]">{sublabel}</span>}
+        {sublabel && (
+          <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px]">{sublabel}</span>
+        )}
       </div>
-      <p className="mt-2 text-xl font-semibold">{value}</p>
+      <p className="mt-2 truncate text-lg font-semibold sm:text-xl">{value}</p>
     </Tag>
   );
 }

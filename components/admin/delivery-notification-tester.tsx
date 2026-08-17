@@ -165,7 +165,7 @@ export default function DeliveryNotificationTester({
       <div className="grid gap-2">
         {emailTypes.map(({ key, label, icon: Icon }) => (
           <div key={key} className="flex flex-wrap items-center gap-2">
-            <span className="flex w-40 items-center gap-1.5 text-xs font-medium">
+            <span className="flex w-full items-center gap-1.5 text-xs font-medium sm:w-40">
               <Icon className="h-3.5 w-3.5 text-secondary" /> {label}
             </span>
             <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => preview(key)}>
