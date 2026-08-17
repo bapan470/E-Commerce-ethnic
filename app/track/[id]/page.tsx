@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { CheckCircle2, Circle, Package, Truck, Home, XCircle, LogIn } from 'lucide-react';
+import { CheckCircle2, Circle, Package, Truck, Home, XCircle, LogIn, Gift } from 'lucide-react';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import OrderTracking from '@/components/order/order-tracking';
+import { fetchLoyaltySettings } from '@/lib/loyalty-api';
 
 // Guest-friendly tracking page. Uses the exact same trust model already used
 // by /order-confirmation/[id] and the self-cancel API: the order UUID itself
@@ -40,6 +41,13 @@ export default async function TrackOrderPage({ params }: { params: { id: string 
   const items = Array.isArray(order.items) ? order.items : [];
   const isCancelled = order.status === 'cancelled' || order.status === 'failed';
   const stepIdx = currentStepIndex(order);
+
+  // Loyalty points preview — mirrors the block on /order-confirmation/[id].
+  const loyaltySettings = await fetchLoyaltySettings();
+  const projectedPoints = Math.floor(
+    (order.total_amount * loyaltySettings.points_per_100_rupees) / 100
+  );
+  const pointsValue = projectedPoints * loyaltySettings.redeem_value_per_point;
 
   const expected = order.expected_delivery_date
     ? new Date(order.expected_delivery_date).toLocaleDateString('en-IN', {
@@ -134,6 +142,32 @@ export default async function TrackOrderPage({ params }: { params: { id: string 
           <span className="font-serif text-primary">{formatINR(order.total_amount)}</span>
         </div>
       </div>
+
+      {loyaltySettings.enabled && projectedPoints > 0 && (
+        <div className="mt-5 rounded-lg border border-border/60 bg-card p-4 sm:p-5">
+          <div className="flex items-center gap-2">
+            <Gift className="h-4 w-4 text-secondary" />
+            <h3 className="font-serif text-sm font-semibold text-primary">Loyalty Points</h3>
+          </div>
+          {isCancelled ? (
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              This order was {order.status === 'cancelled' ? 'cancelled' : 'not completed'}, so no
+              loyalty points were credited.
+            </p>
+          ) : (
+            <>
+              <p className="mt-1.5 text-sm text-muted-foreground">
+                You'll earn <strong className="text-foreground">{projectedPoints} points</strong>{' '}
+                (worth {formatINR(pointsValue)}) on this order — redeemable on your next purchase.
+              </p>
+              <p className="mt-1.5 text-[11px] text-muted-foreground">
+                Points are credited only once this order is <strong>delivered</strong>{' '}
+                successfully. They are not awarded on orders that are cancelled or returned.
+              </p>
+            </>
+          )}
+        </div>
+      )}
 
       {order.customer_email && (
         <div className="mt-6 flex flex-col items-center gap-2 rounded-lg border border-dashed border-secondary/50 bg-secondary/5 p-4 text-center">
