@@ -6,7 +6,7 @@ import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import OrderTracking from '@/components/order/order-tracking';
-import { fetchLoyaltySettings } from '@/lib/loyalty-api';
+import { fetchLoyaltySettings, DEFAULT_LOYALTY_SETTINGS } from '@/lib/loyalty-api';
 import { DEFAULT_REFERRAL_SETTINGS, type ReferralSettings } from '@/lib/referrals-api';
 
 // Guest-friendly tracking page. Uses the exact same trust model already used
@@ -44,24 +44,37 @@ export default async function TrackOrderPage({ params }: { params: { id: string 
   const stepIdx = currentStepIndex(order);
 
   // Loyalty points preview — mirrors the block on /order-confirmation/[id].
-  const loyaltySettings = await fetchLoyaltySettings();
-  const projectedPoints = Math.floor(
-    (order.total_amount * loyaltySettings.points_per_100_rupees) / 100
-  );
+  // Wrapped defensively so a settings-fetch hiccup can't take down tracking.
+  const orderTotal = Number(order.total_amount) || 0;
+  let loyaltySettings = DEFAULT_LOYALTY_SETTINGS;
+  let projectedPoints = 0;
+  try {
+    loyaltySettings = await fetchLoyaltySettings();
+    projectedPoints = Math.floor((orderTotal * loyaltySettings.points_per_100_rupees) / 100);
+  } catch {
+    // keep defaults
+  }
   const pointsValue = projectedPoints * loyaltySettings.redeem_value_per_point;
 
   // Referral program preview — see order-confirmation/[id]/page.tsx for
   // why this reads via the admin client instead of lib/referrals-api's
-  // browser client.
-  const { data: referralSettingsRow } = await supabase
-    .from('settings')
-    .select('value')
-    .eq('key', 'referral_program')
-    .maybeSingle();
-  const referralSettings: ReferralSettings = {
-    ...DEFAULT_REFERRAL_SETTINGS,
-    ...((referralSettingsRow?.value as Partial<ReferralSettings>) ?? {}),
-  };
+  // browser client. Also wrapped defensively for the same reason.
+  let referralSettings: ReferralSettings = DEFAULT_REFERRAL_SETTINGS;
+  try {
+    const { data: referralSettingsRow, error: referralSettingsError } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'referral_program')
+      .maybeSingle();
+    if (!referralSettingsError && referralSettingsRow) {
+      referralSettings = {
+        ...DEFAULT_REFERRAL_SETTINGS,
+        ...((referralSettingsRow.value as Partial<ReferralSettings>) ?? {}),
+      };
+    }
+  } catch {
+    // keep defaults
+  }
 
   const expected = order.expected_delivery_date
     ? new Date(order.expected_delivery_date).toLocaleDateString('en-IN', {

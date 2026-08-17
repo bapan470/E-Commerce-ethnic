@@ -11,7 +11,7 @@ import PurchaseTracker from '@/components/analytics/purchase-tracker';
 import TrustpilotInvitation from '@/components/analytics/trustpilot-invitation';
 import CancelOrHelp from '@/components/order/cancel-or-help';
 import { fetchFulfillmentSettings } from '@/lib/marketing-api';
-import { fetchLoyaltySettings } from '@/lib/loyalty-api';
+import { fetchLoyaltySettings, DEFAULT_LOYALTY_SETTINGS } from '@/lib/loyalty-api';
 import { DEFAULT_REFERRAL_SETTINGS, type ReferralSettings } from '@/lib/referrals-api';
 
 // This page reads live order status (payment status, cancellation, ship
@@ -47,27 +47,41 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
 
   // Loyalty points preview — shows what THIS order earns toward the next
   // purchase, computed the same way /api/order-confirm computes it
-  // (points_per_100_rupees on total_amount).
-  const loyaltySettings = await fetchLoyaltySettings();
+  // (points_per_100_rupees on total_amount). Wrapped defensively: this is
+  // a "nice to have" preview block, so any settings-fetch hiccup should
+  // never be able to take down the whole confirmation page.
   const isCancelledOrFailed = order.status === 'cancelled' || order.status === 'failed';
-  const projectedPoints = Math.floor(
-    (order.total_amount * loyaltySettings.points_per_100_rupees) / 100
-  );
+  const orderTotal = Number(order.total_amount) || 0;
+  let loyaltySettings = DEFAULT_LOYALTY_SETTINGS;
+  let projectedPoints = 0;
+  try {
+    loyaltySettings = await fetchLoyaltySettings();
+    projectedPoints = Math.floor((orderTotal * loyaltySettings.points_per_100_rupees) / 100);
+  } catch {
+    // keep defaults; block below just won't show a non-zero figure
+  }
   const pointsValue = projectedPoints * loyaltySettings.redeem_value_per_point;
 
   // Referral program preview — reads via the already-instantiated admin
   // client (service role) rather than lib/referrals-api's browser client,
   // since that client's cookie-based storage isn't safe to construct in a
-  // server component.
-  const { data: referralSettingsRow } = await supabase
-    .from('settings')
-    .select('value')
-    .eq('key', 'referral_program')
-    .maybeSingle();
-  const referralSettings: ReferralSettings = {
-    ...DEFAULT_REFERRAL_SETTINGS,
-    ...((referralSettingsRow?.value as Partial<ReferralSettings>) ?? {}),
-  };
+  // server component. Also wrapped defensively for the same reason as above.
+  let referralSettings: ReferralSettings = DEFAULT_REFERRAL_SETTINGS;
+  try {
+    const { data: referralSettingsRow, error: referralSettingsError } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'referral_program')
+      .maybeSingle();
+    if (!referralSettingsError && referralSettingsRow) {
+      referralSettings = {
+        ...DEFAULT_REFERRAL_SETTINGS,
+        ...((referralSettingsRow.value as Partial<ReferralSettings>) ?? {}),
+      };
+    }
+  } catch {
+    // keep defaults
+  }
 
   const items = Array.isArray(order.items) ? order.items : [];
   const addr = order.shipping_address as {
