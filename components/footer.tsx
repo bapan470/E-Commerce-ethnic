@@ -61,6 +61,7 @@ export default function Footer() {
             <li><Link href="/shop?category=Lehenga" className="hover:text-secondary">Lehenga</Link></li>
             <li><Link href="/shop?category=Bridal" className="hover:text-secondary">Bridal</Link></li>
             <li><Link href="/gift-cards" className="hover:text-secondary">Gift Cards</Link></li>
+            <li><Link href="/refer-earn" className="hover:text-secondary">Refer & Earn</Link></li>
           </ul>
         </div>
         <div>
