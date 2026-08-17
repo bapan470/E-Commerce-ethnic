@@ -95,6 +95,18 @@ export default function CategoryToolbarGrid({ products, categoryName }: Category
     return list;
   }, [products, sort]);
 
+  // Same progressive reveal as /shop (see app/shop/shop-content.tsx for
+  // the fuller rationale) -- a category page renders this same product
+  // grid, so it needs the same guard against shipping every product's
+  // images on first paint.
+  const PAGE_SIZE = 24;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [sort]);
+  const visibleProducts = sorted.slice(0, visibleCount);
+  const hasMore = visibleCount < sorted.length;
+
   return (
     <>
       <div
@@ -157,10 +169,23 @@ export default function CategoryToolbarGrid({ products, categoryName }: Category
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-        {sorted.map((p, i) => (
+        {visibleProducts.map((p, i) => (
           <ProductCard key={p.id} product={p} priority={i < 4} disableAutoplayVideo={!videoEnabled} />
         ))}
       </div>
+
+      {hasMore && (
+        <div className="mt-8 flex justify-center">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+            className="min-w-40"
+          >
+            Load more ({sorted.length - visibleCount} more)
+          </Button>
+        </div>
+      )}
     </>
   );
 }

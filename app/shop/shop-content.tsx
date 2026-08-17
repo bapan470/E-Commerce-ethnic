@@ -281,6 +281,21 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
     selectedOccasions.length +
     (priceRange[0] > 0 || priceRange[1] < 35000 ? 1 : 0);
 
+  // Progressive reveal instead of rendering every matching product (and
+  // therefore every product's images) at once -- a 71-product catalog was
+  // shipping 200+ image requests and 15MB+ on first paint. Starts at
+  // PAGE_SIZE and grows by PAGE_SIZE each "Load more" click. Resets back to
+  // PAGE_SIZE whenever the actual result set changes (new filter/sort/
+  // search) so a narrowed search doesn't stay scrolled deep into a stale
+  // count from the previous broader list.
+  const PAGE_SIZE = 24;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [selectedCats, selectedSizes, selectedColors, selectedFabrics, selectedOccasions, priceRange, query, sort, imageSearchIds]);
+  const visibleProducts = filtered.slice(0, visibleCount);
+  const hasMore = visibleCount < filtered.length;
+
   // Log searches for Admin > Analytics > Search -- debounced so a shopper
   // still typing doesn't fire an event per keystroke, and deduped so the
   // same query text (e.g. re-rendering after an unrelated filter toggle)
@@ -793,34 +808,49 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
-              {filtered.map((p: Product, idx: number) => {
-                const q = query.trim();
-                // Use productMatchesQuery to get the exact matched variant (same logic as search suggestions)
-                const { matchedVariant } = q ? productMatchesQuery(p, q) : { matchedVariant: undefined };
-                const colorMatchSlug = matchedVariant ? matchedVariant.slug : undefined;
-                // If variant has no image, fall back to all_images[0] then product default
-                const colorMatchImage = matchedVariant
-                  ? (matchedVariant.image ?? p.all_images?.[0] ?? p.images?.[0] ?? undefined)
-                  : undefined;
-                return (
-                  <ProductCard
-                    key={p.id}
-                    product={p}
-                    priority={idx < 4}
-                    imageOverride={imageSearchIds ? imageSearchMatches[p.id] : (colorMatchImage || undefined)}
-                    slugOverride={colorMatchSlug}
-                    // Search results should always show a still photo (the
-                    // matched colour variant's photo when the query matched
-                    // one) instead of the autoplaying catalog video -- the
-                    // video preview stays on /shop, category pages, etc.
-                    // Also off whenever the shopper has switched the
-                    // catalog "Video" toggle off for this browsing session.
-                    disableAutoplayVideo={isSearchPage || !videoEnabled}
-                  />
-                );
-              })}
-            </div>
+            <>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
+                {visibleProducts.map((p: Product, idx: number) => {
+                  const q = query.trim();
+                  // Use productMatchesQuery to get the exact matched variant (same logic as search suggestions)
+                  const { matchedVariant } = q ? productMatchesQuery(p, q) : { matchedVariant: undefined };
+                  const colorMatchSlug = matchedVariant ? matchedVariant.slug : undefined;
+                  // If variant has no image, fall back to all_images[0] then product default
+                  const colorMatchImage = matchedVariant
+                    ? (matchedVariant.image ?? p.all_images?.[0] ?? p.images?.[0] ?? undefined)
+                    : undefined;
+                  return (
+                    <ProductCard
+                      key={p.id}
+                      product={p}
+                      priority={idx < 4}
+                      imageOverride={imageSearchIds ? imageSearchMatches[p.id] : (colorMatchImage || undefined)}
+                      slugOverride={colorMatchSlug}
+                      // Search results should always show a still photo (the
+                      // matched colour variant's photo when the query matched
+                      // one) instead of the autoplaying catalog video -- the
+                      // video preview stays on /shop, category pages, etc.
+                      // Also off whenever the shopper has switched the
+                      // catalog "Video" toggle off for this browsing session.
+                      disableAutoplayVideo={isSearchPage || !videoEnabled}
+                    />
+                  );
+                })}
+              </div>
+
+              {hasMore && (
+                <div className="mt-8 flex justify-center">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
+                    className="min-w-40"
+                  >
+                    Load more ({filtered.length - visibleCount} more)
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
