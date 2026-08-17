@@ -9,6 +9,13 @@ import { Separator } from '@/components/ui/separator';
 import OrderTracking from '@/components/order/order-tracking';
 import PurchaseTracker from '@/components/analytics/purchase-tracker';
 import TrustpilotInvitation from '@/components/analytics/trustpilot-invitation';
+import CancelOrderButton from '@/components/account/cancel-order-button';
+
+// Kept in sync with CANCELLABLE_STATUSES in
+// app/api/orders/[id]/cancel/route.ts -- once an order moves past these
+// (shipped/delivered/etc.) it must go through returns/exchange instead,
+// so we stop showing the Cancel button here too.
+const CANCELLABLE_STATUSES = ['pending', 'paid', 'confirmed'];
 
 // Badge styling per order.status. Keeps this page in sync with whatever
 // the admin last set from Admin -> Orders (paid/shipped/delivered/
@@ -93,6 +100,9 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
             </>
           )}
         </p>
+        {CANCELLABLE_STATUSES.includes(order.status) && (
+          <CancelOrderButton orderId={order.id} />
+        )}
       </div>
 
       <div className="mt-8 rounded-lg border border-border/60 bg-card p-5 sm:p-6">

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getCurrentUser, getSupabaseServer } from '@/lib/supabase-server-auth';
+import { getCurrentUser } from '@/lib/supabase-server-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { fetchFulfillmentSettings } from '@/lib/marketing-api';
 import { refundRazorpayPayment } from '@/lib/razorpay-refund';
@@ -11,15 +11,19 @@ const CANCELLABLE_STATUSES = ['pending', 'paid', 'confirmed'];
 
 export async function POST(_req: Request, { params }: { params: { id: string } }) {
   const user = await getCurrentUser();
-  if (!user) {
-    return NextResponse.json({ error: 'You must be logged in to cancel an order.' }, { status: 401 });
-  }
 
-  // Use the auth-aware client only to confirm the order belongs to this
-  // customer (RLS-scoped read), then use the admin client for the actual
-  // status write so we don't depend on an RLS UPDATE policy existing.
-  const supabase = await getSupabaseServer();
-  const { data: order, error: fetchError } = await supabase
+  // Guest checkouts have no account, so there's nothing to "log in" as.
+  // We already trust the order UUID as the access token for this order --
+  // the order-confirmation page shows full address/invoice/tracking to
+  // anyone with the link, with no login. Cancellation uses the same trust
+  // model: if the order was placed as a guest (user_id is null), knowing
+  // the order id is enough. If the order IS tied to an account, we still
+  // require that account's session (or, for a logged-in user cancelling
+  // an order that was placed as a guest under the same email, an email
+  // match) so a stranger with a leaked link can't cancel someone's
+  // logged-in account order.
+  const admin = getSupabaseAdmin();
+  const { data: order, error: fetchError } = await admin
     .from('orders')
     .select('id, user_id, customer_email, status, created_at, payment_method, razorpay_payment_id, total_amount')
     .eq('id', params.id)
@@ -29,11 +33,18 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ error: 'Order not found.' }, { status: 404 });
   }
 
-  const ownsByEmail =
-    !!order.customer_email && !!user.email && order.customer_email.toLowerCase() === user.email.toLowerCase();
-  if (order.user_id !== user.id && !ownsByEmail) {
-    return NextResponse.json({ error: 'Order not found.' }, { status: 404 });
+  if (order.user_id) {
+    // Account order -- must be logged in as the owner (or same email).
+    if (!user) {
+      return NextResponse.json({ error: 'You must be logged in to cancel this order.' }, { status: 401 });
+    }
+    const ownsByEmail =
+      !!order.customer_email && !!user.email && order.customer_email.toLowerCase() === user.email.toLowerCase();
+    if (order.user_id !== user.id && !ownsByEmail) {
+      return NextResponse.json({ error: 'Order not found.' }, { status: 404 });
+    }
   }
+  // else: guest order (user_id is null) -- proceed, no login required.
 
   if (!CANCELLABLE_STATUSES.includes(order.status)) {
     return NextResponse.json(
@@ -53,7 +64,6 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     );
   }
 
-  const admin = getSupabaseAdmin();
   const { error: updateError } = await admin
     .from('orders')
     .update({ status: 'cancelled' })

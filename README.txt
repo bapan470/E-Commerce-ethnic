@@ -1,32 +1,52 @@
-Kya change hua (Hinglish):
-1. lib/email-templates.ts -> naya function `orderStatusUpdateEmail` add kiya
-   (pending/paid/shipped/delivered/cancelled/failed sabke liye alag email copy).
-2. lib/orders-api.ts -> `updateOrderStatus()` ab order update karne se pehle
-   customer_email fetch karta hai, aur status badalne par customer ko email
-   bhejta hai (best-effort - email fail ho bhi to status update nahi rukega).
-   Ye function Admin > Orders ke status dropdown se hi call hota hai, isliye
-   ab HAR status change (cancelled, paid, delivered, etc.) par email jayega.
-3. app/order-confirmation/[id]/page.tsx -> "Thank you" page par ab order ka
-   live status (Pending/Payment Confirmed/Shipped/Delivered/Cancelled) ek
-   badge ke roop me dikhta hai, jo admin ke status change ke turant baad
-   reflect hoga (page refresh/dobara open karne par).
+Naya kya add hua (Hinglish):
+
+1. app/api/orders/[id]/cancel/route.ts
+   - Pehle ye route har case me login maangta tha ("You must be logged in
+     to cancel an order"), isliye guest checkout wale orders kabhi cancel
+     nahi ho pate the.
+   - Ab: agar order GUEST order hai (koi account se linked nahi -- user_id
+     null), to cancel bina login ke ho jayega, bas order ka ID pata hona
+     chahiye (jo order-confirmation URL / confirmation email me hota hai
+     hi -- same jaisa is URL se already poora order dikh raha hai bina
+     login ke).
+   - Agar order kisi ACCOUNT se linked hai (user ne login karke order
+     kiya tha), to wahan pehle jaisa hi rehta hai -- us account se login
+     karna padega cancel karne ke liye (security ke liye).
+   - Baaki rules same hain: sirf pending/paid/confirmed status wale orders
+     cancel ho sakte hain, aur Admin > Settings me set kiya hua
+     "cancellation window" (X ghante) ke andar hi.
+
+2. app/order-confirmation/[id]/page.tsx (Thank You page)
+   - Ab is page par bhi "Cancel Order" button dikhega (jab order
+     cancellable status me ho), pehle sirf logged-in account ke
+     "My Orders" page me hota tha.
+   - Isi liye guest customer bhi order place karne ke turant baad, usi
+     thank-you page se, bina koi account banaye order cancel kar sakta
+     hai.
+   - Status badge (Pending/Paid/Shipped/Delivered/Cancelled) bhi already
+     is page par dikhta hai (pichle patch se).
+
+3. lib/email-templates.ts, lib/orders-api.ts
+   - Pichle patch wale changes hi hain: har status change par customer ko
+     automatic email (pichle message me bataya gaya tha).
 
 Apply kaise kare:
-Option A (recommended, fast): apne project folder me jaake terminal me:
+  Project folder me:
     git apply CHANGES.patch
-  (agar conflict aaye to Option B use karein)
-
-Option B (manual replace): is zip ke andar ke 3 files ko seedha apne
-project ke same path par copy-paste/replace kar dein:
+  (Agar conflict aaye to zip ke andar ke 4 files manually copy karke
+  same path par apne project me replace kar dena:
     - app/order-confirmation/[id]/page.tsx
+    - app/api/orders/[id]/cancel/route.ts
     - lib/email-templates.ts
     - lib/orders-api.ts
+  )
 
 Uske baad:
     git add -A
-    git commit -m "Send email on every order status change + show live status on thank you page"
+    git commit -m "Allow guest order cancellation + cancel button on thank you page"
     git push
 
-Note: Email bhejne ke liye Admin > Settings > Email Notifications me
-provider (Resend ya ZeptoMail) already configured hona chahiye -- wahi
-provider is naye status-change email ke liye bhi use hoga.
+Security note: Guest cancel sirf tab allow hota hai jab order kisi bhi
+account se linked na ho (guest checkout). Agar customer ne login karke
+order kiya tha, cancel ke liye wahi account login zaroori rahega -- warna
+koi bhi leaked link se logged-in customer ka order cancel kar sakta tha.
