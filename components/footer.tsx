@@ -89,7 +89,8 @@ export default function Footer() {
             <li><Link href="/vendor-login" className="hover:text-secondary">Vendor Login</Link></li>
             <li><Link href="/reseller-registration" className="hover:text-secondary">Reseller Registration</Link></li>
             <li><Link href="/reseller-login" className="hover:text-secondary">Reseller Login</Link></li>
-            <li><Link href="/account/affiliate" className="hover:text-secondary">Affiliate Program</Link></li>
+            <li><Link href="/affiliate-program" className="hover:text-secondary">Affiliate Program</Link></li>
+            <li><Link href="/loyalty" className="hover:text-secondary">Loyalty Rewards</Link></li>
           </ul>
         </div>
         <div>
