@@ -326,7 +326,7 @@ index 31d97c6..610ce35 100644
              </span>
              <Button type="button" size="sm" variant="outline" className="gap-1.5" onClick={() => preview(key)}>
 diff --git a/components/admin/orders-panel.tsx b/components/admin/orders-panel.tsx
-index 1b86132..8bdded3 100644
+index 1b86132..0c948e2 100644
 --- a/components/admin/orders-panel.tsx
 +++ b/components/admin/orders-panel.tsx
 @@ -1,7 +1,8 @@
@@ -335,11 +335,71 @@ index 1b86132..8bdded3 100644
  import { useEffect, useMemo, useState } from 'react';
 -import { Loader2, Truck, Search, X, Copy, Check, Trash2 } from 'lucide-react';
 +import Link from 'next/link';
-+import { Loader2, Truck, Search, X, Copy, Check, Trash2, ExternalLink } from 'lucide-react';
++import { Loader2, Truck, Search, X, Copy, Check, Trash2, ExternalLink, Wallet } from 'lucide-react';
  import { formatINR } from '@/lib/format';
  import { Button } from '@/components/ui/button';
  import { Input } from '@/components/ui/input';
-@@ -545,7 +546,19 @@ function OrderRow({
+@@ -182,6 +183,32 @@ export default function OrdersPanel() {
+     }
+   };
+ 
++  // Converts a COD order (item not kept ready-made -> needs prep time) to
++  // "pay online first": flips payment_method, emails the customer an
++  // apology + a link to pay. See app/api/admin/orders/[id]/request-online-payment.
++  const [requestingOnlinePaymentFor, setRequestingOnlinePaymentFor] = useState<string | null>(null);
++  const requestOnlinePayment = async (id: string) => {
++    setRequestingOnlinePaymentFor(id);
++    try {
++      const res = await fetch(`/api/admin/orders/${id}/request-online-payment`, { method: 'POST' });
++      const body = await res.json().catch(() => ({}));
++      if (res.ok && body.success) {
++        if (body.emailed) {
++          toast.success('Order converted to online payment — email sent to the customer');
++        } else {
++          toast.warning('Order converted, but the email failed to send — try "Send test" from Test Notifications');
++        }
++        await load();
++      } else {
++        toast.error(body.error || 'Failed to request online payment');
++      }
++    } catch {
++      toast.error('Failed to request online payment');
++    } finally {
++      setRequestingOnlinePaymentFor(null);
++    }
++  };
++
+   // ---- Select rows + bulk delete ----
+   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+@@ -389,6 +416,8 @@ export default function OrdersPanel() {
+                   onChangeStatus={updateStatus}
+                   onCreateShipment={openShipmentModal}
+                   creatingShipment={creatingShipmentFor === o.id}
++                  onRequestOnlinePayment={requestOnlinePayment}
++                  requestingOnlinePayment={requestingOnlinePaymentFor === o.id}
+                 />
+               ))
+             )}
+@@ -451,6 +480,8 @@ function OrderRow({
+   onChangeStatus,
+   onCreateShipment,
+   creatingShipment,
++  onRequestOnlinePayment,
++  requestingOnlinePayment,
+ }: {
+   order: Order;
+   selected: boolean;
+@@ -458,6 +489,8 @@ function OrderRow({
+   onChangeStatus: (id: string, status: string) => void;
+   onCreateShipment: (id: string) => void;
+   creatingShipment: boolean;
++  onRequestOnlinePayment: (id: string) => void;
++  requestingOnlinePayment: boolean;
+ }) {
+   const [open, setOpen] = useState(false);
+   const [copied, setCopied] = useState(false);
+@@ -545,7 +578,19 @@ function OrderRow({
                <div className="h-9 w-9 flex-shrink-0 rounded-md border border-border/60 bg-muted" />
              )}
              <div className="text-xs">
@@ -360,7 +420,32 @@ index 1b86132..8bdded3 100644
                {order.items.length > 1 && (
                  <div className="text-muted-foreground">+{order.items.length - 1} more</div>
                )}
-@@ -653,7 +666,19 @@ function OrderRow({
+@@ -575,6 +620,24 @@ function OrderRow({
+           >
+             {order.payment_method === 'cod' ? 'COD' : 'Online'}
+           </span>
++          {order.payment_method === 'cod' && order.status === 'pending' && (
++            <Button
++              type="button"
++              size="sm"
++              variant="outline"
++              disabled={requestingOnlinePayment}
++              onClick={() => onRequestOnlinePayment(order.id)}
++              className="mt-1.5 block h-auto w-fit gap-1 px-2 py-1 text-[11px] leading-tight"
++              title="Item needs prep time — ask the customer to pay online first instead of COD"
++            >
++              {requestingOnlinePayment ? (
++                <Loader2 className="h-3 w-3 animate-spin" />
++              ) : (
++                <Wallet className="h-3 w-3" />
++              )}
++              Request Online Payment
++            </Button>
++          )}
+         </td>
+         <td className="px-4 py-3 align-top text-sm">
+           {/* An online order stuck at "pending" almost always means the
+@@ -653,7 +716,19 @@ function OrderRow({
                          <div className="h-12 w-12 flex-shrink-0 rounded-md border border-border/60 bg-muted" />
                        )}
                        <div className="flex-1">
@@ -505,7 +590,7 @@ index 9146d76..9184f9f 100644
    await sendEmail({ to: order.customer_email, subject, html });
    return { sent: true };
 diff --git a/lib/email-templates.ts b/lib/email-templates.ts
-index fb7f3d1..6794853 100644
+index fb7f3d1..df9ecba 100644
 --- a/lib/email-templates.ts
 +++ b/lib/email-templates.ts
 @@ -19,17 +19,28 @@ function wrapper(bodyHtml: string) {
@@ -640,6 +725,53 @@ index fb7f3d1..6794853 100644
      <p style="text-align:center; margin-top: 16px;">
        <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/track/${order.id}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
          Track My Order
+@@ -625,6 +673,46 @@ export function paymentReminderEmail(order: { id: string; items: any[]; total_am
+   return { subject, html };
+ }
+ 
++// Sent when the admin converts a COD order to "needs online payment first"
++// (see app/api/admin/orders/[id]/request-online-payment/route.ts) --
++// typically because the exact item isn't kept ready-made and needs to be
++// prepared before it can ship, so we ask for payment upfront instead of
++// collecting it at the door. Links to the same /checkout/resume/[id] page
++// used for abandoned-online-payment reminders, since paying here is the
++// same Razorpay flow -- just entered from a different reason.
++export function codToPrepaidRequestEmail(order: {
++  id: string;
++  items: any[];
++  total_amount: number;
++  customer_name?: string;
++}) {
++  const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
++  const name = order.customer_name || 'there';
++  const subject = `Action needed on your order ${shortId} — online payment required`;
++  const resumeUrl = `${process.env.NEXT_PUBLIC_SITE_URL || ''}/checkout/resume/${order.id}`;
++  const html = wrapper(`
++    <h2 style="margin-top:0; color:${BRAND_COLOR};">Hi ${name}, one quick thing about your order</h2>
++    <p>
++      Sorry for the inconvenience — your order <strong>${shortId}</strong> includes a piece that isn't
++      kept ready-made at all times, so it needs to be prepared specially before it can ship. Because of
++      that, we're not able to offer Cash on Delivery on this order and need the payment to be made
++      online first.
++    </p>
++    ${itemsTable(order.items)}
++    <p style="text-align:right; font-size:16px; font-weight:bold;">Order total: ${formatINR(order.total_amount)}</p>
++    <p style="text-align:center; margin-top: 20px;">
++      <a href="${resumeUrl}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
++        Pay online to confirm this order
++      </a>
++    </p>
++    <p style="font-size:13px; color:#6b5f57; text-align:center;">
++      Once we receive the payment, we'll start preparing your order right away — thank you for your
++      patience.
++    </p>
++  `);
++  return { subject, html };
++}
++
+ export function welcomeSeriesEmail(user: { full_name?: string; coupon_code?: string }) {
+   const subject = `Welcome to ${SITE_NAME}${user.coupon_code ? " — here's 10% off" : ''}`;
+   const html = wrapper(`
 diff --git a/lib/orders-api.ts b/lib/orders-api.ts
 index 0c0b90b..8166c64 100644
 --- a/lib/orders-api.ts
@@ -662,3 +794,4 @@ index 0c0b90b..8166c64 100644
      });
      // Best-effort -- never let a slow/broken email provider fail the
      // admin's status update.
+--- new file (not in diff, add manually): app/api/admin/orders/[id]/request-online-payment/route.ts ---

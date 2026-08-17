@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, Truck, Search, X, Copy, Check, Trash2, ExternalLink } from 'lucide-react';
+import { Loader2, Truck, Search, X, Copy, Check, Trash2, ExternalLink, Wallet } from 'lucide-react';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -180,6 +180,32 @@ export default function OrdersPanel() {
       }
     } catch (err) {
       toast.error('Failed to update status');
+    }
+  };
+
+  // Converts a COD order (item not kept ready-made -> needs prep time) to
+  // "pay online first": flips payment_method, emails the customer an
+  // apology + a link to pay. See app/api/admin/orders/[id]/request-online-payment.
+  const [requestingOnlinePaymentFor, setRequestingOnlinePaymentFor] = useState<string | null>(null);
+  const requestOnlinePayment = async (id: string) => {
+    setRequestingOnlinePaymentFor(id);
+    try {
+      const res = await fetch(`/api/admin/orders/${id}/request-online-payment`, { method: 'POST' });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok && body.success) {
+        if (body.emailed) {
+          toast.success('Order converted to online payment — email sent to the customer');
+        } else {
+          toast.warning('Order converted, but the email failed to send — try "Send test" from Test Notifications');
+        }
+        await load();
+      } else {
+        toast.error(body.error || 'Failed to request online payment');
+      }
+    } catch {
+      toast.error('Failed to request online payment');
+    } finally {
+      setRequestingOnlinePaymentFor(null);
     }
   };
 
@@ -390,6 +416,8 @@ export default function OrdersPanel() {
                   onChangeStatus={updateStatus}
                   onCreateShipment={openShipmentModal}
                   creatingShipment={creatingShipmentFor === o.id}
+                  onRequestOnlinePayment={requestOnlinePayment}
+                  requestingOnlinePayment={requestingOnlinePaymentFor === o.id}
                 />
               ))
             )}
@@ -452,6 +480,8 @@ function OrderRow({
   onChangeStatus,
   onCreateShipment,
   creatingShipment,
+  onRequestOnlinePayment,
+  requestingOnlinePayment,
 }: {
   order: Order;
   selected: boolean;
@@ -459,6 +489,8 @@ function OrderRow({
   onChangeStatus: (id: string, status: string) => void;
   onCreateShipment: (id: string) => void;
   creatingShipment: boolean;
+  onRequestOnlinePayment: (id: string) => void;
+  requestingOnlinePayment: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -588,6 +620,24 @@ function OrderRow({
           >
             {order.payment_method === 'cod' ? 'COD' : 'Online'}
           </span>
+          {order.payment_method === 'cod' && order.status === 'pending' && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={requestingOnlinePayment}
+              onClick={() => onRequestOnlinePayment(order.id)}
+              className="mt-1.5 block h-auto w-fit gap-1 px-2 py-1 text-[11px] leading-tight"
+              title="Item needs prep time — ask the customer to pay online first instead of COD"
+            >
+              {requestingOnlinePayment ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Wallet className="h-3 w-3" />
+              )}
+              Request Online Payment
+            </Button>
+          )}
         </td>
         <td className="px-4 py-3 align-top text-sm">
           {/* An online order stuck at "pending" almost always means the
