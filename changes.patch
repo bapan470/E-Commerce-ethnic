@@ -1,5 +1,43 @@
+diff --git a/app/account/orders/[id]/page.tsx b/app/account/orders/[id]/page.tsx
+index 5b6737a..1bf26cf 100644
+--- a/app/account/orders/[id]/page.tsx
++++ b/app/account/orders/[id]/page.tsx
+@@ -5,7 +5,7 @@ import { formatINR } from '@/lib/format';
+ import { Badge } from '@/components/ui/badge';
+ import { Separator } from '@/components/ui/separator';
+ import ReturnRequestButton from '@/components/account/return-request-button';
+-import CancelOrderButton from '@/components/account/cancel-order-button';
++import CancelOrHelp from '@/components/order/cancel-or-help';
+ import OrderTracking from '@/components/order/order-tracking';
+ import DeliveredItemReview from '@/components/account/delivered-item-review';
+ import { fetchFulfillmentSettings } from '@/lib/marketing-api';
+@@ -39,8 +39,6 @@ export default async function OrderDetailPage({ params }: { params: { id: string
+     order.status === 'delivered' && daysSinceOrder <= RETURN_WINDOW_DAYS && !returns?.length;
+ 
+   const hoursSinceOrder = (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60);
+-  const eligibleForCancellation =
+-    ['pending', 'paid', 'confirmed'].includes(order.status) && hoursSinceOrder <= CANCELLATION_WINDOW_HOURS;
+ 
+   return (
+     <div>
+@@ -55,7 +53,14 @@ export default async function OrderDetailPage({ params }: { params: { id: string
+         </div>
+         <div className="flex flex-col items-end gap-2">
+           <Badge className="bg-muted text-foreground">{order.status}</Badge>
+-          {eligibleForCancellation && <CancelOrderButton orderId={order.id} />}
++          <CancelOrHelp
++            orderId={order.id}
++            orderShortId={order.id.slice(0, 8).toUpperCase()}
++            status={order.status}
++            trackingNumber={order.tracking_number}
++            hoursSinceOrder={hoursSinceOrder}
++            cancellationWindowHours={CANCELLATION_WINDOW_HOURS}
++          />
+         </div>
+       </div>
+ 
 diff --git a/app/api/orders/[id]/cancel/route.ts b/app/api/orders/[id]/cancel/route.ts
-index edb6d4b..ba5a8cc 100644
+index edb6d4b..157bdd4 100644
 --- a/app/api/orders/[id]/cancel/route.ts
 +++ b/app/api/orders/[id]/cancel/route.ts
 @@ -1,5 +1,5 @@
@@ -9,7 +47,7 @@ index edb6d4b..ba5a8cc 100644
  import { getSupabaseAdmin } from '@/lib/supabase-admin';
  import { fetchFulfillmentSettings } from '@/lib/marketing-api';
  import { refundRazorpayPayment } from '@/lib/razorpay-refund';
-@@ -11,15 +11,19 @@ const CANCELLABLE_STATUSES = ['pending', 'paid', 'confirmed'];
+@@ -11,17 +11,21 @@ const CANCELLABLE_STATUSES = ['pending', 'paid', 'confirmed'];
  
  export async function POST(_req: Request, { params }: { params: { id: string } }) {
    const user = await getCurrentUser();
@@ -35,8 +73,11 @@ index edb6d4b..ba5a8cc 100644
 +  const admin = getSupabaseAdmin();
 +  const { data: order, error: fetchError } = await admin
      .from('orders')
-     .select('id, user_id, customer_email, status, created_at, payment_method, razorpay_payment_id, total_amount')
+-    .select('id, user_id, customer_email, status, created_at, payment_method, razorpay_payment_id, total_amount')
++    .select('id, user_id, customer_email, status, created_at, payment_method, razorpay_payment_id, total_amount, tracking_number')
      .eq('id', params.id)
+     .single();
+ 
 @@ -29,11 +33,18 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
      return NextResponse.json({ error: 'Order not found.' }, { status: 404 });
    }
@@ -60,7 +101,28 @@ index edb6d4b..ba5a8cc 100644
  
    if (!CANCELLABLE_STATUSES.includes(order.status)) {
      return NextResponse.json(
-@@ -53,7 +64,6 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
+@@ -42,6 +53,20 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
+     );
+   }
+ 
++  // Belt-and-suspenders: once a shipment has been created (tracking
++  // number assigned), the order can no longer be self-cancelled --
++  // regardless of how much time is left in the cancellation window.
++  // Normally order.status already flips to 'shipped' the moment a
++  // waybill is generated (see delhivery/create-shipment route), which
++  // the CANCELLABLE_STATUSES check above already catches, but we check
++  // tracking_number directly too in case status hasn't been bumped yet.
++  if (order.tracking_number) {
++    return NextResponse.json(
++      { error: 'This order has already shipped and can no longer be cancelled online. Please contact us for help.' },
++      { status: 400 }
++    );
++  }
++
+   const { cancellation_window_hours } = await fetchFulfillmentSettings();
+   const hoursSinceOrder = (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60);
+   if (hoursSinceOrder > cancellation_window_hours) {
+@@ -53,7 +78,6 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
      );
    }
  
@@ -68,15 +130,42 @@ index edb6d4b..ba5a8cc 100644
    const { error: updateError } = await admin
      .from('orders')
      .update({ status: 'cancelled' })
+diff --git a/app/contact/page.tsx b/app/contact/page.tsx
+index 3c4960c..04f49ec 100644
+--- a/app/contact/page.tsx
++++ b/app/contact/page.tsx
+@@ -22,7 +22,11 @@ async function getStoreInfo() {
+   return (data?.value as any) || {};
+ }
+ 
+-export default async function ContactPage() {
++export default async function ContactPage({
++  searchParams,
++}: {
++  searchParams?: { subject?: string; message?: string };
++}) {
+   const store = await getStoreInfo();
+ 
+   return (
+@@ -94,7 +98,7 @@ export default async function ContactPage() {
+         </div>
+ 
+         <div className="lg:col-span-3">
+-          <ContactForm />
++          <ContactForm initialSubject={searchParams?.subject} initialMessage={searchParams?.message} />
+         </div>
+       </div>
+     </div>
 diff --git a/app/order-confirmation/[id]/page.tsx b/app/order-confirmation/[id]/page.tsx
-index fcf7d1a..610072a 100644
+index fcf7d1a..fa1a88d 100644
 --- a/app/order-confirmation/[id]/page.tsx
 +++ b/app/order-confirmation/[id]/page.tsx
-@@ -9,6 +9,35 @@ import { Separator } from '@/components/ui/separator';
+@@ -9,6 +9,30 @@ import { Separator } from '@/components/ui/separator';
  import OrderTracking from '@/components/order/order-tracking';
  import PurchaseTracker from '@/components/analytics/purchase-tracker';
  import TrustpilotInvitation from '@/components/analytics/trustpilot-invitation';
-+import CancelOrderButton from '@/components/account/cancel-order-button';
++import CancelOrHelp from '@/components/order/cancel-or-help';
++import { fetchFulfillmentSettings } from '@/lib/marketing-api';
 +
 +// This page reads live order status (payment status, cancellation, ship
 +// status) straight from the DB, and the Cancel Order button on this same
@@ -87,12 +176,6 @@ index fcf7d1a..610072a 100644
 +// dynamic (no caching, always re-fetch) fixes that.
 +export const dynamic = 'force-dynamic';
 +export const revalidate = 0;
-+
-+// Kept in sync with CANCELLABLE_STATUSES in
-+// app/api/orders/[id]/cancel/route.ts -- once an order moves past these
-+// (shipped/delivered/etc.) it must go through returns/exchange instead,
-+// so we stop showing the Cancel button here too.
-+const CANCELLABLE_STATUSES = ['pending', 'paid', 'confirmed'];
 +
 +// Badge styling per order.status. Keeps this page in sync with whatever
 +// the admin last set from Admin -> Orders (paid/shipped/delivered/
@@ -108,7 +191,17 @@ index fcf7d1a..610072a 100644
  
  export default async function OrderConfirmationPage({ params }: { params: { id: string } }) {
    const supabase = getSupabaseAdmin();
-@@ -56,11 +85,24 @@ export default async function OrderConfirmationPage({ params }: { params: { id:
+@@ -16,6 +40,9 @@ export default async function OrderConfirmationPage({ params }: { params: { id:
+ 
+   if (!order) notFound();
+ 
++  const { cancellation_window_hours: CANCELLATION_WINDOW_HOURS } = await fetchFulfillmentSettings();
++  const hoursSinceOrder = (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60);
++
+   const items = Array.isArray(order.items) ? order.items : [];
+   const addr = order.shipping_address as {
+     address?: string;
+@@ -56,11 +83,24 @@ export default async function OrderConfirmationPage({ params }: { params: { id:
            <CheckCircle2 className="h-10 w-10 text-secondary" />
          </div>
          <h1 className="font-serif text-3xl font-bold text-primary">Thank you for your order!</h1>
@@ -134,16 +227,113 @@ index fcf7d1a..610072a 100644
              <>
                {' '}
                Please keep <strong>{formatINR(order.total_amount)}</strong> ready in cash for our
-@@ -68,6 +110,9 @@ export default async function OrderConfirmationPage({ params }: { params: { id:
+@@ -68,6 +108,14 @@ export default async function OrderConfirmationPage({ params }: { params: { id:
              </>
            )}
          </p>
-+        {CANCELLABLE_STATUSES.includes(order.status) && (
-+          <CancelOrderButton orderId={order.id} />
-+        )}
++        <CancelOrHelp
++          orderId={order.id}
++          orderShortId={order.id.slice(0, 8).toUpperCase()}
++          status={order.status}
++          trackingNumber={order.tracking_number}
++          hoursSinceOrder={hoursSinceOrder}
++          cancellationWindowHours={CANCELLATION_WINDOW_HOURS}
++        />
        </div>
  
        <div className="mt-8 rounded-lg border border-border/60 bg-card p-5 sm:p-6">
+diff --git a/components/contact-form.tsx b/components/contact-form.tsx
+index 0258b7f..40cda0f 100644
+--- a/components/contact-form.tsx
++++ b/components/contact-form.tsx
+@@ -10,12 +10,18 @@ import { toast } from 'sonner';
+ 
+ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+ 
+-export default function ContactForm() {
++export default function ContactForm({
++  initialSubject,
++  initialMessage,
++}: {
++  initialSubject?: string;
++  initialMessage?: string;
++} = {}) {
+   const [name, setName] = useState('');
+   const [email, setEmail] = useState('');
+   const [phone, setPhone] = useState('');
+-  const [subject, setSubject] = useState('');
+-  const [message, setMessage] = useState('');
++  const [subject, setSubject] = useState(initialSubject || '');
++  const [message, setMessage] = useState(initialMessage || '');
+   const [loading, setLoading] = useState(false);
+   const [sent, setSent] = useState(false);
+ 
+diff --git a/components/order/cancel-or-help.tsx b/components/order/cancel-or-help.tsx
+new file mode 100644
+index 0000000..e7722ca
+--- /dev/null
++++ b/components/order/cancel-or-help.tsx
+@@ -0,0 +1,60 @@
++import Link from 'next/link';
++import { MessageCircleQuestion } from 'lucide-react';
++import CancelOrderButton from '@/components/account/cancel-order-button';
++
++// Statuses where cancellation is still conceptually "in play" for this
++// order (before it's delivered, already cancelled, or failed) -- used to
++// decide whether to show a "Contact us for help" fallback when the
++// window has passed or the order has already shipped, instead of just
++// silently hiding everything.
++const IN_FLIGHT_STATUSES = ['pending', 'paid', 'confirmed', 'shipped'];
++
++export default function CancelOrHelp({
++  orderId,
++  orderShortId,
++  status,
++  trackingNumber,
++  hoursSinceOrder,
++  cancellationWindowHours,
++}: {
++  orderId: string;
++  orderShortId: string;
++  status: string;
++  trackingNumber?: string | null;
++  hoursSinceOrder: number;
++  cancellationWindowHours: number;
++}) {
++  const hasShipped = !!trackingNumber || status === 'shipped';
++  const windowPassed = hoursSinceOrder > cancellationWindowHours;
++  const canCancel = ['pending', 'paid', 'confirmed'].includes(status) && !hasShipped && !windowPassed;
++
++  if (canCancel) {
++    return <CancelOrderButton orderId={orderId} />;
++  }
++
++  if (!IN_FLIGHT_STATUSES.includes(status)) {
++    // Already delivered/cancelled/failed -- nothing to show here, those
++    // states have their own messaging elsewhere on the page.
++    return null;
++  }
++
++  const reason = hasShipped
++    ? 'This order has already shipped, so it can no longer be cancelled online.'
++    : `The ${cancellationWindowHours}-hour cancellation window for this order has passed.`;
++
++  const contactHref = `/contact?subject=${encodeURIComponent(`Cancel order #${orderShortId}`)}&message=${encodeURIComponent(
++    `Hi, I'd like to cancel my order #${orderShortId}. `
++  )}`;
++
++  return (
++    <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
++      <MessageCircleQuestion className="mt-0.5 h-3.5 w-3.5 shrink-0" />
++      <div>
++        <p>{reason} Please contact us for help.</p>
++        <Link href={contactHref} className="mt-1 inline-block font-medium underline underline-offset-2 hover:text-amber-900">
++          Contact Us
++        </Link>
++      </div>
++    </div>
++  );
++}
 diff --git a/lib/email-templates.ts b/lib/email-templates.ts
 index 99c8838..d8ee2ed 100644
 --- a/lib/email-templates.ts
@@ -246,6 +436,19 @@ index 99c8838..d8ee2ed 100644
  export function returnStatusEmail(ret: {
    id: string;
    order_id: string;
+diff --git a/lib/marketing-api.ts b/lib/marketing-api.ts
+index 8da5dbb..71f9391 100644
+--- a/lib/marketing-api.ts
++++ b/lib/marketing-api.ts
+@@ -52,7 +52,7 @@ export const DEFAULT_FULFILLMENT_SETTINGS: FulfillmentSettings = {
+   delivery_remote_min: 10,
+   delivery_remote_max: 12,
+   return_window_days: 7,
+-  cancellation_window_hours: 12,
++  cancellation_window_hours: 24,
+ };
+ 
+ export async function fetchFulfillmentSettings(): Promise<FulfillmentSettings> {
 diff --git a/lib/orders-api.ts b/lib/orders-api.ts
 index 6dc3f80..0c0b90b 100644
 --- a/lib/orders-api.ts

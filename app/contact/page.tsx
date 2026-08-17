@@ -22,7 +22,11 @@ async function getStoreInfo() {
   return (data?.value as any) || {};
 }
 
-export default async function ContactPage() {
+export default async function ContactPage({
+  searchParams,
+}: {
+  searchParams?: { subject?: string; message?: string };
+}) {
   const store = await getStoreInfo();
 
   return (
@@ -94,7 +98,7 @@ export default async function ContactPage() {
         </div>
 
         <div className="lg:col-span-3">
-          <ContactForm />
+          <ContactForm initialSubject={searchParams?.subject} initialMessage={searchParams?.message} />
         </div>
       </div>
     </div>

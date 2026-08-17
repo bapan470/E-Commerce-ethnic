@@ -5,7 +5,7 @@ import { formatINR } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import ReturnRequestButton from '@/components/account/return-request-button';
-import CancelOrderButton from '@/components/account/cancel-order-button';
+import CancelOrHelp from '@/components/order/cancel-or-help';
 import OrderTracking from '@/components/order/order-tracking';
 import DeliveredItemReview from '@/components/account/delivered-item-review';
 import { fetchFulfillmentSettings } from '@/lib/marketing-api';
@@ -39,8 +39,6 @@ export default async function OrderDetailPage({ params }: { params: { id: string
     order.status === 'delivered' && daysSinceOrder <= RETURN_WINDOW_DAYS && !returns?.length;
 
   const hoursSinceOrder = (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60);
-  const eligibleForCancellation =
-    ['pending', 'paid', 'confirmed'].includes(order.status) && hoursSinceOrder <= CANCELLATION_WINDOW_HOURS;
 
   return (
     <div>
@@ -55,7 +53,14 @@ export default async function OrderDetailPage({ params }: { params: { id: string
         </div>
         <div className="flex flex-col items-end gap-2">
           <Badge className="bg-muted text-foreground">{order.status}</Badge>
-          {eligibleForCancellation && <CancelOrderButton orderId={order.id} />}
+          <CancelOrHelp
+            orderId={order.id}
+            orderShortId={order.id.slice(0, 8).toUpperCase()}
+            status={order.status}
+            trackingNumber={order.tracking_number}
+            hoursSinceOrder={hoursSinceOrder}
+            cancellationWindowHours={CANCELLATION_WINDOW_HOURS}
+          />
         </div>
       </div>
 

@@ -52,7 +52,7 @@ export const DEFAULT_FULFILLMENT_SETTINGS: FulfillmentSettings = {
   delivery_remote_min: 10,
   delivery_remote_max: 12,
   return_window_days: 7,
-  cancellation_window_hours: 12,
+  cancellation_window_hours: 24,
 };
 
 export async function fetchFulfillmentSettings(): Promise<FulfillmentSettings> {

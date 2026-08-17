@@ -25,7 +25,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   const admin = getSupabaseAdmin();
   const { data: order, error: fetchError } = await admin
     .from('orders')
-    .select('id, user_id, customer_email, status, created_at, payment_method, razorpay_payment_id, total_amount')
+    .select('id, user_id, customer_email, status, created_at, payment_method, razorpay_payment_id, total_amount, tracking_number')
     .eq('id', params.id)
     .single();
 
@@ -49,6 +49,20 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   if (!CANCELLABLE_STATUSES.includes(order.status)) {
     return NextResponse.json(
       { error: 'This order can no longer be cancelled online. Please contact us for help.' },
+      { status: 400 }
+    );
+  }
+
+  // Belt-and-suspenders: once a shipment has been created (tracking
+  // number assigned), the order can no longer be self-cancelled --
+  // regardless of how much time is left in the cancellation window.
+  // Normally order.status already flips to 'shipped' the moment a
+  // waybill is generated (see delhivery/create-shipment route), which
+  // the CANCELLABLE_STATUSES check above already catches, but we check
+  // tracking_number directly too in case status hasn't been bumped yet.
+  if (order.tracking_number) {
+    return NextResponse.json(
+      { error: 'This order has already shipped and can no longer be cancelled online. Please contact us for help.' },
       { status: 400 }
     );
   }

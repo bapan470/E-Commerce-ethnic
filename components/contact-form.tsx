@@ -10,12 +10,18 @@ import { toast } from 'sonner';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export default function ContactForm() {
+export default function ContactForm({
+  initialSubject,
+  initialMessage,
+}: {
+  initialSubject?: string;
+  initialMessage?: string;
+} = {}) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [subject, setSubject] = useState('');
-  const [message, setMessage] = useState('');
+  const [subject, setSubject] = useState(initialSubject || '');
+  const [message, setMessage] = useState(initialMessage || '');
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
 

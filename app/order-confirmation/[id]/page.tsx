@@ -9,7 +9,8 @@ import { Separator } from '@/components/ui/separator';
 import OrderTracking from '@/components/order/order-tracking';
 import PurchaseTracker from '@/components/analytics/purchase-tracker';
 import TrustpilotInvitation from '@/components/analytics/trustpilot-invitation';
-import CancelOrderButton from '@/components/account/cancel-order-button';
+import CancelOrHelp from '@/components/order/cancel-or-help';
+import { fetchFulfillmentSettings } from '@/lib/marketing-api';
 
 // This page reads live order status (payment status, cancellation, ship
 // status) straight from the DB, and the Cancel Order button on this same
@@ -20,12 +21,6 @@ import CancelOrderButton from '@/components/account/cancel-order-button';
 // dynamic (no caching, always re-fetch) fixes that.
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
-
-// Kept in sync with CANCELLABLE_STATUSES in
-// app/api/orders/[id]/cancel/route.ts -- once an order moves past these
-// (shipped/delivered/etc.) it must go through returns/exchange instead,
-// so we stop showing the Cancel button here too.
-const CANCELLABLE_STATUSES = ['pending', 'paid', 'confirmed'];
 
 // Badge styling per order.status. Keeps this page in sync with whatever
 // the admin last set from Admin -> Orders (paid/shipped/delivered/
@@ -44,6 +39,9 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
   const { data: order } = await supabase.from('orders').select('*').eq('id', params.id).single();
 
   if (!order) notFound();
+
+  const { cancellation_window_hours: CANCELLATION_WINDOW_HOURS } = await fetchFulfillmentSettings();
+  const hoursSinceOrder = (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60);
 
   const items = Array.isArray(order.items) ? order.items : [];
   const addr = order.shipping_address as {
@@ -110,9 +108,14 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
             </>
           )}
         </p>
-        {CANCELLABLE_STATUSES.includes(order.status) && (
-          <CancelOrderButton orderId={order.id} />
-        )}
+        <CancelOrHelp
+          orderId={order.id}
+          orderShortId={order.id.slice(0, 8).toUpperCase()}
+          status={order.status}
+          trackingNumber={order.tracking_number}
+          hoursSinceOrder={hoursSinceOrder}
+          cancellationWindowHours={CANCELLATION_WINDOW_HOURS}
+        />
       </div>
 
       <div className="mt-8 rounded-lg border border-border/60 bg-card p-5 sm:p-6">
