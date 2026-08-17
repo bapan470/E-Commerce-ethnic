@@ -6,7 +6,7 @@ import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import OrderTracking from '@/components/order/order-tracking';
-import { fetchLoyaltySettings, DEFAULT_LOYALTY_SETTINGS } from '@/lib/loyalty-api';
+import { DEFAULT_LOYALTY_SETTINGS, type LoyaltySettings } from '@/lib/loyalty-api';
 import { DEFAULT_REFERRAL_SETTINGS, type ReferralSettings } from '@/lib/referrals-api';
 
 // Guest-friendly tracking page. Uses the exact same trust model already used
@@ -44,12 +44,24 @@ export default async function TrackOrderPage({ params }: { params: { id: string 
   const stepIdx = currentStepIndex(order);
 
   // Loyalty points preview — mirrors the block on /order-confirmation/[id].
-  // Wrapped defensively so a settings-fetch hiccup can't take down tracking.
+  // Reads settings via the admin client (not fetchLoyaltySettings(), which
+  // uses a 'use client' Supabase singleton that throws when called from a
+  // server component -- see the note in that file).
   const orderTotal = Number(order.total_amount) || 0;
-  let loyaltySettings = DEFAULT_LOYALTY_SETTINGS;
+  let loyaltySettings: LoyaltySettings = DEFAULT_LOYALTY_SETTINGS;
   let projectedPoints = 0;
   try {
-    loyaltySettings = await fetchLoyaltySettings();
+    const { data: loyaltySettingsRow, error: loyaltySettingsError } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'loyalty_program')
+      .maybeSingle();
+    if (!loyaltySettingsError && loyaltySettingsRow) {
+      loyaltySettings = {
+        ...DEFAULT_LOYALTY_SETTINGS,
+        ...((loyaltySettingsRow.value as Partial<LoyaltySettings>) ?? {}),
+      };
+    }
     projectedPoints = Math.floor((orderTotal * loyaltySettings.points_per_100_rupees) / 100);
   } catch {
     // keep defaults

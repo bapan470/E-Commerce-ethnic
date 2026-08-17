@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   RefreshCw,
   Wallet,
+  Gift,
 } from 'lucide-react';
 import { useProducts, usePaymentDiscount, useCart, getVisibleBogoPromotion, formatBogoLabel } from '@/lib/cart-context';
 import { fetchProductBySlug } from '@/lib/products-api';
@@ -49,6 +50,7 @@ import CouponList from '@/components/product/coupon-list';
 import WishlistButton from '@/components/wishlist-button';
 import ShareButton from '@/components/share-button';
 import { Coupon, validateCoupon } from '@/lib/coupons-api';
+import { fetchLoyaltySettings, DEFAULT_LOYALTY_SETTINGS, type LoyaltySettings } from '@/lib/loyalty-api';
 import FrequentlyBoughtTogether from '@/components/product/frequently-bought-together';
 import { addRecentlyViewed } from '@/lib/recently-viewed';
 import { trackEvent } from '@/lib/track-api';
@@ -134,6 +136,18 @@ export default function ProductDetail() {
   // until the product has at least one real approved rating, so brand-new
   // listings still show their seeded social-proof numbers.
   const [liveSummary, setLiveSummary] = useState<RatingSummary | null>(null);
+  const [loyaltySettings, setLoyaltySettings] = useState<LoyaltySettings>(DEFAULT_LOYALTY_SETTINGS);
+  useEffect(() => {
+    let cancelled = false;
+    fetchLoyaltySettings()
+      .then((s) => {
+        if (!cancelled) setLoyaltySettings(s);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   useEffect(() => {
     let cancelled = false;
     Promise.all([fetchFulfillmentSettings(), fetchShippingSettings()])
@@ -662,6 +676,8 @@ export default function ProductDetail() {
           appliedCoupon={appliedCoupon}
           couponDiscount={couponDiscount}
           fulfillment={fulfillment}
+          isLoggedIn={!!user}
+          loyaltySettings={loyaltySettings}
           onCouponApply={(c, d) => {
             setAppliedCoupon(c);
             setCouponDiscount(d);
@@ -779,6 +795,8 @@ function ProductInfo({
   onCouponApply,
   onCouponRemove,
   fulfillment,
+  isLoggedIn,
+  loyaltySettings,
 }: {
   product: Product;
   displayName: string;
@@ -799,6 +817,8 @@ function ProductInfo({
   onCouponApply: (coupon: Coupon, discount: number) => void;
   onCouponRemove: () => void;
   fulfillment: FulfillmentSettings;
+  isLoggedIn: boolean;
+  loyaltySettings: LoyaltySettings;
 }) {
   const discount = discountPct(selectedSizePrice, product.mrp);
   const { paymentDiscount } = usePaymentDiscount();
@@ -812,6 +832,10 @@ function ProductInfo({
     paymentDiscount.enabled && paymentDiscount.percent > 0
       ? Math.round((priceAfterCoupon * paymentDiscount.percent) / 100)
       : 0;
+  const loyaltyBasisPrice = Math.max(0, priceAfterCoupon - onlinePaymentSavings);
+  const projectedLoyaltyPoints = Math.floor(
+    (loyaltyBasisPrice * loyaltySettings.points_per_100_rupees) / 100
+  );
 
   return (
     <div className="flex flex-col gap-3">
@@ -914,6 +938,21 @@ function ProductInfo({
           <p className="text-[11px] leading-snug text-emerald-700/80">
             Save an extra {formatINR(onlinePaymentSavings)} ({paymentDiscount.percent}%) when you pay via{' '}
             {paymentDiscount.label} — applied automatically at checkout
+          </p>
+        </div>
+      )}
+
+      {isLoggedIn && loyaltySettings.enabled && projectedLoyaltyPoints > 0 && (
+        <div className="flex w-fit flex-col gap-1 rounded-xl border border-secondary/30 bg-secondary/5 px-3.5 py-2.5">
+          <div className="flex items-center gap-1.5">
+            <Gift className="h-3.5 w-3.5 shrink-0 text-secondary" />
+            <span className="text-[11px] font-medium uppercase tracking-wide text-secondary-foreground/80">
+              Loyalty Points
+            </span>
+          </div>
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            Earn <strong className="text-foreground">{projectedLoyaltyPoints} points</strong> on this
+            purchase — credited once your order is delivered.
           </p>
         </div>
       )}

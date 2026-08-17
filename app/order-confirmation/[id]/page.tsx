@@ -11,7 +11,7 @@ import PurchaseTracker from '@/components/analytics/purchase-tracker';
 import TrustpilotInvitation from '@/components/analytics/trustpilot-invitation';
 import CancelOrHelp from '@/components/order/cancel-or-help';
 import { fetchFulfillmentSettings } from '@/lib/marketing-api';
-import { fetchLoyaltySettings, DEFAULT_LOYALTY_SETTINGS } from '@/lib/loyalty-api';
+import { DEFAULT_LOYALTY_SETTINGS, type LoyaltySettings } from '@/lib/loyalty-api';
 import { DEFAULT_REFERRAL_SETTINGS, type ReferralSettings } from '@/lib/referrals-api';
 
 // This page reads live order status (payment status, cancellation, ship
@@ -47,15 +47,29 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
 
   // Loyalty points preview — shows what THIS order earns toward the next
   // purchase, computed the same way /api/order-confirm computes it
-  // (points_per_100_rupees on total_amount). Wrapped defensively: this is
-  // a "nice to have" preview block, so any settings-fetch hiccup should
-  // never be able to take down the whole confirmation page.
+  // (points_per_100_rupees on total_amount). Reads settings via the
+  // already-instantiated admin client instead of lib/loyalty-api's
+  // fetchLoyaltySettings(), which uses the 'use client' Supabase singleton
+  // and throws "Cannot access supabase.from on the server" when called
+  // from a server component -- see lib/marketing-api.ts's note on the
+  // exact same issue. Wrapped defensively too, since this is just a
+  // "nice to have" preview and shouldn't be able to take down the page.
   const isCancelledOrFailed = order.status === 'cancelled' || order.status === 'failed';
   const orderTotal = Number(order.total_amount) || 0;
-  let loyaltySettings = DEFAULT_LOYALTY_SETTINGS;
+  let loyaltySettings: LoyaltySettings = DEFAULT_LOYALTY_SETTINGS;
   let projectedPoints = 0;
   try {
-    loyaltySettings = await fetchLoyaltySettings();
+    const { data: loyaltySettingsRow, error: loyaltySettingsError } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'loyalty_program')
+      .maybeSingle();
+    if (!loyaltySettingsError && loyaltySettingsRow) {
+      loyaltySettings = {
+        ...DEFAULT_LOYALTY_SETTINGS,
+        ...((loyaltySettingsRow.value as Partial<LoyaltySettings>) ?? {}),
+      };
+    }
     projectedPoints = Math.floor((orderTotal * loyaltySettings.points_per_100_rupees) / 100);
   } catch {
     // keep defaults; block below just won't show a non-zero figure
