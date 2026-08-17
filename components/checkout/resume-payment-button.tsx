@@ -28,7 +28,7 @@ function loadRazorpayScript(): Promise<void> {
   }
   if (razorpayScriptPromise) return razorpayScriptPromise;
 
-  razorpayScriptPromise = new Promise((resolve, reject) => {
+  razorpayScriptPromise = new Promise<void>((resolve, reject) => {
     const existing = document.querySelector<HTMLScriptElement>(
       'script[src="https://checkout.razorpay.com/v1/checkout.js"]'
     );

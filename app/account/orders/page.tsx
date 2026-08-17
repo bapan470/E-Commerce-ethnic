@@ -60,6 +60,20 @@ export default async function OrdersPage() {
                   {order.status}
                 </Badge>
               </div>
+              {/* Same "was COD, converted via Request Online Payment"
+                  case as /account/orders/[id] -- shown here too, right at
+                  the top of the card, so it's visible without opening the
+                  order. */}
+              {order.status === 'pending' &&
+                order.payment_method !== 'cod' &&
+                order.original_payment_method === 'cod' && (
+                  <p className="mt-2 rounded-md bg-amber-50 px-2.5 py-2 text-xs text-amber-800">
+                    This particular piece isn&apos;t kept ready-made at all times — it&apos;s specially
+                    prepared once an order comes in. Because of that, we&apos;re not able to offer Cash
+                    on Delivery on this order, and need the payment made online before we start
+                    preparing it.
+                  </p>
+                )}
               <div className="mt-3 flex items-center justify-between text-sm">
                 <div className="flex items-center gap-3">
                   <div className="flex -space-x-2">

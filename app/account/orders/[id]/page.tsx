@@ -87,7 +87,22 @@ export default async function OrderDetailPage({ params }: { params: { id: string
             <CreditCard className="h-5 w-5 shrink-0 text-amber-600" />
             <div>
               <p className="font-medium">Payment pending</p>
-              <p className="mt-1 text-amber-800/80">Nothing's been charged yet — complete the payment to confirm this order.</p>
+              {/* Only shown for orders Admin converted from COD -> online
+                  via "Request Online Payment" (original_payment_method
+                  stays 'cod' forever even after payment_method flips —
+                  see 20260923000000_orders_original_payment_method.sql).
+                  An ordinary online order the customer just abandoned
+                  mid-checkout never had this, so it doesn't get this
+                  explanation. */}
+              {order.original_payment_method === 'cod' ? (
+                <p className="mt-1 text-amber-800/80">
+                  This particular piece isn't kept ready-made at all times — it's specially prepared
+                  once an order comes in. Because of that, we're not able to offer Cash on Delivery on
+                  this order, and need the payment made online before we start preparing it.
+                </p>
+              ) : (
+                <p className="mt-1 text-amber-800/80">Nothing's been charged yet — complete the payment to confirm this order.</p>
+              )}
             </div>
           </div>
           <Button asChild size="sm">
