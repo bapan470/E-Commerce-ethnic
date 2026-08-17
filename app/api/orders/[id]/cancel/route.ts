@@ -3,6 +3,8 @@ import { getCurrentUser } from '@/lib/supabase-server-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { fetchFulfillmentSettings } from '@/lib/marketing-api';
 import { refundRazorpayPayment } from '@/lib/razorpay-refund';
+import { sendEmail } from '@/lib/email';
+import { orderCancelledByCustomerEmail } from '@/lib/email-templates';
 
 // Statuses a customer is still allowed to self-cancel from. Once an order
 // has moved past this (shipped/delivered/etc.) it must go through the
@@ -25,7 +27,9 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   const admin = getSupabaseAdmin();
   const { data: order, error: fetchError } = await admin
     .from('orders')
-    .select('id, user_id, customer_email, status, created_at, payment_method, razorpay_payment_id, total_amount, tracking_number')
+    .select(
+      'id, user_id, customer_email, customer_name, items, status, created_at, payment_method, razorpay_payment_id, total_amount, tracking_number'
+    )
     .eq('id', params.id)
     .single();
 
@@ -87,6 +91,27 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ error: 'Failed to cancel order. Please try again or contact us.' }, { status: 500 });
   }
 
+  // Best-effort confirmation email for every self-cancel, regardless of
+  // refund outcome below -- a failed/unconfigured email provider must
+  // never block the cancellation itself, so this never throws.
+  const notifyCustomer = (refund: {
+    status: 'not_applicable' | 'refunded' | 'pending_manual' | 'failed';
+    amount?: number;
+    razorpay_refund_id?: string | null;
+  }) => {
+    if (!order.customer_email) return;
+    const { subject, html } = orderCancelledByCustomerEmail({
+      id: order.id,
+      customer_name: order.customer_name,
+      items: Array.isArray(order.items) ? order.items : [],
+      total_amount: order.total_amount,
+      refund,
+    });
+    sendEmail({ to: order.customer_email, subject, html }).catch((err) => {
+      console.error('[orders/cancel] confirmation email failed:', err);
+    });
+  };
+
   // Only orders that actually had money captured need a refund. A COD
   // order, or an "online" order where Razorpay's verify-payment step never
   // ran (no razorpay_payment_id / not actually 'paid'), never took money
@@ -94,6 +119,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   const needsRefund = order.payment_method === 'online' && order.status === 'paid' && !!order.razorpay_payment_id;
 
   if (!needsRefund) {
+    notifyCustomer({ status: 'not_applicable' });
     return NextResponse.json({ success: true, refunded: false });
   }
 
@@ -107,6 +133,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
 
   if (!autoRefundEnabled) {
     await admin.from('orders').update({ refund_status: 'pending_manual' }).eq('id', order.id);
+    notifyCustomer({ status: 'pending_manual', amount: order.total_amount });
     return NextResponse.json({
       success: true,
       refunded: false,
@@ -121,6 +148,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       .from('orders')
       .update({ refund_status: 'refunded', razorpay_refund_id: refundResult.refundId })
       .eq('id', order.id);
+    notifyCustomer({ status: 'refunded', amount: order.total_amount, razorpay_refund_id: refundResult.refundId });
     return NextResponse.json({ success: true, refunded: true });
   }
 
@@ -129,6 +157,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   // flag it so the admin can see it needs a manual refund instead of it
   // silently getting missed.
   await admin.from('orders').update({ refund_status: 'failed' }).eq('id', order.id);
+  notifyCustomer({ status: 'failed', amount: order.total_amount });
   return NextResponse.json({
     success: true,
     refunded: false,

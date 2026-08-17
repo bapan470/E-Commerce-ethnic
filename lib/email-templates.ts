@@ -401,6 +401,86 @@ export function orderShippedEmail(order: {
 // already has a tracking number; the dedicated "just shipped from
 // Delhivery" email (orderShippedEmail) is still sent separately by the
 // create-shipment route the first time a waybill is generated.
+// Sent when a CUSTOMER self-cancels their own order (Account > Orders >
+// "Cancel Order" -- see app/api/orders/[id]/cancel/route.ts). Deliberately
+// separate from orderStatusUpdateEmail's generic 'cancelled' copy above
+// (which is for an ADMIN-driven status change) because a self-cancel needs
+// to answer the one question the customer actually has right now -- "what
+// happens to my money" -- with the specific refund outcome for THIS
+// cancellation, not a generic "if you paid online, you'll be refunded"
+// line.
+export function orderCancelledByCustomerEmail(order: {
+  id: string;
+  customer_name?: string;
+  items?: any[];
+  total_amount: number;
+  refund: {
+    status: 'not_applicable' | 'refunded' | 'pending_manual' | 'failed';
+    amount?: number;
+    razorpay_refund_id?: string | null;
+  };
+}) {
+  const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
+  const name = order.customer_name || 'there';
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';
+
+  let refundBlock = '';
+  if (order.refund.status === 'refunded') {
+    refundBlock = `
+      <table role="presentation" style="width:100%; border-collapse:collapse; margin: 0 0 20px; background:#f0f9f1; border:1px solid #d5ecd8; border-left: 4px solid #1f7a3d; border-radius: 6px;">
+        <tr>
+          <td style="padding: 14px 16px; font-size: 14px; color:#1a4d2b; line-height:1.6;">
+            <strong>Refund of ${formatINR(order.refund.amount ?? order.total_amount)} initiated.</strong>
+            It has been sent back to your original payment method and usually reflects within 5–7 business days,
+            depending on your bank.
+            ${order.refund.razorpay_refund_id ? `<br /><span style="font-size:12px; color:#4a3d34;">Refund reference: ${order.refund.razorpay_refund_id}</span>` : ''}
+          </td>
+        </tr>
+      </table>`;
+  } else if (order.refund.status === 'pending_manual' || order.refund.status === 'failed') {
+    refundBlock = `
+      <table role="presentation" style="width:100%; border-collapse:collapse; margin: 0 0 20px; background:#fbf1e7; border:1px solid #ecdfd2; border-left: 4px solid ${GOLD_ACCENT}; border-radius: 6px;">
+        <tr>
+          <td style="padding: 14px 16px; font-size: 14px; color:#4a3d34; line-height:1.6;">
+            <strong>Refund of ${formatINR(order.refund.amount ?? order.total_amount)} is being arranged.</strong>
+            Our team will process it to your original payment method within 1–2 business days. You don't need
+            to do anything further — we'll take care of it.
+          </td>
+        </tr>
+      </table>`;
+  }
+  // 'not_applicable' (COD, or nothing was ever charged) -> no refund block at all.
+
+  const html = wrapper(`
+    <h2 style="margin:0 0 4px; color:${BRAND_COLOR}; font-size: 21px;">Hi ${name}, your order has been cancelled</h2>
+    <p style="margin: 0 0 18px; color:#6b5f57; font-size: 13px;">
+      Order <strong style="color:#2b2320;">${shortId}</strong> · placed with ${SITE_NAME}
+    </p>
+    <p style="margin: 0 0 20px; font-size: 14px; color:#4a3d34; line-height:1.6;">
+      As requested, we've cancelled this order. If this wasn't you, or you cancelled by mistake, please reply
+      to this email or reach out to our support team right away and we'll help sort it out.
+    </p>
+    ${refundBlock}
+    ${order.items?.length ? itemsTable(order.items) : ''}
+    <table role="presentation" style="width:100%; margin: 4px 0 24px;">
+      <tr>
+        <td style="text-align:right; font-size:16px; font-weight:bold; padding-top: 6px; border-top: 2px solid ${BRAND_COLOR};">
+          Order total: ${formatINR(order.total_amount)}
+        </td>
+      </tr>
+    </table>
+    <p style="text-align:center; font-size:13px; color:#6b5f57; margin: 0;">
+      We're sorry to see this one go — we'd love to have you shop with us again.
+    </p>
+    <p style="text-align:center; margin-top: 16px;">
+      <a href="${siteUrl}/shop" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+        Continue Shopping
+      </a>
+    </p>
+  `);
+  return { subject: `Order cancelled — ${shortId}`, html };
+}
+
 export function orderStatusUpdateEmail(order: {
   id: string;
   customer_name?: string;
