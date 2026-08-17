@@ -69,6 +69,7 @@ export default function Footer() {
             Help
           </h4>
           <ul className="mt-3 space-y-2 text-sm text-primary-foreground/80">
+            <li><Link href="/track" className="hover:text-secondary">Track Order</Link></li>
             <li><Link href="/cart" className="hover:text-secondary">Cart</Link></li>
             <li><Link href="/checkout" onClick={() => { clearBuyNow(); markCheckoutEntry(); }} className="hover:text-secondary">Checkout</Link></li>
             <li><Link href="/about" className="hover:text-secondary">About Us</Link></li>

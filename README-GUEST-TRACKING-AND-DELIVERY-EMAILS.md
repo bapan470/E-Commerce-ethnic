@@ -76,8 +76,22 @@ Admin → Orders → expand any order row → new **"Test Notifications"** box:
   `customer_email` and update its real status, so use a test order if you
   don't want to touch a live customer's order.
 
+## 4. "Track Order" link in the footer
+Footer → Help column now has a **"Track Order"** link at the top, pointing
+to a new `app/track/page.tsx` — a simple lookup page (Order ID + the email
+used at checkout). It reuses the exact same lookup logic your chat widget's
+"Track my order" already uses (`/api/chat/order-lookup`), so:
+- Logged-in shoppers just see their own recent orders (no typing needed).
+- Guests enter Order ID + checkout email; on a match it takes them straight
+  to `/track/[id]`.
+
+This is what someone lands on if they don't have the order-confirmation
+email handy and just clicks "Track Order" from anywhere on the site.
+
 ## Files changed/added
-- `app/track/[id]/page.tsx` — new, public tracking page
+- `app/track/[id]/page.tsx` — new, public tracking page for a specific order
+- `app/track/page.tsx` — new, public Order ID + email lookup page (footer links here)
+- `components/footer.tsx` — new "Track Order" link in the Help column
 - `app/order-confirmation/[id]/page.tsx` — "Track this order" now points to `/track/[id]`
 - `lib/email-templates.ts` — new `orderArrivingEmail` / `orderOutForDeliveryEmail` templates; existing templates now link to `/track/[id]`
 - `lib/delivery-notifications.ts` — new, shared send-logic used by both the cron job and the admin test panel
