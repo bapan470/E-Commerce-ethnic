@@ -82,13 +82,25 @@ export default function PaymentPendingBanner({
           </div>
         </div>
 
-        {/* Discount highlight — only shown when discount > 0 */}
+        {/* Price breakdown — makes it unmistakable that the order was placed
+            at the original COD price, and this discounted total is only
+            for the online payment (not a price change on the order itself). */}
         {hasDiscount && (
-          <div className="mt-3 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-800">
-            <span className="text-base">🎁</span>
-            You save{' '}
-            <span className="font-bold text-green-700">{formatINR(discountAmt)}</span> by paying
-            online — already applied to your total.
+          <div className="mt-3 rounded-lg border border-green-200 bg-green-50/70 px-3 py-2.5 text-sm">
+            <div className="flex items-center justify-between text-amber-900/70">
+              <span>Order placed at (COD price)</span>
+              <span className="line-through">{formatINR(totalAmount + discountAmt)}</span>
+            </div>
+            <div className="mt-1 flex items-center justify-between font-medium text-green-700">
+              <span className="flex items-center gap-1">
+                <span className="text-base leading-none">🎁</span> Online payment discount
+              </span>
+              <span>-{formatINR(discountAmt)}</span>
+            </div>
+            <div className="mt-1.5 flex items-center justify-between border-t border-green-200 pt-1.5 font-bold text-amber-900">
+              <span>Amount to pay now</span>
+              <span>{formatINR(totalAmount)}</span>
+            </div>
           </div>
         )}
 
@@ -102,23 +114,16 @@ export default function PaymentPendingBanner({
               <CreditCard className="h-3.5 w-3.5" /> UPI · Cards · Net Banking
             </span>
           </div>
-          <div className="flex flex-col items-end gap-1">
-            {hasDiscount && (
-              <p className="text-[11px] text-green-700 font-medium">
-                Saving {formatINR(discountAmt)} vs COD price
-              </p>
-            )}
-            <Button
-              asChild
-              className="shrink-0 bg-amber-600 text-white hover:bg-amber-700 gap-1.5 shadow-sm"
-              size="sm"
-            >
-              <Link href={resumeHref}>
-                Complete Payment — {formatINR(totalAmount)}
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-          </div>
+          <Button
+            asChild
+            className="shrink-0 bg-amber-600 text-white hover:bg-amber-700 gap-1.5 shadow-sm"
+            size="sm"
+          >
+            <Link href={resumeHref}>
+              Complete Payment — {formatINR(totalAmount)}
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
         </div>
       </div>
     </div>

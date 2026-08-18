@@ -42,6 +42,12 @@ type Order = {
   // 'cod' -> 'online', so the admin can still tell this order was
   // originally COD. See 20260923000000_orders_original_payment_method.sql.
   original_payment_method?: string;
+  // Amount shaved off total_amount when "Request Online Payment" (or a
+  // normal online checkout) applied the online-payment discount. Combined
+  // with total_amount this reconstructs the price the order was ORIGINALLY
+  // placed at, i.e. total_amount + online_payment_discount. See
+  // app/api/admin/orders/[id]/request-online-payment/route.ts.
+  online_payment_discount?: number | null;
   tracking_number?: string | null;
   courier_name?: string | null;
   expected_delivery_date?: string | null;
@@ -501,6 +507,17 @@ function OrderRow({
   const [copied, setCopied] = useState(false);
   const shortId = order.id.slice(0, 8).toUpperCase();
 
+  // True once "Request Online Payment" has been used on this order (or it
+  // was a normal online checkout that got the discount) -- lets the admin
+  // see, at a glance, that today's total_amount is a DISCOUNTED price and
+  // what the order was originally placed at, instead of just seeing ₹387
+  // with no context for where the ₹399 the customer actually agreed to went.
+  const discountAmt = Number(order.online_payment_discount ?? 0);
+  const wasConvertedFromCod =
+    order.payment_method !== 'cod' && order.original_payment_method === 'cod';
+  const originalOrderTotal = order.total_amount + discountAmt;
+  const showPriceBreakdown = discountAmt > 0;
+
   const copyId = async () => {
     try {
       await navigator.clipboard.writeText(order.id);
@@ -614,7 +631,23 @@ function OrderRow({
           </div>
         </td>
         <td className="px-4 py-3 align-top text-sm">{order.created_at ? new Date(order.created_at).toLocaleString() : ''}</td>
-        <td className="px-4 py-3 align-top text-sm font-medium">{formatINR(order.total_amount || 0)}</td>
+        <td className="px-4 py-3 align-top text-sm font-medium">
+          {showPriceBreakdown ? (
+            <div
+              className="flex flex-col leading-tight"
+              title={`Ordered at ${formatINR(originalOrderTotal)} (COD price) · ${formatINR(
+                discountAmt
+              )} online-payment discount applied when payment was requested`}
+            >
+              <span className="text-[11px] font-normal text-muted-foreground line-through">
+                {formatINR(originalOrderTotal)}
+              </span>
+              <span>{formatINR(order.total_amount || 0)}</span>
+            </div>
+          ) : (
+            formatINR(order.total_amount || 0)
+          )}
+        </td>
         <td className="px-4 py-3 align-top text-sm">
           <span
             className={`rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -625,12 +658,16 @@ function OrderRow({
           >
             {order.payment_method === 'cod' ? 'COD' : 'Online'}
           </span>
-          {order.payment_method !== 'cod' && order.original_payment_method === 'cod' && (
+          {wasConvertedFromCod && (
             <span
               className="ml-1 inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700"
-              title="Placed as Cash on Delivery, then converted to online payment via 'Request Online Payment'"
+              title={`Placed as Cash on Delivery at ${formatINR(
+                originalOrderTotal
+              )}, then converted to online payment via 'Request Online Payment'${
+                showPriceBreakdown ? ` (${formatINR(discountAmt)} online discount applied)` : ''
+              }`}
             >
-              was COD
+              was COD{showPriceBreakdown ? ` · ${formatINR(originalOrderTotal)}` : ''}
             </span>
           )}
           {order.payment_method === 'cod' && order.status === 'pending' && (
@@ -705,6 +742,32 @@ function OrderRow({
       {open && (
         <tr className="bg-muted/20">
           <td colSpan={10} className="px-4 py-3">
+            {showPriceBreakdown && (
+              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2.5">
+                <h4 className="mb-1.5 text-sm font-semibold text-amber-900">Payment breakdown</h4>
+                <div className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
+                  <div className="flex items-center justify-between sm:flex-col sm:items-start sm:gap-0.5">
+                    <span className="text-muted-foreground">Ordered at (COD price)</span>
+                    <span className="font-medium line-through decoration-muted-foreground/60">
+                      {formatINR(originalOrderTotal)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between sm:flex-col sm:items-start sm:gap-0.5">
+                    <span className="text-muted-foreground">Online payment discount</span>
+                    <span className="font-medium text-green-700">-{formatINR(discountAmt)}</span>
+                  </div>
+                  <div className="flex items-center justify-between sm:flex-col sm:items-start sm:gap-0.5">
+                    <span className="text-muted-foreground">Now charging customer</span>
+                    <span className="font-bold text-amber-900">{formatINR(order.total_amount)}</span>
+                  </div>
+                </div>
+                <p className="mt-1.5 text-[11px] text-amber-700">
+                  This order was placed as COD at {formatINR(originalOrderTotal)}. When online payment
+                  was requested, the standard online-payment discount was applied — the customer only
+                  owes {formatINR(order.total_amount)} now, not the original {formatINR(originalOrderTotal)}.
+                </p>
+              </div>
+            )}
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <div>
                 <h4 className="mb-2 text-sm font-semibold">Items</h4>
