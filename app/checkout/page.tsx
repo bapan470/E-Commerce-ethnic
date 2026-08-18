@@ -34,6 +34,7 @@ import {
   DEFAULT_SHIPPING_SETTINGS,
   fetchShippingSettings,
   checkPincodeServiceability,
+  isValidPincode,
   PincodeResult,
 } from '@/lib/pincode-api';
 import { trackEvent, getSessionId } from '@/lib/track-api';
@@ -901,6 +902,27 @@ export default function CheckoutPage() {
     // always present (shipping labels, state-wise reports, etc).
     if (!stateName.trim()) {
       toast.error('Please select your state');
+      return;
+    }
+
+    // Same class of bug as State above: Phone and PIN code are native
+    // <input required>, so the browser blocks an EMPTY value -- but
+    // `required` only checks presence, not shape. Nothing was checking
+    // that the phone number is actually a 10-digit Indian mobile number or
+    // that the PIN code is a real 6-digit PIN, so "123" or "abc" could
+    // slip through the same way the blank State did. A bad phone number
+    // means the courier/admin can't reach the customer, and a bad PIN
+    // code means Delhivery will reject the shipment later at dispatch
+    // time instead of catching it here where the shopper can still fix it.
+    let phoneDigits = shipPhone.replace(/[^0-9]/g, '');
+    if (phoneDigits.startsWith('91') && phoneDigits.length === 12) phoneDigits = phoneDigits.slice(2);
+    if (phoneDigits.startsWith('0') && phoneDigits.length === 11) phoneDigits = phoneDigits.slice(1);
+    if (!/^[6-9][0-9]{9}$/.test(phoneDigits)) {
+      toast.error('Please enter a valid 10-digit phone number');
+      return;
+    }
+    if (!isValidPincode(pincode)) {
+      toast.error('Please enter a valid 6-digit PIN code');
       return;
     }
 
