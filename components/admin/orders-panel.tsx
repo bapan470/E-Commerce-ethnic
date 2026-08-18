@@ -781,7 +781,7 @@ function OrderRow({
             {/* Price breakdown sits on the left; Items fills the empty space
                 to its right instead of being pushed below as an under-used
                 full-width row. */}
-            <div className="grid gap-3 lg:grid-cols-2">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)]">
               <div>
                 {hasFullBreakdown && (
                   <div className="mb-3 max-w-md rounded-lg border border-border/60 bg-white px-4 py-3">
@@ -958,10 +958,10 @@ function OrderRow({
                     )}
                   </div>
                 </div>
-                <div>
-                  <h4 className="mb-2 text-sm font-semibold">Status History</h4>
-                  <OrderStatusHistory orderId={order.id} />
-                </div>
+              </div>
+              <div>
+                <h4 className="mb-2 text-sm font-semibold">Status History</h4>
+                <OrderStatusHistory orderId={order.id} />
               </div>
             </div>
             <div className="mt-4">
