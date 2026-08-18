@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2, RotateCcw, Truck, IndianRupee, ShieldAlert } from 'lucide-react';
+import { Loader2, RotateCcw, Truck, IndianRupee, ShieldAlert, Package } from 'lucide-react';
 import { formatINR } from '@/lib/format';
 import {
   fetchReturnAutomationSettings,
@@ -19,6 +19,8 @@ type ReturnRow = {
   order_id: string;
   type: 'return' | 'exchange';
   reason: string;
+  reason_key?: string | null;
+  desired_size?: string | null;
   status: string;
   admin_notes?: string | null;
   refund_amount?: number | null;
@@ -29,6 +31,10 @@ type ReturnRow = {
   refund_status?: string | null;
   razorpay_refund_id?: string | null;
   refund_error?: string | null;
+  exchange_courier?: string | null;
+  exchange_tracking_number?: string | null;
+  exchange_shipped_at?: string | null;
+  exchange_ready_date?: string | null;
   order?: {
     customer_name?: string;
     customer_email?: string;
@@ -155,7 +161,8 @@ export default function ReturnsPanel() {
       <div className="flex max-w-xl items-center justify-between gap-4 rounded-lg border border-border/60 bg-card p-5">
         <div>
           <Label htmlFor="return-automation-enabled">
-            {!automation ? 'Loading…' : automation.mode === 'automatic' ? 'Automatic' : 'Manual'} return processing
+            {!automation ? 'Loading…' : automation.mode === 'automatic' ? 'Automatic' : 'Manual'} return
+            processing
           </Label>
           <p className="text-xs text-muted-foreground">
             {automation?.mode === 'automatic'
@@ -200,6 +207,13 @@ function ReturnCard({ r, onUpdated }: { r: ReturnRow; onUpdated: () => void }) {
   const [checkingPickup, setCheckingPickup] = useState(false);
   const [processingRefund, setProcessingRefund] = useState(false);
 
+  // Exchange shipping fields
+  const [exchangeCourier, setExchangeCourier] = useState(r.exchange_courier || '');
+  const [exchangeTracking, setExchangeTracking] = useState(r.exchange_tracking_number || '');
+  const [exchangeReadyDate, setExchangeReadyDate] = useState(r.exchange_ready_date || '');
+  const [shippingExchange, setShippingExchange] = useState(false);
+  const [savingReadyDate, setSavingReadyDate] = useState(false);
+
   const dirty =
     status !== r.status ||
     notes !== (r.admin_notes || '') ||
@@ -207,9 +221,17 @@ function ReturnCard({ r, onUpdated }: { r: ReturnRow; onUpdated: () => void }) {
 
   const isOnlinePaid = r.order?.payment_method === 'online';
   const canSchedulePickup =
-    ['approved', 'requested'].includes(r.status) && r.pickup_status !== 'received' && !r.pickup_waybill;
+    ['approved', 'requested'].includes(r.status) &&
+    r.pickup_status !== 'received' &&
+    !r.pickup_waybill;
   const canCheckPickup = !!r.pickup_waybill && r.pickup_status !== 'received';
-  const canProcessRefund = isOnlinePaid && r.refund_status !== 'refunded' && r.refund_status !== 'not_applicable';
+  const canProcessRefund =
+    isOnlinePaid && r.refund_status !== 'refunded' && r.refund_status !== 'not_applicable';
+
+  const isExchange = r.type === 'exchange';
+  const exchangeAlreadyShipped = !!r.exchange_shipped_at;
+  const canMarkExchangeShipped =
+    isExchange && !exchangeAlreadyShipped && (exchangeCourier.trim() || exchangeTracking.trim());
 
   const save = async () => {
     setSaving(true);
@@ -291,19 +313,77 @@ function ReturnCard({ r, onUpdated }: { r: ReturnRow; onUpdated: () => void }) {
     }
   };
 
+  const markExchangeShipped = async () => {
+    if (!exchangeCourier.trim() && !exchangeTracking.trim()) {
+      toast.error('Courier ya tracking number enter karo');
+      return;
+    }
+    setShippingExchange(true);
+    try {
+      const res = await fetch(`/api/admin/returns/${r.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          exchange_courier: exchangeCourier.trim() || null,
+          exchange_tracking_number: exchangeTracking.trim() || null,
+          exchange_shipped_at: new Date().toISOString(),
+          status: 'completed',
+        }),
+      });
+      if (res.ok) {
+        toast.success('Exchange item marked as shipped — customer ko email gaya');
+        onUpdated();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        toast.error(body.error || 'Failed to mark as shipped');
+      }
+    } catch {
+      toast.error('Failed to mark as shipped');
+    } finally {
+      setShippingExchange(false);
+    }
+  };
+
+  const saveReadyDate = async () => {
+    setSavingReadyDate(true);
+    try {
+      const res = await fetch(`/api/admin/returns/${r.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          exchange_ready_date: exchangeReadyDate || null,
+        }),
+      });
+      if (res.ok) {
+        toast.success('Ready date saved — customer ko email gaya');
+        onUpdated();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        toast.error(body.error || 'Failed to save date');
+      }
+    } catch {
+      toast.error('Failed to save date');
+    } finally {
+      setSavingReadyDate(false);
+    }
+  };
+
   return (
     <div className="rounded-lg border border-border/60 bg-card p-4">
+      {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-medium capitalize">
             {r.type} request{' '}
-            <span className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[r.status] || 'bg-muted'}`}>
+            <span
+              className={`ml-2 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[r.status] || 'bg-muted'}`}
+            >
               {r.status}
             </span>
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Order #{r.order_id.slice(0, 8)} &middot; {r.order?.customer_name || 'Guest'} ({r.order?.customer_email || '—'}) &middot;{' '}
-            {isOnlinePaid ? 'Paid online' : 'COD'}
+            Order #{r.order_id.slice(0, 8)} &middot; {r.order?.customer_name || 'Guest'} (
+            {r.order?.customer_email || '—'}) &middot; {isOnlinePaid ? 'Paid online' : 'COD'}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             Requested {new Date(r.created_at).toLocaleString('en-IN')}
@@ -328,26 +408,53 @@ function ReturnCard({ r, onUpdated }: { r: ReturnRow; onUpdated: () => void }) {
         )}
       </div>
 
+      {/* Reason */}
       <p className="mt-3 text-sm">
         <span className="font-medium">Reason: </span>
         {r.reason}
       </p>
 
-      {/* Pickup + refund automation status */}
+      {/* Desired size — exchange */}
+      {isExchange && r.desired_size && (
+        <p className="mt-1 text-sm">
+          <span className="font-medium">Customer chahta hai: </span>
+          <span className="rounded bg-blue-50 px-1.5 py-0.5 font-mono text-blue-800">{r.desired_size}</span>
+        </p>
+      )}
+
+      {/* Pickup + refund status badges */}
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${PICKUP_COLORS[r.pickup_status] || 'bg-muted'}`}>
+        <span
+          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${PICKUP_COLORS[r.pickup_status] || 'bg-muted'}`}
+        >
           <Truck className="h-3 w-3" /> {PICKUP_LABELS[r.pickup_status] || r.pickup_status}
         </span>
-        {r.pickup_waybill && <span className="text-xs text-muted-foreground">AWB: {r.pickup_waybill}</span>}
+        {r.pickup_waybill && (
+          <span className="text-xs text-muted-foreground">AWB: {r.pickup_waybill}</span>
+        )}
         {r.refund_status && (
-          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${REFUND_COLORS[r.refund_status] || 'bg-muted'}`}>
+          <span
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${REFUND_COLORS[r.refund_status] || 'bg-muted'}`}
+          >
             <IndianRupee className="h-3 w-3" /> {REFUND_LABELS[r.refund_status] || r.refund_status}
           </span>
         )}
+        {isExchange && exchangeAlreadyShipped && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+            <Package className="h-3 w-3" /> Exchange shipped{' '}
+            {r.exchange_courier ? `via ${r.exchange_courier}` : ''}
+            {r.exchange_tracking_number ? ` — ${r.exchange_tracking_number}` : ''}
+          </span>
+        )}
       </div>
-      {r.pickup_error && <p className="mt-1 text-xs text-red-700">Pickup issue: {r.pickup_error}</p>}
-      {r.refund_error && <p className="mt-1 text-xs text-red-700">Refund issue: {r.refund_error}</p>}
+      {r.pickup_error && (
+        <p className="mt-1 text-xs text-red-700">Pickup issue: {r.pickup_error}</p>
+      )}
+      {r.refund_error && (
+        <p className="mt-1 text-xs text-red-700">Refund issue: {r.refund_error}</p>
+      )}
 
+      {/* Action buttons */}
       <div className="mt-3 flex flex-wrap gap-2">
         {canSchedulePickup && (
           <Button size="sm" variant="outline" onClick={schedulePickup} disabled={schedulingPickup}>
@@ -369,6 +476,68 @@ function ReturnCard({ r, onUpdated }: { r: ReturnRow; onUpdated: () => void }) {
         )}
       </div>
 
+      {/* Exchange shipping section */}
+      {isExchange && !exchangeAlreadyShipped && (
+        <div className="mt-4 rounded-md border border-blue-200 bg-blue-50/50 p-3">
+          <p className="mb-2 text-xs font-semibold text-blue-900">
+            📦 New item dispatch (exchange)
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid gap-1">
+              <label className="text-xs font-medium text-muted-foreground">Courier</label>
+              <Input
+                value={exchangeCourier}
+                onChange={(e) => setExchangeCourier(e.target.value)}
+                placeholder="E.g. Delhivery, DTDC, BlueDart"
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="grid gap-1">
+              <label className="text-xs font-medium text-muted-foreground">Tracking number</label>
+              <Input
+                value={exchangeTracking}
+                onChange={(e) => setExchangeTracking(e.target.value)}
+                placeholder="AWB / tracking ID"
+                className="h-8 text-sm"
+              />
+            </div>
+          </div>
+          <div className="mt-2 flex items-end gap-3">
+            <div className="grid gap-1">
+              <label className="text-xs font-medium text-muted-foreground">
+                Stock ready date <span className="text-muted-foreground">(agar abhi nahi hai)</span>
+              </label>
+              <Input
+                type="date"
+                value={exchangeReadyDate}
+                onChange={(e) => setExchangeReadyDate(e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={saveReadyDate}
+              disabled={savingReadyDate || !exchangeReadyDate}
+              className="h-8 text-xs"
+            >
+              {savingReadyDate && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+              Notify ready date
+            </Button>
+          </div>
+          <Button
+            size="sm"
+            className="mt-3 w-full bg-blue-700 text-white hover:bg-blue-800"
+            onClick={markExchangeShipped}
+            disabled={shippingExchange || !canMarkExchangeShipped}
+          >
+            {shippingExchange && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+            Mark Exchange Item as Shipped &amp; Notify Customer
+          </Button>
+        </div>
+      )}
+
+      {/* Status / refund / notes */}
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         <div className="grid gap-1.5">
           <label className="text-xs font-medium text-muted-foreground">Status</label>

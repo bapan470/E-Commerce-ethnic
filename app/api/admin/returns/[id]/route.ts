@@ -14,9 +14,27 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
 
   const body = await req.json().catch(() => ({}));
-  const { status, admin_notes, refund_amount } = body || {};
+  const {
+    status,
+    admin_notes,
+    refund_amount,
+    // Exchange shipping fields
+    exchange_courier,
+    exchange_tracking_number,
+    exchange_shipped_at,
+    exchange_ready_date,
+  } = body || {};
 
-  if (!status && admin_notes === undefined && refund_amount === undefined) {
+  const hasUpdate =
+    status !== undefined ||
+    admin_notes !== undefined ||
+    refund_amount !== undefined ||
+    exchange_courier !== undefined ||
+    exchange_tracking_number !== undefined ||
+    exchange_shipped_at !== undefined ||
+    exchange_ready_date !== undefined;
+
+  if (!hasUpdate) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 });
   }
 
@@ -29,9 +47,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   try {
     const updatePayload: Record<string, any> = {};
-    if (status) updatePayload.status = status;
+    if (status !== undefined) updatePayload.status = status;
     if (admin_notes !== undefined) updatePayload.admin_notes = admin_notes;
     if (refund_amount !== undefined) updatePayload.refund_amount = refund_amount;
+    if (exchange_courier !== undefined) updatePayload.exchange_courier = exchange_courier;
+    if (exchange_tracking_number !== undefined) updatePayload.exchange_tracking_number = exchange_tracking_number;
+    if (exchange_shipped_at !== undefined) updatePayload.exchange_shipped_at = exchange_shipped_at;
+    if (exchange_ready_date !== undefined) updatePayload.exchange_ready_date = exchange_ready_date;
+
     if (status && ['refunded', 'completed', 'rejected'].includes(status)) {
       updatePayload.resolved_at = new Date().toISOString();
     }
@@ -45,8 +68,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
     if (error) throw error;
 
-    // Fetch full order context once — used for the status email below
-    // and for any automation (pickup/refund) this status change kicks off.
+    // Fetch full order context
     const { data: order } = await supabase
       .from('orders')
       .select(
@@ -55,9 +77,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       .eq('id', updated.order_id)
       .single();
 
-    // Approving a return -> auto-schedule the Delhivery reverse pickup
-    // when automation is on. Manual mode leaves it for the admin to
-    // trigger via the "Schedule Pickup" button in the panel.
+    // Auto-schedule pickup on approval
     if (status === 'approved' && order) {
       const mode = await getReturnAutomationMode(supabase);
       if (mode === 'automatic') {
@@ -71,10 +91,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       }
     }
 
-    // Admin explicitly marking a return 'refunded' — this is always an
-    // intentional manual trigger (regardless of the automation toggle,
-    // same spirit as the self-cancellation flow), so fire the real
-    // Razorpay refund now unless it's already been done.
+    // Auto-refund on manual 'refunded' status
     if (status === 'refunded' && order && updated.refund_status !== 'refunded') {
       await processRefundForReturn(supabase, updated, order);
       const { data: refreshed } = await supabase
@@ -85,10 +102,51 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       if (refreshed) updated = refreshed;
     }
 
-    // Notify the customer whenever the status actually changed. (The
-    // automation helpers above already send their own dedicated pickup/
-    // refund emails, so this general one mainly covers approved-without-
-    // pickup / rejected / manual admin-note updates.)
+    // Send exchange shipped email when exchange_shipped_at is set
+    if (exchange_shipped_at && order?.customer_email) {
+      const trackingInfo = exchange_tracking_number
+        ? `Tracking: ${exchange_tracking_number}${exchange_courier ? ` (${exchange_courier})` : ''}`
+        : exchange_courier
+        ? `Courier: ${exchange_courier}`
+        : '';
+      await sendEmail({
+        to: order.customer_email,
+        subject: `Aapka exchange item ship ho gaya — Order #${updated.order_id.slice(0, 8)}`,
+        html: `
+          <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px">
+            <h2 style="margin:0 0 16px">Exchange Item Ship Ho Gaya! 🎉</h2>
+            <p>Namaste ${order.customer_name || 'Customer'},</p>
+            <p>Aapka exchange item dispatch ho gaya hai.</p>
+            ${trackingInfo ? `<p><strong>${trackingInfo}</strong></p>` : ''}
+            <p>Koi sawaal ho toh reply karen.</p>
+          </div>
+        `,
+      }).catch(() => {});
+    }
+
+    // Send ready-date email when exchange_ready_date is set (and not shipping yet)
+    if (exchange_ready_date && !exchange_shipped_at && order?.customer_email) {
+      const readyDateStr = new Date(exchange_ready_date).toLocaleDateString('en-IN', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
+      await sendEmail({
+        to: order.customer_email,
+        subject: `Exchange update — Order #${updated.order_id.slice(0, 8)}`,
+        html: `
+          <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px">
+            <h2 style="margin:0 0 16px">Exchange Update</h2>
+            <p>Namaste ${order.customer_name || 'Customer'},</p>
+            <p>Aapka desired size/colour abhi hamare paas stock mein nahi hai, lekin <strong>${readyDateStr}</strong> tak ready ho jayega.</p>
+            <p>Jaise hi ready hoga, hum turant ship karenge aur aapko tracking details bhejenge.</p>
+            <p>Wait karne ke liye shukriya!</p>
+          </div>
+        `,
+      }).catch(() => {});
+    }
+
+    // General status-change email
     if (status && updated && order?.customer_email) {
       const { subject, html } = returnStatusEmail({
         id: updated.id,
