@@ -31,6 +31,11 @@ export default function PaymentPendingBanner({
   const wasConvertedFromCod = originalPaymentMethod === 'cod';
   const resumeHref = `/checkout/resume/${orderId}?src=${source}`;
 
+  // Supabase returns integers — ensure numeric type before comparing.
+  // Default 0 (column has NOT NULL DEFAULT 0) means no discount was set.
+  const discountAmt = Number(onlinePaymentDiscount ?? 0);
+  const hasDiscount = discountAmt > 0;
+
   return (
     <div className="relative overflow-hidden rounded-xl border-2 border-amber-400 bg-gradient-to-br from-amber-50 via-orange-50 to-amber-50 shadow-sm">
       {/* Accent top bar */}
@@ -77,12 +82,13 @@ export default function PaymentPendingBanner({
           </div>
         </div>
 
-        {/* Discount highlight */}
-        {onlinePaymentDiscount && onlinePaymentDiscount > 0 && (
-          <div className="mt-3 flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-sm font-medium text-green-800">
+        {/* Discount highlight — only shown when discount > 0 */}
+        {hasDiscount && (
+          <div className="mt-3 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm font-medium text-green-800">
             <span className="text-base">🎁</span>
-            You save <span className="font-bold text-green-700">{formatINR(onlinePaymentDiscount)}</span> by
-            paying online — already applied to your total.
+            You save{' '}
+            <span className="font-bold text-green-700">{formatINR(discountAmt)}</span> by paying
+            online — already applied to your total.
           </div>
         )}
 
@@ -96,16 +102,23 @@ export default function PaymentPendingBanner({
               <CreditCard className="h-3.5 w-3.5" /> UPI · Cards · Net Banking
             </span>
           </div>
-          <Button
-            asChild
-            className="shrink-0 bg-amber-600 text-white hover:bg-amber-700 gap-1.5 shadow-sm"
-            size="sm"
-          >
-            <Link href={resumeHref}>
-              Complete Payment — {formatINR(totalAmount)}
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </Button>
+          <div className="flex flex-col items-end gap-1">
+            {hasDiscount && (
+              <p className="text-[11px] text-green-700 font-medium">
+                Saving {formatINR(discountAmt)} vs COD price
+              </p>
+            )}
+            <Button
+              asChild
+              className="shrink-0 bg-amber-600 text-white hover:bg-amber-700 gap-1.5 shadow-sm"
+              size="sm"
+            >
+              <Link href={resumeHref}>
+                Complete Payment — {formatINR(totalAmount)}
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
         </div>
       </div>
     </div>
