@@ -7,7 +7,9 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: '*',
       allow: '/',
-      disallow: ['/admin', '/checkout', '/cart', '/api/'],
+      // Private order/guest pages — contain personal order data.
+      // Must never appear in Google search results.
+      disallow: ['/admin', '/checkout', '/cart', '/api/', '/track/', '/order-confirmation/'],
     },
     sitemap: `${SITE_URL}/sitemap.xml`,
     host: SITE_URL,

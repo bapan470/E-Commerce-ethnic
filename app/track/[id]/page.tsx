@@ -18,6 +18,15 @@ import { DEFAULT_REFERRAL_SETTINGS, type ReferralSettings } from '@/lib/referral
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+// Never let search engines index private order pages.
+export const metadata = {
+  robots: { index: false, follow: false },
+};
+
+// Guest order links expire after this many days from order creation.
+// After expiry the user is redirected to log in to view their order.
+const GUEST_LINK_EXPIRY_DAYS = 90;
+
 const STEPS = [
   { key: 'placed', label: 'Order Placed', icon: CheckCircle2 },
   { key: 'confirmed', label: 'Confirmed', icon: Package },
@@ -39,6 +48,11 @@ export default async function TrackOrderPage({ params }: { params: { id: string 
   const { data: order } = await supabase.from('orders').select('*').eq('id', params.id).single();
 
   if (!order) notFound();
+
+  // Guest link expiry — after GUEST_LINK_EXPIRY_DAYS days, redirect to
+  // login so the customer accesses the order through their account instead.
+  const daysSinceOrder = (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60 * 24);
+  const isExpired = daysSinceOrder > GUEST_LINK_EXPIRY_DAYS;
 
   const items = Array.isArray(order.items) ? order.items : [];
   const isCancelled = order.status === 'cancelled' || order.status === 'failed';
@@ -96,6 +110,34 @@ export default async function TrackOrderPage({ params }: { params: { id: string 
         month: 'long',
       })
     : null;
+
+  // Expired guest link — show a clean message with a login CTA
+  if (isExpired) {
+    return (
+      <div className="container-boutique max-w-2xl py-16 text-center">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Order #{order.id.slice(0, 8).toUpperCase()}
+        </p>
+        <h1 className="mt-2 font-serif text-2xl font-bold text-primary">This link has expired</h1>
+        <p className="mt-3 text-sm text-muted-foreground">
+          Guest order links are valid for {GUEST_LINK_EXPIRY_DAYS} days. Please log in to view your
+          order details and track your shipment.
+        </p>
+        {order.customer_email && (
+          <Button asChild className="mt-6 bg-primary">
+            <Link
+              href={`/login?next=${encodeURIComponent(`/account/orders/${order.id}`)}&email=${encodeURIComponent(order.customer_email)}`}
+            >
+              Log in with {order.customer_email}
+            </Link>
+          </Button>
+        )}
+        <p className="mt-3 text-[11px] text-muted-foreground">
+          We'll email a one-time code — no password needed.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="container-boutique max-w-2xl py-10">

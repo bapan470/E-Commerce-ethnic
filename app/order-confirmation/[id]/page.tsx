@@ -24,6 +24,14 @@ import { DEFAULT_REFERRAL_SETTINGS, type ReferralSettings } from '@/lib/referral
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+// Never let search engines index private order pages.
+export const metadata = {
+  robots: { index: false, follow: false },
+};
+
+// Guest order-confirmation links expire after this many days.
+const GUEST_LINK_EXPIRY_DAYS = 90;
+
 // Badge styling per order.status. Keeps this page in sync with whatever
 // the admin last set from Admin -> Orders (paid/shipped/delivered/
 // cancelled/failed), instead of always reading "placed successfully".
@@ -41,6 +49,10 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
   const { data: order } = await supabase.from('orders').select('*').eq('id', params.id).single();
 
   if (!order) notFound();
+
+  // Guest link expiry check
+  const daysSinceOrder = (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60 * 24);
+  const isExpired = daysSinceOrder > GUEST_LINK_EXPIRY_DAYS;
 
   const { cancellation_window_hours: CANCELLATION_WINDOW_HOURS } = await fetchFulfillmentSettings();
   const hoursSinceOrder = (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60);
@@ -105,6 +117,33 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
     state?: string;
     pincode?: string;
   } | null;
+
+  if (isExpired) {
+    return (
+      <div className="container-boutique max-w-2xl py-16 text-center">
+        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          Order #{order.id.slice(0, 8).toUpperCase()}
+        </p>
+        <h1 className="mt-2 font-serif text-2xl font-bold text-primary">This link has expired</h1>
+        <p className="mt-3 text-sm text-muted-foreground">
+          Guest order links are valid for {GUEST_LINK_EXPIRY_DAYS} days. Please log in to view your
+          order details and invoice.
+        </p>
+        {order.customer_email && (
+          <Button asChild className="mt-6 bg-primary">
+            <Link
+              href={`/login?next=${encodeURIComponent(`/account/orders/${order.id}`)}&email=${encodeURIComponent(order.customer_email)}`}
+            >
+              Log in with {order.customer_email}
+            </Link>
+          </Button>
+        )}
+        <p className="mt-3 text-[11px] text-muted-foreground">
+          We'll email a one-time code — no password needed.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="container-boutique max-w-3xl py-10">
