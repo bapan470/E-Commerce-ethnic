@@ -49,13 +49,14 @@ export async function POST(req: NextRequest) {
 
     // Clear abandoned cart if exists
     if (order.customer_email) {
-      await supabase
+      supabase
         .from("abandoned_carts")
         .update({ recovered: true })
         .eq('email', order.customer_email)
         .eq('recovered', false)
-        .then(() => {})
-        .catch(() => {});
+        .catch(() => {
+          // Silently ignore errors
+        });
     }
 
     // Best-effort: alert the store owner/admin so they don't have to keep

@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { Eye, Package, TrendingUp, DollarSign, Calendar, AlertCircle } from 'lucide-react';
+import { Eye, Package, TrendingUp, DollarSign, Calendar } from 'lucide-react';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,6 +23,187 @@ interface Order {
 }
 
 type TabType = 'personal' | 'resale';
+
+// Memoized Order Card Component
+const OrderCard = memo(({ order, onView }: { order: Order; onView: (order: Order) => void }) => (
+  <div className="bg-white p-6 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-md transition mb-4">
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+      <div>
+        <p className="text-gray-600 text-sm">Order ID</p>
+        <p className="font-mono font-bold text-gray-900">{order.order_id.slice(-8)}</p>
+      </div>
+
+      <div>
+        <p className="text-gray-600 text-sm">Date</p>
+        <p className="font-medium text-gray-900">
+          {new Date(order.created_at).toLocaleDateString('en-IN')}
+        </p>
+      </div>
+
+      <div>
+        <p className="text-gray-600 text-sm">Status</p>
+        <span className={`text-sm font-semibold px-3 py-1 rounded-full inline-block ${
+          order.order_status === 'completed'
+            ? 'bg-green-100 text-green-800'
+            : order.order_status === 'pending'
+            ? 'bg-yellow-100 text-yellow-800'
+            : 'bg-gray-100 text-gray-800'
+        }`}>
+          {order.order_status || 'Pending'}
+        </span>
+      </div>
+    </div>
+
+    <div className="bg-gray-50 p-4 rounded-lg mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        {order.base_cost && (
+          <div>
+            <p className="text-gray-600 text-xs uppercase tracking-wide">Base Cost</p>
+            <p className="text-lg font-bold text-gray-900">₹{order.base_cost.toFixed(2)}</p>
+          </div>
+        )}
+        
+        <div>
+          <p className="text-gray-600 text-xs uppercase tracking-wide">
+            {order.order_type === 'resale' ? 'Final Price' : 'Total Amount'}
+          </p>
+          <p className="text-lg font-bold text-gray-900">₹{order.total_amount.toFixed(2)}</p>
+        </div>
+
+        {order.order_type === 'resale' && order.profit && (
+          <div>
+            <p className="text-gray-600 text-xs uppercase tracking-wide">Your Profit</p>
+            <p className="text-lg font-bold text-green-600">₹{order.profit.toFixed(2)}</p>
+          </div>
+        )}
+      </div>
+    </div>
+
+    <button
+      onClick={() => onView(order)}
+      className="w-full md:w-auto bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition font-medium text-sm flex items-center justify-center gap-2"
+    >
+      <Eye className="w-4 h-4" />
+      View Details
+    </button>
+  </div>
+));
+
+OrderCard.displayName = 'OrderCard';
+
+// Memoized Tab Button
+const TabButton = memo(({ tab, label, count, isActive, onClick }: { 
+  tab: TabType; 
+  label: string; 
+  count: number;
+  isActive: boolean;
+  onClick: () => void;
+}) => (
+  <button
+    onClick={onClick}
+    className={`px-6 py-3 font-semibold text-sm transition-all border-b-2 ${
+      isActive
+        ? 'text-blue-600 border-blue-600'
+        : 'text-gray-600 border-transparent hover:text-gray-900'
+    }`}
+  >
+    {label}
+    <span className="ml-2 px-2 py-1 bg-gray-100 text-gray-800 rounded-full text-xs">
+      {count}
+    </span>
+  </button>
+));
+
+TabButton.displayName = 'TabButton';
+
+// Memoized Modal Component
+const OrderModal = memo(({ order, onClose }: { order: Order | null; onClose: () => void }) => {
+  if (!order) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={onClose}>
+      <div 
+        className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex justify-between items-start mb-6 pb-6 border-b">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900">Order Details</h2>
+            <p className="text-gray-600 text-sm mt-1">Order #{order.order_id.slice(-8)}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-6 mb-6">
+          <div>
+            <p className="text-gray-600 text-sm">Order Date</p>
+            <p className="text-lg font-bold text-gray-900">
+              {new Date(order.created_at).toLocaleDateString('en-IN')}
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-600 text-sm">Order Status</p>
+            <span className={`text-lg font-semibold px-3 py-1 rounded-full inline-block ${
+              order.order_status === 'completed'
+                ? 'bg-green-100 text-green-800'
+                : 'bg-yellow-100 text-yellow-800'
+            }`}>
+              {order.order_status || 'Pending'}
+            </span>
+          </div>
+          <div>
+            <p className="text-gray-600 text-sm">Order Type</p>
+            <span className={`text-lg font-semibold px-3 py-1 rounded-full inline-block ${
+              order.order_type === 'resale'
+                ? 'bg-purple-100 text-purple-800'
+                : 'bg-blue-100 text-blue-800'
+            }`}>
+              {order.order_type === 'resale' ? 'Resale' : 'Normal'}
+            </span>
+          </div>
+        </div>
+
+        <div className="bg-gray-50 p-6 rounded-lg mb-6">
+          <h3 className="font-bold text-gray-900 mb-4">Price Structure</h3>
+          <div className="space-y-3">
+            {order.base_cost && order.order_type === 'resale' && (
+              <div className="flex justify-between items-center pb-3 border-b">
+                <span className="text-gray-600">Base Cost (What you bought for)</span>
+                <span className="font-bold text-gray-900 text-lg">₹{order.base_cost.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between items-center pb-3 border-b">
+              <span className="text-gray-600">
+                {order.order_type === 'resale' ? 'Selling Price' : 'Order Total'}
+              </span>
+              <span className="font-bold text-gray-900 text-lg">₹{order.total_amount.toFixed(2)}</span>
+            </div>
+            {order.profit && order.order_type === 'resale' && (
+              <div className="flex justify-between items-center pt-2">
+                <span className="text-green-600 font-bold">Your Profit Margin</span>
+                <span className="font-bold text-green-600 text-lg">₹{order.profit.toFixed(2)}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <button
+          onClick={onClose}
+          className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-bold"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  );
+});
+
+OrderModal.displayName = 'OrderModal';
 
 export default function AccountOrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -71,13 +252,13 @@ export default function AccountOrdersPage() {
     }
   };
 
-  const getTabOrders = () => {
+  // Memoized tab orders - instant switching!
+  const tabOrders = useMemo(() => {
     return orders.filter(order => order.order_type === activeTab);
-  };
+  }, [orders, activeTab]);
 
-  const tabOrders = getTabOrders();
-
-  const calculateStats = () => {
+  // Memoized stats calculation
+  const stats = useMemo(() => {
     if (activeTab === 'personal') {
       const personalOrders = orders.filter(o => o.order_type === 'normal');
       return {
@@ -91,94 +272,23 @@ export default function AccountOrdersPage() {
         total: resaleOrders.reduce((sum, o) => sum + (o.profit || 0), 0),
       };
     }
-  };
+  }, [orders, activeTab]);
 
-  const stats = calculateStats();
+  // Memoized callbacks for instant interaction
+  const handleTabClick = useCallback((tab: TabType) => {
+    setActiveTab(tab);
+  }, []);
 
-  const TabButton = ({ tab, label, count }: { tab: TabType; label: string; count: number }) => (
-    <button
-      onClick={() => setActiveTab(tab)}
-      className={`px-6 py-3 font-semibold text-sm transition-all border-b-2 ${
-        activeTab === tab
-          ? 'text-blue-600 border-blue-600'
-          : 'text-gray-600 border-transparent hover:text-gray-900'
-      }`}
-    >
-      {label}
-      <span className="ml-2 px-2 py-1 bg-gray-100 text-gray-800 rounded-full text-xs">
-        {count}
-      </span>
-    </button>
-  );
+  const handleViewOrder = useCallback((order: Order) => {
+    setSelectedOrder(order);
+  }, []);
 
-  const OrderCard = ({ order }: { order: Order }) => (
-    <div className="bg-white p-6 rounded-lg border border-gray-200 hover:border-gray-300 hover:shadow-md transition mb-4">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-        {/* Order Info */}
-        <div>
-          <p className="text-gray-600 text-sm">Order ID</p>
-          <p className="font-mono font-bold text-gray-900">{order.order_id.slice(-8)}</p>
-        </div>
+  const handleCloseModal = useCallback(() => {
+    setSelectedOrder(null);
+  }, []);
 
-        {/* Date */}
-        <div>
-          <p className="text-gray-600 text-sm">Date</p>
-          <p className="font-medium text-gray-900">
-            {new Date(order.created_at).toLocaleDateString('en-IN')}
-          </p>
-        </div>
-
-        {/* Status */}
-        <div>
-          <p className="text-gray-600 text-sm">Status</p>
-          <span className={`text-sm font-semibold px-3 py-1 rounded-full inline-block ${
-            order.order_status === 'completed'
-              ? 'bg-green-100 text-green-800'
-              : order.order_status === 'pending'
-              ? 'bg-yellow-100 text-yellow-800'
-              : 'bg-gray-100 text-gray-800'
-          }`}>
-            {order.order_status || 'Pending'}
-          </span>
-        </div>
-      </div>
-
-      {/* Price Section */}
-      <div className="bg-gray-50 p-4 rounded-lg mb-4">
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          {order.base_cost && activeTab === 'resale' && (
-            <div>
-              <p className="text-gray-600 text-xs uppercase tracking-wide">Base Cost</p>
-              <p className="text-lg font-bold text-gray-900">₹{order.base_cost.toFixed(2)}</p>
-            </div>
-          )}
-          
-          <div>
-            <p className="text-gray-600 text-xs uppercase tracking-wide">
-              {activeTab === 'resale' ? 'Final Price' : 'Total Amount'}
-            </p>
-            <p className="text-lg font-bold text-gray-900">₹{order.total_amount.toFixed(2)}</p>
-          </div>
-
-          {activeTab === 'resale' && order.profit && (
-            <div>
-              <p className="text-gray-600 text-xs uppercase tracking-wide">Your Profit</p>
-              <p className="text-lg font-bold text-green-600">₹{order.profit.toFixed(2)}</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* View Details Button */}
-      <button
-        onClick={() => setSelectedOrder(order)}
-        className="w-full md:w-auto bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition font-medium text-sm flex items-center justify-center gap-2"
-      >
-        <Eye className="w-4 h-4" />
-        View Details
-      </button>
-    </div>
-  );
+  const personalCount = useMemo(() => orders.filter(o => o.order_type === 'normal').length, [orders]);
+  const resaleCount = useMemo(() => orders.filter(o => o.order_type === 'resale').length, [orders]);
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 md:px-8">
@@ -189,11 +299,23 @@ export default function AccountOrdersPage() {
           <p className="text-gray-600 text-sm mt-1">Track and manage all your orders</p>
         </div>
 
-        {/* Tabs */}
+        {/* Tabs - OPTIMIZED FOR SPEED */}
         <div className="bg-white border-b border-gray-200 mb-6">
           <div className="flex gap-8">
-            <TabButton tab="personal" label="Personal Orders" count={orders.filter(o => o.order_type === 'normal').length} />
-            <TabButton tab="resale" label="Resale Orders" count={orders.filter(o => o.order_type === 'resale').length} />
+            <TabButton 
+              tab="personal" 
+              label="Personal Orders" 
+              count={personalCount}
+              isActive={activeTab === 'personal'}
+              onClick={() => handleTabClick('personal')}
+            />
+            <TabButton 
+              tab="resale" 
+              label="Resale Orders" 
+              count={resaleCount}
+              isActive={activeTab === 'resale'}
+              onClick={() => handleTabClick('resale')}
+            />
           </div>
         </div>
 
@@ -241,111 +363,19 @@ export default function AccountOrdersPage() {
           ) : (
             <div>
               {tabOrders.map(order => (
-                <OrderCard key={order.order_id} order={order} />
+                <OrderCard 
+                  key={order.order_id} 
+                  order={order}
+                  onView={handleViewOrder}
+                />
               ))}
             </div>
           )}
         </div>
       </div>
 
-      {/* Order Detail Modal */}
-      {selectedOrder && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
-            {/* Header */}
-            <div className="flex justify-between items-start mb-6 pb-6 border-b">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900">Order Details</h2>
-                <p className="text-gray-600 text-sm mt-1">Order #{selectedOrder.order_id.slice(-8)}</p>
-              </div>
-              <button
-                onClick={() => setSelectedOrder(null)}
-                className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Order Info */}
-            <div className="grid grid-cols-2 gap-6 mb-6">
-              <div>
-                <p className="text-gray-600 text-sm">Order Date</p>
-                <p className="text-lg font-bold text-gray-900">
-                  {new Date(selectedOrder.created_at).toLocaleDateString('en-IN')}
-                </p>
-              </div>
-              <div>
-                <p className="text-gray-600 text-sm">Order Status</p>
-                <span className={`text-lg font-semibold px-3 py-1 rounded-full inline-block ${
-                  selectedOrder.order_status === 'completed'
-                    ? 'bg-green-100 text-green-800'
-                    : 'bg-yellow-100 text-yellow-800'
-                }`}>
-                  {selectedOrder.order_status || 'Pending'}
-                </span>
-              </div>
-              <div>
-                <p className="text-gray-600 text-sm">Order Type</p>
-                <span className={`text-lg font-semibold px-3 py-1 rounded-full inline-block ${
-                  selectedOrder.order_type === 'resale'
-                    ? 'bg-purple-100 text-purple-800'
-                    : 'bg-blue-100 text-blue-800'
-                }`}>
-                  {selectedOrder.order_type === 'resale' ? 'Resale' : 'Normal'}
-                </span>
-              </div>
-            </div>
-
-            {/* Price Breakdown */}
-            <div className="bg-gray-50 p-6 rounded-lg mb-6">
-              <h3 className="font-bold text-gray-900 mb-4">Price Structure</h3>
-              <div className="space-y-3">
-                {selectedOrder.base_cost && selectedOrder.order_type === 'resale' && (
-                  <div className="flex justify-between items-center pb-3 border-b">
-                    <span className="text-gray-600">Base Cost (What you bought for)</span>
-                    <span className="font-bold text-gray-900 text-lg">₹{selectedOrder.base_cost.toFixed(2)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between items-center pb-3 border-b">
-                  <span className="text-gray-600">
-                    {selectedOrder.order_type === 'resale' ? 'Selling Price' : 'Order Total'}
-                  </span>
-                  <span className="font-bold text-gray-900 text-lg">₹{selectedOrder.total_amount.toFixed(2)}</span>
-                </div>
-                {selectedOrder.profit && selectedOrder.order_type === 'resale' && (
-                  <div className="flex justify-between items-center pt-2">
-                    <span className="text-green-600 font-bold">Your Profit Margin</span>
-                    <span className="font-bold text-green-600 text-lg">₹{selectedOrder.profit.toFixed(2)}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Items */}
-            {selectedOrder.items && selectedOrder.items.length > 0 && (
-              <div className="mb-6">
-                <h3 className="font-bold text-gray-900 mb-3">Items</h3>
-                <div className="space-y-2">
-                  {selectedOrder.items.map((item: any, idx: number) => (
-                    <div key={idx} className="flex justify-between p-3 bg-gray-50 rounded">
-                      <span className="text-gray-700">{item.name} x {item.quantity}</span>
-                      <span className="font-bold text-gray-900">₹{(item.price * item.quantity).toFixed(2)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Close Button */}
-            <button
-              onClick={() => setSelectedOrder(null)}
-              className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition font-bold"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Order Detail Modal - OPTIMIZED */}
+      <OrderModal order={selectedOrder} onClose={handleCloseModal} />
     </div>
   );
 }
