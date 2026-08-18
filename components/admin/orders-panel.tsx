@@ -778,120 +778,125 @@ function OrderRow({
       {open && (
         <tr className="bg-muted/20">
           <td colSpan={10} className="px-4 py-3">
-            {hasFullBreakdown && (
-              <div className="mb-3 max-w-md rounded-lg border border-border/60 bg-white px-4 py-3">
-                <h4 className="mb-2 text-sm font-semibold">Price breakdown</h4>
-                <div className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-sm">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span className="text-right tabular-nums">{formatINR(order.subtotal || 0)}</span>
-                  {couponDiscountAmt > 0 && (
-                    <>
-                      <span className="text-green-700">
-                        Coupon discount{order.coupon_code ? ` (${order.coupon_code})` : ''}
-                      </span>
-                      <span className="text-right tabular-nums text-green-700">-{formatINR(couponDiscountAmt)}</span>
-                    </>
-                  )}
-                  {giftCardDiscountAmt > 0 && (
-                    <>
-                      <span className="text-green-700">
-                        Gift card{order.gift_card_code ? ` (${order.gift_card_code})` : ''}
-                      </span>
-                      <span className="text-right tabular-nums text-green-700">-{formatINR(giftCardDiscountAmt)}</span>
-                    </>
-                  )}
-                  {loyaltyDiscountAmt > 0 && (
-                    <>
-                      <span className="text-green-700">
-                        Loyalty points
-                        {order.loyalty_points_redeemed ? ` (${order.loyalty_points_redeemed} pts)` : ''}
-                      </span>
-                      <span className="text-right tabular-nums text-green-700">-{formatINR(loyaltyDiscountAmt)}</span>
-                    </>
-                  )}
-                  {discountAmt > 0 && (
-                    <>
-                      <span className="text-green-700">Online payment discount</span>
-                      <span className="text-right tabular-nums text-green-700">-{formatINR(discountAmt)}</span>
-                    </>
-                  )}
-                  <span className="text-muted-foreground">Shipping</span>
-                  <span className="text-right tabular-nums">{shippingAmt > 0 ? formatINR(shippingAmt) : 'Free'}</span>
-                  <span className="text-muted-foreground">Tax (GST, included)</span>
-                  <span className="text-right tabular-nums">{formatINR(gstAmt)}</span>
-                  <span className="border-t pt-1 font-semibold">Total</span>
-                  <span className="border-t pt-1 text-right font-semibold tabular-nums">
-                    {formatINR(order.total_amount || 0)}
-                  </span>
-                </div>
-                {/* Unambiguous callout: exactly what changes hands and when,
-                    so the admin never has to guess whether this order's
-                    total_amount is a COD-collect figure or an already-paid
-                    figure. */}
-                <div
-                  className={`mt-3 rounded-md px-3 py-2 text-sm font-semibold ${
-                    isCod ? 'bg-amber-50 text-amber-900' : 'bg-emerald-50 text-emerald-800'
-                  }`}
-                >
-                  {isCod
-                    ? `Collect ${formatINR(order.total_amount || 0)} from customer on delivery (COD)`
-                    : `${formatINR(order.total_amount || 0)} already paid online by customer`}
-                </div>
-                {order.is_reseller_order && (
-                  <div className="mt-3 rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2.5">
-                    <h5 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-amber-900">
-                      Reseller settlement{order.reseller_brand_name ? ` — ${order.reseller_brand_name}` : ''}
-                    </h5>
+            {/* Price breakdown sits on the left; Items fills the empty space
+                to its right instead of being pushed below as an under-used
+                full-width row. */}
+            <div className="grid gap-3 lg:grid-cols-2">
+              <div>
+                {hasFullBreakdown && (
+                  <div className="mb-3 max-w-md rounded-lg border border-border/60 bg-white px-4 py-3">
+                    <h4 className="mb-2 text-sm font-semibold">Price breakdown</h4>
                     <div className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-sm">
-                      <span className="text-muted-foreground">
-                        Reseller sold this to their customer for
-                      </span>
-                      <span className="text-right tabular-nums">{formatINR(resellerSellingPrice)}</span>
-                      <span className="text-muted-foreground">
-                        Store's cost (what's shown above as Total)
-                      </span>
-                      <span className="text-right tabular-nums">{formatINR(order.total_amount || 0)}</span>
-                      <span className="font-semibold text-amber-900">Margin you owe the reseller</span>
-                      <span className="text-right font-semibold tabular-nums text-amber-900">
-                        {formatINR(resellerMargin)}
+                      <span className="text-muted-foreground">Subtotal</span>
+                      <span className="text-right tabular-nums">{formatINR(order.subtotal || 0)}</span>
+                      {couponDiscountAmt > 0 && (
+                        <>
+                          <span className="text-green-700">
+                            Coupon discount{order.coupon_code ? ` (${order.coupon_code})` : ''}
+                          </span>
+                          <span className="text-right tabular-nums text-green-700">-{formatINR(couponDiscountAmt)}</span>
+                        </>
+                      )}
+                      {giftCardDiscountAmt > 0 && (
+                        <>
+                          <span className="text-green-700">
+                            Gift card{order.gift_card_code ? ` (${order.gift_card_code})` : ''}
+                          </span>
+                          <span className="text-right tabular-nums text-green-700">-{formatINR(giftCardDiscountAmt)}</span>
+                        </>
+                      )}
+                      {loyaltyDiscountAmt > 0 && (
+                        <>
+                          <span className="text-green-700">
+                            Loyalty points
+                            {order.loyalty_points_redeemed ? ` (${order.loyalty_points_redeemed} pts)` : ''}
+                          </span>
+                          <span className="text-right tabular-nums text-green-700">-{formatINR(loyaltyDiscountAmt)}</span>
+                        </>
+                      )}
+                      {discountAmt > 0 && (
+                        <>
+                          <span className="text-green-700">Online payment discount</span>
+                          <span className="text-right tabular-nums text-green-700">-{formatINR(discountAmt)}</span>
+                        </>
+                      )}
+                      <span className="text-muted-foreground">Shipping</span>
+                      <span className="text-right tabular-nums">{shippingAmt > 0 ? formatINR(shippingAmt) : 'Free'}</span>
+                      <span className="text-muted-foreground">Tax (GST, included)</span>
+                      <span className="text-right tabular-nums">{formatINR(gstAmt)}</span>
+                      <span className="border-t pt-1 font-semibold">Total</span>
+                      <span className="border-t pt-1 text-right font-semibold tabular-nums">
+                        {formatINR(order.total_amount || 0)}
                       </span>
                     </div>
+                    {/* Unambiguous callout: exactly what changes hands and when,
+                        so the admin never has to guess whether this order's
+                        total_amount is a COD-collect figure or an already-paid
+                        figure. */}
+                    <div
+                      className={`mt-3 rounded-md px-3 py-2 text-sm font-semibold ${
+                        isCod ? 'bg-amber-50 text-amber-900' : 'bg-emerald-50 text-emerald-800'
+                      }`}
+                    >
+                      {isCod
+                        ? `Collect ${formatINR(order.total_amount || 0)} from customer on delivery (COD)`
+                        : `${formatINR(order.total_amount || 0)} already paid online by customer`}
+                    </div>
+                    {order.is_reseller_order && (
+                      <div className="mt-3 rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2.5">
+                        <h5 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-amber-900">
+                          Reseller settlement{order.reseller_brand_name ? ` — ${order.reseller_brand_name}` : ''}
+                        </h5>
+                        <div className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-sm">
+                          <span className="text-muted-foreground">
+                            Reseller sold this to their customer for
+                          </span>
+                          <span className="text-right tabular-nums">{formatINR(resellerSellingPrice)}</span>
+                          <span className="text-muted-foreground">
+                            Store's cost (what's shown above as Total)
+                          </span>
+                          <span className="text-right tabular-nums">{formatINR(order.total_amount || 0)}</span>
+                          <span className="font-semibold text-amber-900">Margin you owe the reseller</span>
+                          <span className="text-right font-semibold tabular-nums text-amber-900">
+                            {formatINR(resellerMargin)}
+                          </span>
+                        </div>
+                        <p className="mt-1.5 text-[11px] text-amber-700">
+                          The {formatINR(order.total_amount || 0)} above is only the store's cost price — it does
+                          NOT include the reseller's margin. Pay the reseller {formatINR(resellerMargin)} separately;
+                          that amount is never collected from the end customer through this order.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {showPriceBreakdown && (
+                  <div className="mb-3 max-w-md rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2.5">
+                    <h4 className="mb-1.5 text-sm font-semibold text-amber-900">Payment breakdown</h4>
+                    <div className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
+                      <div className="flex items-center justify-between sm:flex-col sm:items-start sm:gap-0.5">
+                        <span className="text-muted-foreground">Ordered at (COD price)</span>
+                        <span className="font-medium line-through decoration-muted-foreground/60">
+                          {formatINR(originalOrderTotal)}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between sm:flex-col sm:items-start sm:gap-0.5">
+                        <span className="text-muted-foreground">Online payment discount</span>
+                        <span className="font-medium text-green-700">-{formatINR(discountAmt)}</span>
+                      </div>
+                      <div className="flex items-center justify-between sm:flex-col sm:items-start sm:gap-0.5">
+                        <span className="text-muted-foreground">Now charging customer</span>
+                        <span className="font-bold text-amber-900">{formatINR(order.total_amount)}</span>
+                      </div>
+                    </div>
                     <p className="mt-1.5 text-[11px] text-amber-700">
-                      The {formatINR(order.total_amount || 0)} above is only the store's cost price — it does
-                      NOT include the reseller's margin. Pay the reseller {formatINR(resellerMargin)} separately;
-                      that amount is never collected from the end customer through this order.
+                      This order was placed as COD at {formatINR(originalOrderTotal)}. When online payment
+                      was requested, the standard online-payment discount was applied — the customer only
+                      owes {formatINR(order.total_amount)} now, not the original {formatINR(originalOrderTotal)}.
                     </p>
                   </div>
                 )}
               </div>
-            )}
-            {showPriceBreakdown && (
-              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2.5">
-                <h4 className="mb-1.5 text-sm font-semibold text-amber-900">Payment breakdown</h4>
-                <div className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
-                  <div className="flex items-center justify-between sm:flex-col sm:items-start sm:gap-0.5">
-                    <span className="text-muted-foreground">Ordered at (COD price)</span>
-                    <span className="font-medium line-through decoration-muted-foreground/60">
-                      {formatINR(originalOrderTotal)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between sm:flex-col sm:items-start sm:gap-0.5">
-                    <span className="text-muted-foreground">Online payment discount</span>
-                    <span className="font-medium text-green-700">-{formatINR(discountAmt)}</span>
-                  </div>
-                  <div className="flex items-center justify-between sm:flex-col sm:items-start sm:gap-0.5">
-                    <span className="text-muted-foreground">Now charging customer</span>
-                    <span className="font-bold text-amber-900">{formatINR(order.total_amount)}</span>
-                  </div>
-                </div>
-                <p className="mt-1.5 text-[11px] text-amber-700">
-                  This order was placed as COD at {formatINR(originalOrderTotal)}. When online payment
-                  was requested, the standard online-payment discount was applied — the customer only
-                  owes {formatINR(order.total_amount)} now, not the original {formatINR(originalOrderTotal)}.
-                </p>
-              </div>
-            )}
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <div>
                 <h4 className="mb-2 text-sm font-semibold">Items</h4>
                 <ul className="space-y-2 text-sm">
@@ -942,6 +947,8 @@ function OrderRow({
                   ))}
                 </ul>
               </div>
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <div>
                 <h4 className="mb-2 text-sm font-semibold">Shipping</h4>
                 <div className="text-sm text-muted-foreground">
