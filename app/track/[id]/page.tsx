@@ -7,6 +7,7 @@ import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import OrderTracking from '@/components/order/order-tracking';
+import PaymentPendingBanner from '@/components/order/payment-pending-banner';
 import { DEFAULT_LOYALTY_SETTINGS, type LoyaltySettings } from '@/lib/loyalty-api';
 import { DEFAULT_REFERRAL_SETTINGS, type ReferralSettings } from '@/lib/referrals-api';
 
@@ -56,6 +57,7 @@ export default async function TrackOrderPage({ params }: { params: { id: string 
 
   const items = Array.isArray(order.items) ? order.items : [];
   const isCancelled = order.status === 'cancelled' || order.status === 'failed';
+  const isUnpaidPending = order.status === 'pending' && order.payment_method !== 'cod';
   const stepIdx = currentStepIndex(order);
 
   // Loyalty points preview — mirrors the block on /order-confirmation/[id].
@@ -190,6 +192,18 @@ export default async function TrackOrderPage({ params }: { params: { id: string 
             This order was {order.status === 'cancelled' ? 'cancelled' : 'not completed'}. Reach out to support if
             you think this is a mistake.
           </p>
+        </div>
+      )}
+
+      {isUnpaidPending && (
+        <div className="mt-6">
+          <PaymentPendingBanner
+            orderId={order.id}
+            totalAmount={order.total_amount}
+            originalPaymentMethod={order.original_payment_method}
+            onlinePaymentDiscount={order.online_payment_discount}
+            source="track"
+          />
         </div>
       )}
 

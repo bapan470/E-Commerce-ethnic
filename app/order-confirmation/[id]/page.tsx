@@ -10,6 +10,7 @@ import OrderTracking from '@/components/order/order-tracking';
 import PurchaseTracker from '@/components/analytics/purchase-tracker';
 import TrustpilotInvitation from '@/components/analytics/trustpilot-invitation';
 import CancelOrHelp from '@/components/order/cancel-or-help';
+import PaymentPendingBanner from '@/components/order/payment-pending-banner';
 import { fetchFulfillmentSettings } from '@/lib/marketing-api';
 import { DEFAULT_LOYALTY_SETTINGS, type LoyaltySettings } from '@/lib/loyalty-api';
 import { DEFAULT_REFERRAL_SETTINGS, type ReferralSettings } from '@/lib/referrals-api';
@@ -67,6 +68,7 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
   // exact same issue. Wrapped defensively too, since this is just a
   // "nice to have" preview and shouldn't be able to take down the page.
   const isCancelledOrFailed = order.status === 'cancelled' || order.status === 'failed';
+  const isUnpaidPending = order.status === 'pending' && order.payment_method !== 'cod';
   const orderTotal = Number(order.total_amount) || 0;
   let loyaltySettings: LoyaltySettings = DEFAULT_LOYALTY_SETTINGS;
   let projectedPoints = 0;
@@ -210,6 +212,18 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
           cancellationWindowHours={CANCELLATION_WINDOW_HOURS}
         />
       </div>
+
+      {isUnpaidPending && (
+        <div className="mt-6">
+          <PaymentPendingBanner
+            orderId={order.id}
+            totalAmount={order.total_amount}
+            originalPaymentMethod={order.original_payment_method}
+            onlinePaymentDiscount={order.online_payment_discount}
+            source="confirmation"
+          />
+        </div>
+      )}
 
       <div className="mt-8 rounded-lg border border-border/60 bg-card p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-2">

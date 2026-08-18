@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import Image from 'next/image';
-import { Package, CreditCard } from 'lucide-react';
+import { Package } from 'lucide-react';
 import { getSupabaseServer, getCurrentUser } from '@/lib/supabase-server-auth';
 import { formatINR } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import PaymentPendingBanner from '@/components/order/payment-pending-banner';
 
 const STATUS_VARIANT: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-800',
@@ -56,7 +57,6 @@ export default async function OrdersPage() {
             // list had no idea why it said "pending" or what to do about
             // it.
             const isUnpaidPending = order.status === 'pending' && order.payment_method !== 'cod';
-            const wasConvertedFromCod = isUnpaidPending && order.original_payment_method === 'cod';
 
             return (
               <div
@@ -109,43 +109,14 @@ export default async function OrdersPage() {
                 </Link>
 
                 {isUnpaidPending && (
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-md bg-amber-50 p-3">
-                    <div className="flex gap-2 text-xs text-amber-900">
-                      <CreditCard className="h-4 w-4 shrink-0 text-amber-600" />
-                      {wasConvertedFromCod ? (
-                        <div className="space-y-1.5">
-                          <p>
-                            This particular piece isn&apos;t kept ready-made at all times — it&apos;s
-                            specially prepared once an order comes in. Because of that, we&apos;re not
-                            able to offer Cash on Delivery on this order, and kindly request the
-                            payment be made online before we begin preparing it. We&apos;re sorry for
-                            the extra step, and truly appreciate your patience here.
-                          </p>
-                          <p>
-                            Your payment is fully protected — if anything about this order doesn&apos;t
-                            work out, it&apos;s covered under our{' '}
-                            <Link
-                              href="/legal/refund-policy"
-                              className="font-medium text-amber-950 underline underline-offset-2"
-                            >
-                              Refund &amp; Cancellation Policy
-                            </Link>
-                            , and we&apos;re always here if you have questions.
-                          </p>
-                          {order.online_payment_discount > 0 && (
-                            <p className="font-medium text-green-700">
-                              You&apos;re saving {formatINR(order.online_payment_discount)} by paying online
-                              instead of Cash on Delivery — already applied to the total below.
-                            </p>
-                          )}
-                        </div>
-                      ) : (
-                        <p>Nothing&apos;s been charged yet — complete the payment to confirm this order.</p>
-                      )}
-                    </div>
-                    <Button asChild size="sm" className="shrink-0">
-                      <Link href={`/checkout/resume/${order.id}?src=account`}>Complete Payment</Link>
-                    </Button>
+                  <div className="mt-3">
+                    <PaymentPendingBanner
+                      orderId={order.id}
+                      totalAmount={order.total_amount}
+                      originalPaymentMethod={order.original_payment_method}
+                      onlinePaymentDiscount={order.online_payment_discount}
+                      source="account"
+                    />
                   </div>
                 )}
 
