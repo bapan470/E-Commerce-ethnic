@@ -891,6 +891,19 @@ export default function CheckoutPage() {
     e.preventDefault();
     if (items.length === 0) return;
 
+    // The State field is a custom Radix <Select>, not a native <select>, so
+    // it never gets a `required` attribute wired to it -- unlike City/PIN
+    // code/Address (native <input required>), the browser's built-in
+    // "please fill this field" validation silently does nothing for State.
+    // Without this explicit check, an order can be placed with
+    // shipping_address.state === "" (as happened for at least one real
+    // order), which then breaks anything downstream that assumes state is
+    // always present (shipping labels, state-wise reports, etc).
+    if (!stateName.trim()) {
+      toast.error('Please select your state');
+      return;
+    }
+
     const customerName = `${firstName} ${lastName}`.trim();
     // Normalize to lowercase/trimmed so this always matches the email a
     // customer later logs in with (Supabase Auth stores emails lowercase;
