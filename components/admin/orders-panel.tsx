@@ -897,71 +897,71 @@ function OrderRow({
                   </div>
                 )}
               </div>
-              <div>
-                <h4 className="mb-2 text-sm font-semibold">Items</h4>
-                <ul className="space-y-2 text-sm">
-                  {order.items.map((it: any, idx: number) => (
-                    <li key={idx} className="flex items-center gap-3">
-                      {it.image_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={it.image_url}
-                          alt={it.product_name}
-                          className="h-12 w-12 flex-shrink-0 rounded-md border border-border/60 object-cover"
-                          onError={(e) => {
-                            (e.currentTarget as HTMLImageElement).style.display = 'none';
-                            e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                          }}
-                        />
-                      ) : null}
-                      {it.image_url ? (
-                        <div className="hidden h-12 w-12 flex-shrink-0 rounded-md border border-border/60 bg-muted" />
-                      ) : (
-                        <div className="h-12 w-12 flex-shrink-0 rounded-md border border-border/60 bg-muted" />
-                      )}
-                      <div className="flex-1">
-                        {it.slug ? (
-                          <Link
-                            href={`/product/${it.slug}`}
-                            target="_blank"
-                            className="inline-flex items-center gap-1 font-medium hover:underline"
-                            title="Open the exact colour/variation ordered"
-                          >
-                            {it.product_name}
-                            <ExternalLink className="h-3 w-3 text-muted-foreground" />
-                          </Link>
+              <div className="space-y-4">
+                <div>
+                  <h4 className="mb-2 text-sm font-semibold">Items</h4>
+                  <ul className="space-y-2 text-sm">
+                    {order.items.map((it: any, idx: number) => (
+                      <li key={idx} className="flex items-center gap-3">
+                        {it.image_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={it.image_url}
+                            alt={it.product_name}
+                            className="h-12 w-12 flex-shrink-0 rounded-md border border-border/60 object-cover"
+                            onError={(e) => {
+                              (e.currentTarget as HTMLImageElement).style.display = 'none';
+                              e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                            }}
+                          />
+                        ) : null}
+                        {it.image_url ? (
+                          <div className="hidden h-12 w-12 flex-shrink-0 rounded-md border border-border/60 bg-muted" />
                         ) : (
-                          <div className="font-medium">{it.product_name}</div>
+                          <div className="h-12 w-12 flex-shrink-0 rounded-md border border-border/60 bg-muted" />
                         )}
-                        <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
-                          {it.color && (
-                            <span className="rounded-full bg-muted px-2 py-0.5">Color: {it.color}</span>
+                        <div className="min-w-0 flex-1">
+                          {it.slug ? (
+                            <Link
+                              href={`/product/${it.slug}`}
+                              target="_blank"
+                              className="inline-flex items-center gap-1 font-medium hover:underline"
+                              title="Open the exact colour/variation ordered"
+                            >
+                              {it.product_name}
+                              <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                            </Link>
+                          ) : (
+                            <div className="font-medium">{it.product_name}</div>
                           )}
-                          {it.size && (
-                            <span className="rounded-full bg-muted px-2 py-0.5">Size: {it.size}</span>
-                          )}
+                          <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
+                            {it.color && (
+                              <span className="rounded-full bg-muted px-2 py-0.5">Color: {it.color}</span>
+                            )}
+                            {it.size && (
+                              <span className="rounded-full bg-muted px-2 py-0.5">Size: {it.size}</span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      <div className="whitespace-nowrap text-sm">{formatINR(it.price)} x {it.quantity}</div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <div>
-                <h4 className="mb-2 text-sm font-semibold">Shipping</h4>
-                <div className="text-sm text-muted-foreground">
-                  {order.shipping_address ? (
-                    <pre className="whitespace-pre-wrap">{JSON.stringify(order.shipping_address, null, 2)}</pre>
-                  ) : (
-                    '—'
-                  )}
+                        <div className="whitespace-nowrap text-sm">{formatINR(it.price)} x {it.quantity}</div>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-              </div>
-              <div>
-                <h4 className="mb-2 text-sm font-semibold">Status History</h4>
-                <OrderStatusHistory orderId={order.id} />
+                <div>
+                  <h4 className="mb-2 text-sm font-semibold">Shipping</h4>
+                  <div className="text-sm text-muted-foreground">
+                    {order.shipping_address ? (
+                      <pre className="whitespace-pre-wrap break-words">{JSON.stringify(order.shipping_address, null, 2)}</pre>
+                    ) : (
+                      '—'
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <h4 className="mb-2 text-sm font-semibold">Status History</h4>
+                  <OrderStatusHistory orderId={order.id} />
+                </div>
               </div>
             </div>
             <div className="mt-4">
