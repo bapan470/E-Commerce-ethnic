@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import Image from 'next/image';
-import { Package } from 'lucide-react';
+import { Package, TrendingUp } from 'lucide-react';
 import { getSupabaseServer, getCurrentUser } from '@/lib/supabase-server-auth';
 import { formatINR } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
@@ -22,14 +22,29 @@ export default async function OrdersPage() {
   const user = await getCurrentUser();
   const supabase = await getSupabaseServer();
 
-  const { data: orders } = await supabase
+  // Fetch regular orders (customer orders)
+  const { data: regularOrders } = await supabase
     .from('orders')
     .select('*')
     .or(`user_id.eq.${user!.id},customer_email.ilike.${user!.email}`)
-    // Orders a reseller placed on behalf of their own customers show up
-    // in the Reseller dashboard instead, not mixed into personal orders.
     .eq('is_reseller_order', false)
     .order('created_at', { ascending: false });
+
+  // Fetch reseller orders (orders placed by this user as a reseller)
+  const { data: resellerOrders } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('user_id', user!.id)
+    .eq('is_reseller_order', true)
+    .order('created_at', { ascending: false });
+
+  // Combine and sort all orders by date
+  const allOrders = [
+    ...(regularOrders || []).map(order => ({ ...order, orderType: 'regular' })),
+    ...(resellerOrders || []).map(order => ({ ...order, orderType: 'reseller' }))
+  ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+  const orders = allOrders;
 
   return (
     <div>
@@ -57,6 +72,7 @@ export default async function OrdersPage() {
             // list had no idea why it said "pending" or what to do about
             // it.
             const isUnpaidPending = order.status === 'pending' && order.payment_method !== 'cod';
+            const isResellerOrder = order.orderType === 'reseller';
 
             return (
               <div
@@ -66,7 +82,12 @@ export default async function OrdersPage() {
                 <Link href={`/account/orders/${order.id}`} className="block">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <p className="font-medium text-foreground">Order #{order.id.slice(0, 8)}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-foreground">Order #{order.id.slice(0, 8)}</p>
+                        {isResellerOrder && (
+                          <Badge className="bg-green-100 text-green-800">Reseller</Badge>
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground">
                         Placed on {new Date(order.created_at).toLocaleDateString('en-IN')}
                       </p>
@@ -102,9 +123,17 @@ export default async function OrdersPage() {
                         {Array.isArray(order.items) ? order.items.length : 0} item(s)
                       </span>
                     </div>
-                    <span className="font-semibold text-primary">
-                      {formatINR(order.total_amount)}
-                    </span>
+                    <div className="text-right">
+                      <p className="font-semibold text-primary">
+                        {formatINR(order.total_amount)}
+                      </p>
+                      {isResellerOrder && order.reseller_profit && (
+                        <p className="text-xs text-green-600 flex items-center justify-end gap-1">
+                          <TrendingUp className="h-3 w-3" />
+                          +{formatINR(order.reseller_profit)} profit
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </Link>
 
