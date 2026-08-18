@@ -144,15 +144,27 @@ export default async function OrderDetailPage({ params }: { params: { id: string
           <div key={i} className="py-3 text-sm">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md border border-border/60 bg-muted">
-                  <Image
-                    src={item.image_url || 'https://placehold.co/80x80?text=No+Image'}
-                    alt={item.product_name || 'Product'}
-                    fill
-                    sizes="56px"
-                    className="object-cover"
-                  />
-                </div>
+                {item.slug ? (
+                  <Link href={`/product/${item.slug}`} className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md border border-border/60 bg-muted block">
+                    <Image
+                      src={item.image_url || 'https://placehold.co/80x80?text=No+Image'}
+                      alt={item.product_name || 'Product'}
+                      fill
+                      sizes="56px"
+                      className="object-cover"
+                    />
+                  </Link>
+                ) : (
+                  <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md border border-border/60 bg-muted">
+                    <Image
+                      src={item.image_url || 'https://placehold.co/80x80?text=No+Image'}
+                      alt={item.product_name || 'Product'}
+                      fill
+                      sizes="56px"
+                      className="object-cover"
+                    />
+                  </div>
+                )}
                 <div>
                   {item.slug ? (
                     <Link href={`/product/${item.slug}`} className="font-medium hover:underline">
