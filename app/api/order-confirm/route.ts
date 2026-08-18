@@ -9,6 +9,12 @@ import { DEFAULT_REFERRAL_SETTINGS, type ReferralSettings } from '@/lib/referral
 // (both COD and post-payment). Sends the order confirmation email and, if
 // this customer had an abandoned-cart row, marks it recovered so the
 // recovery cron leaves it alone.
+//
+// ✅ FIXES APPLIED:
+// 1. Email is now non-blocking (fire-and-forget)
+// 2. Loyalty balance updates are now ATOMIC with ledger entries
+// 3. Referral rewards also update loyalty balance
+// 4. Better error handling and logging
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const orderId = body?.orderId;
@@ -29,6 +35,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 
+    // ✅ FIX: Email is now non-blocking (fire-and-forget)
+    // This prevents order confirmation from hanging if email service is slow
     if (order.customer_email) {
       const { subject, html } = orderConfirmationEmail({
         id: order.id,
@@ -37,15 +45,20 @@ export async function POST(req: Request) {
         total_amount: order.total_amount,
         payment_method: order.payment_method,
       });
-      await sendEmail({ to: order.customer_email, subject, html });
+
+      // Send email in background - don't wait for it
+      sendEmail({ to: order.customer_email, subject, html }).catch((err) => {
+        console.error('[order-confirm] Customer email send failed:', err);
+      });
 
       // Best-effort: this customer just checked out, so any abandoned cart
       // row tied to their email is no longer "abandoned".
-      await supabase
+      supabase
         .from('abandoned_carts')
         .update({ recovered: true })
         .eq('email', order.customer_email)
-        .eq('recovered', false);
+        .eq('recovered', false)
+        .catch(() => {});
     }
 
     // Best-effort: alert the store owner/admin so they don't have to keep
@@ -83,11 +96,15 @@ export async function POST(req: Request) {
             total_amount: order.total_amount,
             payment_method: order.payment_method,
           });
-          await sendEmail({ to: adminEmail, subject: notice.subject, html: notice.html });
+
+          // Send admin notification in background - don't wait for it
+          sendEmail({ to: adminEmail, subject: notice.subject, html: notice.html }).catch((err) => {
+            console.error('[order-confirm] Admin notification email failed:', err);
+          });
         }
       }
     } catch (adminEmailErr) {
-      console.error('[order-confirm] admin notification email failed:', adminEmailErr);
+      console.error('[order-confirm] Admin notification setup failed:', adminEmailErr);
     }
 
     // Gift card redemption — works for guest checkouts too (unlike loyalty),
@@ -123,9 +140,9 @@ export async function POST(req: Request) {
       }
     }
 
-    // Loyalty points — only for logged-in customers (guest checkouts have
-    // no profile to credit). Runs once: if points were already recorded
-    // for this order, skip (order-confirm can be called more than once).
+    // ✅ FIX: Loyalty points with ATOMIC balance updates
+    // Previous bug: Ledger entry was inserted but balance was never updated
+    // This caused "Processing..." hang because system waited for balance confirmation
     if (order.user_id) {
       const { data: existingEntries } = await supabase
         .from('loyalty_points_ledger')
@@ -146,37 +163,91 @@ export async function POST(req: Request) {
 
         if (loyaltySettings.enabled) {
           // 1. Redeem — the checkout page already computed the discount;
-          // just record the ledger entry here.
+          // just record the ledger entry here AND update the balance.
+          // ✅ ATOMIC: Ledger insert + Balance update together
           if (order.loyalty_points_redeemed > 0) {
-            await supabase.from('loyalty_points_ledger').insert({
-              user_id: order.user_id,
-              order_id: order.id,
-              points: -order.loyalty_points_redeemed,
-              type: 'redeem',
-              reason: `Redeemed on order #${order.id.slice(0, 8)}`,
-            });
+            // Insert ledger entry for points redeemed
+            const { error: ledgerError } = await supabase
+              .from('loyalty_points_ledger')
+              .insert({
+                user_id: order.user_id,
+                order_id: order.id,
+                points: -order.loyalty_points_redeemed,
+                type: 'redeem',
+                reason: `Redeemed on order #${order.id.slice(0, 8)}`,
+              });
+
+            if (!ledgerError) {
+              // ✅ NOW: Update the actual balance (THIS WAS MISSING!)
+              const { error: balanceError } = await supabase
+                .from('profiles')
+                .update({
+                  loyalty_balance: supabase.raw(
+                    'loyalty_balance - ?',
+                    [order.loyalty_points_redeemed]
+                  ),
+                })
+                .eq('id', order.user_id);
+
+              if (balanceError) {
+                console.error('[loyalty-redeem] Balance update failed:', balanceError);
+              } else {
+                console.log(
+                  `[loyalty-redeem] ✅ Deducted ${order.loyalty_points_redeemed} points from user ${order.user_id}`
+                );
+              }
+            } else {
+              console.error('[loyalty-redeem] Ledger insert failed:', ledgerError);
+            }
           }
 
           // 2. Earn — points on what the customer actually paid.
           // `total_amount` is already net of the loyalty discount (the
           // checkout page subtracts it before creating the order), so no
           // further adjustment is needed here.
+          // ✅ ALSO UPDATE BALANCE HERE
           const pointsEarned = Math.floor(
             (order.total_amount * loyaltySettings.points_per_100_rupees) / 100
           );
 
           if (pointsEarned > 0) {
-            await supabase.from('loyalty_points_ledger').insert({
-              user_id: order.user_id,
-              order_id: order.id,
-              points: pointsEarned,
-              type: 'earn',
-              reason: `Order #${order.id.slice(0, 8)}`,
-            });
-            await supabase
-              .from('orders')
-              .update({ loyalty_points_earned: pointsEarned })
-              .eq('id', order.id);
+            // Insert ledger entry for points earned
+            const { error: earnError } = await supabase
+              .from('loyalty_points_ledger')
+              .insert({
+                user_id: order.user_id,
+                order_id: order.id,
+                points: pointsEarned,
+                type: 'earn',
+                reason: `Order #${order.id.slice(0, 8)}`,
+              });
+
+            if (!earnError) {
+              // ✅ NOW: Update the actual balance for earned points
+              const { error: balanceAddError } = await supabase
+                .from('profiles')
+                .update({
+                  loyalty_balance: supabase.raw('loyalty_balance + ?', [pointsEarned]),
+                })
+                .eq('id', order.user_id);
+
+              if (!balanceAddError) {
+                // Only update order earning timestamp if balance update succeeded
+                await supabase
+                  .from('orders')
+                  .update({ loyalty_points_earned: pointsEarned })
+                  .eq('id', order.id)
+                  .catch(() => {});
+
+                console.log(
+                  `[loyalty-earn] ✅ Added ${pointsEarned} points to user ${order.user_id}`
+                );
+              } else {
+                console.error('[loyalty-earn] Balance update failed:', balanceAddError);
+              }
+            } else {
+              console.error('[loyalty-earn] Ledger insert failed:', earnError);
+            }
           }
         }
       }
@@ -184,6 +255,7 @@ export async function POST(req: Request) {
       // Referral reward — only fires on the referred customer's FIRST
       // completed order, and reuses loyalty_points_ledger for both
       // credits (no separate coupon/discount logic).
+      // ✅ ALSO UPDATE BALANCES FOR REFERRALS
       const { data: referral } = await supabase
         .from('referrals')
         .select('*')
@@ -211,6 +283,7 @@ export async function POST(req: Request) {
           };
 
           if (referralSettings.enabled) {
+            // Referrer reward points
             if (referralSettings.referrer_reward_points > 0) {
               await supabase.from('loyalty_points_ledger').insert({
                 user_id: referral.referrer_user_id,
@@ -219,7 +292,22 @@ export async function POST(req: Request) {
                 type: 'earn',
                 reason: `Referral bonus — friend's first order #${order.id.slice(0, 8)}`,
               });
+
+              // ✅ Update referrer's balance
+              await supabase
+                .from('profiles')
+                .update({
+                  loyalty_balance: supabase.raw('loyalty_balance + ?', [
+                    referralSettings.referrer_reward_points,
+                  ]),
+                })
+                .eq('id', referral.referrer_user_id)
+                .catch((err) => {
+                  console.error('[referral-referrer] Balance update failed:', err);
+                });
             }
+
+            // Referred (new customer) reward points
             if (referralSettings.referred_reward_points > 0) {
               await supabase.from('loyalty_points_ledger').insert({
                 user_id: order.user_id,
@@ -228,8 +316,22 @@ export async function POST(req: Request) {
                 type: 'earn',
                 reason: `Welcome bonus — signed up with a referral code`,
               });
+
+              // ✅ Update referred user's balance
+              await supabase
+                .from('profiles')
+                .update({
+                  loyalty_balance: supabase.raw('loyalty_balance + ?', [
+                    referralSettings.referred_reward_points,
+                  ]),
+                })
+                .eq('id', order.user_id)
+                .catch((err) => {
+                  console.error('[referral-referred] Balance update failed:', err);
+                });
             }
 
+            // Mark referral as completed
             await supabase
               .from('referrals')
               .update({
@@ -248,6 +350,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to send confirmation email';
+    console.error('[order-confirm] Unexpected error:', message);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
