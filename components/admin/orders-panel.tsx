@@ -48,6 +48,19 @@ type Order = {
   // placed at, i.e. total_amount + online_payment_discount. See
   // app/api/admin/orders/[id]/request-online-payment/route.ts.
   online_payment_discount?: number | null;
+  // Full checkout-time price breakdown -- all written by place_order_with_items()
+  // at order-placement time (see supabase/migrations/20260913000000_affiliate_program.sql)
+  // and already returned by fetchOrders() via `select('*')`, just not surfaced in this UI
+  // until now. subtotal is the sum of item prices before any discount/shipping/tax.
+  subtotal?: number | null;
+  shipping_charge?: number | null;
+  gst_amount?: number | null;
+  coupon_code?: string | null;
+  coupon_discount?: number | null;
+  gift_card_code?: string | null;
+  gift_card_discount?: number | null;
+  loyalty_points_redeemed?: number | null;
+  loyalty_discount?: number | null;
   tracking_number?: string | null;
   courier_name?: string | null;
   expected_delivery_date?: string | null;
@@ -518,6 +531,19 @@ function OrderRow({
   const originalOrderTotal = order.total_amount + discountAmt;
   const showPriceBreakdown = discountAmt > 0;
 
+  // Full checkout-style price breakdown (product subtotal, coupon, gift card,
+  // loyalty points, shipping, GST, online-payment discount) so the admin can
+  // see exactly how total_amount was arrived at -- same numbers the customer
+  // saw on the checkout page, not just the final total. All of these were
+  // already being fetched (fetchOrders() does select('*')), just never
+  // rendered here before.
+  const couponDiscountAmt = Number(order.coupon_discount ?? 0);
+  const giftCardDiscountAmt = Number(order.gift_card_discount ?? 0);
+  const loyaltyDiscountAmt = Number(order.loyalty_discount ?? 0);
+  const shippingAmt = Number(order.shipping_charge ?? 0);
+  const gstAmt = Number(order.gst_amount ?? 0);
+  const hasFullBreakdown = order.subtotal != null;
+
   const copyId = async () => {
     try {
       await navigator.clipboard.writeText(order.id);
@@ -742,6 +768,60 @@ function OrderRow({
       {open && (
         <tr className="bg-muted/20">
           <td colSpan={10} className="px-4 py-3">
+            {hasFullBreakdown && (
+              <div className="mb-3 rounded-lg border border-border/60 bg-white px-3 py-2.5">
+                <h4 className="mb-1.5 text-sm font-semibold">Price breakdown</h4>
+                <div className="space-y-1 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Subtotal</span>
+                    <span>{formatINR(order.subtotal || 0)}</span>
+                  </div>
+                  {couponDiscountAmt > 0 && (
+                    <div className="flex items-center justify-between text-green-700">
+                      <span>
+                        Coupon discount{order.coupon_code ? ` (${order.coupon_code})` : ''}
+                      </span>
+                      <span>-{formatINR(couponDiscountAmt)}</span>
+                    </div>
+                  )}
+                  {giftCardDiscountAmt > 0 && (
+                    <div className="flex items-center justify-between text-green-700">
+                      <span>
+                        Gift card{order.gift_card_code ? ` (${order.gift_card_code})` : ''}
+                      </span>
+                      <span>-{formatINR(giftCardDiscountAmt)}</span>
+                    </div>
+                  )}
+                  {loyaltyDiscountAmt > 0 && (
+                    <div className="flex items-center justify-between text-green-700">
+                      <span>
+                        Loyalty points
+                        {order.loyalty_points_redeemed ? ` (${order.loyalty_points_redeemed} pts)` : ''}
+                      </span>
+                      <span>-{formatINR(loyaltyDiscountAmt)}</span>
+                    </div>
+                  )}
+                  {discountAmt > 0 && (
+                    <div className="flex items-center justify-between text-green-700">
+                      <span>Online payment discount</span>
+                      <span>-{formatINR(discountAmt)}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Shipping</span>
+                    <span>{shippingAmt > 0 ? formatINR(shippingAmt) : 'Free'}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Tax (GST, included)</span>
+                    <span>{formatINR(gstAmt)}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-t pt-1 font-semibold">
+                    <span>Total</span>
+                    <span>{formatINR(order.total_amount || 0)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
             {showPriceBreakdown && (
               <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2.5">
                 <h4 className="mb-1.5 text-sm font-semibold text-amber-900">Payment breakdown</h4>
