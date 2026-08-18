@@ -49,14 +49,16 @@ export async function POST(req: NextRequest) {
 
     // Clear abandoned cart if exists
     if (order.customer_email) {
-      supabase
-        .from("abandoned_carts")
-        .update({ recovered: true })
-        .eq('email', order.customer_email)
-        .eq('recovered', false)
-        .catch(() => {
-          // Silently ignore errors
-        });
+      try {
+        await supabase
+          .from("abandoned_carts")
+          .update({ recovered: true })
+          .eq('email', order.customer_email)
+          .eq('recovered', false);
+      } catch (err) {
+        // Silently ignore errors
+        console.log("Abandoned cart update error (non-critical):", err);
+      }
     }
 
     // Best-effort: alert the store owner/admin so they don't have to keep
