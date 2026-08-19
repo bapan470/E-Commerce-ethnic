@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { getCurrentUser } from '@/lib/supabase-server-auth';
 import { generateInvoicePdf } from '@/lib/invoice-pdf';
+import { DEFAULT_LOYALTY_SETTINGS, type LoyaltySettings } from '@/lib/loyalty-api';
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -40,13 +41,23 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     }
     // else: guest order (user_id is null) -- proceed, no login required.
 
-    const { data: storeSetting } = await supabase
-      .from('settings')
-      .select('value')
-      .eq('key', 'store_info')
-      .maybeSingle();
+    const [{ data: storeSetting }, { data: loyaltySettingRow }] = await Promise.all([
+      supabase.from('settings').select('value').eq('key', 'store_info').maybeSingle(),
+      supabase.from('settings').select('value').eq('key', 'loyalty_program').maybeSingle(),
+    ]);
 
     const store = (storeSetting?.value as Record<string, string>) || {};
+
+    // Same projection formula already shown on the order-confirmation and
+    // track pages (points_per_100_rupees on total_amount) -- this is a
+    // preview of what the order WILL earn once delivered, not a claim that
+    // it has already been credited. See lib/loyalty-api.ts.
+    const loyaltySettings: LoyaltySettings = {
+      ...DEFAULT_LOYALTY_SETTINGS,
+      ...((loyaltySettingRow?.value as Partial<LoyaltySettings>) ?? {}),
+    };
+    const orderTotal = Number(order.total_amount) || 0;
+    const projectedPoints = Math.floor((orderTotal * loyaltySettings.points_per_100_rupees) / 100);
 
     const pdfBytes = await generateInvoicePdf(
       {
@@ -64,7 +75,10 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
         gst_amount: order.gst_amount,
         total_amount: order.total_amount,
       },
-      store
+      store,
+      loyaltySettings.enabled
+        ? { pointsEarned: projectedPoints, redeemValuePerPoint: loyaltySettings.redeem_value_per_point }
+        : null
     );
 
     return new NextResponse(Buffer.from(pdfBytes), {
