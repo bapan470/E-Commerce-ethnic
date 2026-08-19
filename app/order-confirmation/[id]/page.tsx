@@ -304,7 +304,13 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
           </div>
           <Separator className="my-2" />
           <div className="flex justify-between font-semibold text-foreground">
-            <span>{order.payment_method === 'cod' ? 'Total (Pay on Delivery)' : 'Total Paid'}</span>
+            <span>
+              {order.payment_method === 'cod'
+                ? 'Total (Pay on Delivery)'
+                : isUnpaidPending
+                  ? 'Total Due (Payment Pending)'
+                  : 'Total Paid'}
+            </span>
             <span className="font-serif text-lg text-primary">{formatINR(order.total_amount)}</span>
           </div>
         </div>

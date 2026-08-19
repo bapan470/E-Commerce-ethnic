@@ -544,6 +544,13 @@ function OrderRow({
   const gstAmt = Number(order.gst_amount ?? 0);
   const hasFullBreakdown = order.subtotal != null;
   const isCod = order.payment_method === 'cod';
+  // payment_method flips to 'online' the moment "Request Online Payment" is
+  // clicked, well before the customer actually pays -- order.status is the
+  // only field that reflects whether money has actually changed hands.
+  // Without this, the banner below claimed "already paid" while the row's
+  // own Payment Pending tag (line ~735) said the opposite, which is exactly
+  // what confused the admin in this order.
+  const isAwaitingOnlinePayment = !isCod && order.status !== 'paid';
   // Reseller orders: total_amount is always the STORE'S cost price (what
   // place_order_with_items() computes from subtotal/discounts -- see
   // reseller_base_cost: isResale ? total : null in app/checkout/page.tsx).
@@ -842,12 +849,18 @@ function OrderRow({
                         figure. */}
                     <div
                       className={`mt-3 rounded-md px-3 py-2 text-sm font-semibold ${
-                        isCod ? 'bg-amber-50 text-amber-900' : 'bg-emerald-50 text-emerald-800'
+                        isCod
+                          ? 'bg-amber-50 text-amber-900'
+                          : isAwaitingOnlinePayment
+                            ? 'bg-red-50 text-red-800'
+                            : 'bg-emerald-50 text-emerald-800'
                       }`}
                     >
                       {isCod
                         ? `Collect ${formatINR(order.total_amount || 0)} from customer on delivery (COD)`
-                        : `${formatINR(order.total_amount || 0)} already paid online by customer`}
+                        : isAwaitingOnlinePayment
+                          ? `Awaiting ${formatINR(order.total_amount || 0)} online payment from customer — not paid yet`
+                          : `${formatINR(order.total_amount || 0)} already paid online by customer`}
                     </div>
                     {order.is_reseller_order && (
                       <div className="mt-3 rounded-md border border-amber-200 bg-amber-50/60 px-3 py-2.5">

@@ -277,7 +277,13 @@ export default async function TrackOrderPage({ params }: { params: { id: string 
         </div>
         <Separator className="my-3" />
         <div className="flex justify-between text-sm font-semibold">
-          <span>{order.payment_method === 'cod' ? 'Total (Pay on Delivery)' : 'Total Paid'}</span>
+          <span>
+            {order.payment_method === 'cod'
+              ? 'Total (Pay on Delivery)'
+              : isUnpaidPending
+                ? 'Total Due (Payment Pending)'
+                : 'Total Paid'}
+          </span>
           <span className="font-serif text-primary">{formatINR(order.total_amount)}</span>
         </div>
       </div>
