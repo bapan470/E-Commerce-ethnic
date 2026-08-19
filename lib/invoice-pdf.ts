@@ -31,6 +31,8 @@ interface InvoiceOrder {
   shipping_charge: number | null;
   gst_amount: number | null;
   total_amount: number;
+  payment_method?: string | null; // 'cod' | 'online'
+  payment_status?: string | null; // 'pending' | 'paid' | 'cancelled' | 'completed' ...
 }
 
 interface StoreInfo {
@@ -239,7 +241,40 @@ export async function generateInvoicePdf(
     { size: 8.5, color: MUTED }
   );
 
-  y -= 22;
+  // ---- Payment method / status badge ----
+  // Answers "COD ya prepaid?" at a glance -- COD in amber (money still to
+  // collect), prepaid-and-paid in green, prepaid-but-unpaid in red.
+  const isCod = (order.payment_method || '').toLowerCase() === 'cod';
+  const status = (order.payment_status || '').toLowerCase();
+  let payLabel: string;
+  let payColor: ReturnType<typeof rgb>;
+  if (isCod) {
+    payLabel = 'CASH ON DELIVERY';
+    payColor = rgb(0.72, 0.45, 0.05);
+  } else if (status === 'paid' || status === 'completed') {
+    payLabel = 'PREPAID · PAID';
+    payColor = rgb(0.14, 0.5, 0.28);
+  } else if (status === 'cancelled') {
+    payLabel = 'PREPAID · CANCELLED';
+    payColor = rgb(0.6, 0.15, 0.15);
+  } else {
+    payLabel = 'PREPAID · PAYMENT PENDING';
+    payColor = rgb(0.6, 0.15, 0.15);
+  }
+  const payLabelW = bold.widthOfTextAtSize(payLabel, 8) + 16;
+  const payY = badgeY - 44;
+  page.drawRectangle({
+    x: badgeX + badgeW - payLabelW,
+    y: payY,
+    width: payLabelW,
+    height: 15,
+    color: payColor,
+  });
+  draw(payLabel, badgeX + badgeW - payLabelW + 8, payY + 4.5, { size: 8, f: bold, color: WHITE });
+
+  // Divider must clear whichever column (address block or payment badge
+  // stack) extends further down, not just the left column's y.
+  y = Math.min(y, payY) - 14;
   hLine(y, PRIMARY, 1.25);
   y -= 22;
 

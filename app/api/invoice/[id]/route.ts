@@ -74,6 +74,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
         shipping_charge: order.shipping_charge,
         gst_amount: order.gst_amount,
         total_amount: order.total_amount,
+        payment_method: order.payment_method,
+        payment_status: order.status,
       },
       store,
       loyaltySettings.enabled
