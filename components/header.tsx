@@ -700,7 +700,7 @@ export default function Header() {
           </Button>
 
           <Button variant="ghost" size="icon" asChild aria-label={user ? 'My account' : 'Login'}>
-            <Link href={user ? '/account/orders' : '/login'}>
+            <Link href={user ? '/account' : '/login'}>
               <User className="h-5 w-5" />
             </Link>
           </Button>
