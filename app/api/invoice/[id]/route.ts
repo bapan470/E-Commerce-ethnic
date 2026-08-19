@@ -1,10 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { getCurrentUser } from '@/lib/supabase-server-auth';
 import { generateInvoicePdf } from '@/lib/invoice-pdf';
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const supabase = getServerSupabase();
+    // NOTE: this route is hit via a plain `<a href download>` from three
+    // different places -- the logged-in account/orders pages, AND the
+    // guest-accessible order-confirmation/track pages (no login, the order
+    // id itself is the access token, same trust model as
+    // orders/[id]/cancel/route.ts). A cookie-aware client alone would 404
+    // for guests, and the plain anon-key client (the old bug here) 404s for
+    // everyone since the 20260827 RLS lockdown dropped anon SELECT on
+    // orders. So: fetch with the service-role client, then check ownership
+    // in code.
+    const supabase = getSupabaseAdmin();
+    const user = await getCurrentUser();
 
     const { data: order, error } = await supabase
       .from('orders')
@@ -15,6 +26,19 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     if (error || !order) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
+
+    if (order.user_id) {
+      // Account order -- must be logged in as the owner (or same email).
+      if (!user) {
+        return NextResponse.json({ error: 'You must be logged in to view this invoice.' }, { status: 401 });
+      }
+      const ownsByEmail =
+        !!order.customer_email && !!user.email && order.customer_email.toLowerCase() === user.email.toLowerCase();
+      if (order.user_id !== user.id && !ownsByEmail) {
+        return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+      }
+    }
+    // else: guest order (user_id is null) -- proceed, no login required.
 
     const { data: storeSetting } = await supabase
       .from('settings')
