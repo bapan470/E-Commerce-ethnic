@@ -201,6 +201,7 @@ export default function CheckoutPage() {
   const [pincode, setPincode] = useState('');
   const [country, setCountry] = useState('India');
   const [deliveryEstimate, setDeliveryEstimate] = useState<PincodeResult | null>(null);
+  const [verifyingPincode, setVerifyingPincode] = useState(false);
   // Tracks whether the current city/state values were filled in by us (from
   // the pincode lookup) rather than typed by the shopper, so the auto-fill
   // effect below never clobbers something they entered by hand. Reset to
@@ -500,12 +501,15 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (!/^[1-9][0-9]{5}$/.test(pincode.trim())) {
       setDeliveryEstimate(null);
+      setVerifyingPincode(false);
       return;
     }
     let cancelled = false;
+    setVerifyingPincode(true);
     checkPincodeServiceability(pincode).then((res) => {
       if (cancelled) return;
       setDeliveryEstimate(res);
+      setVerifyingPincode(false);
       // Auto-fill City & State from the pincode — free, via the same India
       // Post lookup (api.postalpincode.in) already used for the delivery
       // estimate above, no extra API/key needed. Only overwrite a field if
@@ -925,6 +929,26 @@ export default function CheckoutPage() {
       toast.error('Please enter a valid 6-digit PIN code');
       return;
     }
+
+    // Format-valid isn't the same as REAL -- "411111" or a transposed
+    // digit can look like a valid 6-digit PIN but not correspond to any
+    // actual post office. Confirm existence against India Post's real
+    // database before letting the order through (reuses the estimate
+    // already fetched by the effect above when it matches the current
+    // pincode, so this is usually instant with no extra network call).
+    let pincodeCheck = deliveryEstimate;
+    if (!pincodeCheck || pincodeCheck.pincode !== pincode.trim()) {
+      setVerifyingPincode(true);
+      pincodeCheck = await checkPincodeServiceability(pincode);
+      setDeliveryEstimate(pincodeCheck);
+      setVerifyingPincode(false);
+    }
+    if (pincodeCheck.verified === 'no') {
+      toast.error("This PIN code doesn't exist. Please double-check it and try again.");
+      return;
+    }
+    // verified === 'unknown' (India Post API was unreachable) -> don't
+    // block; we simply couldn't confirm either way.
 
     const customerName = `${firstName} ${lastName}`.trim();
     // Normalize to lowercase/trimmed so this always matches the email a
@@ -1435,6 +1459,11 @@ export default function CheckoutPage() {
                   placeholder="400050"
                   inputMode="numeric"
                   value={pincode}
+                  className={
+                    deliveryEstimate?.pincode === pincode.trim() && deliveryEstimate.verified === 'no'
+                      ? 'border-red-400 focus-visible:ring-red-400'
+                      : undefined
+                  }
                   onChange={(e) => {
                     // Typing a new pincode is a clear signal the shopper
                     // wants fresh City/State for THIS pincode — so let the
@@ -1446,6 +1475,23 @@ export default function CheckoutPage() {
                     setPincode(e.target.value);
                   }}
                 />
+                {verifyingPincode && (
+                  <p className="text-[11px] text-muted-foreground">Checking pincode…</p>
+                )}
+                {!verifyingPincode && deliveryEstimate?.pincode === pincode.trim() && (
+                  <>
+                    {deliveryEstimate.verified === 'yes' && (
+                      <p className="text-[11px] font-medium text-emerald-600">
+                        ✓ Verified: {deliveryEstimate.city}, {deliveryEstimate.state}
+                      </p>
+                    )}
+                    {deliveryEstimate.verified === 'no' && (
+                      <p className="text-[11px] font-medium text-red-600">
+                        This PIN code doesn't seem to exist. Please double-check it.
+                      </p>
+                    )}
+                  </>
+                )}
                 {deliveryEstimate?.serviceable && (city || stateName) && (
                   <p className="text-[11px] text-muted-foreground">
                     Auto-filled City/State below — you can edit if needed.

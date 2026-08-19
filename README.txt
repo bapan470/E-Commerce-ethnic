@@ -1,74 +1,54 @@
-Kya naya add/change hua (Hinglish):
+Kya add hua (Hinglish):
 
-1. Cancellation window ab 24 hours (1 day) hai (default).
-   - lib/marketing-api.ts me DEFAULT_FULFILLMENT_SETTINGS.cancellation_window_hours
-     12 se 24 kar diya.
-   - NOTE: Agar aapne pehle se hi Admin > Marketing > Shipping & Returns
-     Timing me koi value save kar rakhi hai (DB me row already exists),
-     to ye default value use hi nahi hogi -- wahan jaake manually 24 kar
-     dena.
+Pehle checkout sirf ye check karta tha ki PIN code "format" me sahi hai
+(6 digit, 1-9 se shuru) -- ye check nahi hota tha ki wo PIN code REAL me
+exist karta hai ya nahi. Isliye koi customer galti se "411111" jaisa kuch
+bhi type kar deta (format sahi, real nahi), to order place ho jata tha,
+aur pata tab chalta jab Delhivery shipment banate waqt reject karta.
 
-2. Ship hone ke baad order KABHI bhi cancel nahi hoga -- chahe same din
-   hi ship kyun na hua ho, time window bacha ho ya nahi.
-   - app/api/orders/[id]/cancel/route.ts me ek naya check add kiya:
-     agar order.tracking_number set hai (matlab shipment ban chuka hai),
-     to seedha "This order has already shipped..." error aayega, time
-     window check hone se pehle hi.
-   - (Pehle bhi status='shipped' hone par cancel button nahi dikhta tha,
-     ye extra safety check hai taaki edge-case me bhi na ho paye.)
+Ab: lib/pincode-api.ts already India Post ke real database
+(api.postalpincode.in) se check karta tha (auto-fill ke liye) -- bas is
+result ko ab checkout submit hone se PEHLE bhi use kar rahe hain,
+taaki fake/non-existent pincode par order place hi na ho.
 
-3. Naya component: components/order/cancel-or-help.tsx
-   - Ye decide karta hai: agar order abhi cancel-eligible hai (window ke
-     andar hai AND ship nahi hua), to "Cancel Order" button dikhega.
-   - Agar cancel eligible NAHI hai (window nikal gaya YA already ship ho
-     chuka hai) lekin order abhi bhi "in-flight" hai (delivered/cancelled/
-     failed nahi hua), to ek chota box dikhega:
-        "This order has already shipped, so it can no longer be
-        cancelled online. Please contact us for help."
-     ya
-        "The 24-hour cancellation window for this order has passed.
-        Please contact us for help."
-     ...saath me ek "Contact Us" link, jo /contact page par le jayega,
-     jahan Subject aur Message pehle se bhare hue honge (order number ke
-     saath), customer ko sirf apna naam/email/phone bharna hoga.
-   - Ye component ab 2 jagah use ho raha hai:
-       - Thank-you page (app/order-confirmation/[id]/page.tsx)
-       - Account > My Orders > order detail page
-         (app/account/orders/[id]/page.tsx)
+1. lib/pincode-api.ts
+   - PincodeResult me naya field: `verified: 'yes' | 'no' | 'unknown'`
+       'yes'     -> India Post ne real match dhoondh liya, genuine pincode
+       'no'      -> India Post ne successfully respond kiya lekin koi
+                    match nahi mila -- ye pincode exist nahi karta
+       'unknown' -> India Post ka API hi down/unreachable tha, isliye
+                    confirm nahi kar paye (is case me checkout BLOCK
+                    nahi hota -- warna real customer bhi phas jayega
+                    agar third-party API thodi der down ho)
 
-4. app/contact/page.tsx aur components/contact-form.tsx
-   - Contact form ab URL query params (?subject=...&message=...) se
-     pre-fill ho sakta hai, jo upar wala "Contact Us" link use karta hai.
-
-Baaki (pichle patches wale) changes bhi isi zip me hain:
-   - Har order status change par customer ko email (lib/orders-api.ts,
-     lib/email-templates.ts)
-   - Guest checkout ke orders bhi bina login cancel ho sakte hain
-     (app/api/orders/[id]/cancel/route.ts)
-   - Thank-you page par status badge + fresh (non-cached) data
-     (app/order-confirmation/[id]/page.tsx)
-   - Order confirmation email me "View / Cancel Order" button
-     (lib/email-templates.ts)
+2. app/checkout/page.tsx
+   - PIN code field ke neeche ab LIVE status dikhta hai:
+       "Checking pincode…" (lookup ho raha hai)
+       "✓ Verified: <City>, <State>" (green, sahi pincode)
+       "This PIN code doesn't seem to exist..." (red, galat pincode) +
+       field ka border bhi red ho jata hai
+   - Order place karte waqt (Place Order button click par), agar pincode
+     verified === 'no' hai, to order BLOCK ho jayega aur customer ko
+     clear error message milega -- order place hi nahi hoga jab tak
+     sahi pincode na daale.
+   - Agar India Post API down ho (verified === 'unknown'), to order
+     block NAHI hoga -- customer atka nahi rahega.
 
 Apply kaise kare:
-  Project folder me terminal khol ke:
+  Project folder me:
     git apply CHANGES.patch
-  (Agar conflict aaye, to zip ke andar har file ko manually copy karke
-  apne project me SAME path par replace kar dena -- naya file
-  components/order/cancel-or-help.tsx bhi is zip me hai, use naye path
-  par create kar dena agar patch fail ho.)
+  (conflict aaye to 2 files manually replace kar dena: app/checkout/page.tsx
+  aur lib/pincode-api.ts)
 
 Uske baad:
     git add -A
-    git commit -m "24h cancel window, block cancel after ship, Contact Us fallback"
+    git commit -m "Verify PIN code actually exists before allowing checkout"
     git push
 
-Test checklist:
-  [ ] Naya order place karo -> thank-you page par "Cancel Order" dikhna
-      chahiye (agar 24 ghante ke andar hai).
-  [ ] Admin se us order ko "shipped" kar do (ya tracking number daal do)
-      -> thank-you page refresh karo -> ab Cancel button ki jagah
-      "already shipped... Contact Us" wala box dikhna chahiye.
-  [ ] Us "Contact Us" link par click karo -> /contact page khulna
-      chahiye, Subject/Message already order number ke saath bhara hua.
-  [ ] Admin Settings me cancellation window 24 confirm/set kar lena.
+Test:
+  [ ] Checkout par ek real pincode daalo (jaise 400050) -> green
+      "Verified" message aana chahiye, City/State auto-fill honi chahiye.
+  [ ] Ek fake pincode daalo jo format me sahi ho lekin exist na kare
+      (jaise 411119 agar wo kisi post office se match na ho, ya koi bhi
+      random 6-digit jo exist na kare) -> red error aana chahiye, aur
+      "Place Order" click karne par order place NAHI hona chahiye.

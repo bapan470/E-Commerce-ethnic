@@ -1,507 +1,149 @@
-diff --git a/app/account/orders/[id]/page.tsx b/app/account/orders/[id]/page.tsx
-index 5b6737a..1bf26cf 100644
---- a/app/account/orders/[id]/page.tsx
-+++ b/app/account/orders/[id]/page.tsx
-@@ -5,7 +5,7 @@ import { formatINR } from '@/lib/format';
- import { Badge } from '@/components/ui/badge';
- import { Separator } from '@/components/ui/separator';
- import ReturnRequestButton from '@/components/account/return-request-button';
--import CancelOrderButton from '@/components/account/cancel-order-button';
-+import CancelOrHelp from '@/components/order/cancel-or-help';
- import OrderTracking from '@/components/order/order-tracking';
- import DeliveredItemReview from '@/components/account/delivered-item-review';
- import { fetchFulfillmentSettings } from '@/lib/marketing-api';
-@@ -39,8 +39,6 @@ export default async function OrderDetailPage({ params }: { params: { id: string
-     order.status === 'delivered' && daysSinceOrder <= RETURN_WINDOW_DAYS && !returns?.length;
+diff --git a/app/checkout/page.tsx b/app/checkout/page.tsx
+index 16c35c9..759bac7 100644
+--- a/app/checkout/page.tsx
++++ b/app/checkout/page.tsx
+@@ -201,6 +201,7 @@ export default function CheckoutPage() {
+   const [pincode, setPincode] = useState('');
+   const [country, setCountry] = useState('India');
+   const [deliveryEstimate, setDeliveryEstimate] = useState<PincodeResult | null>(null);
++  const [verifyingPincode, setVerifyingPincode] = useState(false);
+   // Tracks whether the current city/state values were filled in by us (from
+   // the pincode lookup) rather than typed by the shopper, so the auto-fill
+   // effect below never clobbers something they entered by hand. Reset to
+@@ -500,12 +501,15 @@ export default function CheckoutPage() {
+   useEffect(() => {
+     if (!/^[1-9][0-9]{5}$/.test(pincode.trim())) {
+       setDeliveryEstimate(null);
++      setVerifyingPincode(false);
+       return;
+     }
+     let cancelled = false;
++    setVerifyingPincode(true);
+     checkPincodeServiceability(pincode).then((res) => {
+       if (cancelled) return;
+       setDeliveryEstimate(res);
++      setVerifyingPincode(false);
+       // Auto-fill City & State from the pincode — free, via the same India
+       // Post lookup (api.postalpincode.in) already used for the delivery
+       // estimate above, no extra API/key needed. Only overwrite a field if
+@@ -926,6 +930,26 @@ export default function CheckoutPage() {
+       return;
+     }
  
-   const hoursSinceOrder = (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60);
--  const eligibleForCancellation =
--    ['pending', 'paid', 'confirmed'].includes(order.status) && hoursSinceOrder <= CANCELLATION_WINDOW_HOURS;
- 
-   return (
-     <div>
-@@ -55,7 +53,14 @@ export default async function OrderDetailPage({ params }: { params: { id: string
-         </div>
-         <div className="flex flex-col items-end gap-2">
-           <Badge className="bg-muted text-foreground">{order.status}</Badge>
--          {eligibleForCancellation && <CancelOrderButton orderId={order.id} />}
-+          <CancelOrHelp
-+            orderId={order.id}
-+            orderShortId={order.id.slice(0, 8).toUpperCase()}
-+            status={order.status}
-+            trackingNumber={order.tracking_number}
-+            hoursSinceOrder={hoursSinceOrder}
-+            cancellationWindowHours={CANCELLATION_WINDOW_HOURS}
-+          />
-         </div>
-       </div>
- 
-diff --git a/app/api/orders/[id]/cancel/route.ts b/app/api/orders/[id]/cancel/route.ts
-index edb6d4b..157bdd4 100644
---- a/app/api/orders/[id]/cancel/route.ts
-+++ b/app/api/orders/[id]/cancel/route.ts
-@@ -1,5 +1,5 @@
- import { NextResponse } from 'next/server';
--import { getCurrentUser, getSupabaseServer } from '@/lib/supabase-server-auth';
-+import { getCurrentUser } from '@/lib/supabase-server-auth';
- import { getSupabaseAdmin } from '@/lib/supabase-admin';
- import { fetchFulfillmentSettings } from '@/lib/marketing-api';
- import { refundRazorpayPayment } from '@/lib/razorpay-refund';
-@@ -11,17 +11,21 @@ const CANCELLABLE_STATUSES = ['pending', 'paid', 'confirmed'];
- 
- export async function POST(_req: Request, { params }: { params: { id: string } }) {
-   const user = await getCurrentUser();
--  if (!user) {
--    return NextResponse.json({ error: 'You must be logged in to cancel an order.' }, { status: 401 });
--  }
- 
--  // Use the auth-aware client only to confirm the order belongs to this
--  // customer (RLS-scoped read), then use the admin client for the actual
--  // status write so we don't depend on an RLS UPDATE policy existing.
--  const supabase = await getSupabaseServer();
--  const { data: order, error: fetchError } = await supabase
-+  // Guest checkouts have no account, so there's nothing to "log in" as.
-+  // We already trust the order UUID as the access token for this order --
-+  // the order-confirmation page shows full address/invoice/tracking to
-+  // anyone with the link, with no login. Cancellation uses the same trust
-+  // model: if the order was placed as a guest (user_id is null), knowing
-+  // the order id is enough. If the order IS tied to an account, we still
-+  // require that account's session (or, for a logged-in user cancelling
-+  // an order that was placed as a guest under the same email, an email
-+  // match) so a stranger with a leaked link can't cancel someone's
-+  // logged-in account order.
-+  const admin = getSupabaseAdmin();
-+  const { data: order, error: fetchError } = await admin
-     .from('orders')
--    .select('id, user_id, customer_email, status, created_at, payment_method, razorpay_payment_id, total_amount')
-+    .select('id, user_id, customer_email, status, created_at, payment_method, razorpay_payment_id, total_amount, tracking_number')
-     .eq('id', params.id)
-     .single();
- 
-@@ -29,11 +33,18 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
-     return NextResponse.json({ error: 'Order not found.' }, { status: 404 });
-   }
- 
--  const ownsByEmail =
--    !!order.customer_email && !!user.email && order.customer_email.toLowerCase() === user.email.toLowerCase();
--  if (order.user_id !== user.id && !ownsByEmail) {
--    return NextResponse.json({ error: 'Order not found.' }, { status: 404 });
-+  if (order.user_id) {
-+    // Account order -- must be logged in as the owner (or same email).
-+    if (!user) {
-+      return NextResponse.json({ error: 'You must be logged in to cancel this order.' }, { status: 401 });
++    // Format-valid isn't the same as REAL -- "411111" or a transposed
++    // digit can look like a valid 6-digit PIN but not correspond to any
++    // actual post office. Confirm existence against India Post's real
++    // database before letting the order through (reuses the estimate
++    // already fetched by the effect above when it matches the current
++    // pincode, so this is usually instant with no extra network call).
++    let pincodeCheck = deliveryEstimate;
++    if (!pincodeCheck || pincodeCheck.pincode !== pincode.trim()) {
++      setVerifyingPincode(true);
++      pincodeCheck = await checkPincodeServiceability(pincode);
++      setDeliveryEstimate(pincodeCheck);
++      setVerifyingPincode(false);
 +    }
-+    const ownsByEmail =
-+      !!order.customer_email && !!user.email && order.customer_email.toLowerCase() === user.email.toLowerCase();
-+    if (order.user_id !== user.id && !ownsByEmail) {
-+      return NextResponse.json({ error: 'Order not found.' }, { status: 404 });
++    if (pincodeCheck.verified === 'no') {
++      toast.error("This PIN code doesn't exist. Please double-check it and try again.");
++      return;
 +    }
++    // verified === 'unknown' (India Post API was unreachable) -> don't
++    // block; we simply couldn't confirm either way.
++
+     const customerName = `${firstName} ${lastName}`.trim();
+     // Normalize to lowercase/trimmed so this always matches the email a
+     // customer later logs in with (Supabase Auth stores emails lowercase;
+@@ -1435,6 +1459,11 @@ export default function CheckoutPage() {
+                   placeholder="400050"
+                   inputMode="numeric"
+                   value={pincode}
++                  className={
++                    deliveryEstimate?.pincode === pincode.trim() && deliveryEstimate.verified === 'no'
++                      ? 'border-red-400 focus-visible:ring-red-400'
++                      : undefined
++                  }
+                   onChange={(e) => {
+                     // Typing a new pincode is a clear signal the shopper
+                     // wants fresh City/State for THIS pincode — so let the
+@@ -1446,6 +1475,23 @@ export default function CheckoutPage() {
+                     setPincode(e.target.value);
+                   }}
+                 />
++                {verifyingPincode && (
++                  <p className="text-[11px] text-muted-foreground">Checking pincode…</p>
++                )}
++                {!verifyingPincode && deliveryEstimate?.pincode === pincode.trim() && (
++                  <>
++                    {deliveryEstimate.verified === 'yes' && (
++                      <p className="text-[11px] font-medium text-emerald-600">
++                        ✓ Verified: {deliveryEstimate.city}, {deliveryEstimate.state}
++                      </p>
++                    )}
++                    {deliveryEstimate.verified === 'no' && (
++                      <p className="text-[11px] font-medium text-red-600">
++                        This PIN code doesn't seem to exist. Please double-check it.
++                      </p>
++                    )}
++                  </>
++                )}
+                 {deliveryEstimate?.serviceable && (city || stateName) && (
+                   <p className="text-[11px] text-muted-foreground">
+                     Auto-filled City/State below — you can edit if needed.
+diff --git a/lib/pincode-api.ts b/lib/pincode-api.ts
+index 4d26257..a01fe26 100644
+--- a/lib/pincode-api.ts
++++ b/lib/pincode-api.ts
+@@ -8,6 +8,19 @@ export interface PincodeResult {
+   etaDays: number;
+   codAvailable: boolean;
+   message: string;
++  /**
++   * Whether this pincode's EXISTENCE (not just serviceability) was
++   * actually confirmed against India Post's real pincode database:
++   *  - 'yes'     -> India Post found a matching post office; this is a
++   *                 genuine, real Indian pincode.
++   *  - 'no'      -> India Post responded successfully but found NO match
++   *                 for this pincode -- it does not exist / is a typo.
++   *  - 'unknown' -> the India Post API itself was unreachable, so we
++   *                 couldn't check either way (checkout should NOT be
++   *                 blocked in this case -- don't punish real customers
++   *                 for a third-party API being briefly down).
++   */
++  verified: 'yes' | 'no' | 'unknown';
+ }
+ 
+ // Rough zone model by the first digit of an Indian PIN code. Used only to
+@@ -49,6 +62,7 @@ export async function checkPincodeServiceability(pincode: string): Promise<Pinco
+       etaDays: 0,
+       codAvailable: false,
+       message: 'Enter a valid 6-digit pincode',
++      verified: 'no',
+     };
    }
-+  // else: guest order (user_id is null) -- proceed, no login required.
  
-   if (!CANCELLABLE_STATUSES.includes(order.status)) {
-     return NextResponse.json(
-@@ -42,6 +53,20 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
-     );
+@@ -71,6 +85,7 @@ export async function checkPincodeServiceability(pincode: string): Promise<Pinco
+         etaDays,
+         codAvailable,
+         message: `Delivers to ${office.District}, ${office.State} in ${etaDays}-${etaDays + 2} days`,
++        verified: 'yes',
+       };
+     }
+ 
+@@ -79,7 +94,8 @@ export async function checkPincodeServiceability(pincode: string): Promise<Pinco
+       pincode: clean,
+       etaDays: 0,
+       codAvailable: false,
+-      message: 'Sorry, we do not deliver to this pincode yet',
++      message: 'This PIN code does not exist. Please double-check it.',
++      verified: 'no',
+     };
+   } catch {
+     // API unreachable — don't block checkout, fall back to the zone estimate.
+@@ -89,6 +105,7 @@ export async function checkPincodeServiceability(pincode: string): Promise<Pinco
+       etaDays,
+       codAvailable,
+       message: `Estimated delivery in ${etaDays}-${etaDays + 2} days`,
++      verified: 'unknown',
+     };
    }
- 
-+  // Belt-and-suspenders: once a shipment has been created (tracking
-+  // number assigned), the order can no longer be self-cancelled --
-+  // regardless of how much time is left in the cancellation window.
-+  // Normally order.status already flips to 'shipped' the moment a
-+  // waybill is generated (see delhivery/create-shipment route), which
-+  // the CANCELLABLE_STATUSES check above already catches, but we check
-+  // tracking_number directly too in case status hasn't been bumped yet.
-+  if (order.tracking_number) {
-+    return NextResponse.json(
-+      { error: 'This order has already shipped and can no longer be cancelled online. Please contact us for help.' },
-+      { status: 400 }
-+    );
-+  }
-+
-   const { cancellation_window_hours } = await fetchFulfillmentSettings();
-   const hoursSinceOrder = (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60);
-   if (hoursSinceOrder > cancellation_window_hours) {
-@@ -53,7 +78,6 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
-     );
-   }
- 
--  const admin = getSupabaseAdmin();
-   const { error: updateError } = await admin
-     .from('orders')
-     .update({ status: 'cancelled' })
-diff --git a/app/contact/page.tsx b/app/contact/page.tsx
-index 3c4960c..04f49ec 100644
---- a/app/contact/page.tsx
-+++ b/app/contact/page.tsx
-@@ -22,7 +22,11 @@ async function getStoreInfo() {
-   return (data?.value as any) || {};
  }
- 
--export default async function ContactPage() {
-+export default async function ContactPage({
-+  searchParams,
-+}: {
-+  searchParams?: { subject?: string; message?: string };
-+}) {
-   const store = await getStoreInfo();
- 
-   return (
-@@ -94,7 +98,7 @@ export default async function ContactPage() {
-         </div>
- 
-         <div className="lg:col-span-3">
--          <ContactForm />
-+          <ContactForm initialSubject={searchParams?.subject} initialMessage={searchParams?.message} />
-         </div>
-       </div>
-     </div>
-diff --git a/app/order-confirmation/[id]/page.tsx b/app/order-confirmation/[id]/page.tsx
-index fcf7d1a..fa1a88d 100644
---- a/app/order-confirmation/[id]/page.tsx
-+++ b/app/order-confirmation/[id]/page.tsx
-@@ -9,6 +9,30 @@ import { Separator } from '@/components/ui/separator';
- import OrderTracking from '@/components/order/order-tracking';
- import PurchaseTracker from '@/components/analytics/purchase-tracker';
- import TrustpilotInvitation from '@/components/analytics/trustpilot-invitation';
-+import CancelOrHelp from '@/components/order/cancel-or-help';
-+import { fetchFulfillmentSettings } from '@/lib/marketing-api';
-+
-+// This page reads live order status (payment status, cancellation, ship
-+// status) straight from the DB, and the Cancel Order button on this same
-+// page needs the very next visit to reflect the new status. Next.js's
-+// App Router caches server-component fetches by default (force-cache),
-+// which was serving a stale "pending" snapshot even after the order had
-+// actually been cancelled in the DB. Forcing this route to be fully
-+// dynamic (no caching, always re-fetch) fixes that.
-+export const dynamic = 'force-dynamic';
-+export const revalidate = 0;
-+
-+// Badge styling per order.status. Keeps this page in sync with whatever
-+// the admin last set from Admin -> Orders (paid/shipped/delivered/
-+// cancelled/failed), instead of always reading "placed successfully".
-+const STATUS_BADGE: Record<string, { label: string; className: string }> = {
-+  pending: { label: 'Pending', className: 'bg-amber-100 text-amber-700' },
-+  paid: { label: 'Payment Confirmed', className: 'bg-emerald-100 text-emerald-700' },
-+  shipped: { label: 'Shipped', className: 'bg-sky-100 text-sky-700' },
-+  delivered: { label: 'Delivered', className: 'bg-green-100 text-green-700' },
-+  cancelled: { label: 'Cancelled', className: 'bg-red-100 text-red-700' },
-+  failed: { label: 'Payment Failed', className: 'bg-red-100 text-red-700' },
-+};
- 
- export default async function OrderConfirmationPage({ params }: { params: { id: string } }) {
-   const supabase = getSupabaseAdmin();
-@@ -16,6 +40,9 @@ export default async function OrderConfirmationPage({ params }: { params: { id:
- 
-   if (!order) notFound();
- 
-+  const { cancellation_window_hours: CANCELLATION_WINDOW_HOURS } = await fetchFulfillmentSettings();
-+  const hoursSinceOrder = (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60);
-+
-   const items = Array.isArray(order.items) ? order.items : [];
-   const addr = order.shipping_address as {
-     address?: string;
-@@ -56,11 +83,24 @@ export default async function OrderConfirmationPage({ params }: { params: { id:
-           <CheckCircle2 className="h-10 w-10 text-secondary" />
-         </div>
-         <h1 className="font-serif text-3xl font-bold text-primary">Thank you for your order!</h1>
-+        {STATUS_BADGE[order.status] && (
-+          <span
-+            className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${STATUS_BADGE[order.status].className}`}
-+          >
-+            {STATUS_BADGE[order.status].label}
-+          </span>
-+        )}
-         <p className="max-w-md text-sm text-muted-foreground">
-           Order #{order.id.slice(0, 8).toUpperCase()} has been placed successfully. A confirmation
-           email is on its way to {order.customer_email}. Your handwoven pieces will be dispatched
-           soon.
--          {order.payment_method === 'cod' && (
-+          {order.status === 'cancelled' && (
-+            <>
-+              {' '}
-+              This order has since been <strong>cancelled</strong>.
-+            </>
-+          )}
-+          {order.payment_method === 'cod' && order.status !== 'cancelled' && (
-             <>
-               {' '}
-               Please keep <strong>{formatINR(order.total_amount)}</strong> ready in cash for our
-@@ -68,6 +108,14 @@ export default async function OrderConfirmationPage({ params }: { params: { id:
-             </>
-           )}
-         </p>
-+        <CancelOrHelp
-+          orderId={order.id}
-+          orderShortId={order.id.slice(0, 8).toUpperCase()}
-+          status={order.status}
-+          trackingNumber={order.tracking_number}
-+          hoursSinceOrder={hoursSinceOrder}
-+          cancellationWindowHours={CANCELLATION_WINDOW_HOURS}
-+        />
-       </div>
- 
-       <div className="mt-8 rounded-lg border border-border/60 bg-card p-5 sm:p-6">
-diff --git a/components/contact-form.tsx b/components/contact-form.tsx
-index 0258b7f..40cda0f 100644
---- a/components/contact-form.tsx
-+++ b/components/contact-form.tsx
-@@ -10,12 +10,18 @@ import { toast } from 'sonner';
- 
- const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
- 
--export default function ContactForm() {
-+export default function ContactForm({
-+  initialSubject,
-+  initialMessage,
-+}: {
-+  initialSubject?: string;
-+  initialMessage?: string;
-+} = {}) {
-   const [name, setName] = useState('');
-   const [email, setEmail] = useState('');
-   const [phone, setPhone] = useState('');
--  const [subject, setSubject] = useState('');
--  const [message, setMessage] = useState('');
-+  const [subject, setSubject] = useState(initialSubject || '');
-+  const [message, setMessage] = useState(initialMessage || '');
-   const [loading, setLoading] = useState(false);
-   const [sent, setSent] = useState(false);
- 
-diff --git a/components/order/cancel-or-help.tsx b/components/order/cancel-or-help.tsx
-new file mode 100644
-index 0000000..e7722ca
---- /dev/null
-+++ b/components/order/cancel-or-help.tsx
-@@ -0,0 +1,60 @@
-+import Link from 'next/link';
-+import { MessageCircleQuestion } from 'lucide-react';
-+import CancelOrderButton from '@/components/account/cancel-order-button';
-+
-+// Statuses where cancellation is still conceptually "in play" for this
-+// order (before it's delivered, already cancelled, or failed) -- used to
-+// decide whether to show a "Contact us for help" fallback when the
-+// window has passed or the order has already shipped, instead of just
-+// silently hiding everything.
-+const IN_FLIGHT_STATUSES = ['pending', 'paid', 'confirmed', 'shipped'];
-+
-+export default function CancelOrHelp({
-+  orderId,
-+  orderShortId,
-+  status,
-+  trackingNumber,
-+  hoursSinceOrder,
-+  cancellationWindowHours,
-+}: {
-+  orderId: string;
-+  orderShortId: string;
-+  status: string;
-+  trackingNumber?: string | null;
-+  hoursSinceOrder: number;
-+  cancellationWindowHours: number;
-+}) {
-+  const hasShipped = !!trackingNumber || status === 'shipped';
-+  const windowPassed = hoursSinceOrder > cancellationWindowHours;
-+  const canCancel = ['pending', 'paid', 'confirmed'].includes(status) && !hasShipped && !windowPassed;
-+
-+  if (canCancel) {
-+    return <CancelOrderButton orderId={orderId} />;
-+  }
-+
-+  if (!IN_FLIGHT_STATUSES.includes(status)) {
-+    // Already delivered/cancelled/failed -- nothing to show here, those
-+    // states have their own messaging elsewhere on the page.
-+    return null;
-+  }
-+
-+  const reason = hasShipped
-+    ? 'This order has already shipped, so it can no longer be cancelled online.'
-+    : `The ${cancellationWindowHours}-hour cancellation window for this order has passed.`;
-+
-+  const contactHref = `/contact?subject=${encodeURIComponent(`Cancel order #${orderShortId}`)}&message=${encodeURIComponent(
-+    `Hi, I'd like to cancel my order #${orderShortId}. `
-+  )}`;
-+
-+  return (
-+    <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-+      <MessageCircleQuestion className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-+      <div>
-+        <p>{reason} Please contact us for help.</p>
-+        <Link href={contactHref} className="mt-1 inline-block font-medium underline underline-offset-2 hover:text-amber-900">
-+          Contact Us
-+        </Link>
-+      </div>
-+    </div>
-+  );
-+}
-diff --git a/lib/email-templates.ts b/lib/email-templates.ts
-index 99c8838..d8ee2ed 100644
---- a/lib/email-templates.ts
-+++ b/lib/email-templates.ts
-@@ -92,6 +92,11 @@ export function orderConfirmationEmail(order: {
-   payment_method?: string;
- }) {
-   const subject = `Order confirmed — #${order.id.slice(0, 8)}`;
-+  // Emails can't run JS or POST to our API directly, so this links back to
-+  // the order-confirmation page (works with no login for guest orders --
-+  // see app/api/orders/[id]/cancel/route.ts) where the actual Cancel
-+  // Order button lives, with its own confirmation dialog.
-+  const orderUrl = `${process.env.NEXT_PUBLIC_SITE_URL || ''}/order-confirmation/${order.id}`;
-   const html = wrapper(`
-     <h2 style="margin-top:0; color:${BRAND_COLOR};">Thank you for your order, ${order.customer_name || 'there'}!</h2>
-     <p>We've received your order <strong>#${order.id.slice(0, 8)}</strong> and it's being prepared.</p>
-@@ -100,7 +105,12 @@ export function orderConfirmationEmail(order: {
-     <p style="font-size:13px; color:#6b5f57;">
-       Payment method: ${order.payment_method === 'cod' ? 'Cash on Delivery' : 'Paid Online'}
-     </p>
--    <p>You can track your order anytime from your account's Order History page.</p>
-+    <p style="text-align:center; margin-top: 20px;">
-+      <a href="${orderUrl}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
-+        View / Cancel Order
-+      </a>
-+    </p>
-+    <p>You can track your order, or cancel it if you've changed your mind, anytime from the link above.</p>
-   `);
-   return { subject, html };
- }
-@@ -272,6 +282,71 @@ export function orderShippedEmail(order: {
-   return { subject, html };
- }
- 
-+// Generic "your order status changed" email — sent on every status change
-+// made from Admin -> Orders (the status dropdown / order detail view),
-+// covering statuses that don't already have a dedicated email (paid,
-+// delivered, cancelled, failed, pending/back-to-pending). 'shipped' also
-+// goes through here when the admin flips status manually on an order that
-+// already has a tracking number; the dedicated "just shipped from
-+// Delhivery" email (orderShippedEmail) is still sent separately by the
-+// create-shipment route the first time a waybill is generated.
-+export function orderStatusUpdateEmail(order: {
-+  id: string;
-+  customer_name?: string;
-+  status: string;
-+  tracking_number?: string | null;
-+  courier_name?: string | null;
-+}) {
-+  const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
-+  const name = order.customer_name || 'there';
-+
-+  const copy: Record<string, { subject: string; heading: string; body: string }> = {
-+    pending: {
-+      subject: `Order ${shortId} is now pending`,
-+      heading: `Hi ${name}, your order is pending`,
-+      body: `Your order <strong>${shortId}</strong> has been moved back to <strong>pending</strong>. We'll update you again as soon as it progresses.`,
-+    },
-+    paid: {
-+      subject: `Payment confirmed — ${shortId}`,
-+      heading: `Thanks, ${name} — payment received!`,
-+      body: `We've confirmed payment for your order <strong>${shortId}</strong>. It's now being prepared for dispatch.`,
-+    },
-+    shipped: {
-+      subject: `Your order has shipped — ${shortId}`,
-+      heading: `Good news, ${name} — it's on the way!`,
-+      body: `Your order <strong>${shortId}</strong> has been shipped${order.courier_name ? ` via ${order.courier_name}` : ''}.${order.tracking_number ? ` <br/><strong>Tracking number:</strong> ${order.tracking_number}` : ''}`,
-+    },
-+    delivered: {
-+      subject: `Delivered! — ${shortId}`,
-+      heading: `Your order has arrived, ${name}!`,
-+      body: `Your order <strong>${shortId}</strong> has been marked as <strong>delivered</strong>. We hope you love it — thank you for shopping with us.`,
-+    },
-+    cancelled: {
-+      subject: `Order cancelled — ${shortId}`,
-+      heading: `Your order has been cancelled`,
-+      body: `Your order <strong>${shortId}</strong> has been <strong>cancelled</strong>. If you've already paid online, any eligible refund will be processed to your original payment method. If you didn't request this, please reply to this email or contact support.`,
-+    },
-+    failed: {
-+      subject: `Payment issue with order ${shortId}`,
-+      heading: `There was an issue with your order`,
-+      body: `We weren't able to confirm payment for your order <strong>${shortId}</strong>. Please try again or contact support if you were charged.`,
-+    },
-+  };
-+
-+  const c = copy[order.status] || {
-+    subject: `Order ${shortId} update`,
-+    heading: `Update on your order, ${name}`,
-+    body: `The status of your order <strong>${shortId}</strong> is now <strong>${order.status}</strong>.`,
-+  };
-+
-+  const html = wrapper(`
-+    <h2 style="margin-top:0; color:${BRAND_COLOR};">${c.heading}</h2>
-+    <p>${c.body}</p>
-+    <p>You can view full order details and live tracking anytime from your account's Order History page.</p>
-+  `);
-+  return { subject: c.subject, html };
-+}
-+
- export function returnStatusEmail(ret: {
-   id: string;
-   order_id: string;
-diff --git a/lib/marketing-api.ts b/lib/marketing-api.ts
-index 8da5dbb..71f9391 100644
---- a/lib/marketing-api.ts
-+++ b/lib/marketing-api.ts
-@@ -52,7 +52,7 @@ export const DEFAULT_FULFILLMENT_SETTINGS: FulfillmentSettings = {
-   delivery_remote_min: 10,
-   delivery_remote_max: 12,
-   return_window_days: 7,
--  cancellation_window_hours: 12,
-+  cancellation_window_hours: 24,
- };
- 
- export async function fetchFulfillmentSettings(): Promise<FulfillmentSettings> {
-diff --git a/lib/orders-api.ts b/lib/orders-api.ts
-index 6dc3f80..0c0b90b 100644
---- a/lib/orders-api.ts
-+++ b/lib/orders-api.ts
-@@ -1,4 +1,6 @@
- import { getSupabaseAdmin } from './supabase-admin';
-+import { sendEmail } from './email';
-+import { orderStatusUpdateEmail } from './email-templates';
- 
- // SECURITY NOTE: this now uses the service-role client instead of the
- // anon-key client. Both callers of this file (app/api/admin/orders and
-@@ -78,10 +80,44 @@ export async function fetchOrders() {
-   return attachItemSources(supabase, data ?? []);
- }
- 
-+// Called from Admin -> Orders whenever the admin changes an order's status
-+// (the dropdown in the orders table, or the order detail view). Besides
-+// writing the new status, this sends the customer a "your order status
-+// changed" email (best-effort -- a failed/unconfigured email provider
-+// never blocks the status update itself). The order_status_history table
-+// is populated separately by a DB trigger, so this function doesn't need
-+// to touch that.
- export async function updateOrderStatus(id: string, status: string) {
-   const supabase = getSupabaseAdmin();
-+
-+  // Fetch first so we know the customer's email + previous status. Also
-+  // lets us skip the email entirely if the status isn't actually changing
-+  // (e.g. the admin re-selects the same value).
-+  const { data: existing, error: fetchError } = await supabase
-+    .from('orders')
-+    .select('id, status, customer_email, customer_name, tracking_number, courier_name')
-+    .eq('id', id)
-+    .maybeSingle();
-+  if (fetchError) throw fetchError;
-+
-   const { data, error } = await supabase.from('orders').update({ status }).eq('id', id);
-   if (error) throw error;
-+
-+  if (existing && existing.status !== status && existing.customer_email) {
-+    const { subject, html } = orderStatusUpdateEmail({
-+      id: existing.id,
-+      customer_name: existing.customer_name,
-+      status,
-+      tracking_number: existing.tracking_number,
-+      courier_name: existing.courier_name,
-+    });
-+    // Best-effort -- never let a slow/broken email provider fail the
-+    // admin's status update.
-+    sendEmail({ to: existing.customer_email, subject, html }).catch((err) => {
-+      console.error('[updateOrderStatus] status-change email failed:', err);
-+    });
-+  }
-+
-   return data;
- }
- 

@@ -8,6 +8,19 @@ export interface PincodeResult {
   etaDays: number;
   codAvailable: boolean;
   message: string;
+  /**
+   * Whether this pincode's EXISTENCE (not just serviceability) was
+   * actually confirmed against India Post's real pincode database:
+   *  - 'yes'     -> India Post found a matching post office; this is a
+   *                 genuine, real Indian pincode.
+   *  - 'no'      -> India Post responded successfully but found NO match
+   *                 for this pincode -- it does not exist / is a typo.
+   *  - 'unknown' -> the India Post API itself was unreachable, so we
+   *                 couldn't check either way (checkout should NOT be
+   *                 blocked in this case -- don't punish real customers
+   *                 for a third-party API being briefly down).
+   */
+  verified: 'yes' | 'no' | 'unknown';
 }
 
 // Rough zone model by the first digit of an Indian PIN code. Used only to
@@ -49,6 +62,7 @@ export async function checkPincodeServiceability(pincode: string): Promise<Pinco
       etaDays: 0,
       codAvailable: false,
       message: 'Enter a valid 6-digit pincode',
+      verified: 'no',
     };
   }
 
@@ -71,6 +85,7 @@ export async function checkPincodeServiceability(pincode: string): Promise<Pinco
         etaDays,
         codAvailable,
         message: `Delivers to ${office.District}, ${office.State} in ${etaDays}-${etaDays + 2} days`,
+        verified: 'yes',
       };
     }
 
@@ -79,7 +94,8 @@ export async function checkPincodeServiceability(pincode: string): Promise<Pinco
       pincode: clean,
       etaDays: 0,
       codAvailable: false,
-      message: 'Sorry, we do not deliver to this pincode yet',
+      message: 'This PIN code does not exist. Please double-check it.',
+      verified: 'no',
     };
   } catch {
     // API unreachable — don't block checkout, fall back to the zone estimate.
@@ -89,6 +105,7 @@ export async function checkPincodeServiceability(pincode: string): Promise<Pinco
       etaDays,
       codAvailable,
       message: `Estimated delivery in ${etaDays}-${etaDays + 2} days`,
+      verified: 'unknown',
     };
   }
 }
