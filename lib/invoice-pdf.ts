@@ -262,7 +262,7 @@ export async function generateInvoicePdf(
     payColor = rgb(0.6, 0.15, 0.15);
   }
   const payLabelW = bold.widthOfTextAtSize(payLabel, 8) + 16;
-  const payY = badgeY - 44;
+  const payY = badgeY - 52;
   page.drawRectangle({
     x: badgeX + badgeW - payLabelW,
     y: payY,
@@ -292,7 +292,11 @@ export async function generateInvoicePdf(
   if (order.customer_phone) addrLines.push(`Phone: ${order.customer_phone}`);
   if (order.customer_email) addrLines.push(`Email: ${order.customer_email}`);
 
-  const cardHeight = 26 + addrLines.length * 12;
+  // Box must fit: header line (14) + name line (13) + one line per
+  // address/phone/email row (12 each) + bottom padding (10) -- the old
+  // fixed "26 +" constant was short, which let the last line (usually the
+  // email) spill outside the cream background.
+  const cardHeight = 14 + 13 + addrLines.length * 12 + 10;
   page.drawRectangle({ x: margin, y: billCardTop - cardHeight, width: contentWidth, height: cardHeight, color: CREAM });
   page.drawRectangle({ x: margin, y: billCardTop - cardHeight, width: 3, height: cardHeight, color: SECONDARY });
 
