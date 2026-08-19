@@ -12,6 +12,7 @@ import {
   Truck,
   Camera,
   Clock,
+  Download,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -186,6 +187,14 @@ function OrderCard({
       <div className="mt-3 flex items-start gap-1.5 rounded-md border border-border/60 bg-muted/30 p-2.5 text-xs text-muted-foreground">
         <Warehouse className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <span>Ship to: {warehouseAddress || 'Warehouse address not configured yet'}</span>
+      </div>
+
+      <div className="mt-2">
+        <Button size="sm" variant="outline" className="gap-1.5 text-xs" asChild>
+          <a href={`/api/vendor/orders/${item.id}/pickup-slip`} download>
+            <Download className="h-3.5 w-3.5" /> Download Pickup Slip
+          </a>
+        </Button>
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">

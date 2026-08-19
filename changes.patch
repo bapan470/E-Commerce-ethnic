@@ -57,6 +57,108 @@ index 7a79099..c9fc300 100644
                    <Button asChild size="sm" variant="outline">
                      <Link href={`/account/orders/${order.id}`}>View Order</Link>
                    </Button>
+diff --git a/app/api/vendor/orders/[itemId]/pickup-slip/route.ts b/app/api/vendor/orders/[itemId]/pickup-slip/route.ts
+new file mode 100644
+index 0000000..30b7ed0
+--- /dev/null
++++ b/app/api/vendor/orders/[itemId]/pickup-slip/route.ts
+@@ -0,0 +1,96 @@
++import { NextRequest, NextResponse } from 'next/server';
++import { getCurrentUser, getSupabaseServer } from '@/lib/supabase-server-auth';
++import { getSupabaseAdmin } from '@/lib/supabase-admin';
++import { DEFAULT_DELHIVERY_SETTINGS, type DelhiverySettings } from '@/lib/delhivery-api';
++import { generateVendorPickupSlipPdf } from '@/lib/vendor-pickup-slip-pdf';
++
++// ---------------------------------------------------------------------
++// Vendor Pickup Slip download -- NOT a customer invoice. A vendor ships
++// stock TO our warehouse, never to the end customer, so this route only
++// ever selects order_items columns (never a join into `orders` for
++// customer_name/email/phone/shipping_address) -- same query-level
++// masking guarantee as app/api/vendor/orders/route.ts. "Ship To" on the
++// generated PDF is always OUR warehouse (Admin -> Settings -> Delhivery
++// pickup location), never the customer's address.
++// ---------------------------------------------------------------------
++
++export async function GET(_req: NextRequest, { params }: { params: { itemId: string } }) {
++  const user = await getCurrentUser();
++  if (!user) {
++    return NextResponse.json({ error: 'Please log in first' }, { status: 401 });
++  }
++
++  const authedSupabase = await getSupabaseServer();
++  const { data: vendor, error: vendorErr } = await authedSupabase
++    .from('vendors')
++    .select('id, business_name, status')
++    .eq('user_id', user.id)
++    .maybeSingle();
++  if (vendorErr) {
++    return NextResponse.json({ error: vendorErr.message }, { status: 500 });
++  }
++  if (!vendor) {
++    return NextResponse.json({ error: 'No vendor profile found for this account' }, { status: 403 });
++  }
++  if (vendor.status === 'suspended') {
++    return NextResponse.json({ error: 'Your vendor account has been suspended' }, { status: 403 });
++  }
++
++  const admin = getSupabaseAdmin();
++  // Explicit column list, order_items only -- see masking note above.
++  const { data: item, error: itemErr } = await admin
++    .from('order_items')
++    .select('id, order_id, vendor_id, product_name, barcode, quantity, price, created_at')
++    .eq('id', params.itemId)
++    .maybeSingle();
++
++  if (itemErr) {
++    return NextResponse.json({ error: itemErr.message }, { status: 500 });
++  }
++  if (!item || item.vendor_id !== vendor.id) {
++    // Also covers "not this vendor's item" -- returned as 404, not 403,
++    // so it doesn't confirm/deny that some other vendor's item exists.
++    return NextResponse.json({ error: 'Item not found' }, { status: 404 });
++  }
++
++  const [warehouseSetting, storeSetting] = await Promise.all([
++    admin.from('settings').select('value').eq('key', 'delhivery').maybeSingle(),
++    admin.from('settings').select('value').eq('key', 'store_info').maybeSingle(),
++  ]);
++  const warehouse: DelhiverySettings = {
++    ...DEFAULT_DELHIVERY_SETTINGS,
++    ...((warehouseSetting.data?.value as Partial<DelhiverySettings>) || {}),
++  };
++  const store = (storeSetting.data?.value as Record<string, string>) || {};
++
++  const pdfBytes = await generateVendorPickupSlipPdf(
++    {
++      order_item_id: item.id,
++      order_id: item.order_id,
++      product_name: item.product_name,
++      barcode: item.barcode,
++      quantity: item.quantity,
++      price: item.price,
++      created_at: item.created_at,
++    },
++    {
++      name: warehouse.pickup_location_name,
++      address: warehouse.pickup_address,
++      city: warehouse.pickup_city,
++      state: warehouse.pickup_state,
++      pincode: warehouse.pickup_pincode,
++      phone: warehouse.pickup_phone,
++    },
++    { name: vendor.business_name, id: vendor.id },
++    store
++  );
++
++  return new NextResponse(Buffer.from(pdfBytes), {
++    status: 200,
++    headers: {
++      'Content-Type': 'application/pdf',
++      'Content-Disposition': `attachment; filename="pickup-slip-${item.id.slice(0, 8)}.pdf"`,
++      'Cache-Control': 'no-store',
++    },
++  });
++}
 diff --git a/app/checkout/page.tsx b/app/checkout/page.tsx
 index 16c35c9..727a830 100644
 --- a/app/checkout/page.tsx
@@ -281,6 +383,33 @@ index 66b8361..7e34325 100644
          </div>
        </div>
  
+diff --git a/app/vendor/dashboard/orders/page.tsx b/app/vendor/dashboard/orders/page.tsx
+index 49c6bd3..1f8debe 100644
+--- a/app/vendor/dashboard/orders/page.tsx
++++ b/app/vendor/dashboard/orders/page.tsx
+@@ -12,6 +12,7 @@ import {
+   Truck,
+   Camera,
+   Clock,
++  Download,
+ } from 'lucide-react';
+ import { Button } from '@/components/ui/button';
+ import { Badge } from '@/components/ui/badge';
+@@ -188,6 +189,14 @@ function OrderCard({
+         <span>Ship to: {warehouseAddress || 'Warehouse address not configured yet'}</span>
+       </div>
+ 
++      <div className="mt-2">
++        <Button size="sm" variant="outline" className="gap-1.5 text-xs" asChild>
++          <a href={`/api/vendor/orders/${item.id}/pickup-slip`} download>
++            <Download className="h-3.5 w-3.5" /> Download Pickup Slip
++          </a>
++        </Button>
++      </div>
++
+       <div className="mt-3 flex flex-wrap gap-2">
+         {item.stage === 'placed' && (
+           <>
 diff --git a/components/admin/orders-panel.tsx b/components/admin/orders-panel.tsx
 index 13e9ed1..44179cc 100644
 --- a/components/admin/orders-panel.tsx
@@ -433,3 +562,181 @@ index 4d26257..a01fe26 100644
      };
    }
  }
+diff --git a/lib/vendor-pickup-slip-pdf.ts b/lib/vendor-pickup-slip-pdf.ts
+new file mode 100644
+index 0000000..4cbe00e
+--- /dev/null
++++ b/lib/vendor-pickup-slip-pdf.ts
+@@ -0,0 +1,172 @@
++import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
++
++// ---------------------------------------------------------------------
++// Vendor Pickup Slip -- NOT a customer invoice.
++//
++// A vendor ships stock TO our warehouse, never to the end customer, so
++// this document deliberately contains ZERO customer data (no name, no
++// phone, no email, no shipping address). "Ship To" is always OUR
++// warehouse/pickup address (same one configured in Admin -> Settings ->
++// Delhivery, and already shown as plain text on the vendor dashboard's
++// "Ship to" line). This mirrors the same customer-data masking guarantee
++// already enforced at the query level in app/api/vendor/orders/route.ts.
++// ---------------------------------------------------------------------
++
++interface PickupSlipItem {
++  order_item_id: string;
++  order_id: string;
++  product_name: string;
++  barcode?: string | null;
++  quantity: number;
++  price: number;
++  created_at: string;
++}
++
++interface WarehouseInfo {
++  name?: string;
++  address?: string;
++  city?: string;
++  state?: string;
++  pincode?: string;
++  phone?: string;
++}
++
++interface StoreInfo {
++  name?: string;
++}
++
++interface VendorInfo {
++  name?: string;
++  id?: string;
++}
++
++const rupee = (n: number) => `Rs. ${n.toLocaleString('en-IN')}`;
++
++/**
++ * Renders a single-item pickup slip -- what a vendor hands to the
++ * pickup courier (or keeps for their own records) confirming what stock
++ * is being sent to OUR warehouse for a specific order. Deliberately
++ * plain, single-font layout, same style as invoice-pdf.ts.
++ */
++export async function generateVendorPickupSlipPdf(
++  item: PickupSlipItem,
++  warehouse: WarehouseInfo,
++  vendor: VendorInfo,
++  store: StoreInfo
++): Promise<Uint8Array> {
++  const doc = await PDFDocument.create();
++  const page = doc.addPage([595.28, 419.53]); // A5 landscape-ish, this is a slip not a full invoice
++  const font = await doc.embedFont(StandardFonts.Helvetica);
++  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
++
++  const margin = 40;
++  const pageWidth = page.getWidth();
++  let y = page.getHeight() - margin;
++
++  const primary = rgb(0.49, 0.23, 0.11);
++  const muted = rgb(0.45, 0.45, 0.45);
++  const black = rgb(0.1, 0.1, 0.1);
++
++  const draw = (
++    text: string,
++    x: number,
++    yPos: number,
++    opts: { size?: number; f?: typeof font; color?: ReturnType<typeof rgb> } = {}
++  ) => {
++    page.drawText(text, {
++      x,
++      y: yPos,
++      size: opts.size ?? 10,
++      font: opts.f ?? font,
++      color: opts.color ?? black,
++    });
++  };
++
++  // ---- Header ----
++  draw(store.name || 'AruhiHandlooms', margin, y, { size: 18, f: bold, color: primary });
++  y -= 20;
++  draw('VENDOR PICKUP SLIP', margin, y, { size: 11, f: bold, color: muted });
++
++  draw(`Ref: ${item.order_item_id.slice(0, 8).toUpperCase()}`, pageWidth - margin - 160, page.getHeight() - margin, {
++    size: 9,
++  });
++  draw(
++    `Order: #${item.order_id.slice(0, 8).toUpperCase()}`,
++    pageWidth - margin - 160,
++    page.getHeight() - margin - 14,
++    { size: 9 }
++  );
++  draw(
++    `Date: ${new Date(item.created_at).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}`,
++    pageWidth - margin - 160,
++    page.getHeight() - margin - 28,
++    { size: 9 }
++  );
++
++  y -= 20;
++  page.drawLine({ start: { x: margin, y }, end: { x: pageWidth - margin, y }, thickness: 0.5, color: muted });
++  y -= 22;
++
++  // ---- From (vendor) / Ship To (OUR warehouse -- never the customer) ----
++  const colLeft = margin;
++  const colRight = pageWidth / 2 + 10;
++  const sectionTopY = y;
++
++  draw('From (Vendor)', colLeft, y, { size: 9, f: bold, color: primary });
++  draw('Ship To (Our Warehouse)', colRight, y, { size: 9, f: bold, color: primary });
++  y -= 14;
++  draw(vendor.name || 'Vendor', colLeft, y, { size: 9 });
++  draw(warehouse.name || store.name || 'Warehouse', colRight, y, { size: 9 });
++  y -= 12;
++
++  let leftY = y;
++  let rightY = y;
++  if (warehouse.address) {
++    draw(warehouse.address, colRight, rightY, { size: 9, color: muted });
++    rightY -= 12;
++  }
++  const whLine2 = [warehouse.city, warehouse.state, warehouse.pincode].filter(Boolean).join(', ');
++  if (whLine2) {
++    draw(whLine2, colRight, rightY, { size: 9, color: muted });
++    rightY -= 12;
++  }
++  if (warehouse.phone) {
++    draw(`Phone: ${warehouse.phone}`, colRight, rightY, { size: 9, color: muted });
++    rightY -= 12;
++  }
++
++  y = Math.min(leftY, rightY) - 10;
++  page.drawLine({ start: { x: margin, y }, end: { x: pageWidth - margin, y }, thickness: 0.5, color: muted });
++  y -= 22;
++
++  // ---- Item table (single item -- one pickup slip per order item) ----
++  const col = { item: margin, barcode: 280, qty: 400, price: 460 };
++  draw('Product', col.item, y, { size: 9, f: bold });
++  draw('Barcode', col.barcode, y, { size: 9, f: bold });
++  draw('Qty', col.qty, y, { size: 9, f: bold });
++  draw('Price', col.price, y, { size: 9, f: bold });
++  y -= 8;
++  page.drawLine({ start: { x: margin, y }, end: { x: pageWidth - margin, y }, thickness: 0.5, color: muted });
++  y -= 18;
++
++  const name = item.product_name.length > 34 ? `${item.product_name.slice(0, 31)}...` : item.product_name;
++  draw(name, col.item, y, { size: 9 });
++  draw(item.barcode || '-', col.barcode, y, { size: 8, f: font });
++  draw(String(item.quantity), col.qty, y, { size: 9 });
++  draw(rupee(item.price), col.price, y, { size: 9 });
++  y -= 26;
++
++  page.drawLine({ start: { x: margin, y }, end: { x: pageWidth - margin, y }, thickness: 0.5, color: muted });
++  y -= 22;
++
++  draw(
++    'This slip is for internal warehouse pickup use only. It contains no customer information.',
++    margin,
++    y,
++    { size: 8, color: muted }
++  );
++  y -= 12;
++  draw('Please hand this stock, with this slip, to the pickup courier.', margin, y, { size: 8, color: muted });
++
++  return doc.save();
++}
