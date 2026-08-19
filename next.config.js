@@ -50,7 +50,7 @@ const nextConfig = {
       // custom domain, e.g. "cdn.yourdomain.com" (NOT the pub-xxxx.r2.dev
       // hostname — see R2-SETUP.md for why a custom domain matters here).
       ...(process.env.R2_PUBLIC_URL_HOSTNAME
-        ? [{ protocol: 'https' as const, hostname: process.env.R2_PUBLIC_URL_HOSTNAME }]
+        ? [{ protocol: 'https', hostname: process.env.R2_PUBLIC_URL_HOSTNAME }]
         : []),
     ],
   },
