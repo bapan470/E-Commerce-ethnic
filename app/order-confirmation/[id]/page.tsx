@@ -115,6 +115,7 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
   const addr = order.shipping_address as {
     address?: string;
     address2?: string;
+    landmark?: string;
     city?: string;
     state?: string;
     pincode?: string;
@@ -317,6 +318,7 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
               {order.customer_name}
               <br />
               {[addr.address, addr.address2].filter(Boolean).join(', ')}
+              {addr.landmark ? ` (Near ${addr.landmark})` : ''}
               <br />
               {[addr.city, addr.state, addr.pincode].filter(Boolean).join(', ')}
               <br />

@@ -109,6 +109,7 @@ export interface OrderForShipment {
   shipping_address?: {
     address?: string;
     address2?: string;
+    landmark?: string;
     city?: string;
     state?: string;
     pincode?: string;
@@ -226,7 +227,9 @@ export async function createDelhiveryShipment(
     shipments: [
       {
         name: order.customer_name || 'Customer',
-        add: [addr?.address, addr?.address2].filter(Boolean).join(', '),
+        add: [addr?.address, addr?.address2, addr?.landmark ? `Landmark: ${addr.landmark}` : undefined]
+          .filter(Boolean)
+          .join(', '),
         city: addr?.city || '',
         state: addr?.state || '',
         country: addr?.country || 'India',
@@ -290,6 +293,7 @@ export interface OrderForPickup {
   shipping_address?: {
     address?: string;
     address2?: string;
+    landmark?: string;
     city?: string;
     state?: string;
     pincode?: string;
@@ -354,7 +358,9 @@ export async function createDelhiveryReversePickup(
       {
         // Where the parcel is picked up FROM — the customer.
         name: order.customer_name || 'Customer',
-        add: [addr?.address, addr?.address2].filter(Boolean).join(', '),
+        add: [addr?.address, addr?.address2, addr?.landmark ? `Landmark: ${addr.landmark}` : undefined]
+          .filter(Boolean)
+          .join(', '),
         city: addr?.city || '',
         state: addr?.state || '',
         country: addr?.country || 'India',

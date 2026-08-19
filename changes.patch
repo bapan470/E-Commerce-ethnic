@@ -1,8 +1,26 @@
+diff --git a/app/account/orders/[id]/page.tsx b/app/account/orders/[id]/page.tsx
+index 430433c..d632ae3 100644
+--- a/app/account/orders/[id]/page.tsx
++++ b/app/account/orders/[id]/page.tsx
+@@ -198,6 +198,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
+               <br />
+               {order.shipping_address.address}
+               {order.shipping_address.address2 ? `, ${order.shipping_address.address2}` : ''}
++              {order.shipping_address.landmark ? ` (Near ${order.shipping_address.landmark})` : ''}
+               <br />
+               {order.shipping_address.city}, {order.shipping_address.state} -{' '}
+               {order.shipping_address.pincode}
 diff --git a/app/checkout/page.tsx b/app/checkout/page.tsx
-index 16c35c9..759bac7 100644
+index 16c35c9..727a830 100644
 --- a/app/checkout/page.tsx
 +++ b/app/checkout/page.tsx
-@@ -201,6 +201,7 @@ export default function CheckoutPage() {
+@@ -196,11 +196,13 @@ export default function CheckoutPage() {
+   const [shipPhone, setShipPhone] = useState('');
+   const [addressLine1, setAddressLine1] = useState('');
+   const [addressLine2, setAddressLine2] = useState('');
++  const [landmark, setLandmark] = useState('');
+   const [city, setCity] = useState('');
+   const [stateName, setStateName] = useState('');
    const [pincode, setPincode] = useState('');
    const [country, setCountry] = useState('India');
    const [deliveryEstimate, setDeliveryEstimate] = useState<PincodeResult | null>(null);
@@ -10,7 +28,58 @@ index 16c35c9..759bac7 100644
    // Tracks whether the current city/state values were filled in by us (from
    // the pincode lookup) rather than typed by the shopper, so the auto-fill
    // effect below never clobbers something they entered by hand. Reset to
-@@ -500,12 +501,15 @@ export default function CheckoutPage() {
+@@ -243,6 +245,7 @@ export default function CheckoutPage() {
+           shipPhone,
+           addressLine1,
+           addressLine2,
++          landmark,
+           city,
+           stateName,
+           pincode,
+@@ -294,6 +297,7 @@ export default function CheckoutPage() {
+         shipPhone: string;
+         addressLine1: string;
+         addressLine2: string;
++        landmark: string;
+         city: string;
+         stateName: string;
+         pincode: string;
+@@ -312,6 +316,7 @@ export default function CheckoutPage() {
+       setShipPhone(draft.shipPhone || '');
+       setAddressLine1(draft.addressLine1 || '');
+       setAddressLine2(draft.addressLine2 || '');
++      setLandmark(draft.landmark || '');
+       setCity(draft.city || '');
+       setStateName(draft.stateName || '');
+       setPincode(draft.pincode || '');
+@@ -333,6 +338,10 @@ export default function CheckoutPage() {
+     setShipPhone(addr.phone || '');
+     setAddressLine1(addr.line1 || '');
+     setAddressLine2(addr.line2 || '');
++    // Saved addresses don't store a landmark, so clear any leftover value
++    // from a previous manual entry rather than leaving it stuck on this
++    // different address.
++    setLandmark('');
+     // These are the customer's own saved values, not a pincode-lookup guess
+     // — mark them as "manual" so the pincode auto-fill effect doesn't
+     // silently swap them out.
+@@ -355,6 +364,7 @@ export default function CheckoutPage() {
+       setShipPhone('');
+       setAddressLine1('');
+       setAddressLine2('');
++      setLandmark('');
+       setCity('');
+       setStateName('');
+       setPincode('');
+@@ -386,6 +396,7 @@ export default function CheckoutPage() {
+       setShipPhone('');
+       setAddressLine1('');
+       setAddressLine2('');
++      setLandmark('');
+       setCity('');
+       setStateName('');
+       setPincode('');
+@@ -500,12 +511,15 @@ export default function CheckoutPage() {
    useEffect(() => {
      if (!/^[1-9][0-9]{5}$/.test(pincode.trim())) {
        setDeliveryEstimate(null);
@@ -26,7 +95,7 @@ index 16c35c9..759bac7 100644
        // Auto-fill City & State from the pincode — free, via the same India
        // Post lookup (api.postalpincode.in) already used for the delivery
        // estimate above, no extra API/key needed. Only overwrite a field if
-@@ -926,6 +930,26 @@ export default function CheckoutPage() {
+@@ -926,6 +940,26 @@ export default function CheckoutPage() {
        return;
      }
  
@@ -53,7 +122,45 @@ index 16c35c9..759bac7 100644
      const customerName = `${firstName} ${lastName}`.trim();
      // Normalize to lowercase/trimmed so this always matches the email a
      // customer later logs in with (Supabase Auth stores emails lowercase;
-@@ -1435,6 +1459,11 @@ export default function CheckoutPage() {
+@@ -935,6 +969,7 @@ export default function CheckoutPage() {
+     const shippingAddress = {
+       address: addressLine1,
+       address2: addressLine2,
++      landmark: landmark.trim() || undefined,
+       city,
+       state: stateName,
+       pincode,
+@@ -1327,7 +1362,8 @@ export default function CheckoutPage() {
+                 <p className="text-muted-foreground">{email}</p>
+                 <p className="text-muted-foreground">
+                   {addressLine1}
+-                  {addressLine2 ? `, ${addressLine2}` : ''}, {city}, {stateName} - {pincode}
++                  {addressLine2 ? `, ${addressLine2}` : ''}
++                  {landmark ? ` (Near ${landmark})` : ''}, {city}, {stateName} - {pincode}
+                   {country ? `, ${country}` : ''}
+                 </p>
+               </div>
+@@ -1425,6 +1461,19 @@ export default function CheckoutPage() {
+                   onChange={(e) => setAddressLine2(e.target.value)}
+                 />
+               </div>
++              <div className="grid gap-1.5">
++                <Label htmlFor="landmark">Landmark (optional)</Label>
++                <Input
++                  id="landmark"
++                  name="landmark"
++                  placeholder="Near City Hospital / Opposite SBI Bank"
++                  value={landmark}
++                  onChange={(e) => setLandmark(e.target.value)}
++                />
++                <p className="text-[11px] text-muted-foreground">
++                  Helps our delivery partner find your address faster.
++                </p>
++              </div>
+               <div className="grid gap-1.5">
+                 <Label htmlFor="pincode">PIN code *</Label>
+                 <Input
+@@ -1435,6 +1484,11 @@ export default function CheckoutPage() {
                    placeholder="400050"
                    inputMode="numeric"
                    value={pincode}
@@ -65,7 +172,7 @@ index 16c35c9..759bac7 100644
                    onChange={(e) => {
                      // Typing a new pincode is a clear signal the shopper
                      // wants fresh City/State for THIS pincode — so let the
-@@ -1446,6 +1475,23 @@ export default function CheckoutPage() {
+@@ -1446,6 +1500,23 @@ export default function CheckoutPage() {
                      setPincode(e.target.value);
                    }}
                  />
@@ -89,6 +196,91 @@ index 16c35c9..759bac7 100644
                  {deliveryEstimate?.serviceable && (city || stateName) && (
                    <p className="text-[11px] text-muted-foreground">
                      Auto-filled City/State below — you can edit if needed.
+diff --git a/app/order-confirmation/[id]/page.tsx b/app/order-confirmation/[id]/page.tsx
+index 66b8361..b18ae46 100644
+--- a/app/order-confirmation/[id]/page.tsx
++++ b/app/order-confirmation/[id]/page.tsx
+@@ -115,6 +115,7 @@ export default async function OrderConfirmationPage({ params }: { params: { id:
+   const addr = order.shipping_address as {
+     address?: string;
+     address2?: string;
++    landmark?: string;
+     city?: string;
+     state?: string;
+     pincode?: string;
+@@ -317,6 +318,7 @@ export default async function OrderConfirmationPage({ params }: { params: { id:
+               {order.customer_name}
+               <br />
+               {[addr.address, addr.address2].filter(Boolean).join(', ')}
++              {addr.landmark ? ` (Near ${addr.landmark})` : ''}
+               <br />
+               {[addr.city, addr.state, addr.pincode].filter(Boolean).join(', ')}
+               <br />
+diff --git a/lib/delhivery-api.ts b/lib/delhivery-api.ts
+index a673261..1c94df9 100644
+--- a/lib/delhivery-api.ts
++++ b/lib/delhivery-api.ts
+@@ -109,6 +109,7 @@ export interface OrderForShipment {
+   shipping_address?: {
+     address?: string;
+     address2?: string;
++    landmark?: string;
+     city?: string;
+     state?: string;
+     pincode?: string;
+@@ -226,7 +227,9 @@ export async function createDelhiveryShipment(
+     shipments: [
+       {
+         name: order.customer_name || 'Customer',
+-        add: [addr?.address, addr?.address2].filter(Boolean).join(', '),
++        add: [addr?.address, addr?.address2, addr?.landmark ? `Landmark: ${addr.landmark}` : undefined]
++          .filter(Boolean)
++          .join(', '),
+         city: addr?.city || '',
+         state: addr?.state || '',
+         country: addr?.country || 'India',
+@@ -290,6 +293,7 @@ export interface OrderForPickup {
+   shipping_address?: {
+     address?: string;
+     address2?: string;
++    landmark?: string;
+     city?: string;
+     state?: string;
+     pincode?: string;
+@@ -354,7 +358,9 @@ export async function createDelhiveryReversePickup(
+       {
+         // Where the parcel is picked up FROM — the customer.
+         name: order.customer_name || 'Customer',
+-        add: [addr?.address, addr?.address2].filter(Boolean).join(', '),
++        add: [addr?.address, addr?.address2, addr?.landmark ? `Landmark: ${addr.landmark}` : undefined]
++          .filter(Boolean)
++          .join(', '),
+         city: addr?.city || '',
+         state: addr?.state || '',
+         country: addr?.country || 'India',
+diff --git a/lib/invoice-pdf.ts b/lib/invoice-pdf.ts
+index ddce1b2..02b3cb2 100644
+--- a/lib/invoice-pdf.ts
++++ b/lib/invoice-pdf.ts
+@@ -17,6 +17,7 @@ interface InvoiceOrder {
+   shipping_address: {
+     address?: string;
+     address2?: string;
++    landmark?: string;
+     city?: string;
+     state?: string;
+     pincode?: string;
+@@ -113,6 +114,10 @@ export async function generateInvoicePdf(order: InvoiceOrder, store: StoreInfo):
+       draw(line1, margin, y, { size: 9, color: muted });
+       y -= 12;
+     }
++    if (addr.landmark) {
++      draw(`Landmark: ${addr.landmark}`, margin, y, { size: 9, color: muted });
++      y -= 12;
++    }
+     const line2 = [addr.city, addr.state, addr.pincode].filter(Boolean).join(', ');
+     if (line2) {
+       draw(line2, margin, y, { size: 9, color: muted });
 diff --git a/lib/pincode-api.ts b/lib/pincode-api.ts
 index 4d26257..a01fe26 100644
 --- a/lib/pincode-api.ts

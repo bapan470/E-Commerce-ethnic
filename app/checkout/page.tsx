@@ -196,6 +196,7 @@ export default function CheckoutPage() {
   const [shipPhone, setShipPhone] = useState('');
   const [addressLine1, setAddressLine1] = useState('');
   const [addressLine2, setAddressLine2] = useState('');
+  const [landmark, setLandmark] = useState('');
   const [city, setCity] = useState('');
   const [stateName, setStateName] = useState('');
   const [pincode, setPincode] = useState('');
@@ -244,6 +245,7 @@ export default function CheckoutPage() {
           shipPhone,
           addressLine1,
           addressLine2,
+          landmark,
           city,
           stateName,
           pincode,
@@ -295,6 +297,7 @@ export default function CheckoutPage() {
         shipPhone: string;
         addressLine1: string;
         addressLine2: string;
+        landmark: string;
         city: string;
         stateName: string;
         pincode: string;
@@ -313,6 +316,7 @@ export default function CheckoutPage() {
       setShipPhone(draft.shipPhone || '');
       setAddressLine1(draft.addressLine1 || '');
       setAddressLine2(draft.addressLine2 || '');
+      setLandmark(draft.landmark || '');
       setCity(draft.city || '');
       setStateName(draft.stateName || '');
       setPincode(draft.pincode || '');
@@ -334,6 +338,10 @@ export default function CheckoutPage() {
     setShipPhone(addr.phone || '');
     setAddressLine1(addr.line1 || '');
     setAddressLine2(addr.line2 || '');
+    // Saved addresses don't store a landmark, so clear any leftover value
+    // from a previous manual entry rather than leaving it stuck on this
+    // different address.
+    setLandmark('');
     // These are the customer's own saved values, not a pincode-lookup guess
     // — mark them as "manual" so the pincode auto-fill effect doesn't
     // silently swap them out.
@@ -356,6 +364,7 @@ export default function CheckoutPage() {
       setShipPhone('');
       setAddressLine1('');
       setAddressLine2('');
+      setLandmark('');
       setCity('');
       setStateName('');
       setPincode('');
@@ -387,6 +396,7 @@ export default function CheckoutPage() {
       setShipPhone('');
       setAddressLine1('');
       setAddressLine2('');
+      setLandmark('');
       setCity('');
       setStateName('');
       setPincode('');
@@ -959,6 +969,7 @@ export default function CheckoutPage() {
     const shippingAddress = {
       address: addressLine1,
       address2: addressLine2,
+      landmark: landmark.trim() || undefined,
       city,
       state: stateName,
       pincode,
@@ -1351,7 +1362,8 @@ export default function CheckoutPage() {
                 <p className="text-muted-foreground">{email}</p>
                 <p className="text-muted-foreground">
                   {addressLine1}
-                  {addressLine2 ? `, ${addressLine2}` : ''}, {city}, {stateName} - {pincode}
+                  {addressLine2 ? `, ${addressLine2}` : ''}
+                  {landmark ? ` (Near ${landmark})` : ''}, {city}, {stateName} - {pincode}
                   {country ? `, ${country}` : ''}
                 </p>
               </div>
@@ -1448,6 +1460,19 @@ export default function CheckoutPage() {
                   value={addressLine2}
                   onChange={(e) => setAddressLine2(e.target.value)}
                 />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="landmark">Landmark (optional)</Label>
+                <Input
+                  id="landmark"
+                  name="landmark"
+                  placeholder="Near City Hospital / Opposite SBI Bank"
+                  value={landmark}
+                  onChange={(e) => setLandmark(e.target.value)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Helps our delivery partner find your address faster.
+                </p>
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="pincode">PIN code *</Label>

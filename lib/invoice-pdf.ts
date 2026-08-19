@@ -17,6 +17,7 @@ interface InvoiceOrder {
   shipping_address: {
     address?: string;
     address2?: string;
+    landmark?: string;
     city?: string;
     state?: string;
     pincode?: string;
@@ -111,6 +112,10 @@ export async function generateInvoicePdf(order: InvoiceOrder, store: StoreInfo):
     const line1 = [addr.address, addr.address2].filter(Boolean).join(', ');
     if (line1) {
       draw(line1, margin, y, { size: 9, color: muted });
+      y -= 12;
+    }
+    if (addr.landmark) {
+      draw(`Landmark: ${addr.landmark}`, margin, y, { size: 9, color: muted });
       y -= 12;
     }
     const line2 = [addr.city, addr.state, addr.pincode].filter(Boolean).join(', ');

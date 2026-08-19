@@ -198,6 +198,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
               <br />
               {order.shipping_address.address}
               {order.shipping_address.address2 ? `, ${order.shipping_address.address2}` : ''}
+              {order.shipping_address.landmark ? ` (Near ${order.shipping_address.landmark})` : ''}
               <br />
               {order.shipping_address.city}, {order.shipping_address.state} -{' '}
               {order.shipping_address.pincode}
