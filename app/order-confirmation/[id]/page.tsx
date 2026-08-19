@@ -231,7 +231,7 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
           <h2 className="font-serif text-lg font-semibold text-primary">Order Summary</h2>
           <Button asChild variant="outline" size="sm" className="gap-2">
             <a href={`/api/invoice/${order.id}`} download>
-              <Download className="h-3.5 w-3.5" /> Download GST Invoice
+              <Download className="h-3.5 w-3.5" /> Download Invoice
             </a>
           </Button>
         </div>
@@ -393,7 +393,7 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
         </div>
         <div className="col-span-2 flex flex-col items-center gap-1 sm:col-span-1">
           <Download className="h-5 w-5 text-secondary" />
-          <span className="text-[11px] font-medium">GST Invoice available above</span>
+          <span className="text-[11px] font-medium">Invoice available above</span>
         </div>
       </div>
 

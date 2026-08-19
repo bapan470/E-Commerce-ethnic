@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import { PackageCheck, CreditCard } from 'lucide-react';
+import { PackageCheck, CreditCard, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getSupabaseServer, getCurrentUser } from '@/lib/supabase-server-auth';
 import { formatINR } from '@/lib/format';
@@ -56,6 +56,11 @@ export default async function OrderDetailPage({ params }: { params: { id: string
         </div>
         <div className="flex flex-col items-end gap-2">
           <Badge className="bg-muted text-foreground">{order.status}</Badge>
+          <Button asChild size="sm" variant="outline" className="gap-1.5">
+            <a href={`/api/invoice/${order.id}`} download>
+              <Download className="h-3.5 w-3.5" /> Download Invoice
+            </a>
+          </Button>
           <CancelOrHelp
             orderId={order.id}
             orderShortId={order.id.slice(0, 8).toUpperCase()}

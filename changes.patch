@@ -1,8 +1,29 @@
 diff --git a/app/account/orders/[id]/page.tsx b/app/account/orders/[id]/page.tsx
-index 430433c..d632ae3 100644
+index 430433c..71f7916 100644
 --- a/app/account/orders/[id]/page.tsx
 +++ b/app/account/orders/[id]/page.tsx
-@@ -198,6 +198,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
+@@ -1,7 +1,7 @@
+ import { notFound } from 'next/navigation';
+ import Image from 'next/image';
+ import Link from 'next/link';
+-import { PackageCheck, CreditCard } from 'lucide-react';
++import { PackageCheck, CreditCard, Download } from 'lucide-react';
+ import { Button } from '@/components/ui/button';
+ import { getSupabaseServer, getCurrentUser } from '@/lib/supabase-server-auth';
+ import { formatINR } from '@/lib/format';
+@@ -56,6 +56,11 @@ export default async function OrderDetailPage({ params }: { params: { id: string
+         </div>
+         <div className="flex flex-col items-end gap-2">
+           <Badge className="bg-muted text-foreground">{order.status}</Badge>
++          <Button asChild size="sm" variant="outline" className="gap-1.5">
++            <a href={`/api/invoice/${order.id}`} download>
++              <Download className="h-3.5 w-3.5" /> Download Invoice
++            </a>
++          </Button>
+           <CancelOrHelp
+             orderId={order.id}
+             orderShortId={order.id.slice(0, 8).toUpperCase()}
+@@ -198,6 +203,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                <br />
                {order.shipping_address.address}
                {order.shipping_address.address2 ? `, ${order.shipping_address.address2}` : ''}
@@ -10,6 +31,32 @@ index 430433c..d632ae3 100644
                <br />
                {order.shipping_address.city}, {order.shipping_address.state} -{' '}
                {order.shipping_address.pincode}
+diff --git a/app/account/orders/page.tsx b/app/account/orders/page.tsx
+index 7a79099..c9fc300 100644
+--- a/app/account/orders/page.tsx
++++ b/app/account/orders/page.tsx
+@@ -1,6 +1,6 @@
+ import Link from 'next/link';
+ import Image from 'next/image';
+-import { Package, TrendingUp } from 'lucide-react';
++import { Package, TrendingUp, Download } from 'lucide-react';
+ import { getSupabaseServer, getCurrentUser } from '@/lib/supabase-server-auth';
+ import { formatINR } from '@/lib/format';
+ import { Badge } from '@/components/ui/badge';
+@@ -149,7 +149,12 @@ export default async function OrdersPage() {
+                   </div>
+                 )}
+ 
+-                <div className="mt-3 flex justify-end">
++                <div className="mt-3 flex justify-end gap-2">
++                  <Button asChild size="sm" variant="outline" className="gap-1.5">
++                    <a href={`/api/invoice/${order.id}`} download>
++                      <Download className="h-3.5 w-3.5" /> Download Invoice
++                    </a>
++                  </Button>
+                   <Button asChild size="sm" variant="outline">
+                     <Link href={`/account/orders/${order.id}`}>View Order</Link>
+                   </Button>
 diff --git a/app/checkout/page.tsx b/app/checkout/page.tsx
 index 16c35c9..727a830 100644
 --- a/app/checkout/page.tsx
@@ -197,7 +244,7 @@ index 16c35c9..727a830 100644
                    <p className="text-[11px] text-muted-foreground">
                      Auto-filled City/State below — you can edit if needed.
 diff --git a/app/order-confirmation/[id]/page.tsx b/app/order-confirmation/[id]/page.tsx
-index 66b8361..b18ae46 100644
+index 66b8361..7e34325 100644
 --- a/app/order-confirmation/[id]/page.tsx
 +++ b/app/order-confirmation/[id]/page.tsx
 @@ -115,6 +115,7 @@ export default async function OrderConfirmationPage({ params }: { params: { id:
@@ -208,6 +255,15 @@ index 66b8361..b18ae46 100644
      city?: string;
      state?: string;
      pincode?: string;
+@@ -230,7 +231,7 @@ export default async function OrderConfirmationPage({ params }: { params: { id:
+           <h2 className="font-serif text-lg font-semibold text-primary">Order Summary</h2>
+           <Button asChild variant="outline" size="sm" className="gap-2">
+             <a href={`/api/invoice/${order.id}`} download>
+-              <Download className="h-3.5 w-3.5" /> Download GST Invoice
++              <Download className="h-3.5 w-3.5" /> Download Invoice
+             </a>
+           </Button>
+         </div>
 @@ -317,6 +318,7 @@ export default async function OrderConfirmationPage({ params }: { params: { id:
                {order.customer_name}
                <br />
@@ -216,6 +272,44 @@ index 66b8361..b18ae46 100644
                <br />
                {[addr.city, addr.state, addr.pincode].filter(Boolean).join(', ')}
                <br />
+@@ -391,7 +393,7 @@ export default async function OrderConfirmationPage({ params }: { params: { id:
+         </div>
+         <div className="col-span-2 flex flex-col items-center gap-1 sm:col-span-1">
+           <Download className="h-5 w-5 text-secondary" />
+-          <span className="text-[11px] font-medium">GST Invoice available above</span>
++          <span className="text-[11px] font-medium">Invoice available above</span>
+         </div>
+       </div>
+ 
+diff --git a/components/admin/orders-panel.tsx b/components/admin/orders-panel.tsx
+index 13e9ed1..44179cc 100644
+--- a/components/admin/orders-panel.tsx
++++ b/components/admin/orders-panel.tsx
+@@ -2,7 +2,7 @@
+ 
+ import { useEffect, useMemo, useState } from 'react';
+ import Link from 'next/link';
+-import { Loader2, Truck, Search, X, Copy, Check, Trash2, ExternalLink, Wallet } from 'lucide-react';
++import { Loader2, Truck, Search, X, Copy, Check, Trash2, ExternalLink, Wallet, Download } from 'lucide-react';
+ import { formatINR } from '@/lib/format';
+ import { Button } from '@/components/ui/button';
+ import { Input } from '@/components/ui/input';
+@@ -772,7 +772,14 @@ function OrderRow({
+           )}
+         </td>
+         <td className="px-4 py-3 align-top text-sm">
+-          <Button size="sm" onClick={() => setOpen((v) => !v)}>{open ? 'Hide' : 'View'}</Button>
++          <div className="flex flex-col items-start gap-1.5">
++            <Button size="sm" onClick={() => setOpen((v) => !v)}>{open ? 'Hide' : 'View'}</Button>
++            <Button size="sm" variant="outline" className="gap-1" asChild>
++              <a href={`/api/invoice/${order.id}`} download>
++                <Download className="h-3.5 w-3.5" /> Invoice
++              </a>
++            </Button>
++          </div>
+         </td>
+       </tr>
+       {open && (
 diff --git a/lib/delhivery-api.ts b/lib/delhivery-api.ts
 index a673261..1c94df9 100644
 --- a/lib/delhivery-api.ts

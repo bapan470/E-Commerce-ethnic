@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, Truck, Search, X, Copy, Check, Trash2, ExternalLink, Wallet } from 'lucide-react';
+import { Loader2, Truck, Search, X, Copy, Check, Trash2, ExternalLink, Wallet, Download } from 'lucide-react';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -772,7 +772,14 @@ function OrderRow({
           )}
         </td>
         <td className="px-4 py-3 align-top text-sm">
-          <Button size="sm" onClick={() => setOpen((v) => !v)}>{open ? 'Hide' : 'View'}</Button>
+          <div className="flex flex-col items-start gap-1.5">
+            <Button size="sm" onClick={() => setOpen((v) => !v)}>{open ? 'Hide' : 'View'}</Button>
+            <Button size="sm" variant="outline" className="gap-1" asChild>
+              <a href={`/api/invoice/${order.id}`} download>
+                <Download className="h-3.5 w-3.5" /> Invoice
+              </a>
+            </Button>
+          </div>
         </td>
       </tr>
       {open && (

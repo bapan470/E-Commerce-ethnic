@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import Image from 'next/image';
-import { Package, TrendingUp } from 'lucide-react';
+import { Package, TrendingUp, Download } from 'lucide-react';
 import { getSupabaseServer, getCurrentUser } from '@/lib/supabase-server-auth';
 import { formatINR } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
@@ -149,7 +149,12 @@ export default async function OrdersPage() {
                   </div>
                 )}
 
-                <div className="mt-3 flex justify-end">
+                <div className="mt-3 flex justify-end gap-2">
+                  <Button asChild size="sm" variant="outline" className="gap-1.5">
+                    <a href={`/api/invoice/${order.id}`} download>
+                      <Download className="h-3.5 w-3.5" /> Download Invoice
+                    </a>
+                  </Button>
                   <Button asChild size="sm" variant="outline">
                     <Link href={`/account/orders/${order.id}`}>View Order</Link>
                   </Button>
