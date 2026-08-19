@@ -13,16 +13,35 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from 'sonner';
+
+// Same list as checkout page
+const INDIAN_STATES = [
+  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
+  'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka',
+  'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram',
+  'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu',
+  'Telangana', 'Tripura', 'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
+  'Andaman and Nicobar Islands', 'Chandigarh',
+  'Dadra and Nagar Haveli and Daman and Diu', 'Delhi',
+  'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry',
+];
 
 const emptyForm = {
   full_name: '',
   phone: '',
   line1: '',
   line2: '',
+  landmark: '',
   city: '',
   state: '',
   pincode: '',
@@ -39,18 +58,12 @@ export default function AddressesPage() {
 
   const load = async () => {
     setLoading(true);
-    try {
-      setAddresses(await fetchAddresses());
-    } catch (e) {
-      toast.error('Could not load addresses');
-    } finally {
-      setLoading(false);
-    }
+    try { setAddresses(await fetchAddresses()); }
+    catch { toast.error('Could not load addresses'); }
+    finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    load();
-  }, []);
+  useEffect(() => { load(); }, []);
 
   const openNew = () => {
     setEditing(null);
@@ -65,6 +78,7 @@ export default function AddressesPage() {
       phone: a.phone,
       line1: a.line1,
       line2: a.line2 || '',
+      landmark: a.landmark || '',
       city: a.city,
       state: a.state,
       pincode: a.pincode,
@@ -73,7 +87,19 @@ export default function AddressesPage() {
     setOpen(true);
   };
 
+  const f = (key: keyof typeof emptyForm) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm(prev => ({ ...prev, [key]: e.target.value }));
+
   const onSave = async () => {
+    if (!form.full_name.trim()) { toast.error('Full name is required'); return; }
+    if (!form.phone.trim()) { toast.error('Phone is required'); return; }
+    if (!form.line1.trim()) { toast.error('Street address is required'); return; }
+    if (!form.pincode.trim() || !/^\d{6}$/.test(form.pincode.trim())) {
+      toast.error('Please enter a valid 6-digit PIN code'); return;
+    }
+    if (!form.city.trim()) { toast.error('City is required'); return; }
+    if (!form.state) { toast.error('Please select a state'); return; }
+
     setSaving(true);
     try {
       await upsertAddress({ id: editing?.id, ...form });
@@ -88,13 +114,8 @@ export default function AddressesPage() {
   };
 
   const onDelete = async (id: string) => {
-    try {
-      await deleteAddress(id);
-      toast.success('Address removed');
-      load();
-    } catch {
-      toast.error('Failed to remove');
-    }
+    try { await deleteAddress(id); toast.success('Address removed'); load(); }
+    catch { toast.error('Failed to remove'); }
   };
 
   return (
@@ -123,15 +144,16 @@ export default function AddressesPage() {
               <p className="text-sm text-muted-foreground">{a.phone}</p>
               <p className="mt-1 text-sm text-muted-foreground">
                 {a.line1}
-                {a.line2 ? `, ${a.line2}` : ''}, {a.city}, {a.state} - {a.pincode}
+                {a.line2 ? `, ${a.line2}` : ''}
+                {a.landmark ? `, Near ${a.landmark}` : ''},&nbsp;
+                {a.city}, {a.state} — {a.pincode}
               </p>
               <div className="mt-3 flex gap-2">
                 <Button size="sm" variant="outline" onClick={() => openEdit(a)} className="gap-1">
                   <Pencil className="h-3 w-3" /> Edit
                 </Button>
                 <Button
-                  size="sm"
-                  variant="outline"
+                  size="sm" variant="outline"
                   onClick={() => onDelete(a.id)}
                   className="gap-1 text-destructive hover:text-destructive"
                 >
@@ -144,71 +166,88 @@ export default function AddressesPage() {
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? 'Edit Address' : 'Add Address'}</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-3 sm:grid-cols-2">
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            {/* Full name */}
             <div className="space-y-1.5 sm:col-span-2">
-              <Label>Full name</Label>
-              <Input
-                value={form.full_name}
-                onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-              />
+              <Label htmlFor="full_name">Full name *</Label>
+              <Input id="full_name" value={form.full_name} onChange={f('full_name')} placeholder="Bapan Mallick" />
             </div>
+
+            {/* Phone */}
             <div className="space-y-1.5 sm:col-span-2">
-              <Label>Phone</Label>
-              <Input
-                value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-              />
+              <Label htmlFor="phone">Phone *</Label>
+              <Input id="phone" type="tel" value={form.phone} onChange={f('phone')} placeholder="+91 98765 43210" />
             </div>
+
+            {/* Street address */}
             <div className="space-y-1.5 sm:col-span-2">
-              <Label>Address line 1</Label>
-              <Input
-                value={form.line1}
-                onChange={(e) => setForm({ ...form, line1: e.target.value })}
-              />
+              <Label htmlFor="line1">Street address *</Label>
+              <Input id="line1" value={form.line1} onChange={f('line1')} placeholder="12, MG Road, Apt 304" />
             </div>
+
+            {/* Address line 2 */}
             <div className="space-y-1.5 sm:col-span-2">
-              <Label>Address line 2 (optional)</Label>
-              <Input
-                value={form.line2}
-                onChange={(e) => setForm({ ...form, line2: e.target.value })}
-              />
+              <Label htmlFor="line2">Apartment, suite, etc. <span className="text-muted-foreground">(optional)</span></Label>
+              <Input id="line2" value={form.line2} onChange={f('line2')} placeholder="Bandra West" />
             </div>
+
+            {/* Landmark */}
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="landmark">Landmark <span className="text-muted-foreground">(optional)</span></Label>
+              <Input id="landmark" value={form.landmark} onChange={f('landmark')} placeholder="Near City Hospital / Opposite SBI Bank" />
+              <p className="text-xs text-muted-foreground">Helps our delivery partner find your address faster.</p>
+            </div>
+
+            {/* PIN code */}
             <div className="space-y-1.5">
-              <Label>City</Label>
+              <Label htmlFor="pincode">PIN code *</Label>
               <Input
-                value={form.city}
-                onChange={(e) => setForm({ ...form, city: e.target.value })}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>State</Label>
-              <Input
-                value={form.state}
-                onChange={(e) => setForm({ ...form, state: e.target.value })}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Pincode</Label>
-              <Input
+                id="pincode"
                 value={form.pincode}
-                onChange={(e) => setForm({ ...form, pincode: e.target.value })}
+                onChange={f('pincode')}
+                placeholder="400050"
+                maxLength={6}
+                inputMode="numeric"
               />
             </div>
-            <div className="flex items-center gap-2 pt-6">
+
+            {/* City */}
+            <div className="space-y-1.5">
+              <Label htmlFor="city">City *</Label>
+              <Input id="city" value={form.city} onChange={f('city')} placeholder="Mumbai" />
+            </div>
+
+            {/* State dropdown */}
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label>State *</Label>
+              <Select value={form.state} onValueChange={(v) => setForm(prev => ({ ...prev, state: v }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select state…" />
+                </SelectTrigger>
+                <SelectContent className="max-h-60">
+                  {INDIAN_STATES.map((s) => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Default checkbox */}
+            <div className="flex items-center gap-2 sm:col-span-2">
               <Checkbox
                 id="is_default"
                 checked={form.is_default}
-                onCheckedChange={(v) => setForm({ ...form, is_default: !!v })}
+                onCheckedChange={(v) => setForm(prev => ({ ...prev, is_default: !!v }))}
               />
-              <Label htmlFor="is_default" className="cursor-pointer">
-                Set as default
-              </Label>
+              <Label htmlFor="is_default" className="cursor-pointer">Set as default address</Label>
             </div>
           </div>
+
           <DialogFooter>
             <Button onClick={onSave} disabled={saving} className="w-full bg-primary">
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
