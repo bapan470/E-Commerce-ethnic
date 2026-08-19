@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import sharp from 'sharp';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
-import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { uploadToStorage } from '@/lib/storage';
 
 const MAX_BYTES = 15 * 1024 * 1024; // 15MB safety cap on the source image
 
@@ -178,22 +178,13 @@ export async function POST(req: Request) {
 
     const path = `${bucketFolder}/${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
 
-    const admin = getSupabaseAdmin();
-    const { error: uploadError } = await admin.storage
-      .from('product-images')
-      .upload(path, uploadBuffer, {
-        cacheControl: '31536000',
-        upsert: false,
-        contentType: uploadContentType,
-      });
-
-    if (uploadError) {
-      console.error('[import-image] storage upload error:', uploadError);
-      return NextResponse.json({ error: 'Could not save the image. Please try again.' }, { status: 500 });
-    }
-
-    const { data } = admin.storage.from('product-images').getPublicUrl(path);
-    return NextResponse.json({ url: data.publicUrl });
+    const { url } = await uploadToStorage({
+      bucket: 'product-images',
+      path,
+      buffer: uploadBuffer,
+      contentType: uploadContentType,
+    });
+    return NextResponse.json({ url });
   } catch (err) {
     console.error('[import-image] error:', err);
     return NextResponse.json(

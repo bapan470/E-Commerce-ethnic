@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { uploadToStorage } from '@/lib/storage';
 import { requireAdmin } from '@/lib/admin-fulfillment-shared';
 
 // ---------------------------------------------------------------------
@@ -53,17 +54,12 @@ export async function POST(req: Request) {
     const path = `${productId}/${Date.now()}.${ext}`;
 
     const arrayBuffer = await file.arrayBuffer();
-    const { error: uploadError } = await admin.storage
-      .from('product-videos')
-      .upload(path, Buffer.from(arrayBuffer), {
-        cacheControl: '31536000', // 1 year — each upload gets a unique timestamped path
-        upsert: false,
-        contentType,
-      });
-    if (uploadError) throw uploadError;
-
-    const { data: publicUrlData } = admin.storage.from('product-videos').getPublicUrl(path);
-    const videoUrl = publicUrlData.publicUrl;
+    const { url: videoUrl } = await uploadToStorage({
+      bucket: 'product-videos',
+      path,
+      buffer: Buffer.from(arrayBuffer),
+      contentType,
+    });
 
     const { error: updateError } = await admin
       .from('products')

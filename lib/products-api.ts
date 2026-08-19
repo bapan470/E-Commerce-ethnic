@@ -352,8 +352,20 @@ export async function uploadProductVideo(file: File, seoName?: string): Promise<
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.error || 'Video upload failed');
 
-  const { path, token, url } = json as { path: string; token: string; url: string };
+  // /api/upload-video returns a different shape depending on which
+  // storage provider is active (STORAGE_PROVIDER env var, see lib/storage.ts).
+  if (json.provider === 'r2') {
+    const { uploadUrl, url } = json as { uploadUrl: string; url: string };
+    const putRes = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type || 'video/mp4' },
+      body: file,
+    });
+    if (!putRes.ok) throw new Error('Video upload failed');
+    return url;
+  }
 
+  const { path, token, url } = json as { path: string; token: string; url: string };
   const { error: uploadError } = await supabase.storage
     .from('product-videos')
     .uploadToSignedUrl(path, token, file);

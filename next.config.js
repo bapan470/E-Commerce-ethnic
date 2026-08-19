@@ -45,6 +45,13 @@ const nextConfig = {
       // Supabase Storage — admin-uploaded product/variant images live here.
       // Without this, every image uploaded from the admin panel renders broken.
       { protocol: 'https', hostname: '*.supabase.co', pathname: '/storage/v1/object/public/**' },
+      // Cloudflare R2 — only used when STORAGE_PROVIDER=r2 (see lib/storage.ts).
+      // R2_PUBLIC_URL_HOSTNAME should be the bare hostname of your R2 bucket's
+      // custom domain, e.g. "cdn.yourdomain.com" (NOT the pub-xxxx.r2.dev
+      // hostname — see R2-SETUP.md for why a custom domain matters here).
+      ...(process.env.R2_PUBLIC_URL_HOSTNAME
+        ? [{ protocol: 'https' as const, hostname: process.env.R2_PUBLIC_URL_HOSTNAME }]
+        : []),
     ],
   },
 };

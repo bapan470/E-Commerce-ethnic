@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import sharp from 'sharp';
-import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { uploadToStorage } from '@/lib/storage';
 
 // ---------------------------------------------------------------------
 // Server-side image upload used by lib/products-api.ts's
@@ -104,22 +104,15 @@ export async function POST(req: Request) {
 
     const path = `${folder}/${slug ? `${slug}-` : ''}${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
 
-    const admin = getSupabaseAdmin();
-    const { error: uploadError } = await admin.storage
-      .from('product-images')
-      .upload(path, uploadBuffer, {
-        cacheControl: '31536000',
-        upsert: false,
-        contentType: uploadContentType,
-      });
-
-    if (uploadError) {
-      console.error('[upload-image] storage upload error:', uploadError);
-      return NextResponse.json({ error: 'Could not save the image. Please try again.' }, { status: 500 });
-    }
-
-    const { data } = admin.storage.from('product-images').getPublicUrl(path);
-    return NextResponse.json({ url: data.publicUrl });
+    // Routes to Supabase Storage or Cloudflare R2 depending on the
+    // STORAGE_PROVIDER env var -- see lib/storage.ts.
+    const { url } = await uploadToStorage({
+      bucket: 'product-images',
+      path,
+      buffer: uploadBuffer,
+      contentType: uploadContentType,
+    });
+    return NextResponse.json({ url });
   } catch (err) {
     console.error('[upload-image] error:', err);
     return NextResponse.json({ error: 'Could not upload that image. Please try again.' }, { status: 500 });

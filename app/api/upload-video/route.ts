@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
-import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { createDirectUploadTarget } from '@/lib/storage';
 
 // ---------------------------------------------------------------------
 // Server-side product video upload used by lib/products-api.ts's
@@ -63,21 +63,11 @@ export async function POST(req: Request) {
   const path = `manual-uploads/${slug ? `${slug}-` : ''}${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
 
   try {
-    const admin = getSupabaseAdmin();
-    const { data, error } = await admin.storage.from('product-videos').createSignedUploadUrl(path);
-
-    if (error || !data) {
-      console.error('[upload-video] signed url error:', error);
-      return NextResponse.json({ error: 'Could not prepare the upload. Please try again.' }, { status: 500 });
-    }
-
-    const { data: publicUrlData } = admin.storage.from('product-videos').getPublicUrl(path);
-
-    return NextResponse.json({
-      path: data.path,
-      token: data.token,
-      url: publicUrlData.publicUrl,
-    });
+    // Mints a direct-to-storage upload credential -- Supabase signed-URL
+    // token, or an R2 presigned PUT URL -- depending on STORAGE_PROVIDER.
+    // See lib/storage.ts and lib/products-api.ts's uploadProductVideo().
+    const target = await createDirectUploadTarget({ bucket: 'product-videos', path, contentType });
+    return NextResponse.json(target);
   } catch (err) {
     console.error('[upload-video] error:', err);
     return NextResponse.json({ error: 'Could not prepare the upload. Please try again.' }, { status: 500 });

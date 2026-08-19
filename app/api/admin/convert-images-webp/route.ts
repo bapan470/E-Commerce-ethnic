@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import sharp from 'sharp';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { uploadToStorage } from '@/lib/storage';
 
 // ---------------------------------------------------------------------
 // One-click "Convert all images to WebP" tool for the admin Settings
@@ -181,15 +182,16 @@ export async function POST(req: Request) {
       const slug = slugify(c.slugSource);
       const newPath = `${folder}/${slug ? `${slug}-` : ''}${Date.now()}-${Math.random().toString(36).slice(2, 9)}.webp`;
 
-      const { error: uploadErr } = await admin.storage.from(BUCKET).upload(newPath, webpBuffer, {
-        cacheControl: '31536000',
-        upsert: false,
+      // Writes through the active storage provider (Supabase or R2, see
+      // lib/storage.ts) -- the OLD file being cleaned up below is always
+      // on Supabase (that's how it was found as a candidate), but the
+      // freshly re-encoded replacement lands wherever new uploads go.
+      const { url: newUrl } = await uploadToStorage({
+        bucket: BUCKET,
+        path: newPath,
+        buffer: webpBuffer,
         contentType: 'image/webp',
       });
-      if (uploadErr) throw new Error(uploadErr.message);
-
-      const { data: pub } = admin.storage.from(BUCKET).getPublicUrl(newPath);
-      const newUrl = pub.publicUrl;
 
       const rowKey = `${c.table}:${c.id}`;
       if (!byRow.has(rowKey)) {
