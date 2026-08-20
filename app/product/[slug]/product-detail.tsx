@@ -701,6 +701,7 @@ export default function ProductDetail() {
           quantity={quantity}
           setQuantity={setQuantity}
           onAdd={handleAddToCart}
+          onBuyNow={handleBuyNow}
           onReviewsClick={goToReviews}
           appliedCoupon={appliedCoupon}
           couponDiscount={couponDiscount}
@@ -819,6 +820,7 @@ function ProductInfo({
   quantity,
   setQuantity,
   onAdd,
+  onBuyNow,
   onReviewsClick,
   appliedCoupon,
   couponDiscount,
@@ -842,6 +844,7 @@ function ProductInfo({
   quantity: number;
   setQuantity: (n: number | ((q: number) => number)) => void;
   onAdd: () => void;
+  onBuyNow: () => void;
   onReviewsClick: () => void;
   appliedCoupon: Coupon | null;
   couponDiscount: number;
@@ -1050,25 +1053,39 @@ function ProductInfo({
           </p>
         )}
         {selectedSizeStock > 0 ? (
-          <Button
-            onClick={onAdd}
-            size="lg"
-            className="hidden flex-1 gap-2 bg-primary text-base md:flex"
-          >
-            <ShoppingBag className="h-4 w-4" />
-            Add to Bag
-          </Button>
+          <>
+            <Button
+              onClick={onAdd}
+              size="lg"
+              variant="outline"
+              className="flex-1 gap-2 border-primary text-base text-primary"
+            >
+              <ShoppingBag className="h-4 w-4" />
+              Add to Bag
+            </Button>
+            <Button
+              onClick={onBuyNow}
+              size="lg"
+              className="flex-1 gap-2 bg-primary text-base text-primary-foreground"
+            >
+              Buy Now
+            </Button>
+          </>
         ) : (
-          <Button
-            disabled
-            size="lg"
-            variant="outline"
-            className="hidden flex-1 gap-2 text-base md:flex"
-          >
+          <Button disabled size="lg" variant="outline" className="flex-1 gap-2 text-base">
             Out of Stock
           </Button>
         )}
       </div>
+
+      {/* On mobile this duplicates what MobileStickyCartBar (fixed at the
+          bottom of the screen) already offers -- kept deliberately, since
+          the sticky bar alone was easy for shoppers to miss/scroll past
+          without noticing while reading the description/highlights below,
+          which meant fewer actually tapped Add to Bag / Buy Now. Having
+          the buttons right here too, next to the price/stock info the
+          shopper is already looking at, gives a second clear path to
+          purchase instead of relying on the fixed bar being noticed. */}
 
       {!product.inStock && <NotifyMeForm productId={product.id} />}
 
