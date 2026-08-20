@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Gift,
   Lock,
+  ChevronRight,
 } from 'lucide-react';
 import { useProducts, usePaymentDiscount, useCart, getVisibleBogoPromotion, formatBogoLabel } from '@/lib/cart-context';
 import { fetchProductBySlug } from '@/lib/products-api';
@@ -1102,13 +1103,14 @@ function ProductInfo({
         <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/60 pt-3">
           <Link
             href="/legal/refund-policy"
-            className="text-[11px] font-medium text-primary underline-offset-2 hover:underline"
+            className="group flex items-center gap-0.5 text-xs font-semibold text-primary"
           >
-            Return Policy →
+            Return Policy
+            <ChevronRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
           </Link>
-          <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/40 px-2.5 py-1 text-[10px] font-medium text-muted-foreground">
             <Lock className="h-3 w-3" />
-            Secure payments via Razorpay
+            Razorpay Secured
           </span>
         </div>
       </div>
