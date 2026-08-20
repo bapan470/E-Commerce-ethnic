@@ -32,6 +32,7 @@ import { fetchShippingSettings } from '@/lib/pincode-api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import ReviewsSection from '@/components/product/reviews-section';
 import { fetchApprovedReviews, summarizeReviews, RatingSummary } from '@/lib/reviews-api';
@@ -708,6 +709,7 @@ export default function ProductDetail() {
           appliedCoupon={appliedCoupon}
           couponDiscount={couponDiscount}
           fulfillment={fulfillment}
+          freeShippingThreshold={freeShippingThreshold}
           isLoggedIn={!!user}
           loyaltyBalance={loyaltyBalance}
           loyaltySettings={loyaltySettings}
@@ -844,6 +846,7 @@ function ProductInfo({
   onCouponApply,
   onCouponRemove,
   fulfillment,
+  freeShippingThreshold,
   isLoggedIn,
   loyaltySettings,
   loyaltyBalance,
@@ -868,6 +871,7 @@ function ProductInfo({
   onCouponApply: (coupon: Coupon, discount: number) => void;
   onCouponRemove: () => void;
   fulfillment: FulfillmentSettings;
+  freeShippingThreshold: number | undefined;
   isLoggedIn: boolean;
   loyaltySettings: LoyaltySettings;
   loyaltyBalance: number;
@@ -1156,13 +1160,31 @@ function ProductInfo({
         </div>
 
         <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/60 pt-3">
-          <Link
-            href="/legal/refund-policy"
-            className="group flex items-center gap-0.5 text-xs font-semibold text-primary"
-          >
-            Return Policy
-            <ChevronRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-          </Link>
+          <Dialog>
+            <DialogTrigger asChild>
+              <button
+                type="button"
+                className="group flex items-center gap-0.5 text-xs font-semibold text-primary"
+              >
+                Return Policy
+                <ChevronRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+              </button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle className="font-serif text-lg text-primary">Return Policy</DialogTitle>
+              </DialogHeader>
+              <p className="text-sm leading-relaxed text-foreground/80">
+                {shippingReturnsSummary(fulfillment, freeShippingThreshold)}
+              </p>
+              <Link
+                href="/legal/refund-policy"
+                className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+              >
+                Read the full policy →
+              </Link>
+            </DialogContent>
+          </Dialog>
           <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/40 px-2.5 py-1 text-[10px] font-medium text-muted-foreground">
             <Lock className="h-3 w-3" />
             Razorpay Secured
