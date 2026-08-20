@@ -36,6 +36,43 @@ export function fireGtagEvent(eventName: string, params: Record<string, unknown>
 }
 
 /**
+ * Builds the exact same `id` string that app/api/merchant-feed/route.ts
+ * uses for a given color-variant + size in the Google Merchant Center
+ * feed (`<g:id>`).
+ *
+ * Google Ads' Retail audiences ("Product viewers", "Shopping cart
+ * abandoners", etc.) and Performance Max's dynamic remarketing creative
+ * both work by matching the `item_id` sent in GA4/gtag events against
+ * the `id` of a product in your linked Merchant Center feed. If the two
+ * don't match, Google can't reliably find *that exact item* to show back
+ * to the shopper — it falls back to a generic ad instead of "here's the
+ * blue saree, size M, you looked at".
+ *
+ * Previously `view_item` / `add_to_cart` sent the base `product.id`,
+ * but the feed's `<g:id>` is per colour-variant (and per size, when
+ * sizes exist) — e.g. `<variantId>-M` — never the bare product id. This
+ * keeps both in sync from one place so they can't drift apart again.
+ *
+ * Mirrors app/api/merchant-feed/route.ts exactly:
+ *   - no colour variants at all           -> product.id
+ *   - variant with no sizes recorded      -> variant.id
+ *   - variant + size                      -> `${variant.id}-${sizeSlug}`
+ *     where sizeSlug = size with whitespace stripped, capped at 10 chars
+ *     (same 50-char Merchant Center `id` limit the feed respects).
+ */
+export function feedMatchedItemId(
+  productId: string,
+  variant: { id: string; sizes?: unknown[] } | null | undefined,
+  selectedSize: string | null | undefined
+): string {
+  if (!variant) return productId;
+  if (!variant.sizes || variant.sizes.length === 0) return variant.id;
+  if (!selectedSize) return variant.id;
+  const sizeSlug = selectedSize.replace(/\s+/g, '').slice(0, 10);
+  return `${variant.id}-${sizeSlug}`;
+}
+
+/**
  * Shape of the customer-provided data Google Ads uses for Enhanced
  * Conversions. Send plain values here — Google's gtag.js hashes them
  * (SHA256) client-side before anything leaves the browser, so we never

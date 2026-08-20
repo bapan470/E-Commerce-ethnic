@@ -20,7 +20,7 @@ import { fetchProductBySlug } from '@/lib/products-api';
 import { fetchVariantBySlug, fetchVariantsForProduct, ProductVariant, VariantWithSizes } from '@/lib/variants-api';
 import { Product } from '@/lib/types';
 import { formatINR, discountPct } from '@/lib/format';
-import { fireGtagEvent } from '@/lib/gtag-track';
+import { fireGtagEvent, feedMatchedItemId } from '@/lib/gtag-track';
 import {
   FulfillmentSettings,
   DEFAULT_FULFILLMENT_SETTINGS,
@@ -498,7 +498,13 @@ export default function ProductDetail() {
       value: selectedSizePrice || product.price,
       items: [
         {
-          item_id: product.id,
+          // Matches the Merchant Center feed's <g:id> for this exact
+          // colour/size (see feedMatchedItemId) — this is what lets
+          // Google Ads' "Product viewers" Retail audience and Performance
+          // Max dynamic remarketing show the *exact* item back to this
+          // shopper instead of a generic product ad.
+          item_id: feedMatchedItemId(product.id, variant, selectedSize),
+          item_group_id: product.id,
           item_name: product.name,
           item_category: product.category,
           price: selectedSizePrice || product.price,
@@ -507,7 +513,7 @@ export default function ProductDetail() {
       ],
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseProduct?.id]);
+  }, [baseProduct?.id, variant?.id, selectedSize]);
 
   // Once an item has been added to the cart with a coupon previewed on this
   // page, sync that coupon into the shared cart (lib/cart-context.tsx) so it
@@ -611,7 +617,11 @@ export default function ProductDetail() {
       currency: 'INR',
       value: selectedSizePrice * quantity,
       items: [{
-        item_id: product.id,
+        // Same feed-matched id as view_item above — an add-to-cart signal
+        // for the wrong item_id is arguably worse than none, since it's
+        // the strongest "show this exact product again" signal Google has.
+        item_id: feedMatchedItemId(product.id, variant, selectedSize),
+        item_group_id: product.id,
         item_name: product.name,
         item_category: product.category ?? '',
         price: selectedSizePrice,
@@ -654,7 +664,8 @@ export default function ProductDetail() {
       currency: 'INR',
       value: selectedSizePrice * quantity,
       items: [{
-        item_id: product.id,
+        item_id: feedMatchedItemId(product.id, variant, selectedSize),
+        item_group_id: product.id,
         item_name: product.name,
         item_category: product.category ?? '',
         price: selectedSizePrice,
