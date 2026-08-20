@@ -115,6 +115,21 @@
   }
 }
 
+/* Sonner (toast library) hardcodes `top: 20px` for top-positioned toasts
+   below a 600px viewport width, in its own injected stylesheet — this
+   overrides the `offset="68px"` prop passed to <Toaster> on mobile, which
+   is why the "Coupon applied" toast was sitting on top of the sticky
+   header (h-12 = 48px) and hiding the hamburger menu/logo. Not a Tailwind
+   utility since it targets sonner's own data-attribute selectors; needs
+   !important because sonner's <style> tag is injected client-side after
+   our stylesheet, so it would otherwise win the cascade at equal
+   specificity. Keep this offset in sync with the header's height. */
+@media (max-width: 600px) {
+  [data-sonner-toaster][data-y-position='top'] {
+    top: 60px !important;
+  }
+}
+
 @layer utilities {
   .no-scrollbar::-webkit-scrollbar {
     display: none;
