@@ -127,9 +127,15 @@ export async function GET(req: NextRequest, { params }: { params: { path: string
 
   const { proxyEnabled, preferredBackend } = await getSettings();
 
-  // Quota-saving redirect mode: hand browser/crawler off to Supabase directly
+  // Quota-saving redirect mode: hand browser/crawler off to the preferred
+  // backend directly (R2's cdn.aruhihandlooms.com if that's selected in
+  // Media Storage — Preferred Backend, otherwise Supabase). Falls back to
+  // the other backend if the preferred one has no URL configured (e.g. R2
+  // env vars missing), so this never redirects to a broken/empty URL.
   if (!proxyEnabled) {
-    const redirectUrl = buildUpstreamUrl('supabase', params.path);
+    const redirectUrl =
+      buildUpstreamUrl(preferredBackend, params.path) ??
+      buildUpstreamUrl(preferredBackend === 'r2' ? 'supabase' : 'r2', params.path);
     if (!redirectUrl) return new NextResponse('Not found', { status: 404 });
     return NextResponse.redirect(redirectUrl, 307);
   }

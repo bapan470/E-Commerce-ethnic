@@ -1458,12 +1458,14 @@ export default function SettingsPanel() {
         <div className="mt-4 flex max-w-xl items-center justify-between gap-4 rounded-lg border border-border/60 bg-card p-5">
           <div>
             <Label htmlFor="media-delivery-proxy-enabled">
-              {mediaDeliveryForm.proxy_enabled ? 'Serving from your domain' : 'Redirecting to Supabase'}
+              {mediaDeliveryForm.proxy_enabled
+                ? 'Serving from your domain'
+                : `Redirecting to ${mediaStorageBackendForm?.backend === 'r2' ? 'R2 (cdn.aruhihandlooms.com)' : 'Supabase'}`}
             </Label>
             <p className="text-xs text-muted-foreground">
               {mediaDeliveryForm.proxy_enabled
                 ? 'On (default): images/videos stream through aruhihandlooms.com, so your domain shows everywhere — but every byte counts against your Vercel bandwidth quota.'
-                : 'Off: aruhihandlooms.com/media links redirect straight to Supabase, so Vercel stops paying the bandwidth cost. Use this if your Vercel Fast Data/Origin Transfer quota is close to running out — switch back on once it resets.'}
+                : `Off: aruhihandlooms.com/media links redirect straight to whichever backend is set as preferred below (currently ${mediaStorageBackendForm?.backend === 'r2' ? 'R2 — cdn.aruhihandlooms.com' : 'Supabase'}), so Vercel stops paying the bandwidth cost. Use this if your Vercel Fast Data/Origin Transfer quota is close to running out — switch back on once it resets.`}
             </p>
           </div>
           <Switch
