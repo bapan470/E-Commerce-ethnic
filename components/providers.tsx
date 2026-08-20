@@ -56,7 +56,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           <PaymentDiscountProvider>
             <CartProvider>
               {children}
-              <Toaster position="top-center" richColors closeButton />
+              <Toaster position="top-center" richColors closeButton offset="68px" />
             </CartProvider>
           </PaymentDiscountProvider>
         </CategoriesProvider>
@@ -86,7 +86,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
               <SocialProofToast />
               {isHome && <MobileBottomNav />}
             </div>
-            <Toaster position="top-center" richColors closeButton />
+            <Toaster position="top-center" richColors closeButton offset="68px" />
           </CartProvider>
         </PaymentDiscountProvider>
       </CategoriesProvider>
