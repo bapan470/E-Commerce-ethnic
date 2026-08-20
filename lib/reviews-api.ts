@@ -191,17 +191,21 @@ export async function hasPurchasedProduct(productId: string): Promise<boolean> {
   return (data ?? []).length > 0;
 }
 
-/** Upload one review photo to the public `review-images` bucket, returns its public URL. */
+/**
+ * Upload one review photo via the server-side dual-write route.
+ * Returns a canonical aruhihandlooms.com/media/... URL.
+ * Previously uploaded directly to Supabase from the browser — routing
+ * through /api/upload-review-photo gives dual-write (Supabase + R2 mirror)
+ * and ensures the stored URL is always the canonical /media/ form.
+ */
 export async function uploadReviewPhoto(file: File): Promise<string> {
-  const supabase = getSupabaseBrowser();
-  const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-  const path = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
-  const { error } = await supabase.storage
-    .from('review-images')
-    .upload(path, file, { cacheControl: '3600', upsert: false });
-  if (error) throw error;
-  const { data } = supabase.storage.from('review-images').getPublicUrl(path);
-  return data.publicUrl;
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch('/api/upload-review-photo', { method: 'POST', body: form });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(json?.error || 'Could not upload review photo.');
+  if (!json?.url) throw new Error('Upload succeeded but no URL returned.');
+  return json.url as string;
 }
 
 export async function submitReview(input: {

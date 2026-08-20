@@ -84,25 +84,22 @@ export async function reorderHomepageTiles(orderedIds: string[]) {
   });
 }
 
-// Uploads a homepage-tile image straight to Supabase Storage from the
-// browser, the same way product photos are uploaded (lib/products-api.ts
-// uploadProductImage) — reuses the existing public "product-images"
-// bucket so no new bucket/migration is needed just for tiles.
+/**
+ * Uploads a homepage tile image via the server-side dual-write route
+ * (/api/upload-image), which writes to BOTH Supabase and R2 and returns
+ * a canonical aruhihandlooms.com/media/... URL.
+ * Previously uploaded directly to Supabase from the browser.
+ */
 export async function uploadHomepageTileImage(file: File, seoName?: string): Promise<string> {
-  const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-  const slug = (seoName || 'homepage-tile')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60);
-  const path = `tiles/${slug ? `${slug}-` : ''}${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
-  const { error } = await supabase.storage
-    .from('product-images')
-    .upload(path, file, { cacheControl: '3600', upsert: false });
-  if (error) throw error;
-  const { data } = supabase.storage.from('product-images').getPublicUrl(path);
-  return data.publicUrl;
+  const form = new FormData();
+  form.append('file', file);
+  form.append('folder', 'tiles');
+  if (seoName) form.append('slug', seoName);
+  const res = await fetch('/api/upload-image', { method: 'POST', body: form });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(json?.error || 'Could not upload tile image.');
+  if (!json?.url) throw new Error('Upload succeeded but no URL returned.');
+  return json.url as string;
 }
 
 // ---------------------------------------------------------------------

@@ -58,10 +58,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unsupported image type.' }, { status: 400 });
   }
 
-  // "products" (default) or "variants" — just changes the storage sub-folder,
-  // same convention as import-image/route.ts.
-  const folder = form.get('folder') === 'variants' ? 'variants' : 'products';
-  const seoName = (form.get('seoName') as string | null) ?? '';
+  // Allowed sub-folders within the product-images bucket.
+  // 'products' (default), 'variants', 'hero-banners', 'tiles'.
+  const ALLOWED_FOLDERS = new Set(['products', 'variants', 'hero-banners', 'tiles']);
+  const rawFolder = (form.get('folder') as string | null) ?? 'products';
+  const folder = ALLOWED_FOLDERS.has(rawFolder) ? rawFolder : 'products';
+  // Accept either 'seoName' (product upload) or 'slug' (tile upload) for the name prefix.
+  const seoName = ((form.get('seoName') ?? form.get('slug')) as string | null) ?? '';
   const slug = seoName
     .trim()
     .toLowerCase()

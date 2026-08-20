@@ -815,3 +815,51 @@ export async function saveCatalogVideoSettings(settings: CatalogVideoSettings) {
     .upsert({ key: 'catalog_video_autoplay', value: settings }, { onConflict: 'key' });
   if (error) throw error;
 }
+
+// ---------------------------------------------------------------------
+// Media Storage Backend — controls which backend the /media/ proxy tries
+// FIRST when serving files (Supabase or R2). Both backends always receive
+// new uploads (dual-write), so this toggle only affects serve order, not
+// where files are stored.
+//
+// Saved via /api/admin/media-storage-backend (server-side) so it can also
+// purge the Cloudflare edge cache when flipped — same pattern as
+// saveMediaDeliverySettings() / media-delivery route.
+// ---------------------------------------------------------------------
+export interface MediaStorageBackendSettings {
+  /** Which backend the /media/ proxy tries FIRST.
+   *  The other backend is tried automatically if the first 404s or errors.
+   *  'supabase' (default) is always safe; 'r2' requires R2 env vars. */
+  backend: 'supabase' | 'r2';
+}
+
+export const DEFAULT_MEDIA_STORAGE_BACKEND_SETTINGS: MediaStorageBackendSettings = {
+  backend: 'supabase',
+};
+
+export async function fetchMediaStorageBackendSettings(): Promise<MediaStorageBackendSettings> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'media_storage_backend')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_MEDIA_STORAGE_BACKEND_SETTINGS;
+  return { ...DEFAULT_MEDIA_STORAGE_BACKEND_SETTINGS, ...(data.value as Partial<MediaStorageBackendSettings>) };
+}
+
+export async function saveMediaStorageBackendSettings(settings: MediaStorageBackendSettings) {
+  const res = await fetch('/api/admin/media-storage-backend', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(json?.error || 'Failed to save media storage backend settings');
+  }
+  return json as {
+    saved: true;
+    backend: 'supabase' | 'r2';
+    cloudflare_purge: { attempted: boolean; ok: boolean; error?: string };
+  };
+}

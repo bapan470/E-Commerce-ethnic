@@ -6,6 +6,7 @@ import { ShoppingBag } from 'lucide-react';
 import { Product } from '@/lib/types';
 import { formatINR, discountPct } from '@/lib/format';
 import { blurDataURL } from '@/lib/utils';
+import { toPublicMediaUrl } from '@/lib/media-url';
 
 export default function BlogProductCard({
   product,
@@ -16,7 +17,8 @@ export default function BlogProductCard({
 }) {
   const href = `/product/${product.default_variant_slug || product.slug}`;
   const img =
-    product.default_variant_image || product.images[0] || 'https://placehold.co/800x1000?text=No+Image';
+    toPublicMediaUrl(product.default_variant_image || product.images[0]) ||
+    'https://placehold.co/800x1000?text=No+Image';
   const discount = discountPct(product.price, product.mrp);
 
   const handleClick = () => {

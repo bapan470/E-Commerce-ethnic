@@ -1,114 +1,123 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSupabase } from '@/lib/supabase-server';
 
-// Public media proxy: serves storage files (currently Supabase) under our
-// own domain, so every place that surfaces a media URL externally --
-// sitemap, Merchant Center / Pinterest feeds, JSON-LD video/image schema --
-// shows aruhihandlooms.com instead of the storage provider's host.
+// Public media proxy: serves storage files under our own domain, so every
+// place that surfaces a media URL externally — sitemap, Merchant Center /
+// Pinterest feeds, JSON-LD video/image schema — shows aruhihandlooms.com
+// instead of the storage provider's host.
 //
-// Swapping the underlying storage backend later (Vercel Blob, S3, etc.)
-// only requires changing BACKEND_BASE below; every previously-published
-// /media/... URL keeps working unchanged, so nothing needs re-indexing
-// again just because the backend moved.
-//
-// Uses the same NEXT_PUBLIC_SUPABASE_URL already configured for the app
-// (see lib/supabase.ts) rather than hardcoding the project ref.
-const SUPABASE_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/$/, '');
-const BACKEND_BASE = `${SUPABASE_URL}/storage/v1/object/public`;
+// DUAL-WRITE UPDATE (feature/media-dual-write-toggle)
+// Since every new upload goes to BOTH Supabase and R2, this route can now
+// try either backend first (controlled by the admin toggle in DB setting
+// media_storage_backend) and automatically fall back to the other if the
+// preferred one 404s or errors. For the ~500 pre-existing Supabase-only
+// files, R2 will 404 → fallback to Supabase succeeds. For new dual-written
+// files, either backend works.
 
-// Next.js 13 caches fetch() calls by default (indefinitely, until the next
-// deploy) unless a route opts out. The Supabase client below calls fetch()
-// internally for the settings read in isProxyEnabled() -- without this,
-// that read gets cached on its first-ever invocation and never re-runs,
-// so the media_delivery toggle would appear to do nothing no matter how
-// many times it's flipped or how long you wait. force-dynamic makes both
-// that settings read and the upstream image fetch below run fresh on
-// every request.
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 
-// Admin > Settings > Media Delivery (see lib/settings-api.ts,
-// MediaDeliverySettings) can flip this route from "stream" to "redirect"
-// mode without touching any other code or URL on the site, because every
-// page/feed always links to aruhihandlooms.com/media/... regardless --
-// only what THIS route does with that request changes:
-//   - proxy_enabled: true  (default) -> fetch the file and stream it back,
-//     so the response comes from our own domain with zero visible
-//     third-party host. Costs Vercel Fast Data Transfer + Fast Origin
-//     Transfer for every byte served.
-//   - proxy_enabled: false -> 302-redirect straight to the Supabase URL.
-//     The browser/crawler then downloads the actual bytes directly from
-//     Supabase, so Vercel only pays for a tiny redirect response (counted
-//     against the much larger Edge Requests quota, not the bandwidth
-//     quotas). Meant as an "end of billing cycle" safety valve when
-//     Vercel's bandwidth quota is close to running out -- flip it back to
-//     true once the quota resets.
-//
-// Checked fresh on every request (no in-memory caching here) so a toggle
-// flip takes effect immediately -- an in-memory per-instance cache was
-// tried before, but it raced with the Cloudflare purge in media-delivery/
-// route.ts: a request landing on a server instance with a stale cached
-// value could still stream a 200 right after a toggle flip, and Cloudflare
-// would then cache that wrong response for a full year (immutable). The
-// query below is a single indexed-row read, so the extra Supabase call per
-// image request is cheap enough not to matter.
-async function isProxyEnabled(): Promise<boolean> {
-  let value = true; // fail open: if settings can't be read, keep current (proxy) behavior
+const SUPABASE_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').replace(/\/$/, '');
+const SUPABASE_BACKEND_BASE = `${SUPABASE_URL}/storage/v1/object/public`;
+
+const R2_CDN_BASE = (process.env.R2_PUBLIC_URL || '').replace(/\/$/, '');
+
+// -----------------------------------------------------------------------
+// Settings reads (fresh per request — see media_delivery route for why
+// in-memory caching is intentionally avoided here)
+// -----------------------------------------------------------------------
+
+async function getSettings(): Promise<{ proxyEnabled: boolean; preferredBackend: 'supabase' | 'r2' }> {
+  let proxyEnabled = true;
+  let preferredBackend: 'supabase' | 'r2' = 'supabase';
   try {
     const supabase = getServerSupabase();
-    const { data } = await supabase
+    const { data: rows } = await supabase
       .from('settings')
-      .select('value')
-      .eq('key', 'media_delivery')
-      .maybeSingle();
-    const stored = data?.value as { proxy_enabled?: boolean } | undefined;
-    if (typeof stored?.proxy_enabled === 'boolean') value = stored.proxy_enabled;
+      .select('key, value')
+      .in('key', ['media_delivery', 'media_storage_backend']);
+
+    for (const row of rows ?? []) {
+      if (row.key === 'media_delivery') {
+        const v = row.value as { proxy_enabled?: boolean } | undefined;
+        if (typeof v?.proxy_enabled === 'boolean') proxyEnabled = v.proxy_enabled;
+      }
+      if (row.key === 'media_storage_backend') {
+        const v = row.value as { backend?: string } | undefined;
+        if (v?.backend === 'r2' && R2_CDN_BASE) preferredBackend = 'r2';
+      }
+    }
   } catch {
-    // Supabase unreachable -- keep the fail-open default above.
+    // Supabase unreachable — use fail-open defaults
   }
-  return value;
+  return { proxyEnabled, preferredBackend };
 }
 
+// -----------------------------------------------------------------------
+// Upstream fetch with auto-fallback
+// -----------------------------------------------------------------------
+
+function buildUpstreamUrl(backend: 'supabase' | 'r2', pathSegments: string[]): string | null {
+  const encoded = pathSegments.map(encodeURIComponent).join('/');
+  if (backend === 'r2') {
+    if (!R2_CDN_BASE) return null;
+    return `${R2_CDN_BASE}/${encoded}`;
+  }
+  if (!SUPABASE_URL) return null;
+  return `${SUPABASE_BACKEND_BASE}/${encoded}`;
+}
+
+async function fetchFromUpstream(
+  pathSegments: string[],
+  preferredBackend: 'supabase' | 'r2',
+  range: string | null
+): Promise<{ response: Response; backend: string } | null> {
+  const order: Array<'supabase' | 'r2'> =
+    preferredBackend === 'r2' ? ['r2', 'supabase'] : ['supabase', 'r2'];
+
+  for (const backend of order) {
+    const url = buildUpstreamUrl(backend, pathSegments);
+    if (!url) continue; // skip if env vars missing for this backend
+
+    try {
+      const upstream = await fetch(url, range ? { headers: { Range: range } } : undefined);
+      if (upstream.ok || upstream.status === 206) {
+        return { response: upstream, backend };
+      }
+      // 404 or other error from this backend → try the next one
+    } catch {
+      // Network error from this backend → try the next one
+    }
+  }
+  return null; // both backends failed
+}
+
+// -----------------------------------------------------------------------
+// Route handler
+// -----------------------------------------------------------------------
+
 export async function GET(req: NextRequest, { params }: { params: { path: string[] } }) {
-  if (!SUPABASE_URL || !params.path || params.path.length === 0) {
+  if (!params.path || params.path.length === 0) {
     return new NextResponse('Not found', { status: 404 });
   }
 
-  const upstreamUrl = `${BACKEND_BASE}/${params.path.map(encodeURIComponent).join('/')}`;
+  const { proxyEnabled, preferredBackend } = await getSettings();
 
-  if (!(await isProxyEnabled())) {
-    // Quota-saving mode: hand the browser/crawler off to Supabase directly
-    // instead of streaming bytes through Vercel. 307 (not 301/302) so
-    // clients preserve the GET method and this is never cached as a
-    // *permanent* redirect -- once proxy_enabled flips back to true,
-    // clients should come straight back through this route again.
-    return NextResponse.redirect(upstreamUrl, 307);
+  // Quota-saving redirect mode: hand browser/crawler off to Supabase directly
+  if (!proxyEnabled) {
+    const redirectUrl = buildUpstreamUrl('supabase', params.path);
+    if (!redirectUrl) return new NextResponse('Not found', { status: 404 });
+    return NextResponse.redirect(redirectUrl, 307);
   }
 
-  // Forward Range requests upstream. This matters for <video> playback:
-  // mobile Safari (and Chrome on Android for larger files) opens every
-  // video with a Range request and expects a 206 Partial Content reply
-  // with Content-Range/Accept-Ranges back. Previously this route ignored
-  // the incoming Range header entirely and always answered 200 with the
-  // full body -- Safari in particular treats that as "this server can't
-  // be scrubbed/streamed" and silently refuses to start playback, which
-  // is why hero-banner and product videos would autoplay fine on desktop
-  // (no Range request there) but never even start on iOS.
   const range = req.headers.get('range');
-  let upstream: Response;
-  try {
-    upstream = await fetch(upstreamUrl, range ? { headers: { Range: range } } : undefined);
-  } catch {
-    return new NextResponse('Upstream fetch failed', { status: 502 });
-  }
+  const result = await fetchFromUpstream(params.path, preferredBackend, range);
 
-  if (!upstream.ok && upstream.status !== 206) {
-    return new NextResponse('Not found', { status: 404 });
-  }
-  if (!upstream.body) {
+  if (!result || !result.response.body) {
     return new NextResponse('Not found', { status: 404 });
   }
 
+  const { response: upstream } = result;
   const contentType = upstream.headers.get('content-type') || 'application/octet-stream';
   const contentLength = upstream.headers.get('content-length');
   const contentRange = upstream.headers.get('content-range');
@@ -120,13 +129,10 @@ export async function GET(req: NextRequest, { params }: { params: { path: string
       'Content-Type': contentType,
       ...(contentLength ? { 'Content-Length': contentLength } : {}),
       ...(contentRange ? { 'Content-Range': contentRange } : {}),
-      // Tells the browser up front that range requests are supported, so
-      // Safari issues them (and trusts the responses) instead of falling
-      // back to a single full-file download before it'll play anything.
       'Accept-Ranges': 'bytes',
       // Uploaded files are never mutated in place (re-uploads get a new
       // filename), so it's safe for browsers/CDNs/crawlers to cache these
-      // indefinitely instead of re-fetching through this proxy every time.
+      // indefinitely.
       'Cache-Control': 'public, max-age=31536000, immutable',
     },
   });

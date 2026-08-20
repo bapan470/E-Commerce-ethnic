@@ -40,6 +40,9 @@ import {
   MediaDeliverySettings,
   fetchMediaDeliverySettings,
   saveMediaDeliverySettings,
+  MediaStorageBackendSettings,
+  fetchMediaStorageBackendSettings,
+  saveMediaStorageBackendSettings,
   CatalogVideoSettings,
   fetchCatalogVideoSettings,
   saveCatalogVideoSettings,
@@ -117,6 +120,9 @@ export default function SettingsPanel() {
   const [savingRefundAutomation, setSavingRefundAutomation] = useState(false);
   const [mediaDeliveryForm, setMediaDeliveryForm] = useState<MediaDeliverySettings | null>(null);
   const [savingMediaDelivery, setSavingMediaDelivery] = useState(false);
+  const [mediaStorageBackendForm, setMediaStorageBackendForm] = useState<MediaStorageBackendSettings | null>(null);
+  const [savingMediaStorageBackend, setSavingMediaStorageBackend] = useState(false);
+  const [r2EnvConfigured, setR2EnvConfigured] = useState(false);
   const [orderNotifForm, setOrderNotifForm] = useState<OrderNotificationSettings | null>(null);
   const [savingOrderNotif, setSavingOrderNotif] = useState(false);
   const [handlingFeeForm, setHandlingFeeForm] = useState<HandlingFeeSettings | null>(null);
@@ -179,6 +185,17 @@ export default function SettingsPanel() {
     fetchMediaDeliverySettings()
       .then(setMediaDeliveryForm)
       .catch(() => toast.error('Failed to load media delivery settings'));
+
+    fetchMediaStorageBackendSettings()
+      .then(setMediaStorageBackendForm)
+      .catch(() => toast.error('Failed to load media storage backend settings'));
+
+    // Check whether R2 env vars are configured (server reports via a simple
+    // endpoint rather than exposing secrets to the client).
+    fetch('/api/admin/media-storage-backend/status')
+      .then((r) => r.json())
+      .then((j) => setR2EnvConfigured(!!j?.r2_configured))
+      .catch(() => {}); // non-critical — defaults to false (disables R2 option)
 
     fetchOrderNotificationSettings()
       .then(setOrderNotifForm)
@@ -377,6 +394,27 @@ export default function SettingsPanel() {
       toast.error(err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setSavingMediaDelivery(false);
+    }
+  };
+
+  const onToggleMediaStorageBackend = async (checked: boolean) => {
+    if (!mediaStorageBackendForm) return;
+    const next: MediaStorageBackendSettings = { backend: checked ? 'r2' : 'supabase' };
+    setMediaStorageBackendForm(next);
+    setSavingMediaStorageBackend(true);
+    try {
+      const result = await saveMediaStorageBackendSettings(next);
+      const backend = result.backend === 'r2' ? 'Cloudflare R2' : 'Supabase';
+      if (result.cloudflare_purge.ok) {
+        toast.success(`Preferred backend set to ${backend} — Cloudflare cache cleared, takes effect immediately.`);
+      } else {
+        toast.success(`Preferred backend set to ${backend}. Cloudflare purge wasn't configured — new requests will use the new backend, already-cached images may take time.`);
+      }
+    } catch (err) {
+      setMediaStorageBackendForm(mediaStorageBackendForm);
+      toast.error(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSavingMediaStorageBackend(false);
     }
   };
 
@@ -1352,6 +1390,47 @@ export default function SettingsPanel() {
             checked={mediaDeliveryForm.proxy_enabled}
             disabled={savingMediaDelivery}
             onCheckedChange={onToggleMediaDelivery}
+          />
+        </div>
+      )}
+
+      {/* Media Storage — Preferred Backend */}
+      <div className="mt-8">
+        <h2 className="font-serif text-2xl font-bold text-primary">Media Storage — Preferred Backend</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Every new upload goes to <strong>both</strong> Supabase and Cloudflare R2 automatically
+          (dual-write). This toggle only controls which backend is tried <em>first</em> when serving
+          files — if the preferred backend is unavailable or returns a 404, the other is tried
+          automatically. Switching takes effect immediately (Cloudflare cache is purged on save).
+        </p>
+        {!r2EnvConfigured && (
+          <p className="mt-2 rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2 text-xs text-yellow-800">
+            R2 environment variables are not configured (R2_ACCOUNT_ID, R2_ACCESS_KEY_ID,
+            R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, R2_PUBLIC_URL). Add them in Vercel → Project
+            Settings → Environment Variables and redeploy before switching to R2.
+          </p>
+        )}
+      </div>
+
+      {!mediaStorageBackendForm ? (
+        <p className="py-4 text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <div className="mt-4 flex max-w-xl items-center justify-between gap-4 rounded-lg border border-border/60 bg-card p-5">
+          <div>
+            <Label htmlFor="media-storage-backend">
+              {mediaStorageBackendForm.backend === 'r2' ? 'Preferred: Cloudflare R2' : 'Preferred: Supabase (default)'}
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              {mediaStorageBackendForm.backend === 'r2'
+                ? 'R2 is tried first; if it 404s or errors, Supabase is used automatically. Both always receive new uploads.'
+                : 'Supabase is tried first (safe default); R2 is the automatic fallback for dual-written files.'}
+            </p>
+          </div>
+          <Switch
+            id="media-storage-backend"
+            checked={mediaStorageBackendForm.backend === 'r2'}
+            disabled={savingMediaStorageBackend || !r2EnvConfigured}
+            onCheckedChange={onToggleMediaStorageBackend}
           />
         </div>
       )}

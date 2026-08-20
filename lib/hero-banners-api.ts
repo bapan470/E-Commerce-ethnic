@@ -124,21 +124,23 @@ export async function convertImageToWebp(file: File, quality = 0.85): Promise<Fi
   }
 }
 
-// Uploads a hero banner image straight to Supabase Storage from the
-// browser, the same way homepage-tile photos are uploaded (reuses the
-// existing public "product-images" bucket so no new bucket/migration is
-// needed just for banners). Auto-converts to WebP first via
-// convertImageToWebp() above.
+/**
+ * Uploads a hero banner image via the server-side dual-write route
+ * (/api/upload-image), which writes to BOTH Supabase and R2 and returns
+ * a canonical aruhihandlooms.com/media/... URL.
+ * Previously uploaded directly to Supabase from the browser — the server
+ * route handles WebP conversion too (via sharp), so convertImageToWebp()
+ * is no longer needed for this path (kept above for any other callers).
+ */
 export async function uploadHeroBannerImage(file: File): Promise<string> {
-  const webpFile = await convertImageToWebp(file);
-  const ext = webpFile.type === 'image/webp' ? 'webp' : webpFile.name.split('.').pop()?.toLowerCase() || 'jpg';
-  const path = `hero-banners/${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
-  const { error } = await supabase.storage
-    .from('product-images')
-    .upload(path, webpFile, { cacheControl: '3600', upsert: false });
-  if (error) throw error;
-  const { data } = supabase.storage.from('product-images').getPublicUrl(path);
-  return data.publicUrl;
+  const form = new FormData();
+  form.append('file', file);
+  form.append('folder', 'hero-banners');
+  const res = await fetch('/api/upload-image', { method: 'POST', body: form });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(json?.error || 'Could not upload banner image.');
+  if (!json?.url) throw new Error('Upload succeeded but no URL returned.');
+  return json.url as string;
 }
 
 // Uploads a hero banner VIDEO. Reuses the same signed-upload-URL flow as
