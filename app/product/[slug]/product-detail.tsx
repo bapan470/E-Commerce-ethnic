@@ -730,7 +730,7 @@ export default function ProductDetail() {
       </div>
 
       <div className="mt-6">
-        <Accordion type="single" collapsible defaultValue="core-features">
+        <Accordion type="single" collapsible>
           <AccordionItem value="core-features">
             <AccordionTrigger className="text-sm font-semibold">Core Features</AccordionTrigger>
             <AccordionContent className="max-w-3xl text-sm leading-relaxed text-foreground/80">
