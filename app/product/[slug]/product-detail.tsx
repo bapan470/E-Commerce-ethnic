@@ -29,7 +29,7 @@ import {
 import { fetchShippingSettings } from '@/lib/pincode-api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Skeleton } from '@/components/ui/skeleton';
 import ReviewsSection from '@/components/product/reviews-section';
 import { fetchApprovedReviews, summarizeReviews, RatingSummary } from '@/lib/reviews-api';
@@ -87,7 +87,8 @@ export default function ProductDetail() {
   const [variant, setVariant] = useState<VariantWithSizes | null>(null);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
-  const [activeTab, setActiveTab] = useState('reviews');
+  // Reviews now render as their own always-open section (not a tab), so
+  // there's no tab-selection state to track anymore.
   const [fulfillment, setFulfillment] = useState<FulfillmentSettings>(DEFAULT_FULFILLMENT_SETTINGS);
   const [freeShippingThreshold, setFreeShippingThreshold] = useState<number | undefined>(undefined);
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
@@ -575,8 +576,7 @@ export default function ProductDetail() {
     .join(' - ');
 
   const goToReviews = () => {
-    setActiveTab('reviews');
-    document.getElementById('product-tabs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.getElementById('product-reviews')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const handleAddToCart = () => {
@@ -720,51 +720,66 @@ export default function ProductDetail() {
         />
       </div>
 
-      <div id="product-tabs" className="mt-8 scroll-mt-24">
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="w-full justify-start">
-            <TabsTrigger value="reviews">Reviews ({displayRatingsCount})</TabsTrigger>
-            <TabsTrigger value="description">Description</TabsTrigger>
-            <TabsTrigger value="details">Details</TabsTrigger>
-            <TabsTrigger value="shipping">Shipping & Returns</TabsTrigger>
-          </TabsList>
-          <TabsContent value="description" className="max-w-3xl text-sm leading-relaxed text-foreground/80">
-            <p>{product.description}</p>
-            {/* Colour-specific paragraph (see lib/variant-seo-content.ts) —
-               without this, every colour of a product rendered the exact
-               same description text, which is duplicate on-page content
-               even when the <title>/meta tags differ. Keeping this visible
-               (not just in metadata) is what actually makes each colour's
-               page read as distinct to Google. */}
-            {variant?.style_note && <p className="mt-3">{variant.style_note}</p>}
-            <p className="mt-3">
-              Each piece is handcrafted by skilled artisans, carrying forward
-              centuries of weaving tradition. Subtle variations in motif and
-              colour are a hallmark of genuine handloom and make every piece
-              uniquely yours.
-            </p>
-          </TabsContent>
-          <TabsContent value="details" className="max-w-3xl text-sm">
-            <ul className="grid gap-2 sm:grid-cols-2">
-              <li><strong className="text-foreground">Fabric:</strong> {product.fabric}</li>
-              <li><strong className="text-foreground">Origin:</strong> {product.origin}</li>
-              <li><strong className="text-foreground">Category:</strong> {product.category}</li>
-              <li><strong className="text-foreground">Colors:</strong> {product.colors.join(', ')}</li>
-              <li><strong className="text-foreground">Sizes:</strong> {product.sizes.join(', ')}</li>
-              <li><strong className="text-foreground">Care:</strong> Dry clean only</li>
-              <li><strong className="text-foreground">In stock:</strong> {selectedSizeStock} units</li>
-              {(variant?.sku || product.sku) && (
-                <li><strong className="text-foreground">SKU:</strong> {variant?.sku || product.sku}</li>
-              )}
-            </ul>
-          </TabsContent>
-          <TabsContent value="shipping" className="max-w-3xl text-sm leading-relaxed text-foreground/80">
-            <p>{shippingReturnsSummary(fulfillment, freeShippingThreshold)}</p>
-          </TabsContent>
-          <TabsContent value="reviews">
-            <ReviewsSection productId={baseProduct.id} productSlug={baseProduct.slug} />
-          </TabsContent>
-        </Tabs>
+      <div id="product-reviews" className="mt-8 scroll-mt-24">
+        <h2 className="mb-3 text-sm font-semibold text-foreground">
+          Reviews ({displayRatingsCount})
+        </h2>
+        <ReviewsSection productId={baseProduct.id} productSlug={baseProduct.slug} />
+      </div>
+
+      <div className="mt-6">
+        <Accordion type="single" collapsible defaultValue="core-features">
+          <AccordionItem value="core-features">
+            <AccordionTrigger className="text-sm font-semibold">Core Features</AccordionTrigger>
+            <AccordionContent className="max-w-3xl text-sm leading-relaxed text-foreground/80">
+              <p>{product.description}</p>
+              {/* Colour-specific paragraph (see lib/variant-seo-content.ts) —
+                 without this, every colour of a product rendered the exact
+                 same description text, which is duplicate on-page content
+                 even when the <title>/meta tags differ. Keeping this visible
+                 (not just in metadata) is what actually makes each colour's
+                 page read as distinct to Google. */}
+              {variant?.style_note && <p className="mt-3">{variant.style_note}</p>}
+              <p className="mt-3">
+                Each piece is handcrafted by skilled artisans, carrying forward
+                centuries of weaving tradition. Subtle variations in motif and
+                colour are a hallmark of genuine handloom and make every piece
+                uniquely yours.
+              </p>
+            </AccordionContent>
+          </AccordionItem>
+
+          <AccordionItem value="details">
+            <AccordionTrigger className="text-sm font-semibold">Details</AccordionTrigger>
+            <AccordionContent className="max-w-3xl text-sm">
+              <ul className="grid gap-2 sm:grid-cols-2">
+                <li><strong className="text-foreground">Fabric:</strong> {product.fabric}</li>
+                <li><strong className="text-foreground">Origin:</strong> {product.origin}</li>
+                <li><strong className="text-foreground">Category:</strong> {product.category}</li>
+                <li><strong className="text-foreground">Colors:</strong> {product.colors.join(', ')}</li>
+                <li><strong className="text-foreground">Sizes:</strong> {product.sizes.join(', ')}</li>
+                <li><strong className="text-foreground">In stock:</strong> {selectedSizeStock} units</li>
+                {(variant?.sku || product.sku) && (
+                  <li><strong className="text-foreground">SKU:</strong> {variant?.sku || product.sku}</li>
+                )}
+              </ul>
+            </AccordionContent>
+          </AccordionItem>
+
+          <AccordionItem value="delivery-returns">
+            <AccordionTrigger className="text-sm font-semibold">Delivery & Returns</AccordionTrigger>
+            <AccordionContent className="max-w-3xl text-sm leading-relaxed text-foreground/80">
+              <p>{shippingReturnsSummary(fulfillment, freeShippingThreshold)}</p>
+            </AccordionContent>
+          </AccordionItem>
+
+          <AccordionItem value="care-guide" className="border-b-0">
+            <AccordionTrigger className="text-sm font-semibold">Care Guide</AccordionTrigger>
+            <AccordionContent className="max-w-3xl text-sm leading-relaxed text-foreground/80">
+              <p>Dry clean only. Store folded in a breathable cloth bag, away from direct sunlight, to keep the weave and colour looking their best.</p>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </div>
 
       <FrequentlyBoughtTogether productId={baseProduct.id} />
