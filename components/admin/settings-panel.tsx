@@ -47,6 +47,7 @@ import {
   fetchCatalogVideoSettings,
   saveCatalogVideoSettings,
 } from '@/lib/settings-api';
+import type { BackfillProgress } from '@/lib/media-backfill';
 import { uploadProductImage } from '@/lib/products-api';
 import {
   ShippingSettings,
@@ -123,6 +124,8 @@ export default function SettingsPanel() {
   const [mediaStorageBackendForm, setMediaStorageBackendForm] = useState<MediaStorageBackendSettings | null>(null);
   const [savingMediaStorageBackend, setSavingMediaStorageBackend] = useState(false);
   const [r2EnvConfigured, setR2EnvConfigured] = useState(false);
+  const [backfillProgress, setBackfillProgress] = useState<BackfillProgress | null>(null);
+  const [backfillStarting, setBackfillStarting] = useState(false);
   const [orderNotifForm, setOrderNotifForm] = useState<OrderNotificationSettings | null>(null);
   const [savingOrderNotif, setSavingOrderNotif] = useState(false);
   const [handlingFeeForm, setHandlingFeeForm] = useState<HandlingFeeSettings | null>(null);
@@ -189,6 +192,14 @@ export default function SettingsPanel() {
     fetchMediaStorageBackendSettings()
       .then(setMediaStorageBackendForm)
       .catch(() => toast.error('Failed to load media storage backend settings'));
+
+    // Load current backfill status once on mount. If a run is already
+    // in progress (e.g. the admin refreshed the page mid-run), the
+    // polling effect below picks it up automatically.
+    fetch('/api/admin/media-backfill')
+      .then((r) => r.json())
+      .then((j) => setBackfillProgress(j?.progress ?? null))
+      .catch(() => {}); // non-critical — panel just shows "Loading…" until retried
 
     // Check whether R2 env vars are configured (server reports via a simple
     // endpoint rather than exposing secrets to the client).
@@ -415,6 +426,76 @@ export default function SettingsPanel() {
       toast.error(err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setSavingMediaStorageBackend(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------
+  // R2 backfill — copies pre-existing Supabase-only files into R2 too.
+  // Read-only on Supabase (originals are never touched), idempotent
+  // (already-mirrored files are skipped), safe to re-run any time.
+  // While status === 'running', this polls the server for the next
+  // batch every ~1.5s so the progress bar updates live.
+  // ---------------------------------------------------------------------
+  useEffect(() => {
+    if (backfillProgress?.status !== 'running') return;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/admin/media-backfill', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'run-batch' }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error || 'Backfill batch failed');
+        setBackfillProgress(json.progress);
+        if (json.progress?.status === 'done') {
+          toast.success(
+            `Backfill complete — ${json.progress.mirrored} file(s) copied to R2, ${json.progress.alreadyMirrored} already had a mirror, ${json.progress.failed} failed. Every original file in Supabase is untouched.`
+          );
+        }
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Backfill batch failed — will retry');
+      }
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [backfillProgress]);
+
+  const onStartBackfill = async () => {
+    setBackfillStarting(true);
+    try {
+      const res = await fetch('/api/admin/media-backfill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'start' }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Could not start backfill');
+      setBackfillProgress(json.progress);
+      if (json.progress?.total === 0) {
+        toast.success('Nothing to backfill — every file already has an R2 mirror.');
+      } else {
+        toast.success(`Backfill started — mirroring ${json.progress.total} existing file(s) to R2 in the background.`);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not start backfill');
+    } finally {
+      setBackfillStarting(false);
+    }
+  };
+
+  const onResetBackfill = async () => {
+    try {
+      const res = await fetch('/api/admin/media-backfill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reset' }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Could not reset backfill status');
+      setBackfillProgress(json.progress);
+      toast.success('Backfill status reset. No files were changed — this only clears the progress counter.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not reset backfill status');
     }
   };
 
@@ -1434,6 +1515,93 @@ export default function SettingsPanel() {
           />
         </div>
       )}
+
+      {/* R2 Backfill — mirrors pre-existing (pre-dual-write) files into R2 */}
+      <div className="mt-6 max-w-xl rounded-lg border border-border/60 bg-card p-5">
+        <Label>Backfill Existing Files to R2</Label>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Files uploaded since dual-write shipped already exist in both Supabase and R2. This
+          copies the older, pre-existing files into R2 too — a plain copy, read-only on Supabase.
+          <strong> Originals in Supabase are never modified or deleted</strong>, so if R2/Cloudflare
+          is ever disabled later, nothing on the live site breaks either way — Supabase remains the
+          full, complete copy regardless of whether this backfill has run.
+        </p>
+
+        {!r2EnvConfigured && (
+          <p className="mt-2 rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2 text-xs text-yellow-800">
+            R2 environment variables aren&apos;t configured — backfill can&apos;t start until those
+            are added (see the note above).
+          </p>
+        )}
+
+        {!backfillProgress ? (
+          <p className="mt-3 text-sm text-muted-foreground">Loading status…</p>
+        ) : (
+          <div className="mt-3 space-y-3">
+            {backfillProgress.total > 0 && (
+              <div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all"
+                    style={{
+                      width: `${Math.min(100, Math.round((backfillProgress.processed / backfillProgress.total) * 100))}%`,
+                    }}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {backfillProgress.processed} / {backfillProgress.total} checked — {backfillProgress.mirrored}{' '}
+                  newly copied, {backfillProgress.alreadyMirrored} already had a mirror
+                  {backfillProgress.failed > 0 ? `, ${backfillProgress.failed} failed` : ''}.
+                </p>
+              </div>
+            )}
+
+            <p className="text-xs">
+              Status:{' '}
+              <span className="font-medium">
+                {backfillProgress.status === 'idle' && 'Not started'}
+                {backfillProgress.status === 'running' && 'Running — mirroring live…'}
+                {backfillProgress.status === 'done' && 'Complete'}
+                {backfillProgress.status === 'error' && 'Error'}
+              </span>
+            </p>
+
+            {backfillProgress.recentErrors.length > 0 && (
+              <details className="text-xs text-muted-foreground">
+                <summary className="cursor-pointer text-yellow-800">
+                  {backfillProgress.recentErrors.length} recent error(s) — click to view
+                </summary>
+                <ul className="mt-1 list-disc pl-4">
+                  {backfillProgress.recentErrors.map((e, i) => (
+                    <li key={i}>
+                      {e.bucket}/{e.path}: {e.error}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                disabled={backfillStarting || backfillProgress.status === 'running' || !r2EnvConfigured}
+                onClick={onStartBackfill}
+              >
+                {backfillStarting || backfillProgress.status === 'running' ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
+                {backfillProgress.status === 'done' ? 'Re-run Backfill' : 'Start Backfill'}
+              </Button>
+              {backfillProgress.status !== 'idle' && backfillProgress.status !== 'running' && (
+                <Button type="button" size="sm" variant="outline" onClick={onResetBackfill}>
+                  Reset Status
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="mt-8">
         <h2 className="font-serif text-2xl font-bold text-primary">Vendor Commission &amp; Settlement</h2>
