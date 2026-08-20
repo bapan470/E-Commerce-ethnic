@@ -6,6 +6,7 @@ import { formatINR } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import PaymentPendingBanner from '@/components/order/payment-pending-banner';
+import { toPublicMediaUrl } from '@/lib/media-url';
 
 const STATUS_VARIANT: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-800',
@@ -105,7 +106,7 @@ export default async function OrdersPage() {
                             className="relative h-10 w-10 shrink-0 overflow-hidden rounded-md border-2 border-background bg-muted"
                           >
                             <Image
-                              src={item.image_url || 'https://placehold.co/80x80?text=No+Image'}
+                              src={toPublicMediaUrl(item.image_url) || 'https://placehold.co/80x80?text=No+Image'}
                               alt={item.product_name || 'Product'}
                               fill
                               sizes="40px"

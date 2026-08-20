@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { formatINR } from '@/lib/format';
 import ResumePaymentButton from '@/components/checkout/resume-payment-button';
 import { isInPaymentRequestFlow, logPaymentRequestEvent, type PaymentRequestSource } from '@/lib/order-payment-events';
+import { toPublicMediaUrl } from '@/lib/media-url';
 
 // Landing page for the "complete your payment" reminder email
 // (lib/email-templates.ts -> paymentReminderEmail), for the admin's
@@ -76,7 +77,7 @@ export default async function ResumePaymentPage({
 
       <div className="mt-8 rounded-lg border border-border/60 bg-card p-4">
         {items.map((item: any, idx: number) => {
-          const img = item.image_url || item.image || item.images?.[0] || '';
+          const img = toPublicMediaUrl(item.image_url || item.image || item.images?.[0]) || '';
           return (
             <div
               key={idx}

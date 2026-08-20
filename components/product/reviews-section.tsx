@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Star, CheckCircle2, MessageSquareOff, ImagePlus, X, Loader2, ThumbsUp } from 'lucide-react';
+import { toPublicMediaUrl } from '@/lib/media-url';
 import { useAuth } from '@/lib/auth-context';
 import {
   Review,
@@ -483,12 +484,12 @@ export default function ReviewsSection({
                           <button
                             key={idx}
                             type="button"
-                            onClick={() => setLightboxSrc(src)}
+                            onClick={() => setLightboxSrc(toPublicMediaUrl(src) || src)}
                             className="h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border/60"
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
-                              src={src}
+                              src={toPublicMediaUrl(src) || src}
                               alt={`Photo from ${firstName(r.customer_name)}'s review`}
                               className="h-full w-full object-cover"
                             />

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import OrderTracking from '@/components/order/order-tracking';
 import PaymentPendingBanner from '@/components/order/payment-pending-banner';
+import { toPublicMediaUrl } from '@/lib/media-url';
 import { DEFAULT_LOYALTY_SETTINGS, type LoyaltySettings } from '@/lib/loyalty-api';
 import { DEFAULT_REFERRAL_SETTINGS, type ReferralSettings } from '@/lib/referrals-api';
 
@@ -240,7 +241,7 @@ export default async function TrackOrderPage({ params }: { params: { id: string 
                 {item.slug ? (
                   <Link href={`/product/${item.slug}`} className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md border border-border/60 bg-muted block">
                     <Image
-                      src={item.image_url || 'https://placehold.co/80x80?text=No+Image'}
+                      src={toPublicMediaUrl(item.image_url) || 'https://placehold.co/80x80?text=No+Image'}
                       alt={item.product_name || 'Product'}
                       fill
                       sizes="56px"
@@ -250,7 +251,7 @@ export default async function TrackOrderPage({ params }: { params: { id: string 
                 ) : (
                   <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md border border-border/60 bg-muted">
                     <Image
-                      src={item.image_url || 'https://placehold.co/80x80?text=No+Image'}
+                      src={toPublicMediaUrl(item.image_url) || 'https://placehold.co/80x80?text=No+Image'}
                       alt={item.product_name || 'Product'}
                       fill
                       sizes="56px"

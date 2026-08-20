@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
 import { fetchSiteBanner } from '@/lib/settings-api';
+import { toPublicMediaUrl } from '@/lib/media-url';
 
 /**
  * Promotional banner (set from Admin > Store Settings). Shows on every
@@ -45,7 +46,7 @@ export default function SiteBanner() {
 
   const img = (
     <Image
-      src={imageUrl}
+      src={toPublicMediaUrl(imageUrl) || imageUrl}
       alt="Promotional banner"
       width={1600}
       height={400}

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { toPublicMediaUrl } from '@/lib/media-url';
 import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Tag, X, Loader2, PartyPopper, Wallet } from 'lucide-react';
 import {
   useCart,
@@ -219,7 +220,7 @@ export default function CartPage() {
                   className="relative h-32 w-24 shrink-0 overflow-hidden rounded-md bg-muted"
                 >
                   <Image
-                    src={item.product.images[0] || 'https://placehold.co/96x120?text=No+Image'}
+                    src={toPublicMediaUrl(item.product.images[0]) || 'https://placehold.co/96x120?text=No+Image'}
                     alt={`${item.product.name} - ${item.product.fabric} ${item.product.category}`}
                     fill
                     sizes="96px"

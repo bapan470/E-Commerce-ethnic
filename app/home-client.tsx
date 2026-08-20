@@ -290,7 +290,7 @@ export default function HomeClient({
                 <div className="relative h-16 w-16 overflow-hidden rounded-full border border-border/60 bg-muted shadow-sm transition-transform duration-300 group-hover:scale-105 sm:h-20 sm:w-20">
                   {c.thumbnail ? (
                     <Image
-                      src={c.thumbnail}
+                      src={toPublicMediaUrl(c.thumbnail) ?? c.thumbnail}
                       alt={`${c.name} - curated collection at AruhiHandlooms`}
                       fill
                       sizes="80px"

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import OrderTracking from '@/components/order/order-tracking';
 import PurchaseTracker from '@/components/analytics/purchase-tracker';
+import { toPublicMediaUrl } from '@/lib/media-url';
 import TrustpilotInvitation from '@/components/analytics/trustpilot-invitation';
 import CancelOrHelp from '@/components/order/cancel-or-help';
 import PaymentPendingBanner from '@/components/order/payment-pending-banner';
@@ -245,7 +246,7 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
                 {item.slug ? (
                   <Link href={`/product/${item.slug}`} className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md border border-border/60 bg-muted block">
                     <Image
-                      src={item.image_url || 'https://placehold.co/80x80?text=No+Image'}
+                      src={toPublicMediaUrl(item.image_url) || 'https://placehold.co/80x80?text=No+Image'}
                       alt={item.product_name || 'Product'}
                       fill
                       sizes="56px"
@@ -255,7 +256,7 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
                 ) : (
                   <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md border border-border/60 bg-muted">
                     <Image
-                      src={item.image_url || 'https://placehold.co/80x80?text=No+Image'}
+                      src={toPublicMediaUrl(item.image_url) || 'https://placehold.co/80x80?text=No+Image'}
                       alt={item.product_name || 'Product'}
                       fill
                       sizes="56px"

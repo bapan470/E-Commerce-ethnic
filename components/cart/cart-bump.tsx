@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
+import { toPublicMediaUrl } from '@/lib/media-url';
 import { useCart } from '@/lib/cart-context';
 import { formatINR } from '@/lib/format';
 import {
@@ -64,7 +65,7 @@ export default function CartBump({ compact = false }: { compact?: boolean }) {
         <Checkbox className="mt-1" checked={inCart} onCheckedChange={(v) => toggle(v === true)} />
         <div className={`relative shrink-0 overflow-hidden rounded-md bg-muted ${compact ? 'h-12 w-10' : 'h-14 w-12'}`}>
           <Image
-            src={product.images[0] || 'https://placehold.co/48x56?text=No+Image'}
+            src={toPublicMediaUrl(product.images[0]) || 'https://placehold.co/48x56?text=No+Image'}
             alt={product.name}
             fill
             sizes="48px"

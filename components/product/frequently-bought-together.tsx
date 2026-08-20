@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { toPublicMediaUrl } from '@/lib/media-url';
 import { Plus } from 'lucide-react';
 import { Product } from '@/lib/types';
 import { formatINR } from '@/lib/format';
@@ -67,7 +68,7 @@ export default function FrequentlyBoughtTogether({ productId }: { productId: str
               <div className="relative">
                 <Link href={`/product/${p.slug}`}>
                   <Image
-                    src={p.images[0] || 'https://placehold.co/200x250?text=No+Image'}
+                    src={toPublicMediaUrl(p.images[0]) || 'https://placehold.co/200x250?text=No+Image'}
                     alt={p.name}
                     width={92}
                     height={115}

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, FormEvent } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { toPublicMediaUrl } from '@/lib/media-url';
 import NextScript from 'next/script';
 import { useRouter } from 'next/navigation';
 import { Lock, Loader2, CreditCard, Tag, X, Wallet, Sparkles, Gift, Store, Minus, Plus } from 'lucide-react';
@@ -1657,7 +1658,7 @@ export default function CheckoutPage() {
                   >
                     <div className="relative h-16 w-14 shrink-0 overflow-hidden rounded-md bg-muted">
                       <Image
-                        src={item.product.images[0] || 'https://placehold.co/56x64?text=No+Image'}
+                        src={toPublicMediaUrl(item.product.images[0]) || 'https://placehold.co/56x64?text=No+Image'}
                         alt={`${item.product.name} - ${item.product.fabric} ${item.product.category}`}
                         fill
                         sizes="56px"
@@ -1903,7 +1904,7 @@ export default function CheckoutPage() {
                   />
                   <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-md bg-muted">
                     <Image
-                      src={bumpProduct.images[0] || 'https://placehold.co/48x56?text=No+Image'}
+                      src={toPublicMediaUrl(bumpProduct.images[0]) || 'https://placehold.co/48x56?text=No+Image'}
                       alt={bumpProduct.name}
                       fill
                       sizes="48px"
