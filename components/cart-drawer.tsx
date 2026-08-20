@@ -136,7 +136,12 @@ export default function CartDrawer() {
       currency: 'INR',
       value: subtotal,
       items: items.map((item) => ({
-        item_id: item.product.id,
+        // feedItemId (set when the line was added — see product-detail.tsx)
+        // matches the Merchant Center feed's <g:id> for this exact
+        // colour/size; falls back to the base product id for lines added
+        // before this field existed, or products with no colour variants.
+        item_id: item.feedItemId ?? item.product.id,
+        item_group_id: item.product.id,
         item_name: item.product.name,
         price: item.product.price,
         quantity: item.quantity ?? 1,

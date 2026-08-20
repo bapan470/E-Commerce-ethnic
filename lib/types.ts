@@ -157,6 +157,17 @@ export interface CartItem {
    *  their main item, matching by product.id alone would misidentify their
    *  own main item as "the bump line" and incorrectly hide its qty +/-. */
   isBump?: boolean;
+  /**
+   * The exact `<g:id>` value this line's colour/size variant has in the
+   * Google Merchant Center feed (see feedMatchedItemId() in
+   * lib/gtag-track.ts) — computed once when the item is added (product
+   * page still has `variant` + `selectedSize` in scope there) and carried
+   * on the cart line so view_cart / begin_checkout / purchase can reuse it
+   * without needing to re-derive a variant match from just `product.id` +
+   * `size`. Undefined for products with no colour variants, where
+   * `product.id` alone already matches the feed.
+   */
+  feedItemId?: string;
 }
 
 export interface CategoryRow {

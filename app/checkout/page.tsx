@@ -678,7 +678,10 @@ export default function CheckoutPage() {
         currency: 'INR',
         value: subtotal,
         items: items.map((item) => ({
-          item_id: item.product.id,
+          // See components/cart-drawer.tsx — same feed-matched id, falling
+          // back to the base product id for older lines / variant-less products.
+          item_id: item.feedItemId ?? item.product.id,
+          item_group_id: item.product.id,
           item_name: item.product.name,
           price: item.product.price,
           quantity: item.quantity ?? 1,

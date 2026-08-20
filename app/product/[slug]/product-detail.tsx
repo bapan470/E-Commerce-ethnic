@@ -598,7 +598,13 @@ export default function ProductDetail() {
       return;
     }
     const cartProduct = { ...product, price: selectedSizePrice, stock_quantity: selectedSizeStock, inStock: selectedSizeStock > 0 };
-    addItem(cartProduct, selectedSize, quantity);
+    // Same feed-matched id used in the add_to_cart gtag event below —
+    // stored on the cart line itself so view_cart / begin_checkout (fired
+    // later from the cart drawer, cart page, and checkout page) can send
+    // this exact variant+size id too, instead of falling back to the base
+    // product.id there.
+    const feedItemId = feedMatchedItemId(product.id, variant, selectedSize);
+    addItem(cartProduct, selectedSize, quantity, { feedItemId });
     if (appliedCoupon) {
       // Carry the coupon previewed on this page into the real cart so it
       // shows up (and actually applies) in the cart drawer, cart page and
@@ -620,7 +626,7 @@ export default function ProductDetail() {
         // Same feed-matched id as view_item above — an add-to-cart signal
         // for the wrong item_id is arguably worse than none, since it's
         // the strongest "show this exact product again" signal Google has.
-        item_id: feedMatchedItemId(product.id, variant, selectedSize),
+        item_id: feedItemId,
         item_group_id: product.id,
         item_name: product.name,
         item_category: product.category ?? '',
@@ -645,7 +651,8 @@ export default function ProductDetail() {
     if (buyNowNavigatingRef.current) return;
     buyNowNavigatingRef.current = true;
     const cartProduct = { ...product, price: selectedSizePrice, stock_quantity: selectedSizeStock, inStock: selectedSizeStock > 0 };
-    startBuyNow(cartProduct, selectedSize, quantity);
+    const feedItemId = feedMatchedItemId(product.id, variant, selectedSize);
+    startBuyNow(cartProduct, selectedSize, quantity, feedItemId);
     if (appliedCoupon) {
       applyCartCoupon(appliedCoupon.code, selectedSizePrice * quantity, 1).then((result) => {
         if (!result.ok) {
@@ -664,7 +671,7 @@ export default function ProductDetail() {
       currency: 'INR',
       value: selectedSizePrice * quantity,
       items: [{
-        item_id: feedMatchedItemId(product.id, variant, selectedSize),
+        item_id: feedItemId,
         item_group_id: product.id,
         item_name: product.name,
         item_category: product.category ?? '',

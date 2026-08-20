@@ -27,7 +27,7 @@ interface CartState {
 }
 
 type CartAction =
-  | { type: 'ADD'; product: Product; size: string; quantity?: number; maxStock?: number; isBump?: boolean }
+  | { type: 'ADD'; product: Product; size: string; quantity?: number; maxStock?: number; isBump?: boolean; feedItemId?: string }
   | { type: 'REMOVE'; productId: string; size: string; color?: string | null }
   | { type: 'UPDATE_QTY'; productId: string; size: string; quantity: number; maxStock?: number; color?: string | null }
   | { type: 'CLEAR' }
@@ -210,7 +210,16 @@ function cartReducer(state: CartState, action: CartAction): CartState {
         return {
           items: state.items.map((i) =>
             sameLine(i, action.product.id, action.size, color)
-              ? { ...i, quantity: Math.min(i.quantity + qty, cap), isBump: i.isBump || action.isBump }
+              ? {
+                  ...i,
+                  quantity: Math.min(i.quantity + qty, cap),
+                  isBump: i.isBump || action.isBump,
+                  // Backfill for lines added before this field existed
+                  // (e.g. still sitting in someone's localStorage cart) —
+                  // otherwise view_cart/begin_checkout would keep sending
+                  // the un-matched base id for that line indefinitely.
+                  feedItemId: i.feedItemId ?? action.feedItemId,
+                }
               : i
           ),
         };
@@ -218,7 +227,13 @@ function cartReducer(state: CartState, action: CartAction): CartState {
       return {
         items: [
           ...state.items,
-          { product: action.product, size: action.size, quantity: Math.min(qty, cap), isBump: action.isBump },
+          {
+            product: action.product,
+            size: action.size,
+            quantity: Math.min(qty, cap),
+            isBump: action.isBump,
+            feedItemId: action.feedItemId,
+          },
         ],
       };
     }
@@ -253,7 +268,7 @@ interface CartContextValue {
   items: CartItem[];
   count: number;
   subtotal: number;
-  addItem: (product: Product, size: string, quantity?: number, options?: { silent?: boolean; isBump?: boolean }) => void;
+  addItem: (product: Product, size: string, quantity?: number, options?: { silent?: boolean; isBump?: boolean; feedItemId?: string }) => void;
   removeItem: (productId: string, size: string, color?: string | null) => void;
   updateQuantity: (productId: string, size: string, quantity: number, color?: string | null) => void;
   clearCart: () => void;
@@ -277,7 +292,7 @@ interface CartContextValue {
    * pull in whatever else is already sitting in the cart. Checkout reads
    * this (when present) instead of the full cart's items. */
   buyNowItem: CartItem | null;
-  startBuyNow: (product: Product, size: string, quantity?: number) => void;
+  startBuyNow: (product: Product, size: string, quantity?: number, feedItemId?: string) => void;
   updateBuyNowQuantity: (quantity: number) => void;
   clearBuyNow: () => void;
 }
@@ -349,7 +364,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, [appliedCoupon, hydrated]);
 
   const addItem = useCallback(
-    (product: Product, size: string, quantity?: number, options?: { silent?: boolean; isBump?: boolean }) => {
+    (product: Product, size: string, quantity?: number, options?: { silent?: boolean; isBump?: boolean; feedItemId?: string }) => {
       const qty = quantity ?? 1;
       const stock = product.stock_quantity ?? Infinity;
       const existing = state.items.find((i) => sameLine(i, product.id, size, itemColor(product)));
@@ -361,7 +376,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             : `Only ${stock} unit${stock > 1 ? 's' : ''} in stock`
         );
       }
-      dispatch({ type: 'ADD', product, size, quantity: qty, maxStock: stock, isBump: options?.isBump });
+      dispatch({ type: 'ADD', product, size, quantity: qty, maxStock: stock, isBump: options?.isBump, feedItemId: options?.feedItemId });
       if (!options?.silent) {
         setCartOpen(true);
       }
@@ -457,9 +472,9 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const removeCoupon = useCallback(() => setAppliedCoupon(null), []);
 
   const startBuyNow = useCallback(
-    (product: Product, size: string, quantity?: number) => {
+    (product: Product, size: string, quantity?: number, feedItemId?: string) => {
       const qty = quantity ?? 1;
-      const item: CartItem = { product, size, quantity: qty };
+      const item: CartItem = { product, size, quantity: qty, feedItemId };
       setBuyNowItem(item);
       try {
         sessionStorage.setItem(BUY_NOW_STORAGE_KEY, JSON.stringify(item));
