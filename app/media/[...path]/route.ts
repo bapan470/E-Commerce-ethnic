@@ -23,11 +23,30 @@ const SUPABASE_BACKEND_BASE = `${SUPABASE_URL}/storage/v1/object/public`;
 const R2_CDN_BASE = (process.env.R2_PUBLIC_URL || '').replace(/\/$/, '');
 
 // -----------------------------------------------------------------------
-// Settings reads (fresh per request — see media_delivery route for why
-// in-memory caching is intentionally avoided here)
+// Settings reads, cached in-memory for a short TTL.
+//
+// This route serves EVERY image/video on the site, so a per-request
+// Supabase query here was burning Fluid Active CPU time (confirmed via
+// Vercel Usage dashboard — Fluid Active CPU hit 100% of the Hobby plan's
+// 4-hour/month included quota, triggering the "approaching your limits"
+// email and risking an auto-pause). Both admin toggles this reads
+// (media_delivery, media_storage_backend) are flipped rarely and
+// deliberately, and both toggle routes already call Cloudflare's
+// purge_cache on save — so a short TTL here is safe: within ~45s of an
+// admin flipping a toggle, Vercel's own cached value also expires and
+// picks up the new setting, on top of Cloudflare no longer serving old
+// cached image responses.
 // -----------------------------------------------------------------------
 
+const SETTINGS_CACHE_TTL_MS = 45_000;
+let settingsCache: { value: { proxyEnabled: boolean; preferredBackend: 'supabase' | 'r2' }; expiresAt: number } | null = null;
+
 async function getSettings(): Promise<{ proxyEnabled: boolean; preferredBackend: 'supabase' | 'r2' }> {
+  const now = Date.now();
+  if (settingsCache && settingsCache.expiresAt > now) {
+    return settingsCache.value;
+  }
+
   let proxyEnabled = true;
   let preferredBackend: 'supabase' | 'r2' = 'supabase';
   try {
@@ -48,9 +67,14 @@ async function getSettings(): Promise<{ proxyEnabled: boolean; preferredBackend:
       }
     }
   } catch {
-    // Supabase unreachable — use fail-open defaults
+    // Supabase unreachable — use fail-open defaults (and don't cache a
+    // failure, so the next request retries instead of being stuck for 45s)
+    return { proxyEnabled, preferredBackend };
   }
-  return { proxyEnabled, preferredBackend };
+
+  const value = { proxyEnabled, preferredBackend };
+  settingsCache = { value, expiresAt: now + SETTINGS_CACHE_TTL_MS };
+  return value;
 }
 
 // -----------------------------------------------------------------------
