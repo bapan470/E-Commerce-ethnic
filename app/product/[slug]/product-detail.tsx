@@ -1044,8 +1044,6 @@ function ProductInfo({
 
       <LowStockBadge stockQuantity={selectedSizeStock} />
 
-      <ProductHighlights product={product} />
-
       <div className="flex flex-wrap items-center gap-3">
         {quantity >= selectedSizeStock && selectedSizeStock > 0 && (
           <p className="w-full text-xs text-muted-foreground">
@@ -1083,9 +1081,11 @@ function ProductInfo({
           the sticky bar alone was easy for shoppers to miss/scroll past
           without noticing while reading the description/highlights below,
           which meant fewer actually tapped Add to Bag / Buy Now. Having
-          the buttons right here too, next to the price/stock info the
+          the buttons right here too, right below the coupon/stock info the
           shopper is already looking at, gives a second clear path to
           purchase instead of relying on the fixed bar being noticed. */}
+
+      <ProductHighlights product={product} />
 
       {!product.inStock && <NotifyMeForm productId={product.id} />}
 
