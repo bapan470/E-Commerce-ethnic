@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   RefreshCw,
   Gift,
+  Lock,
 } from 'lucide-react';
 import { useProducts, usePaymentDiscount, useCart, getVisibleBogoPromotion, formatBogoLabel } from '@/lib/cart-context';
 import { fetchProductBySlug } from '@/lib/products-api';
@@ -1072,17 +1073,44 @@ function ProductInfo({
 
       <PincodeChecker />
 
-      <div className="grid grid-cols-3 gap-3 rounded-lg border border-border/60 bg-card p-4 text-center">
-        {[
-          { icon: Truck, label: 'Free Shipping' },
-          { icon: ShieldCheck, label: 'Authentic' },
-          { icon: RefreshCw, label: `${returnWindowBadgeText(fulfillment)} Returns` },
-        ].map((a) => (
-          <div key={a.label} className="flex flex-col items-center gap-1">
-            <a.icon className="h-5 w-5 text-secondary" />
-            <span className="text-[11px] font-medium">{a.label}</span>
-          </div>
-        ))}
+      <div className="rounded-lg border border-border/60 bg-card p-4">
+        <div className="grid grid-cols-3 gap-3 text-center">
+          {[
+            {
+              icon: Truck,
+              label: 'Free Shipping',
+              title: 'Pan-India delivery, tracked from dispatch to your door.',
+            },
+            {
+              icon: ShieldCheck,
+              label: 'Authentic',
+              title: 'Sourced directly from handloom weavers across India — no third-party resellers.',
+            },
+            {
+              icon: RefreshCw,
+              label: `${returnWindowBadgeText(fulfillment)} Returns`,
+              title: `${returnWindowBadgeText(fulfillment)} easy returns on unworn items with original packaging.`,
+            },
+          ].map((a) => (
+            <div key={a.label} title={a.title} className="flex flex-col items-center gap-1">
+              <a.icon className="h-5 w-5 text-secondary" />
+              <span className="text-[11px] font-medium leading-tight">{a.label}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-3 flex items-center justify-between gap-2 border-t border-border/60 pt-3">
+          <Link
+            href="/legal/refund-policy"
+            className="text-[11px] font-medium text-primary underline-offset-2 hover:underline"
+          >
+            Return Policy →
+          </Link>
+          <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+            <Lock className="h-3 w-3" />
+            Secure payments via Razorpay
+          </span>
+        </div>
       </div>
     </div>
   );
