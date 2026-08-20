@@ -12,6 +12,8 @@ import {
   Gift,
   Lock,
   ChevronRight,
+  Minus,
+  Plus,
 } from 'lucide-react';
 import { useProducts, usePaymentDiscount, useCart, getVisibleBogoPromotion, formatBogoLabel } from '@/lib/cart-context';
 import { fetchProductBySlug } from '@/lib/products-api';
@@ -1059,33 +1061,54 @@ function ProductInfo({
 
       <LowStockBadge stockQuantity={selectedSizeStock} />
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-col gap-3">
         {quantity >= selectedSizeStock && selectedSizeStock > 0 && (
-          <p className="w-full text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             Only {selectedSizeStock} unit{selectedSizeStock > 1 ? 's' : ''} left in stock.
           </p>
         )}
         {selectedSizeStock > 0 ? (
           <>
-            <Button
-              onClick={onAdd}
-              size="lg"
-              variant="outline"
-              className="flex-1 gap-2 border-primary text-base text-primary"
-            >
-              <ShoppingBag className="h-4 w-4" />
-              Add to Bag
-            </Button>
+            <div className="flex items-center gap-3">
+              <div className="flex shrink-0 items-center rounded-lg border border-border">
+                <button
+                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                  disabled={quantity <= 1}
+                  className="p-2.5 text-muted-foreground hover:text-primary disabled:opacity-40"
+                  aria-label="Decrease quantity"
+                >
+                  <Minus className="h-4 w-4" />
+                </button>
+                <span className="w-8 text-center text-sm font-semibold">{quantity}</span>
+                <button
+                  onClick={() => setQuantity((q) => Math.min(selectedSizeStock, q + 1))}
+                  disabled={quantity >= selectedSizeStock}
+                  className="p-2.5 text-muted-foreground hover:text-primary disabled:opacity-40"
+                  aria-label="Increase quantity"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+              </div>
+              <Button
+                onClick={onAdd}
+                size="lg"
+                variant="outline"
+                className="flex-1 gap-2 border-primary text-base text-primary"
+              >
+                <ShoppingBag className="h-4 w-4" />
+                Add to Bag
+              </Button>
+            </div>
             <Button
               onClick={onBuyNow}
               size="lg"
-              className="flex-1 gap-2 bg-primary text-base text-primary-foreground"
+              className="w-full gap-2 bg-primary text-base text-primary-foreground"
             >
               Buy Now
             </Button>
           </>
         ) : (
-          <Button disabled size="lg" variant="outline" className="flex-1 gap-2 text-base">
+          <Button disabled size="lg" variant="outline" className="w-full gap-2 text-base">
             Out of Stock
           </Button>
         )}
