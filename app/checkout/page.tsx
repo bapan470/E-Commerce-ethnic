@@ -19,7 +19,7 @@ import { formatINR } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import { getSupabaseBrowser } from '@/lib/supabase-browser';
 import { validateGiftCard, GiftCard } from '@/lib/giftcards-api';
-import { computeCouponDiscount } from '@/lib/coupons-api';
+import { computeCouponDiscount, fetchProductPageCoupons, Coupon } from '@/lib/coupons-api';
 import { fetchAddresses } from '@/lib/addresses-api';
 import { Address } from '@/lib/types';
 import { joinResellerProgram, fetchMyResellerOverview } from '@/lib/reseller-api';
@@ -467,6 +467,28 @@ export default function CheckoutPage() {
   const [applyingCoupon, setApplyingCoupon] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
 
+  // Coupons the admin has flagged "Show on Product Page" (Admin > Coupons)
+  // — same list already shown on product pages and in the cart drawer,
+  // surfaced here too so a shopper who reaches checkout without ever
+  // opening the drawer still sees offers they qualify for. Only fetched
+  // while nothing is applied yet; once a coupon is active there's nothing
+  // left to pick from.
+  const [availableCoupons, setAvailableCoupons] = useState<Coupon[]>([]);
+  const [applyingFromList, setApplyingFromList] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (appliedCoupon) return;
+    let cancelled = false;
+    fetchProductPageCoupons()
+      .then((c) => {
+        if (!cancelled) setAvailableCoupons(c);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [appliedCoupon]);
+
   const [giftCardInput, setGiftCardInput] = useState('');
   const [applyingGiftCard, setApplyingGiftCard] = useState(false);
   const [giftCardError, setGiftCardError] = useState<string | null>(null);
@@ -821,6 +843,21 @@ export default function CheckoutPage() {
       return;
     }
     toast.success(`Coupon "${result.coupon.code}" applied`);
+  };
+
+  const handleApplyFromList = async (c: Coupon) => {
+    setApplyingFromList(c.code);
+    setCouponError(null);
+    try {
+      const result = await applyCoupon(c.code, subtotal, items.length);
+      if (!result.ok || !result.coupon) {
+        setCouponError(result.error || 'Could not apply this coupon');
+      } else {
+        toast.success(`Coupon "${result.coupon.code}" applied`);
+      }
+    } finally {
+      setApplyingFromList(null);
+    }
   };
 
   const handleRemoveCoupon = () => {
@@ -1801,6 +1838,44 @@ export default function CheckoutPage() {
                 </div>
               )}
             </div>
+
+            {/* Available coupons (admin-flagged "Show on Product Page"), only
+                while nothing is applied yet — same offers a shopper would see
+                on a product page or in the cart drawer, surfaced here too. */}
+            {!appliedCoupon && availableCoupons.length > 0 && (
+              <div className="mt-3 flex flex-col gap-2 rounded-lg border border-border/60 bg-muted/30 p-3">
+                <div className="flex items-center gap-1.5 text-sm font-semibold">
+                  <Tag className="h-3.5 w-3.5 text-secondary" />
+                  Available Coupons
+                </div>
+                {availableCoupons.map((c) => (
+                  <div
+                    key={c.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-secondary/60 bg-secondary/10 px-3 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-sm font-bold tracking-wide text-primary">{c.code}</span>
+                        <span className="text-xs font-semibold text-secondary-foreground">
+                          {c.discount_type === 'percentage' ? `${c.discount_value}% OFF` : `${formatINR(c.discount_value)} OFF`}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {c.min_order_value > 0 ? `On orders above ${formatINR(c.min_order_value)}` : 'No minimum order value'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleApplyFromList(c)}
+                      disabled={applyingFromList === c.code}
+                      className="flex shrink-0 items-center gap-1 rounded-md border border-primary bg-background px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary hover:text-primary-foreground disabled:opacity-60"
+                    >
+                      {applyingFromList === c.code ? 'Applying…' : 'Apply'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Gift card */}
             <Separator className="my-4" />
