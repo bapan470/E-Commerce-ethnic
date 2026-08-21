@@ -61,6 +61,9 @@ interface ChatMessage {
   sender: Sender;
   text: string;
   isError?: boolean;
+  // Attached to the "you also have N more orders" message so the shopper
+  // can tap an order instead of having to type its ID.
+  orderChips?: { id: string; shortId: string }[];
 }
 
 interface Topic {
@@ -196,6 +199,10 @@ export default function LiveChatWidget() {
   const [guestOrderId, setGuestOrderId] = useState('');
   const [guestEmail, setGuestEmail] = useState('');
   const [orderLookupLoading, setOrderLookupLoading] = useState(false);
+  // Full details for this shopper's other (non-primary) orders from the
+  // last lookup, keyed by order id — lets "view this order" chips show
+  // details instantly without another API call.
+  const otherOrdersRef = useRef<Record<string, LookedUpOrder>>({});
 
   // Whatever order is currently on screen — powers "Email me this" /
   // "Raise a support ticket" action chips.
@@ -251,12 +258,23 @@ export default function LiveChatWidget() {
     setHasOpenedOnce(true);
   }
 
-  function addBot(text: string, isError = false) {
-    setMessages((prev) => [...prev, { id: uid(), sender: 'bot', text, isError }]);
+  function addBot(text: string, isError = false, orderChips?: { id: string; shortId: string }[]) {
+    setMessages((prev) => [...prev, { id: uid(), sender: 'bot', text, isError, orderChips }]);
   }
 
   function addUser(text: string) {
     setMessages((prev) => [...prev, { id: uid(), sender: 'user', text }]);
+  }
+
+  // Tapping one of the "you also have N more orders" chips — shows that
+  // order's details right away using the data we already fetched in the
+  // same lookup (no extra API round-trip needed).
+  function handleViewOtherOrder(orderId: string) {
+    const order = otherOrdersRef.current[orderId];
+    if (!order) return;
+    addUser(`Order ${order.shortId}`);
+    addBot(orderToChatText(order));
+    setActiveOrder({ orderId: order.id, shortId: order.shortId });
   }
 
   // -------------------------------------------------------------------
@@ -287,10 +305,13 @@ export default function LiveChatWidget() {
         }
         const [top, ...rest] = data.orders as LookedUpOrder[];
         let text = orderToChatText(top);
+        let orderChips: { id: string; shortId: string }[] | undefined;
         if (rest.length > 0) {
-          text += `\n\nYou also have ${rest.length} more order${rest.length > 1 ? 's' : ''} — ask me about a specific order ID if you'd like details on those.`;
+          text += `\n\nYou also have ${rest.length} more order${rest.length > 1 ? 's' : ''} — tap one below for details.`;
+          otherOrdersRef.current = Object.fromEntries(rest.map((o) => [o.id, o]));
+          orderChips = rest.map((o) => ({ id: o.id, shortId: o.shortId }));
         }
-        addBot(text);
+        addBot(text, false, orderChips);
         setActiveOrder({ orderId: top.id, shortId: top.shortId });
         return;
       }
@@ -553,16 +574,32 @@ export default function LiveChatWidget() {
           <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto bg-muted/40 px-3 py-4">
             {messages.map((m) => (
               <div key={m.id} className={`flex ${m.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div
-                  className={`max-w-[85%] whitespace-pre-line rounded-2xl px-3 py-2 text-sm leading-relaxed shadow-sm ${
-                    m.sender === 'user'
-                      ? 'rounded-br-sm bg-primary text-primary-foreground'
-                      : m.isError
-                        ? 'rounded-bl-sm border border-destructive/30 bg-destructive/10 text-foreground'
-                        : 'rounded-bl-sm border border-border bg-card text-card-foreground'
-                  }`}
-                >
-                  {m.text}
+                <div className="flex max-w-[85%] flex-col items-start gap-1.5">
+                  <div
+                    className={`whitespace-pre-line rounded-2xl px-3 py-2 text-sm leading-relaxed shadow-sm ${
+                      m.sender === 'user'
+                        ? 'rounded-br-sm bg-primary text-primary-foreground'
+                        : m.isError
+                          ? 'rounded-bl-sm border border-destructive/30 bg-destructive/10 text-foreground'
+                          : 'rounded-bl-sm border border-border bg-card text-card-foreground'
+                    }`}
+                  >
+                    {m.text}
+                  </div>
+                  {m.orderChips && m.orderChips.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pl-1">
+                      {m.orderChips.map((chip) => (
+                        <button
+                          key={chip.id}
+                          onClick={() => handleViewOtherOrder(chip.id)}
+                          disabled={busy}
+                          className="flex items-center gap-1 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary hover:text-primary disabled:opacity-50"
+                        >
+                          <PackageSearch className="h-3 w-3" /> Order {chip.shortId}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
