@@ -11,7 +11,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import WishlistButton from '@/components/wishlist-button';
 import CatalogCardMedia from '@/components/catalog-card-media';
-import { toPublicMediaUrl } from '@/lib/media-url';
+import { toPublicMediaUrl, toPublicMediaUrls } from '@/lib/media-url';
+import { preloadImages, preloadImagesOnHover, cancelHoverPreload } from '@/lib/preload-image';
 import { Truck } from 'lucide-react';
 
 export default function ProductCard({
@@ -101,9 +102,31 @@ export default function ProductCard({
   const displayName = getVariantDisplayName(product.name, product.colors?.[0], product.default_variant_color);
   const altText = `${displayName} - ${product.fabric} ${product.category} from ${product.origin}`;
 
+  // The product-detail page opens straight into these images (its gallery's
+  // first slide, or the swapped-in variant photo the card already shows), so
+  // preloading them here means the click lands on an image already sitting
+  // in the browser's cache -- no spinner/blank flash on the detail page.
+  // Only the first 1-2 matter: that's all that's visible before the shopper
+  // can even start scrolling the gallery.
+  const detailPagePreloadImages = toPublicMediaUrls([
+    imageOverride || product.default_variant_image || product.images[0],
+    product.images[1],
+  ]);
+
+  const startPreload = () => preloadImagesOnHover(detailPagePreloadImages);
+  // A touch is already a committed tap toward navigation (unlike a mouse
+  // hover, which can just be passing over the grid) -- fire immediately,
+  // no debounce, so the fetch has the maximum possible head start before
+  // the page transition completes.
+  const startPreloadImmediate = () => preloadImages(detailPagePreloadImages);
+
   return (
     <Link
       href={href}
+      onMouseEnter={startPreload}
+      onMouseLeave={cancelHoverPreload}
+      onTouchStart={startPreloadImmediate}
+      onFocus={startPreload}
       className="group relative flex flex-col overflow-hidden rounded-2xl bg-card shadow-sm transition-shadow duration-300 hover:shadow-lg product-card-hover"
     >
       <div className="relative overflow-hidden">
