@@ -102,11 +102,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Failed to update order status' }, { status: 500 });
     }
 
-    isInPaymentRequestFlow(internalOrderId)
-      .then((inFlow) => {
-        if (inFlow) return logPaymentRequestEvent(internalOrderId, 'payment_verified', { meta: { razorpay_payment_id } });
-      })
-      .catch(() => {});
+    const inPaymentRequestFlow = await isInPaymentRequestFlow(internalOrderId).catch(() => false);
+
+    if (inPaymentRequestFlow) {
+      logPaymentRequestEvent(internalOrderId, 'payment_verified', { meta: { razorpay_payment_id } }).catch(() => {});
+    }
 
     // Was previously silent: this route writes status:'paid' directly
     // (see the security note above for why), which bypasses
@@ -116,6 +116,12 @@ export async function POST(req: NextRequest) {
     // actually got a "we've received your payment" email. Best-effort,
     // same as every other lifecycle email here: a slow/broken email
     // provider must never fail the payment itself.
+    //
+    // isPaymentRequestFlow: only true for orders that went through Admin >
+    // "Request Online Payment" -- that's the only case where the
+    // made/kept-ready-on-demand "sorry for the inconvenience" copy in the
+    // 'paid' template actually applies. A regular customer who checked
+    // out and paid immediately should just get a plain confirmation.
     if (order.customer_email) {
       const { subject, html } = orderStatusUpdateEmail({
         id: order.id,
@@ -125,6 +131,7 @@ export async function POST(req: NextRequest) {
         courier_name: order.courier_name,
         items: order.items,
         total_amount: order.total_amount,
+        isPaymentRequestFlow: inPaymentRequestFlow,
       });
       sendEmail({ to: order.customer_email, subject, html }).catch((err) => {
         console.error('[verify-payment] payment-confirmed email failed:', err);

@@ -489,6 +489,13 @@ export function orderStatusUpdateEmail(order: {
   courier_name?: string | null;
   items?: any[];
   total_amount?: number;
+  // True only for orders that went through Admin > "Request Online
+  // Payment" (made-to-order / kept-ready-on-demand pieces where shipment
+  // genuinely takes a little longer). Ordinary checkout/resume-cart online
+  // orders should NOT get the "made/kept ready only once an order comes
+  // in" apology -- that line doesn't apply to them and was previously
+  // being sent to every "paid" order regardless of flow.
+  isPaymentRequestFlow?: boolean;
 }) {
   const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
   const name = order.customer_name || 'there';
@@ -502,12 +509,15 @@ export function orderStatusUpdateEmail(order: {
     paid: {
       subject: `Payment confirmed — ${shortId}`,
       heading: `Thanks, ${name} — payment received!`,
-      body: `We've confirmed payment for your order <strong>${shortId}</strong> and it's now being prepared.
+      body: order.isPaymentRequestFlow
+        ? `We've confirmed payment for your order <strong>${shortId}</strong> and it's now being prepared.
         <br /><br />
         Sorry for the inconvenience, but a couple of our pieces are made/kept ready only once an order comes
         in, rather than sitting pre-packed at all times — so preparing your order for shipment may take a
         little extra time. We'll email you the moment it ships, and you're welcome to check the latest
-        status here any time.`,
+        status here any time.`
+        : `We've confirmed payment for your order <strong>${shortId}</strong> and it's now being prepared.
+        We'll email you the moment it ships, and you're welcome to check the latest status here any time.`,
     },
     shipped: {
       subject: `Your order has shipped — ${shortId}`,

@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from './supabase-admin';
 import { sendEmail } from './email';
 import { orderStatusUpdateEmail } from './email-templates';
+import { isInPaymentRequestFlow } from './order-payment-events';
 
 // SECURITY NOTE: this now uses the service-role client instead of the
 // anon-key client. Both callers of this file (app/api/admin/orders and
@@ -104,6 +105,11 @@ export async function updateOrderStatus(id: string, status: string) {
   if (error) throw error;
 
   if (existing && existing.status !== status && existing.customer_email) {
+    // Same gating as verify-payment: only orders from Admin > "Request
+    // Online Payment" get the made/kept-ready-on-demand apology copy when
+    // moved to 'paid' -- e.g. an admin marking a COD/manually-confirmed
+    // order as paid shouldn't send that line either.
+    const isPaymentRequestFlow = status === 'paid' ? await isInPaymentRequestFlow(existing.id).catch(() => false) : false;
     const { subject, html } = orderStatusUpdateEmail({
       id: existing.id,
       customer_name: existing.customer_name,
@@ -112,6 +118,7 @@ export async function updateOrderStatus(id: string, status: string) {
       courier_name: existing.courier_name,
       items: existing.items,
       total_amount: existing.total_amount,
+      isPaymentRequestFlow,
     });
     // Best-effort -- never let a slow/broken email provider fail the
     // admin's status update.

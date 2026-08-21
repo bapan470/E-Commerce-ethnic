@@ -222,6 +222,15 @@ export default function CheckoutPage() {
   // effect below (which normally auto-fills the customer's default address
   // once we know who they are) doesn't clobber it.
   const draftRestoredRef = useRef(false);
+  // Remembers the order we just created via place_order_with_items() for
+  // an online-payment attempt, so that if the customer closes/cancels the
+  // Razorpay popup (or it fails) and clicks "Place Order" again without
+  // changing anything, we resume paying for that SAME pending order
+  // instead of calling place_order_with_items() again and creating a
+  // second order row for what the customer experienced as one checkout.
+  // Cleared automatically whenever the cart/address/total no longer
+  // matches (a new `signature`), or once the order actually succeeds.
+  const pendingOrderRef = useRef<{ id: string; signature: string } | null>(null);
   // See preserveExisting above — true unless the restored draft was saved
   // by the deliberate "Log in" link, in which case we let a saved address
   // apply on top of it once the account is known.
@@ -1015,87 +1024,119 @@ export default function CheckoutPage() {
         return;
       }
 
-      // If reselling, make sure this account has a reseller profile
-      // (created silently on first resale checkout — same login, no
-      // separate signup) so the order can be linked to it.
-      let resellerId: string | null = null;
-      if (isResale) {
-        try {
-          const resellerProfile = await joinResellerProgram(resaleProfit > 0 ? resaleProfit : defaultMarkup);
-          resellerId = resellerProfile.id;
-        } catch (err) {
-          toast.error(err instanceof Error ? err.message : 'Failed to set up reseller account');
-          setPlacing(false);
-          return;
-        }
-      }
-
-      // Phase 3A/3B: place_order_with_items() does the `orders` insert AND
-      // the per-item `order_items` insert in one atomic transaction, plus
-      // (for vendor-sourced products only) an atomic check+decrement of
-      // vendor stock and a vendor_accept_deadline. This replaces what used
-      // to be a raw `.from('orders').insert(...)` here — see the Phase 3A
-      // migration's header comment for why. Non-vendor products are
-      // completely unaffected (vendor_id is NULL for them, so the RPC
-      // skips the vendor-stock check for those lines); the existing
-      // decrementStockForOrder() call further below still separately
-      // handles the legacy customer-facing stock_quantity display for
-      // every product, vendor-sourced or not.
-      const { data: newOrderId, error: orderError } = await supabase.rpc('place_order_with_items', {
-        p_order: {
-          user_id: loggedInUser?.id ?? null,
-          items: orderItems,
-          total_amount: payableTotal,
-          status: 'pending',
-          payment_method: paymentMethod,
-          shipping_address: shippingAddress,
-          customer_name: customerName,
-          customer_email: customerEmail,
-          customer_phone: customerPhone,
-          session_id: getSessionId(),
-          subtotal,
-          shipping_charge: shipping,
-          gst_amount: tax,
-          coupon_code: appliedCoupon?.code ?? null,
-          coupon_discount: couponDiscount,
-          gift_card_code: appliedGiftCard?.code ?? null,
-          gift_card_discount: clampedGiftCardDiscount,
-          loyalty_points_redeemed: loyaltyDiscount > 0 ? pointsToRedeem : 0,
-          loyalty_discount: loyaltyDiscount,
-          online_payment_discount: onlinePaymentDiscount,
-          is_reseller_order: isResale,
-          reseller_id: resellerId,
-          reseller_margin_percent: isResale && total > 0 ? Number(((resaleProfit / total) * 100).toFixed(1)) : null,
-          reseller_base_cost: isResale ? total : null,
-          reseller_profit: isResale ? resaleProfit : null,
-          reseller_brand_name: isResale ? resaleBrandName || null : null,
-          // Affiliate referral — the RPC looks this code up server-side
-          // against an APPROVED affiliate and computes the commission
-          // itself (see place_order_with_items in
-          // supabase/migrations/20260913000000_affiliate_program.sql);
-          // we never trust or compute a commission amount here.
-          affiliate_code: getStoredAffiliateCode(),
-        },
-        p_items: orderItems,
+      // Identifies "is this literally the same order attempt as last time"
+      // -- same items, address, total, and payment method. Used below to
+      // decide whether to resume the still-pending order from a previous
+      // attempt instead of creating a new one.
+      const orderSignature = JSON.stringify({
+        items: orderItems,
+        total: payableTotal,
+        address: shippingAddress,
+        paymentMethod,
+        email: customerEmail,
       });
 
-      if (orderError) {
-        if (orderError.message?.includes('INSUFFICIENT_STOCK')) {
-          toast.error('Sorry, one of the items in your cart just sold out. Please update your cart and try again.');
-          setPlacing(false);
-          return;
+      let internalOrderId: string;
+
+      if (
+        paymentMethod === 'online' &&
+        pendingOrderRef.current &&
+        pendingOrderRef.current.signature === orderSignature
+      ) {
+        // Same cart/address/total as the order we already created for the
+        // previous attempt (e.g. the Razorpay popup was closed/cancelled,
+        // or the payment failed) -- reuse it instead of calling
+        // place_order_with_items() again. Previously every click here
+        // created a brand-new order row even when it was really the same
+        // checkout being retried, so one customer intent could end up as
+        // two (or more) orders in Admin > Orders.
+        internalOrderId = pendingOrderRef.current.id;
+      } else {
+        // If reselling, make sure this account has a reseller profile
+        // (created silently on first resale checkout — same login, no
+        // separate signup) so the order can be linked to it.
+        let resellerId: string | null = null;
+        if (isResale) {
+          try {
+            const resellerProfile = await joinResellerProgram(resaleProfit > 0 ? resaleProfit : defaultMarkup);
+            resellerId = resellerProfile.id;
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Failed to set up reseller account');
+            setPlacing(false);
+            return;
+          }
         }
-        if (orderError.message?.includes('COD_BLOCKED_RETURN_RISK')) {
-          toast.error(
-            'Cash on Delivery is temporarily unavailable for this number due to past returns/RTOs. Please pay online to place this order.',
-            { duration: 8000 }
-          );
-          setPlacing(false);
-          return;
+
+        // Phase 3A/3B: place_order_with_items() does the `orders` insert AND
+        // the per-item `order_items` insert in one atomic transaction, plus
+        // (for vendor-sourced products only) an atomic check+decrement of
+        // vendor stock and a vendor_accept_deadline. This replaces what used
+        // to be a raw `.from('orders').insert(...)` here — see the Phase 3A
+        // migration's header comment for why. Non-vendor products are
+        // completely unaffected (vendor_id is NULL for them, so the RPC
+        // skips the vendor-stock check for those lines); the existing
+        // decrementStockForOrder() call further below still separately
+        // handles the legacy customer-facing stock_quantity display for
+        // every product, vendor-sourced or not.
+        const { data: newOrderId, error: orderError } = await supabase.rpc('place_order_with_items', {
+          p_order: {
+            user_id: loggedInUser?.id ?? null,
+            items: orderItems,
+            total_amount: payableTotal,
+            status: 'pending',
+            payment_method: paymentMethod,
+            shipping_address: shippingAddress,
+            customer_name: customerName,
+            customer_email: customerEmail,
+            customer_phone: customerPhone,
+            session_id: getSessionId(),
+            subtotal,
+            shipping_charge: shipping,
+            gst_amount: tax,
+            coupon_code: appliedCoupon?.code ?? null,
+            coupon_discount: couponDiscount,
+            gift_card_code: appliedGiftCard?.code ?? null,
+            gift_card_discount: clampedGiftCardDiscount,
+            loyalty_points_redeemed: loyaltyDiscount > 0 ? pointsToRedeem : 0,
+            loyalty_discount: loyaltyDiscount,
+            online_payment_discount: onlinePaymentDiscount,
+            is_reseller_order: isResale,
+            reseller_id: resellerId,
+            reseller_margin_percent: isResale && total > 0 ? Number(((resaleProfit / total) * 100).toFixed(1)) : null,
+            reseller_base_cost: isResale ? total : null,
+            reseller_profit: isResale ? resaleProfit : null,
+            reseller_brand_name: isResale ? resaleBrandName || null : null,
+            // Affiliate referral — the RPC looks this code up server-side
+            // against an APPROVED affiliate and computes the commission
+            // itself (see place_order_with_items in
+            // supabase/migrations/20260913000000_affiliate_program.sql);
+            // we never trust or compute a commission amount here.
+            affiliate_code: getStoredAffiliateCode(),
+          },
+          p_items: orderItems,
+        });
+
+        if (orderError) {
+          if (orderError.message?.includes('INSUFFICIENT_STOCK')) {
+            toast.error('Sorry, one of the items in your cart just sold out. Please update your cart and try again.');
+            setPlacing(false);
+            return;
+          }
+          if (orderError.message?.includes('COD_BLOCKED_RETURN_RISK')) {
+            toast.error(
+              'Cash on Delivery is temporarily unavailable for this number due to past returns/RTOs. Please pay online to place this order.',
+              { duration: 8000 }
+            );
+            setPlacing(false);
+            return;
+          }
+          throw orderError;
         }
-        throw orderError;
+        internalOrderId = newOrderId as string;
+        if (paymentMethod === 'online') {
+          pendingOrderRef.current = { id: internalOrderId, signature: orderSignature };
+        }
       }
-      const internalOrderId = newOrderId as string;
       // Order is placed (commission, if any, is already stamped on the
       // row by the RPC) — the referral has done its job, so drop it
       // rather than let it linger and get attributed to a later order.
@@ -1175,6 +1216,7 @@ export default function CheckoutPage() {
           .eq('id', appliedCoupon.id)
           .then(() => {});
       }
+      pendingOrderRef.current = null;
       setOrderPlaced(true);
       clearOrderedItems();
       decrementStockForOrder(orderItems).catch(() => {});

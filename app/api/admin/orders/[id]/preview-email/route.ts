@@ -10,6 +10,7 @@ import {
   orderOutForDeliveryEmail,
   codToPrepaidRequestEmail,
 } from '@/lib/email-templates';
+import { isInPaymentRequestFlow } from '@/lib/order-payment-events';
 
 // Used by the "Test" panel on Admin > Orders (see
 // components/admin/delivery-notification-tester.tsx). Builds the exact same
@@ -111,6 +112,10 @@ async function buildPreview(orderId: string, type: string, dateOverride?: string
         courier_name: testCourier,
         items: previewItems,
         total_amount: previewTotal,
+        // Reflect this order's real flow in the preview so "Test" actually
+        // shows the admin what the customer would receive (see the same
+        // gating in verify-payment / updateOrderStatus).
+        isPaymentRequestFlow: type === 'paid' ? await isInPaymentRequestFlow(order.id).catch(() => false) : false,
       });
     default:
       return null;
