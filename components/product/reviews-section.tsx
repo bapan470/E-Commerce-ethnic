@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Star, CheckCircle2, MessageSquareOff, ImagePlus, X, Loader2, ThumbsUp } from 'lucide-react';
+import { Star, CheckCircle2, ImagePlus, X, Loader2, ThumbsUp } from 'lucide-react';
 import { toPublicMediaUrl } from '@/lib/media-url';
 import { useAuth } from '@/lib/auth-context';
 import {
@@ -316,13 +316,24 @@ export default function ReviewsSection({
             </Button>
           </div>
         ) : (
-          <Button
-            onClick={openForm}
-            className="w-full bg-gradient-to-r from-primary via-primary to-primary/90 text-primary-foreground shadow-sm transition-transform hover:scale-[1.02] hover:shadow-md"
-          >
-            <Star className="mr-1.5 h-4 w-4 fill-secondary text-secondary" />
-            Rate this product
-          </Button>
+          <div className="flex flex-col gap-2.5">
+            <Button
+              onClick={openForm}
+              className="w-full bg-gradient-to-r from-primary via-primary to-primary/90 text-primary-foreground shadow-sm transition-transform hover:scale-[1.02] hover:shadow-md"
+            >
+              <Star className="mr-1.5 h-4 w-4 fill-secondary text-secondary" />
+              Rate this product
+            </Button>
+            {!loading && reviews.length === 0 && (
+              <Button
+                onClick={openForm}
+                className="w-full bg-gradient-to-r from-primary via-primary to-primary/90 text-primary-foreground shadow-sm transition-transform hover:scale-[1.02] hover:shadow-md"
+              >
+                <Star className="mr-1.5 h-4 w-4 fill-secondary text-secondary" />
+                Write the first review
+              </Button>
+            )}
+          </div>
         )}
 
         {user && !myReview && !eligible && (
@@ -444,27 +455,7 @@ export default function ReviewsSection({
               <Skeleton key={i} className="h-20 w-full" />
             ))}
           </div>
-        ) : reviews.length === 0 ? (
-          <div className="relative flex flex-col items-center gap-4 overflow-hidden rounded-2xl border border-dashed border-secondary/40 bg-gradient-to-b from-secondary/[0.05] to-transparent px-6 py-14 text-center">
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(0,0,0,0.03),transparent_60%)]" />
-            <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-secondary/20 to-primary/10 ring-1 ring-secondary/30">
-              <MessageSquareOff className="h-7 w-7 text-primary/70" />
-            </div>
-            <div className="relative flex flex-col gap-1.5">
-              <p className="font-serif text-lg font-semibold text-foreground">Be the first to review</p>
-              <p className="max-w-xs text-sm leading-relaxed text-muted-foreground">
-                Share your experience with the fit, fabric and quality to help other shoppers decide with confidence.
-              </p>
-            </div>
-            <Button
-              onClick={openForm}
-              className="relative bg-gradient-to-r from-primary via-primary to-primary/90 text-primary-foreground shadow-sm transition-transform hover:scale-[1.02] hover:shadow-md"
-            >
-              <Star className="mr-1.5 h-4 w-4 fill-secondary text-secondary" />
-              Write the first review
-            </Button>
-          </div>
-        ) : (
+        ) : reviews.length === 0 ? null : (
           <ul className="flex flex-col divide-y divide-border/60">
             {reviews.map((r) => (
               <li key={r.id} className="rounded-lg py-4 transition-colors hover:bg-secondary/[0.04]">
