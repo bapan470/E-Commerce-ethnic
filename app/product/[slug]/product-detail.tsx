@@ -43,7 +43,6 @@ import BogoOfferSheet from '@/components/product/bogo-offer-sheet';
 import SizeChart from '@/components/product/size-chart';
 import ProductGallery from '@/components/product/product-gallery';
 import { toPublicMediaUrl, toPublicMediaUrls } from '@/lib/media-url';
-import ProductVideoTrigger from '@/components/product/product-video-trigger';
 import MobileStickyCartBar from '@/components/product/mobile-sticky-cart-bar';
 import RelatedProducts from '@/components/product/related-products';
 import VendorCollection from '@/components/product/vendor-collection';
@@ -701,25 +700,6 @@ export default function ProductDetail() {
               productMrp={product.mrp}
             />
           </div>
-          {product.video_url && (
-            <div className="px-4 sm:px-0">
-              {/* Pass the variant's own id only when the video actually being shown
-                  is the variant's own (product.video_url falls back to the base
-                  product's video when the variant has none) — otherwise the id we
-                  send wouldn't match the entry the video-feed API returns for the
-                  video actually playing. */}
-              <ProductVideoTrigger
-                productId={variant?.video ? variant.id : product.id}
-                baseProductId={baseProduct?.id}
-                productSlug={product.slug}
-                videoUrl={toPublicMediaUrl(product.video_url)}
-                posterUrl={toPublicMediaUrls(product.images)[0]}
-                name={product.name}
-                price={product.price}
-                mrp={product.mrp}
-              />
-            </div>
-          )}
           <div className="px-4 sm:px-0">
             <VariantSwatches
               productId={baseProduct.id}

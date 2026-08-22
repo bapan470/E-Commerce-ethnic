@@ -1,8 +1,8 @@
 VIDEO SHOPPING BOTTOM-NAV TAB — WHAT CHANGED
 =============================================
 
-3 files, matching your repo's folder structure. Copy each into the same
-path in your project (overwrite the 2 existing ones, add the 1 new one),
+4 files, matching your repo's folder structure. Copy each into the same
+path in your project (overwrite the 3 existing ones, add the 1 new one),
 then `git push` as usual.
 
 1. components/mobile-bottom-nav.tsx   (MODIFIED)
@@ -22,6 +22,13 @@ then `git push` as usual.
      a product page (unchanged, existing behaviour), closing still goes
      back to that product. When opened from the new /video-shopping
      page, closing goes back to "/" instead. No other behaviour changed.
+
+4. app/product/[slug]/product-detail.tsx (MODIFIED)
+   - Removed the standalone "Watch Product Video" button below the
+     product gallery on the product page. The small round video-peek
+     bubble on the gallery photo itself is untouched (that wasn't part
+     of what you asked to remove) — shoppers can still tap that, or use
+     the new Video tab in the bottom nav, to watch product videos.
 
 VERIFIED
 --------
