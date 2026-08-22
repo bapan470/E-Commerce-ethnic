@@ -149,7 +149,7 @@ async function collectMediaUrls(admin: ReturnType<typeof getSupabaseAdmin>): Pro
 
   offset = 0;
   while (true) {
-    const { data: variants } = await admin.from('variants').select('images').range(offset, offset + 499);
+    const { data: variants } = await admin.from('product_variants').select('images').range(offset, offset + 499);
     if (!variants || variants.length === 0) break;
     for (const v of variants) {
       for (const img of (v.images as string[] | null) ?? []) {
