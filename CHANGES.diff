@@ -1,3 +1,24 @@
+diff --git a/components/product/video-reels.tsx b/components/product/video-reels.tsx
+index 798373e..dddb7bf 100644
+--- a/components/product/video-reels.tsx
++++ b/components/product/video-reels.tsx
+@@ -238,6 +238,16 @@ function ReelSlide({
+         // eslint-disable-next-line react/no-unknown-property
+         webkit-playsinline="true"
+         preload={isActive ? 'auto' : 'none'}
++        // Falls back to the product's own cover photo the instant this slide
++        // becomes active, instead of the bare black background. Without this,
++        // a video whose codec the browser can't decode (very common for
++        // iPhone-recorded HEVC/H.265 clips on non-Safari browsers — the AAC
++        // audio track still decodes fine, only the video track silently
++        // fails to paint) looked exactly like "audio playing, no video" —
++        // there was nothing on screen to distinguish that from a real bug.
++        // ProductVideoPeek already does this (poster={posterUrl}); this
++        // brings the full-screen Reels view in line with it.
++        poster={item.image ?? undefined}
+         className="h-full w-full object-contain sm:object-cover"
+         aria-label={`${item.name} — product video`}
+         onClick={onToggleMute}
 diff --git a/lib/products-api.ts b/lib/products-api.ts
 index c756dbb..1a92ec0 100644
 --- a/lib/products-api.ts
