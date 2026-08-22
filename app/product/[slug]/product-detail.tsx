@@ -693,13 +693,21 @@ export default function ProductDetail() {
               alt={seoAltText}
               discount={discount}
               videoUrl={toPublicMediaUrl(product.video_url)}
-              productId={product.id}
+              productId={variant?.video ? variant.id : product.id}
               productSlug={product.slug}
             />
           </div>
           {product.video_url && (
             <div className="px-4 sm:px-0">
-              <ProductVideoTrigger productId={product.id} productSlug={product.slug} />
+              {/* Pass the variant's own id only when the video actually being shown
+                  is the variant's own (product.video_url falls back to the base
+                  product's video when the variant has none) — otherwise the id we
+                  send wouldn't match the entry the video-feed API returns for the
+                  video actually playing. */}
+              <ProductVideoTrigger
+                productId={variant?.video ? variant.id : product.id}
+                productSlug={product.slug}
+              />
             </div>
           )}
           <div className="px-4 sm:px-0">
