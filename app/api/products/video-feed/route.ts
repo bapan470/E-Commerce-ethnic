@@ -59,6 +59,7 @@ export async function GET() {
       videoUrl: toPublicMediaUrl(p.video_url as string),
       likeCount: (p.video_like_count as number | null) ?? 0,
       shareCount: (p.video_share_count as number | null) ?? 0,
+      productId: p.id as string,
     }));
 
   const variantItems = (variants ?? [])
@@ -77,6 +78,7 @@ export async function GET() {
         videoUrl: toPublicMediaUrl(v.video as string),
         likeCount: (parent.video_like_count as number | null) ?? 0,
         shareCount: (parent.video_share_count as number | null) ?? 0,
+        productId: parent.id as string,
       };
     })
     .filter((item): item is NonNullable<typeof item> => item !== null);

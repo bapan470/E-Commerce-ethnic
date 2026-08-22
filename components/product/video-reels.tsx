@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { Heart, Share2, Volume2, VolumeX, X } from 'lucide-react';
 import { hasLikedReel, toggleLikedReel } from '@/lib/video-reels-likes';
 import { guessVideoMime } from '@/lib/video-mime';
+import { fetchVariantsForProduct, ProductVariant } from '@/lib/variants-api';
 
 export type ReelItem = {
   id: string;
@@ -17,6 +18,11 @@ export type ReelItem = {
   videoUrl: string;
   likeCount: number;
   shareCount: number;
+  /** The base product's own id — always present, even when `id` above is a
+   *  colour variant's own id. Used to look up every colour this product
+   *  comes in (VariantSwatches uses the same field) so the reel can show
+   *  a colour-picker strip under each video, same as the product page. */
+  productId: string;
 };
 
 /**
@@ -160,6 +166,7 @@ export default function VideoReels({
             muted={muted}
             onToggleMute={() => setMuted((m) => !m)}
             onShopNow={() => goToProduct(item.slug)}
+            onSelectColour={goToProduct}
             ref={(el) => {
               slideRefs.current[idx] = el;
             }}
@@ -176,6 +183,7 @@ function ReelSlide({
   muted,
   onToggleMute,
   onShopNow,
+  onSelectColour,
   ref,
 }: {
   item: ReelItem;
@@ -183,16 +191,45 @@ function ReelSlide({
   muted: boolean;
   onToggleMute: () => void;
   onShopNow: () => void;
+  /** Navigates straight to the clicked colour's own product page. */
+  onSelectColour: (slug: string) => void;
   ref: (el: HTMLDivElement | null) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(item.likeCount);
   const [shareCount, setShareCount] = useState(item.shareCount);
+  const [colours, setColours] = useState<ProductVariant[] | null>(null);
 
   useEffect(() => {
     setLiked(hasLikedReel(item.id));
   }, [item.id]);
+
+  // Colour swatches, same data source as the product page's own picker
+  // (fetchVariantsForProduct). Loaded lazily once a slide is actually
+  // seen, not for all 20+ slides up front, and cached per productId for
+  // the life of the overlay so swiping back to a slide doesn't re-fetch.
+  const coloursCacheRef = useRef<Map<string, ProductVariant[]>>(new Map());
+  useEffect(() => {
+    if (!isActive) return;
+    const cached = coloursCacheRef.current.get(item.productId);
+    if (cached) {
+      setColours(cached);
+      return;
+    }
+    let cancelled = false;
+    fetchVariantsForProduct(item.productId)
+      .then((v) => {
+        coloursCacheRef.current.set(item.productId, v);
+        if (!cancelled) setColours(v);
+      })
+      .catch(() => {
+        if (!cancelled) setColours([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isActive, item.productId]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -322,6 +359,41 @@ function ReelSlide({
           {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
         </button>
       </div>
+
+      {/* Colour swatches — same colours as the product page's own picker.
+          Tapping one navigates straight to that colour's product page,
+          same behaviour as "Shop Now" but for a specific variant. Only
+          rendered once fetched and only when there's more than one colour
+          to choose from (a single-colour product has nothing to switch to). */}
+      {colours && colours.length > 1 && (
+        <div className="absolute inset-x-3 bottom-[5.75rem] z-10 flex gap-2 overflow-x-auto pb-1 sm:inset-x-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {colours.map((v) => {
+            const isCurrentColour = v.slug === item.slug || v.id === item.id;
+            return (
+              <button
+                key={v.id}
+                type="button"
+                onClick={() => onSelectColour(v.slug)}
+                title={v.color}
+                aria-label={`View in ${v.color}`}
+                className={`relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border-2 bg-muted shadow-sm ${
+                  isCurrentColour ? 'border-white' : 'border-white/40'
+                }`}
+              >
+                {v.images[0] ? (
+                  <Image src={v.images[0]} alt={v.color} fill sizes="44px" className="object-cover" />
+                ) : v.color_hex ? (
+                  <span className="block h-full w-full" style={{ backgroundColor: v.color_hex }} />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center bg-black/60 text-[9px] font-semibold uppercase text-white">
+                    {v.color.slice(0, 2)}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Bottom-left product card */}
       <div className="absolute inset-x-3 bottom-4 z-10 sm:inset-x-5">
