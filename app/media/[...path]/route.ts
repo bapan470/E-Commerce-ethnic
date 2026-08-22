@@ -23,6 +23,46 @@ const SUPABASE_BACKEND_BASE = `${SUPABASE_URL}/storage/v1/object/public`;
 const R2_CDN_BASE = (process.env.R2_PUBLIC_URL || '').replace(/\/$/, '');
 
 // -----------------------------------------------------------------------
+// Content-Type fallback by extension
+//
+// Supabase Storage (and some vendor upload flows) sometimes stores files
+// with a generic/missing content-type — e.g. `application/octet-stream`
+// — instead of `video/mp4`. Desktop browsers mostly ignore this and play
+// the video anyway by sniffing the bytes, but mobile Safari and several
+// Android WebViews refuse to play a <video src> whose Content-Type header
+// isn't a real video/* type: it just sits there with no error, silently
+// never starting. That's a second, independent cause of "plays on
+// desktop, not on mobile" beyond the Range-request issue fixed earlier
+// (see README-VIDEO-AUTOPLAY-MOBILE-FIX.md) — this covers the case where
+// Range support is already fine but the upstream Content-Type is bad.
+// -----------------------------------------------------------------------
+const EXTENSION_MIME: Record<string, string> = {
+  mp4: 'video/mp4',
+  m4v: 'video/mp4',
+  mov: 'video/quicktime',
+  webm: 'video/webm',
+  ogv: 'video/ogg',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  avif: 'image/avif',
+};
+
+const GENERIC_CONTENT_TYPES = new Set(['application/octet-stream', 'binary/octet-stream', '']);
+
+function resolveContentType(upstreamContentType: string | null, pathSegments: string[]): string {
+  const ext = (pathSegments[pathSegments.length - 1] ?? '').split('.').pop()?.toLowerCase() ?? '';
+  const guessed = EXTENSION_MIME[ext];
+
+  if (!upstreamContentType || GENERIC_CONTENT_TYPES.has(upstreamContentType.toLowerCase())) {
+    return guessed || upstreamContentType || 'application/octet-stream';
+  }
+  return upstreamContentType;
+}
+
+// -----------------------------------------------------------------------
 // Settings reads, cached in-memory for a short TTL.
 //
 // This route serves EVERY image/video on the site, so a per-request
@@ -148,7 +188,7 @@ export async function GET(req: NextRequest, { params }: { params: { path: string
   }
 
   const { response: upstream } = result;
-  const contentType = upstream.headers.get('content-type') || 'application/octet-stream';
+  const contentType = resolveContentType(upstream.headers.get('content-type'), params.path);
   const contentLength = upstream.headers.get('content-length');
   const contentRange = upstream.headers.get('content-range');
   const isPartial = upstream.status === 206;

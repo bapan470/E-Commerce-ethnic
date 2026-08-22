@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { Heart, Share2, Volume2, VolumeX, X } from 'lucide-react';
 import { hasLikedReel, toggleLikedReel } from '@/lib/video-reels-likes';
+import { guessVideoMime } from '@/lib/video-mime';
 
 export type ReelItem = {
   id: string;
@@ -173,7 +174,11 @@ function ReelSlide({
     const video = videoRef.current;
     if (!video) return;
     if (isActive) {
+      // Belt-and-suspenders: some mobile browsers don't start fetching a
+      // <source> child until load() is explicitly called, especially
+      // when preload was previously 'none' on the inactive slide.
       video.currentTime = 0;
+      video.load();
       video.play().catch(() => {
         // Autoplay with sound can be blocked — the muted-by-default state
         // handles that; nothing else to do if even muted autoplay fails.
@@ -227,15 +232,22 @@ function ReelSlide({
     <div ref={ref} className="relative flex h-full w-full snap-start snap-always items-center justify-center">
       <video
         ref={videoRef}
-        src={item.videoUrl}
         muted={muted}
         loop
         playsInline
+        // eslint-disable-next-line react/no-unknown-property
+        webkit-playsinline="true"
         preload={isActive ? 'auto' : 'none'}
         className="h-full w-full object-contain sm:object-cover"
         aria-label={`${item.name} — product video`}
         onClick={onToggleMute}
-      />
+      >
+        {/* Explicit type= tag: on mobile Safari/Chrome, if the upstream
+            Content-Type header is ever wrong/missing, the browser falls
+            back to this instead of silently refusing to play. Guessed
+            from the file extension in the URL. */}
+        <source src={item.videoUrl} type={guessVideoMime(item.videoUrl)} />
+      </video>
 
       {/* Bottom gradient keeps the product card and icons legible over any video */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-64 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />

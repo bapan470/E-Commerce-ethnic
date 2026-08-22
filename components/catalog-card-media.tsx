@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { blurDataURL } from '@/lib/utils';
+import { guessVideoMime } from '@/lib/video-mime';
 
 /**
  * Thumbnail area for a catalog/shop grid product card.
@@ -66,6 +67,7 @@ export default function CatalogCardMedia({
       // Belt-and-suspenders mute: some browsers only honour autoplay if
       // `muted` is also set imperatively, not just as a JSX/HTML attribute.
       video.muted = true;
+      video.load();
       video.play().catch(() => {
         // Autoplay can still be blocked in some browser/OS combos (e.g. low
         // power mode) -- fine, the poster frame just shows as a still image.
@@ -80,17 +82,20 @@ export default function CatalogCardMedia({
       {useVideo ? (
         <video
           ref={videoRef}
-          src={inView ? videoUrl! : undefined}
           poster={img}
           muted
           loop
           playsInline
+          // eslint-disable-next-line react/no-unknown-property
+          webkit-playsinline="true"
           autoPlay
           preload="none"
           controls={false}
           aria-label={`${altText} — video preview`}
           className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-        />
+        >
+          {inView && <source src={videoUrl!} type={guessVideoMime(videoUrl)} />}
+        </video>
       ) : (
         <>
           <Image
