@@ -1,5 +1,5 @@
 diff --git a/app/api/products/video-feed/route.ts b/app/api/products/video-feed/route.ts
-index 83cc520..cfe94d6 100644
+index 83cc520..891e559 100644
 --- a/app/api/products/video-feed/route.ts
 +++ b/app/api/products/video-feed/route.ts
 @@ -59,6 +59,7 @@ export async function GET() {
@@ -10,7 +10,7 @@ index 83cc520..cfe94d6 100644
      }));
  
    const variantItems = (variants ?? [])
-@@ -77,6 +78,7 @@ export async function GET() {
+@@ -77,9 +78,24 @@ export async function GET() {
          videoUrl: toPublicMediaUrl(v.video as string),
          likeCount: (parent.video_like_count as number | null) ?? 0,
          shareCount: (parent.video_share_count as number | null) ?? 0,
@@ -18,8 +18,61 @@ index 83cc520..cfe94d6 100644
        };
      })
      .filter((item): item is NonNullable<typeof item> => item !== null);
+ 
+-  return NextResponse.json({ items: [...baseItems, ...variantItems] });
++  return NextResponse.json(
++    { items: [...baseItems, ...variantItems] },
++    {
++      headers: {
++        // This endpoint decides WHICH product's video opens first when a
++        // shopper taps "Watch Product Video" — a stale/cached copy here
++        // means the reel keeps opening on whatever product was newest at
++        // cache time, no matter which product's button was actually
++        // tapped (looks exactly like "wrong video always opens", even
++        // after the id-matching logic on the client is fixed). No layer
++        // between this response and the browser should ever cache it.
++        'Cache-Control': 'no-store, must-revalidate',
++      },
++    }
++  );
+ }
+diff --git a/components/product/product-video-peek.tsx b/components/product/product-video-peek.tsx
+index e6013a5..ba255aa 100644
+--- a/components/product/product-video-peek.tsx
++++ b/components/product/product-video-peek.tsx
+@@ -98,7 +98,7 @@ export default function ProductVideoPeek({
+     if (!idle || fetchStartedRef.current) return;
+     fetchStartedRef.current = true;
+     let cancelled = false;
+-    fetch('/api/products/video-feed')
++    fetch('/api/products/video-feed', { cache: 'no-store' })
+       .then((res) => res.json())
+       .then((data) => {
+         if (!cancelled) setItems(Array.isArray(data.items) ? data.items : []);
+@@ -131,7 +131,7 @@ export default function ProductVideoPeek({
+     if (items !== null) return; // prefetched during idle time, or a previous tap
+     fetchStartedRef.current = true;
+     try {
+-      const res = await fetch('/api/products/video-feed');
++      const res = await fetch('/api/products/video-feed', { cache: 'no-store' });
+       const data = await res.json();
+       setItems(Array.isArray(data.items) ? data.items : []);
+     } catch {
+diff --git a/components/product/product-video-trigger.tsx b/components/product/product-video-trigger.tsx
+index 5cb0c93..75d9e45 100644
+--- a/components/product/product-video-trigger.tsx
++++ b/components/product/product-video-trigger.tsx
+@@ -26,7 +26,7 @@ export default function ProductVideoTrigger({
+     if (items) return; // already fetched this page-view
+     setLoading(true);
+     try {
+-      const res = await fetch('/api/products/video-feed');
++      const res = await fetch('/api/products/video-feed', { cache: 'no-store' });
+       const data = await res.json();
+       setItems(Array.isArray(data.items) ? data.items : []);
+     } catch {
 diff --git a/components/product/video-reels.tsx b/components/product/video-reels.tsx
-index 798373e..078c487 100644
+index 798373e..a88e6cd 100644
 --- a/components/product/video-reels.tsx
 +++ b/components/product/video-reels.tsx
 @@ -6,6 +6,7 @@ import Image from 'next/image';
@@ -214,7 +267,7 @@ index 798373e..078c487 100644
 +          rendered once fetched and only when there's more than one colour
 +          to choose from (a single-colour product has nothing to switch to). */}
 +      {colours && colours.length > 1 && (
-+        <div className="absolute inset-x-3 bottom-[5.75rem] z-10 flex gap-2 overflow-x-auto pb-1 sm:inset-x-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
++        <div className="absolute bottom-[5.75rem] left-3 right-16 z-10 flex gap-2 overflow-x-auto pb-1 sm:left-5 sm:right-20 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 +          {colours.map((v) => {
 +            const isCurrentColour = v.slug === item.slug || v.id === item.id;
 +            return (

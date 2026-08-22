@@ -98,7 +98,7 @@ export default function ProductVideoPeek({
     if (!idle || fetchStartedRef.current) return;
     fetchStartedRef.current = true;
     let cancelled = false;
-    fetch('/api/products/video-feed')
+    fetch('/api/products/video-feed', { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
         if (!cancelled) setItems(Array.isArray(data.items) ? data.items : []);
@@ -131,7 +131,7 @@ export default function ProductVideoPeek({
     if (items !== null) return; // prefetched during idle time, or a previous tap
     fetchStartedRef.current = true;
     try {
-      const res = await fetch('/api/products/video-feed');
+      const res = await fetch('/api/products/video-feed', { cache: 'no-store' });
       const data = await res.json();
       setItems(Array.isArray(data.items) ? data.items : []);
     } catch {

@@ -83,5 +83,19 @@ export async function GET() {
     })
     .filter((item): item is NonNullable<typeof item> => item !== null);
 
-  return NextResponse.json({ items: [...baseItems, ...variantItems] });
+  return NextResponse.json(
+    { items: [...baseItems, ...variantItems] },
+    {
+      headers: {
+        // This endpoint decides WHICH product's video opens first when a
+        // shopper taps "Watch Product Video" — a stale/cached copy here
+        // means the reel keeps opening on whatever product was newest at
+        // cache time, no matter which product's button was actually
+        // tapped (looks exactly like "wrong video always opens", even
+        // after the id-matching logic on the client is fixed). No layer
+        // between this response and the browser should ever cache it.
+        'Cache-Control': 'no-store, must-revalidate',
+      },
+    }
+  );
 }

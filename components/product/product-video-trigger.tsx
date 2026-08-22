@@ -26,7 +26,7 @@ export default function ProductVideoTrigger({
     if (items) return; // already fetched this page-view
     setLoading(true);
     try {
-      const res = await fetch('/api/products/video-feed');
+      const res = await fetch('/api/products/video-feed', { cache: 'no-store' });
       const data = await res.json();
       setItems(Array.isArray(data.items) ? data.items : []);
     } catch {
