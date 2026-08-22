@@ -35,13 +35,17 @@ export default function VariantSwatches({
   // any switch back afterwards was already browser-cached, which is why it
   // looked like it "fixed itself" after the first try). Delayed via
   // requestIdleCallback so it never competes with the current colour's own
-  // photos for bandwidth/priority on first paint, and skipped outright on
-  // Data Saver / a slow connection so it never costs someone a expensive
-  // mobile-data preload they didn't ask for.
+  // photos for bandwidth/priority on first paint, and restricted to a
+  // WiFi/4G-class connection -- skipped entirely on 3G, 2G, slow-2G, or
+  // Data Saver, so it never costs someone on a slower/metered connection
+  // any bandwidth they didn't ask for.
   const [preloadReady, setPreloadReady] = useState(false);
   useEffect(() => {
     const conn = (navigator as any).connection;
-    if (conn && (conn.saveData || /2g/.test(conn.effectiveType || ''))) return;
+    if (conn) {
+      if (conn.saveData) return;
+      if (conn.effectiveType && conn.effectiveType !== '4g') return;
+    }
     const idle =
       (window as any).requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1200));
     const cancelIdle = (window as any).cancelIdleCallback ?? window.clearTimeout;
