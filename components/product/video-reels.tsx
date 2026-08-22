@@ -74,26 +74,39 @@ export default function VideoReels({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Track which slide is on-screen via scroll position, so only the
-  // visible video plays — every other <video> stays paused, keeping
-  // bandwidth/decode cost limited to exactly one active video at a time.
+  // Track which slide is on-screen so only the visible video plays — every
+  // other <video> stays paused, keeping bandwidth/decode cost limited to
+  // exactly one active video at a time.
+  //
+  // Deliberately scroll-position math instead of IntersectionObserver here.
+  // IntersectionObserver (threshold-based) turned out unreliable in some
+  // zoomed/scaled mobile viewports (e.g. Chrome DevTools device emulation
+  // at non-100% zoom) — the browser's own intersection ratio calculations
+  // get thrown off by the zoom transform, so entries never crossed the
+  // 0.6 threshold and activeIndex silently got stuck on whichever slide
+  // opened first, even while the user kept scrolling past it. Computing
+  // the index directly from scrollTop / slide height doesn't depend on
+  // intersection-ratio math at all, so it isn't affected by that.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            const idx = slideRefs.current.findIndex((el) => el === entry.target);
-            if (idx !== -1) setActiveIndex(idx);
-          }
-        }
-      },
-      { root: container, threshold: 0.6 }
-    );
-    slideRefs.current.forEach((el) => el && observer.observe(el));
-    return () => observer.disconnect();
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const slideHeight = container.clientHeight || 1;
+        const idx = Math.round(container.scrollTop / slideHeight);
+        const clamped = Math.min(Math.max(idx, 0), items.length - 1);
+        setActiveIndex((prev) => (prev === clamped ? prev : clamped));
+      });
+    };
+
+    container.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      container.removeEventListener('scroll', onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, [items.length]);
 
   const activeItem = items[activeIndex];
