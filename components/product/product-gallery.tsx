@@ -5,11 +5,19 @@ import Image from 'next/image';
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X, ZoomIn } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import ProductVideoPeek from './product-video-peek';
 
 interface ProductGalleryProps {
   images: string[];
   alt: string;
   discount: number;
+  /** This product's own video (already resolved via toPublicMediaUrl) —
+   *  when present, shows the floating "peek" preview bubble described in
+   *  product-video-peek.tsx. Needs productId/productSlug too so a tap can
+   *  open the same full-screen Reels feed as the button below the gallery. */
+  videoUrl?: string | null;
+  productId?: string;
+  productSlug?: string;
 }
 
 const PLACEHOLDER = 'https://placehold.co/800x1000?text=No+Image';
@@ -53,7 +61,14 @@ function angleLabel(idx: number): string {
  *   so the browser itself decides, per-gesture, whether a diagonal drag
  *   pans the page vertically or scrolls the strip horizontally.
  */
-export default function ProductGallery({ images, alt, discount }: ProductGalleryProps) {
+export default function ProductGallery({
+  images,
+  alt,
+  discount,
+  videoUrl,
+  productId,
+  productSlug,
+}: ProductGalleryProps) {
   const valid = images.length > 0 ? images : [PLACEHOLDER];
 
   const [active, setActive] = useState(0);
@@ -281,6 +296,16 @@ export default function ProductGallery({ images, alt, discount }: ProductGallery
             >
               <ZoomIn className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Click to zoom</span>
             </button>
+
+            {videoUrl && productId && productSlug && (
+              <ProductVideoPeek
+                videoUrl={videoUrl}
+                posterUrl={valid[0]}
+                productId={productId}
+                productSlug={productSlug}
+                alt={alt}
+              />
+            )}
 
             {valid.length > 1 && (
               <div className="pointer-events-none absolute inset-x-0 bottom-3 flex items-center justify-center gap-1.5 sm:hidden">
