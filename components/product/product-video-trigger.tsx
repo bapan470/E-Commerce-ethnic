@@ -12,9 +12,13 @@ import VideoReels, { type ReelItem } from './video-reels';
  */
 export default function ProductVideoTrigger({
   productId,
+  baseProductId,
   productSlug,
 }: {
   productId: string;
+  /** The base product's own id, even when `productId` above points at a
+   *  colour variant's row — see the matching note in video-reels.tsx. */
+  baseProductId?: string;
   productSlug: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -51,6 +55,7 @@ export default function ProductVideoTrigger({
         <VideoReels
           items={items}
           startProductId={productId}
+          baseProductId={baseProductId}
           returnSlug={productSlug}
           onClose={() => setOpen(false)}
         />

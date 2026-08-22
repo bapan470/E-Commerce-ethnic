@@ -38,34 +38,59 @@ export type ReelItem = {
 export default function VideoReels({
   items,
   startProductId,
+  baseProductId,
   returnSlug,
   onClose,
 }: {
   items: ReelItem[];
   startProductId: string;
+  /** The BASE product's own id — always the same value regardless of which
+   *  colour variant is being viewed, and always present on every feed item
+   *  (see ReelItem.productId). This is the most reliable thing to match on:
+   *  `startProductId` can point at either a base product row or a specific
+   *  variant row depending on which one actually owns the video, so an id
+   *  mismatch there doesn't necessarily mean "wrong product" — it can just
+   *  mean the video lives one level up/down from where this prop expected.
+   *  Matching on baseProductId as a second pass catches that case without
+   *  ever needing to guess. */
+  baseProductId?: string;
   returnSlug: string;
   onClose: () => void;
 }) {
   const router = useRouter();
-  // Match by id first (exact identity), and fall back to slug if the id
-  // doesn't turn up anything. This guards against a specific real case:
-  // if the /api/products/video-feed response was fetched/cached at a
-  // slightly different moment than the id the product page computed
-  // (e.g. right after a variant was just saved with a new video, or any
-  // future refactor of how that id is derived), the reel used to silently
-  // fall back to slide 0 -- some unrelated product -- instead of the
-  // shopper's own product. returnSlug is always the exact page they're
-  // on, so matching on it as a second pass is a reliable safety net.
+  // Three-pass match, id -> baseProductId -> slug, and if NONE of them find
+  // anything we now refuse to guess. Previously a failed match fell back to
+  // `Math.max(0, -1) === 0` -- silently opening whatever product happened to
+  // sit at index 0 (the most-recently-created item, since the feed is
+  // ordered newest-first) instead of the shopper's own product. That's a
+  // strictly worse outcome than not opening at all: it looks like a totally
+  // unrelated product's video "randomly" plays, with no error and no way to
+  // tell why. `startIndex` is now `-1` (nothing found) instead of `0`, and
+  // the render below treats that as "can't confidently start here" rather
+  // than pretending index 0 was the right answer.
   const startIndex = useMemo(() => {
     const byId = items.findIndex((i) => i.id === startProductId);
     if (byId !== -1) return byId;
+    if (baseProductId) {
+      const byBaseProductId = items.findIndex((i) => i.productId === baseProductId);
+      if (byBaseProductId !== -1) return byBaseProductId;
+    }
     const bySlug = items.findIndex((i) => i.slug === returnSlug);
-    return Math.max(0, bySlug);
-  }, [items, startProductId, returnSlug]);
+    return bySlug;
+  }, [items, startProductId, baseProductId, returnSlug]);
+
+  // startIndex is -1 when none of the three passes above (id, baseProductId,
+  // slug) found the shopper's own product in this feed. That should be rare
+  // -- it means the feed response genuinely doesn't contain this product's
+  // video at all -- but it used to be silently treated as "start at 0",
+  // which opened a random unrelated product's video with no indication
+  // anything had gone wrong. notFound tracks that state explicitly so the
+  // render below can show a real error instead.
+  const notFound = startIndex === -1;
 
   const containerRef = useRef<HTMLDivElement>(null);
   const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const [activeIndex, setActiveIndex] = useState(startIndex);
+  const [activeIndex, setActiveIndex] = useState(notFound ? 0 : startIndex);
   const [muted, setMuted] = useState(true);
 
   // Lock body scroll while the overlay is open, restore on close, and let
@@ -86,6 +111,7 @@ export default function VideoReels({
   // Jump straight to the product's own video on open — no scroll animation,
   // so it doesn't look like the shopper accidentally swiped.
   useEffect(() => {
+    if (notFound) return;
     const el = slideRefs.current[startIndex];
     if (el) el.scrollIntoView({ behavior: 'instant' as ScrollBehavior, block: 'start' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -142,6 +168,24 @@ export default function VideoReels({
   }, [onClose, returnSlug, router]);
 
   if (items.length === 0) return null;
+
+  // Never fall through to showing an unrelated product's video. This is the
+  // deliberate replacement for the old `Math.max(0, -1) -> 0` fallback: if
+  // the shopper's own product truly isn't in this feed response, say so and
+  // let them close, instead of silently opening whatever product happens to
+  // be newest.
+  if (notFound) {
+    return (
+      <div
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4 text-center text-white"
+        role="dialog"
+        aria-modal="true"
+        onClick={handleClose}
+      >
+        <p>Couldn&apos;t load this product&apos;s video right now — tap anywhere to close.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[100] bg-black" role="dialog" aria-modal="true" aria-label="Product video feed">

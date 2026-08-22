@@ -694,6 +694,7 @@ export default function ProductDetail() {
               discount={discount}
               videoUrl={toPublicMediaUrl(product.video_url)}
               productId={variant?.video ? variant.id : product.id}
+              baseProductId={baseProduct?.id}
               productSlug={product.slug}
             />
           </div>
@@ -706,6 +707,7 @@ export default function ProductDetail() {
                   video actually playing. */}
               <ProductVideoTrigger
                 productId={variant?.video ? variant.id : product.id}
+                baseProductId={baseProduct?.id}
                 productSlug={product.slug}
               />
             </div>

@@ -40,12 +40,16 @@ export default function ProductVideoPeek({
   videoUrl,
   posterUrl,
   productId,
+  baseProductId,
   productSlug,
   alt,
 }: {
   videoUrl: string;
   posterUrl?: string;
   productId: string;
+  /** The base product's own id, even when `productId` above points at a
+   *  colour variant's row — see the matching note in video-reels.tsx. */
+  baseProductId?: string;
   productSlug: string;
   alt: string;
 }) {
@@ -186,6 +190,7 @@ export default function ProductVideoPeek({
         <VideoReels
           items={items}
           startProductId={productId}
+          baseProductId={baseProductId}
           returnSlug={productSlug}
           onClose={() => setOpen(false)}
         />

@@ -17,6 +17,9 @@ interface ProductGalleryProps {
    *  open the same full-screen Reels feed as the button below the gallery. */
   videoUrl?: string | null;
   productId?: string;
+  /** The base product's own id, even when `productId` above points at a
+   *  colour variant's row — see the matching note in video-reels.tsx. */
+  baseProductId?: string;
   productSlug?: string;
 }
 
@@ -67,6 +70,7 @@ export default function ProductGallery({
   discount,
   videoUrl,
   productId,
+  baseProductId,
   productSlug,
 }: ProductGalleryProps) {
   const valid = images.length > 0 ? images : [PLACEHOLDER];
@@ -302,6 +306,7 @@ export default function ProductGallery({
                 videoUrl={videoUrl}
                 posterUrl={valid[0]}
                 productId={productId}
+                baseProductId={baseProductId}
                 productSlug={productSlug}
                 alt={alt}
               />
