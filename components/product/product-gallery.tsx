@@ -21,6 +21,12 @@ interface ProductGalleryProps {
    *  colour variant's row — see the matching note in video-reels.tsx. */
   baseProductId?: string;
   productSlug?: string;
+  /** Passed straight through to ProductVideoPeek so it can build a
+   *  guaranteed-correct `startItem` for VideoReels — see the doc comment
+   *  on ProductVideoPeek's own `name`/`price`/`mrp` props. */
+  productName?: string;
+  productPrice?: number;
+  productMrp?: number | null;
 }
 
 const PLACEHOLDER = 'https://placehold.co/800x1000?text=No+Image';
@@ -72,6 +78,9 @@ export default function ProductGallery({
   productId,
   baseProductId,
   productSlug,
+  productName,
+  productPrice,
+  productMrp,
 }: ProductGalleryProps) {
   const valid = images.length > 0 ? images : [PLACEHOLDER];
 
@@ -309,6 +318,9 @@ export default function ProductGallery({
                 baseProductId={baseProductId}
                 productSlug={productSlug}
                 alt={alt}
+                name={productName}
+                price={productPrice}
+                mrp={productMrp}
               />
             )}
 

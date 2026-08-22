@@ -696,6 +696,9 @@ export default function ProductDetail() {
               productId={variant?.video ? variant.id : product.id}
               baseProductId={baseProduct?.id}
               productSlug={product.slug}
+              productName={product.name}
+              productPrice={product.price}
+              productMrp={product.mrp}
             />
           </div>
           {product.video_url && (
@@ -709,6 +712,11 @@ export default function ProductDetail() {
                 productId={variant?.video ? variant.id : product.id}
                 baseProductId={baseProduct?.id}
                 productSlug={product.slug}
+                videoUrl={toPublicMediaUrl(product.video_url)}
+                posterUrl={toPublicMediaUrls(product.images)[0]}
+                name={product.name}
+                price={product.price}
+                mrp={product.mrp}
               />
             </div>
           )}

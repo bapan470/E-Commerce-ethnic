@@ -14,16 +14,48 @@ export default function ProductVideoTrigger({
   productId,
   baseProductId,
   productSlug,
+  videoUrl,
+  posterUrl,
+  name,
+  price,
+  mrp,
 }: {
   productId: string;
   /** The base product's own id, even when `productId` above points at a
    *  colour variant's row — see the matching note in video-reels.tsx. */
   baseProductId?: string;
   productSlug: string;
+  /** This product's own resolved video URL, plus the display data below —
+   *  together these let VideoReels guarantee it opens THIS exact video,
+   *  instead of having to re-find it inside the separately-fetched feed
+   *  (see the `startItem` doc comment in video-reels.tsx for why that
+   *  matters). All optional so this still degrades gracefully to the old
+   *  feed-search behaviour if a caller doesn't have them yet. */
+  videoUrl?: string | null;
+  posterUrl?: string | null;
+  name?: string;
+  price?: number;
+  mrp?: number | null;
 }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<ReelItem[] | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const startItem: ReelItem | undefined =
+    videoUrl && name != null && price != null
+      ? {
+          id: productId,
+          slug: productSlug,
+          name,
+          price,
+          mrp: mrp ?? null,
+          image: posterUrl ?? null,
+          videoUrl,
+          likeCount: 0,
+          shareCount: 0,
+          productId: baseProductId ?? productId,
+        }
+      : undefined;
 
   const handleOpen = async () => {
     setOpen(true);
@@ -51,17 +83,23 @@ export default function ProductVideoTrigger({
         Watch Product Video
       </button>
 
-      {open && items && items.length > 0 && (
+      {/* startItem alone is enough to open immediately and correctly — the
+          feed fetch (items) only adds the rest of the swipeable list, so
+          this no longer waits on `items` before opening when we already
+          know exactly which video to show. Falls back to waiting on
+          `items` only for callers/situations without a startItem. */}
+      {open && (startItem || (items && items.length > 0)) && (
         <VideoReels
-          items={items}
+          items={items ?? []}
           startProductId={productId}
           baseProductId={baseProductId}
           returnSlug={productSlug}
+          startItem={startItem}
           onClose={() => setOpen(false)}
         />
       )}
 
-      {open && !loading && items && items.length === 0 && (
+      {open && !startItem && !loading && items && items.length === 0 && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4 text-center text-white"
           onClick={() => setOpen(false)}
@@ -72,3 +110,4 @@ export default function ProductVideoTrigger({
     </>
   );
 }
+

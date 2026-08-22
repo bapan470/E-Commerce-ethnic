@@ -36,10 +36,11 @@ export type ReelItem = {
  * lands back where they started.
  */
 export default function VideoReels({
-  items,
+  items: rawItems,
   startProductId,
   baseProductId,
   returnSlug,
+  startItem,
   onClose,
 }: {
   items: ReelItem[];
@@ -55,20 +56,58 @@ export default function VideoReels({
    *  ever needing to guess. */
   baseProductId?: string;
   returnSlug: string;
+  /** Fully-known data for the exact product/video the shopper tapped,
+   *  built directly from what's already loaded on the product page
+   *  (name/price/video/image) — NOT sourced from the async video-feed
+   *  fetch. When present this GUARANTEES slide 0 is the video the shopper
+   *  actually tapped, no matter what `items` contains or how it's ordered.
+   *
+   *  Why this exists: the old behaviour searched for the shopper's own
+   *  product inside `items` (id -> baseProductId -> slug) and, if all
+   *  three passes missed, either fell back to index 0 (a genuinely
+   *  unrelated, most-recently-added product — the original bug) or showed
+   *  a "couldn't load" error (the later fix). Both outcomes are avoidable:
+   *  the trigger/peek components already know exactly which product and
+   *  video they were rendered for, so there's no need to re-*find* that
+   *  same video inside a separately-fetched array at all. Passing it
+   *  straight through removes an entire class of "wrong/no video opened"
+   *  bugs caused by feed staleness, id mismatches, or ordering, while
+   *  `items` is still used for every OTHER slide (swiping to more
+   *  products). See resolvedItems below for how the two are merged. */
+  startItem?: ReelItem;
   onClose: () => void;
 }) {
   const router = useRouter();
-  // Three-pass match, id -> baseProductId -> slug, and if NONE of them find
-  // anything we now refuse to guess. Previously a failed match fell back to
-  // `Math.max(0, -1) === 0` -- silently opening whatever product happened to
-  // sit at index 0 (the most-recently-created item, since the feed is
-  // ordered newest-first) instead of the shopper's own product. That's a
-  // strictly worse outcome than not opening at all: it looks like a totally
-  // unrelated product's video "randomly" plays, with no error and no way to
-  // tell why. `startIndex` is now `-1` (nothing found) instead of `0`, and
-  // the render below treats that as "can't confidently start here" rather
-  // than pretending index 0 was the right answer.
+
+  // Merge the guaranteed-correct `startItem` (when provided) with the
+  // fetched feed. Prefer the feed's own copy of this same video when one
+  // genuinely matches (it carries the real like/share counts), but only
+  // when its videoUrl actually agrees with startItem's — otherwise (no
+  // match, or a same-id-different-video mismatch) fall back to startItem
+  // itself so the shopper can never end up watching a different product's
+  // clip than the one they tapped.
+  const items = useMemo(() => {
+    if (!startItem) return rawItems;
+    const matchIdx = rawItems.findIndex(
+      (i) =>
+        (i.id === startItem.id || i.productId === startItem.productId || i.slug === startItem.slug) &&
+        i.videoUrl === startItem.videoUrl
+    );
+    if (matchIdx !== -1) {
+      const confirmed = rawItems[matchIdx];
+      const rest = rawItems.filter((_, idx) => idx !== matchIdx);
+      return [confirmed, ...rest];
+    }
+    const withoutDuplicates = rawItems.filter((i) => i.slug !== startItem.slug && i.id !== startItem.id);
+    return [startItem, ...withoutDuplicates];
+  }, [rawItems, startItem]);
+
+  // When startItem is provided, resolvedItems (above) guarantees it's
+  // always at index 0 — no searching needed, and no "not found" state is
+  // reachable. Older callers that don't pass startItem still fall back to
+  // the original id -> baseProductId -> slug search against `items`.
   const startIndex = useMemo(() => {
+    if (startItem) return 0;
     const byId = items.findIndex((i) => i.id === startProductId);
     if (byId !== -1) return byId;
     if (baseProductId) {
@@ -77,15 +116,12 @@ export default function VideoReels({
     }
     const bySlug = items.findIndex((i) => i.slug === returnSlug);
     return bySlug;
-  }, [items, startProductId, baseProductId, returnSlug]);
+  }, [items, startItem, startProductId, baseProductId, returnSlug]);
 
-  // startIndex is -1 when none of the three passes above (id, baseProductId,
-  // slug) found the shopper's own product in this feed. That should be rare
-  // -- it means the feed response genuinely doesn't contain this product's
-  // video at all -- but it used to be silently treated as "start at 0",
-  // which opened a random unrelated product's video with no indication
-  // anything had gone wrong. notFound tracks that state explicitly so the
-  // render below can show a real error instead.
+  // startIndex is -1 only on the legacy (no startItem) path when none of
+  // the three passes found the shopper's own product in this feed. Kept as
+  // a real error state rather than silently opening index 0 — see the
+  // long-form explanation this replaced, above.
   const notFound = startIndex === -1;
 
   const containerRef = useRef<HTMLDivElement>(null);

@@ -43,15 +43,28 @@ export default function ProductVideoPeek({
   baseProductId,
   productSlug,
   alt,
+  name,
+  price,
+  mrp,
 }: {
   videoUrl: string;
   posterUrl?: string;
   productId: string;
   /** The base product's own id, even when `productId` above points at a
-   *  colour variant's row — see the matching note in video-reels.tsx. */
+   *  colour variant's own id. Used to look up every colour this product
+   *  comes in (VariantSwatches uses the same field) so the reel can show
+   *  a colour-picker strip under each video, same as the product page. */
   baseProductId?: string;
   productSlug: string;
   alt: string;
+  /** Display data for the exact product this bubble's clip belongs to —
+   *  lets VideoReels open guaranteed-correct on this video instead of
+   *  re-finding it inside the separately-fetched feed. See the
+   *  `startItem` doc comment in video-reels.tsx. Optional so this still
+   *  falls back to feed-search if a caller hasn't been updated. */
+  name?: string;
+  price?: number;
+  mrp?: number | null;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -143,6 +156,22 @@ export default function ProductVideoPeek({
     }
   }, [items]);
 
+  const startItem: ReelItem | undefined =
+    name != null && price != null
+      ? {
+          id: productId,
+          slug: productSlug,
+          name,
+          price,
+          mrp: mrp ?? null,
+          image: posterUrl ?? null,
+          videoUrl,
+          likeCount: 0,
+          shareCount: 0,
+          productId: baseProductId ?? productId,
+        }
+      : undefined;
+
   if (dismissed) return null;
 
   return (
@@ -186,17 +215,18 @@ export default function ProductVideoPeek({
         </button>
       </div>
 
-      {open && items && items.length > 0 && (
+      {open && (startItem || (items && items.length > 0)) && (
         <VideoReels
-          items={items}
+          items={items ?? []}
           startProductId={productId}
           baseProductId={baseProductId}
           returnSlug={productSlug}
+          startItem={startItem}
           onClose={() => setOpen(false)}
         />
       )}
 
-      {open && !!items && items.length === 0 && (
+      {open && !startItem && !!items && items.length === 0 && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4 text-center text-white"
           onClick={() => setOpen(false)}
