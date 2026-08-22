@@ -71,6 +71,43 @@ async function attachItemSources(supabase: ReturnType<typeof getSupabaseAdmin>, 
   });
 }
 
+// Attaches, on each order, the latest linked `returns` row's status and
+// refund_status (as `_return_status` / `_return_refund_status`) — purely
+// for the admin Orders panel's Refund column. Needed because a return's
+// refund only ever updates the `returns` row (see
+// lib/return-automation.ts / app/api/admin/returns/[id]/refund), never
+// orders.refund_status — that column is exclusively written by the
+// customer self-CANCELLATION flow (app/api/orders/[id]/cancel). Showing
+// only orders.refund_status in the admin panel would silently miss every
+// refund that came through a return/exchange instead of a cancellation.
+// "Latest" = most recently created return for that order, since an order
+// can in principle have more than one return row (e.g. a rejected return
+// followed by a fresh one) and the admin only cares about the current one.
+async function attachReturnRefundStatus(supabase: ReturnType<typeof getSupabaseAdmin>, orders: any[]) {
+  const orderIds = orders.map((o) => o.id).filter(Boolean);
+  if (orderIds.length === 0) return orders;
+
+  const { data: returns, error } = await supabase
+    .from('returns')
+    .select('order_id, status, refund_status, created_at')
+    .in('order_id', orderIds)
+    .order('created_at', { ascending: false });
+  if (error || !returns || returns.length === 0) return orders;
+
+  const latestByOrderId = new Map<string, { status: string; refund_status: string | null }>();
+  for (const r of returns) {
+    // Already ordered newest-first, so the first one seen per order_id wins.
+    if (!latestByOrderId.has(r.order_id)) {
+      latestByOrderId.set(r.order_id, { status: r.status, refund_status: r.refund_status ?? null });
+    }
+  }
+
+  return orders.map((order) => {
+    const match = latestByOrderId.get(order.id);
+    return match ? { ...order, _return_status: match.status, _return_refund_status: match.refund_status } : order;
+  });
+}
+
 export async function fetchOrders() {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
@@ -78,7 +115,8 @@ export async function fetchOrders() {
     .select('*')
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return attachItemSources(supabase, data ?? []);
+  const withSources = await attachItemSources(supabase, data ?? []);
+  return attachReturnRefundStatus(supabase, withSources);
 }
 
 // Called from Admin -> Orders whenever the admin changes an order's status

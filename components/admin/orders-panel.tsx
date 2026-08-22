@@ -64,6 +64,18 @@ type Order = {
   tracking_number?: string | null;
   courier_name?: string | null;
   expected_delivery_date?: string | null;
+  // Refund tracking — see lib/orders-api.ts for how these two are kept
+  // separate. refund_status is set only by a customer self-CANCELLATION
+  // (app/api/orders/[id]/cancel); _return_refund_status is set only when
+  // this order has a linked return/exchange whose refund has been
+  // initiated (app/api/admin/returns/[id]/refund). An order only ever
+  // has one of the two populated in practice (a shipped order can't be
+  // self-cancelled, so its only refund path is a return), but both are
+  // checked so nothing is missed either way.
+  refund_status?: string | null;
+  razorpay_refund_id?: string | null;
+  _return_status?: string | null;
+  _return_refund_status?: string | null;
   shipping_address?: any;
   customer_name?: string;
   customer_email?: string;
@@ -497,6 +509,27 @@ export default function OrdersPanel() {
   );
 }
 
+// Resolves what (if anything) the Refund badge under an order's Status
+// dropdown should show. Checks the return-linked refund first — if this
+// order has a linked return/exchange, THAT refund is the one currently
+// relevant regardless of what (if anything) orders.refund_status says —
+// then falls back to the cancellation refund. Returns null when there's
+// genuinely nothing to show (COD order, order never paid online, or a
+// return that hasn't reached the refund stage yet).
+function getRefundBadge(order: Order): { label: string; className: string } | null {
+  const status = order._return_status ? order._return_refund_status : order.refund_status;
+  if (!status || status === 'not_applicable') return null;
+
+  const STYLES: Record<string, { label: string; className: string }> = {
+    refunded: { label: 'Refund: Refunded', className: 'bg-emerald-100 text-emerald-700' },
+    processing: { label: 'Refund: Processing', className: 'bg-blue-100 text-blue-700' },
+    pending: { label: 'Refund: Pending', className: 'bg-amber-100 text-amber-700' },
+    pending_manual: { label: 'Refund: Manual Pending', className: 'bg-amber-100 text-amber-700' },
+    failed: { label: 'Refund: Failed', className: 'bg-red-100 text-red-700' },
+  };
+  return STYLES[status] ?? { label: `Refund: ${status}`, className: 'bg-muted text-muted-foreground' };
+}
+
 function OrderRow({
   order,
   selected,
@@ -519,6 +552,7 @@ function OrderRow({
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const shortId = order.id.slice(0, 8).toUpperCase();
+  const refundBadge = getRefundBadge(order);
 
   // True once "Request Online Payment" has been used on this order (or it
   // was a normal online checkout that got the discount) -- lets the admin
@@ -758,6 +792,11 @@ function OrderRow({
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
+          {refundBadge && (
+            <div className={`mt-1 w-fit rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${refundBadge.className}`}>
+              {refundBadge.label}
+            </div>
+          )}
         </td>
         <td className="px-4 py-3 align-top text-sm">
           {order.tracking_number ? (
