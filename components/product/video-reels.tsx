@@ -131,15 +131,52 @@ export default function VideoReels({
 
   // Opens as a single video first — same full-screen player, but swiping to
   // any other product's video is disabled and the clip plays once (no loop)
-  // instead of looping immediately. Only once that first watch finishes does
-  // this flips to true, unlocking the rest of the feed so it becomes the
-  // normal swipeable Reels experience (looping + swipe up/down). This is a
-  // deliberate two-stage open: "tap opens just that video" first, "then it
-  // turns into Reels" second — see handleFirstVideoEnded below.
+  // instead of looping immediately. Unlocks (flips to true) on whichever
+  // happens first: (a) that first watch finishing naturally, or (b) the
+  // shopper trying to swipe/scroll themselves — see the touch/wheel
+  // listener below. Either way it becomes the normal swipeable Reels
+  // experience (looping + swipe up/down) without making anyone sit through
+  // a full watch just to reach the next product.
   const [unlocked, setUnlocked] = useState(false);
-  const handleFirstVideoEnded = useCallback(() => {
+  const handleUnlock = useCallback(() => {
     setUnlocked(true);
   }, []);
+
+  // While still locked, a swipe/scroll attempt itself is what unlocks —
+  // the shopper doesn't have to wait for the clip to finish playing if
+  // they'd rather move on immediately. `touch-action: none` on the
+  // container (below) stops the browser from actually scrolling on this
+  // first gesture, but touch/wheel events still fire, so this still sees
+  // the attempt and unlocks in response to it; the very next swipe then
+  // actually scrolls, since overflow/snap turn on the moment `unlocked`
+  // flips.
+  useEffect(() => {
+    if (unlocked) return;
+    const el = containerRef.current;
+    if (!el) return;
+
+    let startY = 0;
+    const SWIPE_THRESHOLD_PX = 10;
+
+    const onTouchStart = (e: TouchEvent) => {
+      startY = e.touches[0]?.clientY ?? 0;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      const y = e.touches[0]?.clientY ?? startY;
+      if (Math.abs(y - startY) > SWIPE_THRESHOLD_PX) handleUnlock();
+    };
+    // Desktop/trackpad equivalent of a swipe.
+    const onWheel = () => handleUnlock();
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: true });
+    el.addEventListener('wheel', onWheel, { passive: true });
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('wheel', onWheel);
+    };
+  }, [unlocked, handleUnlock]);
 
   // Lock body scroll while the overlay is open, restore on close, and let
   // Escape close it the same as the X button (desktop convenience).
@@ -300,7 +337,7 @@ export default function VideoReels({
             // then unlock"; every other slide behaves exactly as before
             // (loops while active) both before and after that unlock.
             loopVideo={unlocked || idx !== startIndex}
-            onVideoEnded={idx === startIndex && !unlocked ? handleFirstVideoEnded : undefined}
+            onVideoEnded={idx === startIndex && !unlocked ? handleUnlock : undefined}
             ref={(el) => {
               slideRefs.current[idx] = el;
             }}
