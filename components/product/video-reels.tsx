@@ -41,10 +41,21 @@ export default function VideoReels({
   onClose: () => void;
 }) {
   const router = useRouter();
-  const startIndex = Math.max(
-    0,
-    items.findIndex((i) => i.id === startProductId)
-  );
+  // Match by id first (exact identity), and fall back to slug if the id
+  // doesn't turn up anything. This guards against a specific real case:
+  // if the /api/products/video-feed response was fetched/cached at a
+  // slightly different moment than the id the product page computed
+  // (e.g. right after a variant was just saved with a new video, or any
+  // future refactor of how that id is derived), the reel used to silently
+  // fall back to slide 0 -- some unrelated product -- instead of the
+  // shopper's own product. returnSlug is always the exact page they're
+  // on, so matching on it as a second pass is a reliable safety net.
+  const startIndex = useMemo(() => {
+    const byId = items.findIndex((i) => i.id === startProductId);
+    if (byId !== -1) return byId;
+    const bySlug = items.findIndex((i) => i.slug === returnSlug);
+    return Math.max(0, bySlug);
+  }, [items, startProductId, returnSlug]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
