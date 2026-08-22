@@ -15,6 +15,7 @@ import {
   Minus,
   Plus,
   Zap,
+  HelpCircle,
 } from 'lucide-react';
 import { useProducts, usePaymentDiscount, useCart, getVisibleBogoPromotion, formatBogoLabel } from '@/lib/cart-context';
 import { fetchProductBySlug } from '@/lib/products-api';
@@ -1001,22 +1002,55 @@ function ProductInfo({
       )}
 
       {onlinePaymentSavings > 0 && (
-        <div className="relative flex w-fit items-center gap-2 overflow-hidden rounded-full border border-emerald-600/25 bg-gradient-to-r from-emerald-50 via-secondary/10 to-transparent py-1.5 pl-1.5 pr-4 dark:from-emerald-950/40">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 shadow-sm shadow-emerald-600/30">
-            <Zap className="h-3.5 w-3.5 fill-white text-white" />
-          </span>
-          <span className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800/70 dark:text-emerald-300/70">
-              Get this at
-            </span>
-            <span className="font-serif text-lg font-bold leading-none text-emerald-700 dark:text-emerald-400">
-              {formatINR(Math.max(0, priceAfterCoupon - onlinePaymentSavings))}
-            </span>
-            <span className="text-[11px] text-muted-foreground">
-              via {paymentDiscount.label}
-            </span>
-          </span>
-        </div>
+        <Dialog>
+          <DialogTrigger asChild>
+            <button
+              type="button"
+              className="group relative flex w-fit items-center gap-2 overflow-hidden rounded-full border border-emerald-600/25 bg-gradient-to-r from-emerald-50 via-secondary/10 to-transparent py-1.5 pl-1.5 pr-3.5 text-left transition-colors hover:border-emerald-600/40 dark:from-emerald-950/40"
+            >
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 shadow-sm shadow-emerald-600/30">
+                <Zap className="h-3.5 w-3.5 fill-white text-white" />
+              </span>
+              <span className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800/70 dark:text-emerald-300/70">
+                  Get this at
+                </span>
+                <span className="font-serif text-lg font-bold leading-none text-emerald-700 dark:text-emerald-400">
+                  {formatINR(Math.max(0, priceAfterCoupon - onlinePaymentSavings))}
+                </span>
+                <span className="text-[11px] text-muted-foreground">
+                  via {paymentDiscount.label}
+                </span>
+              </span>
+              <HelpCircle className="h-3.5 w-3.5 shrink-0 text-emerald-700/50 transition-colors group-hover:text-emerald-700 dark:text-emerald-400/50" />
+            </button>
+          </DialogTrigger>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 font-serif text-lg text-primary">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-600">
+                  <Zap className="h-4 w-4 fill-white text-white" />
+                </span>
+                How to get this price
+              </DialogTitle>
+            </DialogHeader>
+            <p className="text-sm leading-relaxed text-foreground/80">
+              Pay online (UPI / card / netbanking) at checkout instead of Cash on Delivery, and{' '}
+              <strong className="text-foreground">{paymentDiscount.percent}% off</strong> is applied
+              automatically — no coupon code needed.
+            </p>
+            <div className="flex items-center justify-between rounded-lg border border-border/60 bg-muted/40 px-3.5 py-2.5">
+              <span className="text-xs text-muted-foreground">Price you pay</span>
+              <span className="font-serif text-base font-bold text-emerald-700">
+                {formatINR(Math.max(0, priceAfterCoupon - onlinePaymentSavings))}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Choose &quot;{paymentDiscount.label}&quot; at checkout to unlock this price. Cash on
+              Delivery orders are charged the regular price.
+            </p>
+          </DialogContent>
+        </Dialog>
       )}
 
       {isLoggedIn && loyaltySettings.enabled && loyaltyBalance > 0 && (
