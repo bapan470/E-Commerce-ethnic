@@ -3,6 +3,11 @@
 import { useState, useEffect, useCallback, FormEvent } from 'react';
 import { MapPin, CheckCircle2, XCircle, Loader2, Truck, ChevronRight, Clock } from 'lucide-react';
 import { checkPincodeServiceability, PincodeResult } from '@/lib/pincode-api';
+import {
+  fetchFulfillmentSettings,
+  DEFAULT_FULFILLMENT_SETTINGS,
+  FulfillmentSettings,
+} from '@/lib/marketing-api';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 
@@ -38,32 +43,68 @@ function saveLocation(result: PincodeResult) {
   }
 }
 
-// Orders placed before this hour are dispatched the same day; after it,
-// dispatch slips to the next day. Drives both the delivery-date estimate
-// and the "Order in Xh Ym Zs" countdown below. Adjust to match your
-// actual daily pickup cutoff with the courier.
-const DISPATCH_CUTOFF_HOUR = 18;
+// MUST match "Order cut off" under Google Merchant Center > Shipping >
+// Delivery times exactly (currently 2:00 PM IST there). Orders placed
+// before this hour count as handled same-day; after it, handling starts
+// the next day. Keeping this in sync with Merchant Center avoids a
+// delivery-time mismatch between what's shown here and what's declared
+// to Google — see shipping/misrepresentation policy.
+const ORDER_CUTOFF_HOUR = 14;
 
 function nextCutoff(now: Date): Date {
   const cutoff = new Date(now);
-  cutoff.setHours(DISPATCH_CUTOFF_HOUR, 0, 0, 0);
+  cutoff.setHours(ORDER_CUTOFF_HOUR, 0, 0, 0);
   if (now >= cutoff) cutoff.setDate(cutoff.getDate() + 1);
   return cutoff;
 }
 
-function effectiveDispatchDate(now: Date): Date {
+function effectiveHandlingStart(now: Date): Date {
   const cutoff = new Date(now);
-  cutoff.setHours(DISPATCH_CUTOFF_HOUR, 0, 0, 0);
-  const dispatch = new Date(now);
-  if (now >= cutoff) dispatch.setDate(dispatch.getDate() + 1);
-  return dispatch;
+  cutoff.setHours(ORDER_CUTOFF_HOUR, 0, 0, 0);
+  const start = new Date(now);
+  if (now >= cutoff) start.setDate(start.getDate() + 1);
+  return start;
+}
+
+// Same rough zone-by-PIN-digit grouping used elsewhere on the site, but
+// mapped to a delivery TIER instead of a fixed day count, so the actual
+// day counts always come from fulfillment settings (Admin > Marketing >
+// Shipping & Returns Timing) — the same numbers submitted in the Google
+// Merchant Center feed. This keeps the on-site estimate and the Merchant
+// Center-declared delivery time from ever drifting apart.
+type Tier = 'metro' | 'other' | 'remote';
+const ZONE_TIER: Record<string, Tier> = {
+  '1': 'metro', // Delhi, Haryana, Punjab, HP, J&K
+  '2': 'other', // UP, Uttarakhand
+  '3': 'other', // Rajasthan, Gujarat
+  '4': 'metro', // Maharashtra, MP, Chhattisgarh, Goa
+  '5': 'other', // AP, Telangana, Karnataka
+  '6': 'other', // Tamil Nadu, Kerala, Puducherry
+  '7': 'metro', // West Bengal, Odisha, NE states
+  '8': 'remote', // Bihar, Jharkhand
+  '9': 'remote', // Army post offices / remote
+};
+
+function tierForPincode(pincode: string): Tier {
+  return ZONE_TIER[pincode[0]] ?? 'other';
+}
+
+function tierWindow(f: FulfillmentSettings, tier: Tier): { min: number; max: number } {
+  if (tier === 'metro') return { min: f.delivery_metro_min, max: f.delivery_metro_max };
+  if (tier === 'remote') return { min: f.delivery_remote_min, max: f.delivery_remote_max };
+  return { min: f.delivery_other_min, max: f.delivery_other_max };
 }
 
 function formatDeliveryDate(date: Date): string {
   const day = date.getDate();
   const month = date.toLocaleDateString('en-IN', { month: 'short' });
-  const weekday = date.toLocaleDateString('en-IN', { weekday: 'short' });
-  return `${day} ${month}, ${weekday}`;
+  return `${day} ${month}`;
+}
+
+function addDays(date: Date, days: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
 }
 
 function formatCountdown(ms: number): string {
@@ -98,11 +139,13 @@ export default function PincodeChecker() {
   const [pincode, setPincode] = useState('');
   const [result, setResult] = useState<PincodeResult | null>(null);
   const [checking, setChecking] = useState(false);
+  const [fulfillment, setFulfillment] = useState<FulfillmentSettings>(DEFAULT_FULFILLMENT_SETTINGS);
 
   useEffect(() => {
     const existing = loadSavedLocation();
     setSaved(existing);
     setEditing(!existing);
+    fetchFulfillmentSettings().then(setFulfillment).catch(() => {});
   }, []);
 
   const onCheck = useCallback(
@@ -126,13 +169,20 @@ export default function PincodeChecker() {
     [pincode]
   );
 
-  // Adds the zone ETA on top of the effective dispatch day for the final
-  // "delivery by" promise shown to the shopper.
-  const deliveryByDate = saved
+  // Total delivery window = handling time (dispatch_days) + transit time
+  // for this pincode's tier — both pulled from fulfillment settings, the
+  // same source that feeds the Google Merchant Center product feed. A
+  // range is shown (not a single date) because transit time genuinely
+  // varies 3-12 days across India; collapsing that to one date would
+  // either overpromise for remote areas or undersell metro speed.
+  const deliveryRange = saved
     ? (() => {
-        const d = effectiveDispatchDate(new Date());
-        d.setDate(d.getDate() + saved.etaDays);
-        return formatDeliveryDate(d);
+        const start = effectiveHandlingStart(new Date());
+        const tier = tierForPincode(saved.pincode);
+        const window = tierWindow(fulfillment, tier);
+        const minDate = addDays(start, fulfillment.dispatch_days_min + window.min);
+        const maxDate = addDays(start, fulfillment.dispatch_days_max + window.max);
+        return { minDate, maxDate };
       })()
     : null;
 
@@ -172,7 +222,12 @@ export default function PincodeChecker() {
           <div className="flex items-center justify-between gap-3 border-t border-border/60 pt-2.5">
             <p className="flex items-center gap-1.5 text-sm font-medium">
               <Truck className="h-4 w-4 text-muted-foreground" />
-              Delivery by {deliveryByDate}
+              {deliveryRange &&
+                (formatDeliveryDate(deliveryRange.minDate) === formatDeliveryDate(deliveryRange.maxDate)
+                  ? `Delivery by ${formatDeliveryDate(deliveryRange.maxDate)}`
+                  : `Delivery between ${formatDeliveryDate(deliveryRange.minDate)} – ${formatDeliveryDate(
+                      deliveryRange.maxDate
+                    )}`)}
             </p>
             <DeliveryCountdown />
           </div>
@@ -248,3 +303,4 @@ export default function PincodeChecker() {
     </div>
   );
 }
+
