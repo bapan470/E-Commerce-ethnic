@@ -253,53 +253,55 @@ export default function ReviewsSection({
   };
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[280px_1fr]">
-      <div className="flex flex-col gap-4">
-        <div className="flex items-center gap-3">
-          <p className="font-serif text-4xl font-bold text-emerald-600">
+    <div className="grid gap-8 lg:grid-cols-[300px_1fr]">
+      <div className="relative flex flex-col gap-5 overflow-hidden rounded-2xl border border-secondary/25 bg-gradient-to-b from-secondary/[0.06] via-card to-card p-5 shadow-[0_2px_24px_-8px_rgba(0,0,0,0.08)]">
+        <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-secondary/10 blur-2xl" />
+
+        <div className="relative flex items-end gap-3">
+          <p className="font-serif text-5xl font-bold leading-none text-primary">
             {summary.totalRatings > 0 ? summary.average.toFixed(1) : '—'}
-            <span className="ml-1 align-middle text-lg text-secondary">★</span>
           </p>
-        </div>
-        <div>
-          <p className="text-sm font-semibold text-foreground">
-            {summary.totalRatings.toLocaleString('en-IN')} Rating{summary.totalRatings === 1 ? '' : 's'}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            {summary.totalReviews.toLocaleString('en-IN')} Review{summary.totalReviews === 1 ? '' : 's'}
-          </p>
+          <div className="flex flex-col gap-1 pb-0.5">
+            <StarRow value={summary.totalRatings > 0 ? summary.average : 0} size="h-4 w-4" />
+            <p className="text-xs font-medium tracking-wide text-muted-foreground">
+              {summary.totalRatings.toLocaleString('en-IN')} Rating{summary.totalRatings === 1 ? '' : 's'} ·{' '}
+              {summary.totalReviews.toLocaleString('en-IN')} Review{summary.totalReviews === 1 ? '' : 's'}
+            </p>
+          </div>
         </div>
 
-        <div className="flex flex-col gap-2">
+        <div className="h-px w-full bg-gradient-to-r from-secondary/40 via-secondary/10 to-transparent" />
+
+        <div className="flex flex-col gap-2.5">
           {([5, 4, 3, 2, 1] as const).map((star) => {
             const count = summary.breakdown[star];
             const pct = summary.totalRatings > 0 ? (count / summary.totalRatings) * 100 : 0;
             return (
-              <div key={star} className="flex items-center gap-2 text-xs">
-                <span className="w-20 shrink-0 text-muted-foreground">{RATING_LABELS[star]}</span>
-                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+              <div key={star} className="flex items-center gap-2.5 text-xs">
+                <span className="w-[4.5rem] shrink-0 font-medium text-muted-foreground">{RATING_LABELS[star]}</span>
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted/80">
                   <div
-                    className={`h-full ${
-                      star >= 4 ? 'bg-emerald-500' : star === 3 ? 'bg-lime-500' : star === 2 ? 'bg-amber-500' : 'bg-red-500'
-                    }`}
+                    className="h-full rounded-full bg-gradient-to-r from-secondary to-primary transition-all duration-700 ease-out"
                     style={{ width: `${pct}%` }}
                   />
                 </div>
-                <span className="w-8 text-right text-muted-foreground">{count}</span>
+                <span className="w-6 text-right font-medium text-muted-foreground">{count}</span>
               </div>
             );
           })}
         </div>
 
+        <div className="h-px w-full bg-gradient-to-r from-secondary/40 via-secondary/10 to-transparent" />
+
         {myReview && hasWrittenContent(myReview) ? (
-          <div className="flex items-center gap-2 rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-secondary" />
+          <div className="flex items-center gap-2 rounded-lg border border-emerald-200/60 bg-emerald-50/60 p-3 text-xs font-medium text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
             {myReview.is_approved
               ? 'You reviewed this product.'
               : 'Your review is awaiting approval.'}
           </div>
         ) : myReview ? (
-          <div className="flex flex-col gap-2 rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
+          <div className="flex flex-col gap-2.5 rounded-lg border border-secondary/30 bg-secondary/[0.07] p-3 text-xs text-muted-foreground">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4 shrink-0 text-secondary" />
               You rated this {myReview.rating}★
@@ -307,25 +309,24 @@ export default function ReviewsSection({
             </div>
             <Button
               size="sm"
-              variant="outline"
               onClick={openForm}
-              className="w-fit border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+              className="w-fit bg-gradient-to-r from-primary to-primary/90 text-primary-foreground shadow-sm transition-transform hover:scale-[1.02] hover:shadow-md"
             >
               Add a written review
             </Button>
           </div>
         ) : (
           <Button
-            variant="outline"
             onClick={openForm}
-            className="border-primary text-primary hover:bg-primary hover:text-primary-foreground"
+            className="w-full bg-gradient-to-r from-primary via-primary to-primary/90 text-primary-foreground shadow-sm transition-transform hover:scale-[1.02] hover:shadow-md"
           >
+            <Star className="mr-1.5 h-4 w-4 fill-secondary text-secondary" />
             Rate this product
           </Button>
         )}
 
         {user && !myReview && !eligible && (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs leading-relaxed text-muted-foreground">
             Only customers who have purchased this product can leave a review.
           </p>
         )}
@@ -444,22 +445,37 @@ export default function ReviewsSection({
             ))}
           </div>
         ) : reviews.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 py-10 text-center text-muted-foreground">
-            <MessageSquareOff className="h-8 w-8" />
-            <p className="text-sm">No reviews yet. Be the first to share your experience.</p>
+          <div className="relative flex flex-col items-center gap-4 overflow-hidden rounded-2xl border border-dashed border-secondary/40 bg-gradient-to-b from-secondary/[0.05] to-transparent px-6 py-14 text-center">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(0,0,0,0.03),transparent_60%)]" />
+            <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-secondary/20 to-primary/10 ring-1 ring-secondary/30">
+              <MessageSquareOff className="h-7 w-7 text-primary/70" />
+            </div>
+            <div className="relative flex flex-col gap-1.5">
+              <p className="font-serif text-lg font-semibold text-foreground">Be the first to review</p>
+              <p className="max-w-xs text-sm leading-relaxed text-muted-foreground">
+                Share your experience with the fit, fabric and quality to help other shoppers decide with confidence.
+              </p>
+            </div>
+            <Button
+              onClick={openForm}
+              className="relative bg-gradient-to-r from-primary via-primary to-primary/90 text-primary-foreground shadow-sm transition-transform hover:scale-[1.02] hover:shadow-md"
+            >
+              <Star className="mr-1.5 h-4 w-4 fill-secondary text-secondary" />
+              Write the first review
+            </Button>
           </div>
         ) : (
           <ul className="flex flex-col divide-y divide-border/60">
             {reviews.map((r) => (
-              <li key={r.id} className="py-4">
+              <li key={r.id} className="rounded-lg py-4 transition-colors hover:bg-secondary/[0.04]">
                 <div className="flex items-start gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/70 text-xs font-semibold text-primary-foreground shadow-sm">
                     {initials(r.customer_name)}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-semibold text-foreground">{firstName(r.customer_name)}</span>
-                      <span className="inline-flex items-center gap-1 rounded bg-emerald-600 px-1.5 py-0.5 text-xs font-semibold text-white">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-emerald-600 to-emerald-500 px-2 py-0.5 text-xs font-semibold text-white shadow-sm">
                         {r.rating.toFixed(1)}
                         <Star className="h-3 w-3 fill-white" />
                       </span>
