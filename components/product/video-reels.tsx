@@ -42,6 +42,7 @@ export default function VideoReels({
   returnSlug,
   startItem,
   onClose,
+  returnHref,
 }: {
   items: ReelItem[];
   startProductId: string;
@@ -76,6 +77,12 @@ export default function VideoReels({
    *  products). See resolvedItems below for how the two are merged. */
   startItem?: ReelItem;
   onClose: () => void;
+  /** Where the X/close button navigates to. Defaults to `/product/${returnSlug}`
+   *  (the original "opened from a product page" behaviour). Pass this when the
+   *  feed was opened standalone (e.g. from the bottom-nav "Video Shopping" tab)
+   *  so closing goes back to that entry point instead of assuming a product
+   *  page exists to return to. */
+  returnHref?: string;
 }) {
   const router = useRouter();
 
@@ -253,8 +260,8 @@ export default function VideoReels({
 
   const handleClose = useCallback(() => {
     onClose();
-    router.push(`/product/${returnSlug}`);
-  }, [onClose, returnSlug, router]);
+    router.push(returnHref ?? `/product/${returnSlug}`);
+  }, [onClose, returnHref, returnSlug, router]);
 
   if (items.length === 0) return null;
 

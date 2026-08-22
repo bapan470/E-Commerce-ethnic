@@ -1,20 +1,20 @@
 'use client';
 
 import Link from 'next/link';
-import { Home, LayoutGrid, Tag, User } from 'lucide-react';
+import { Home, LayoutGrid, Video, User } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 
 // Fixed bottom tab bar shown only on the home page on small screens, so
 // shoppers get quick one-tap access to the main sections without hunting
 // through the header menu — mirrors the bottom nav pattern used by most
-// shopping apps (Home / Categories / Offers / Account).
+// shopping apps (Home / Categories / Video Shopping / Account).
 export default function MobileBottomNav() {
   const { user } = useAuth();
 
   const tabs = [
     { href: '/', label: 'Home', icon: Home, active: true },
     { href: '/categories', label: 'Categories', icon: LayoutGrid, active: false },
-    { href: '/shop?sort=price-drop', label: 'Offers', icon: Tag, active: false },
+    { href: '/video-shopping', label: 'Video', icon: Video, active: false },
     {
       href: user ? '/account/orders' : '/login',
       label: 'Account',
