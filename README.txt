@@ -1,8 +1,8 @@
 VIDEO SHOPPING BOTTOM-NAV TAB — WHAT CHANGED
 =============================================
 
-4 files, matching your repo's folder structure. Copy each into the same
-path in your project (overwrite the 3 existing ones, add the 1 new one),
+5 files, matching your repo's folder structure. Copy each into the same
+path in your project (overwrite the 4 existing ones, add the 1 new one),
 then `git push` as usual.
 
 1. components/mobile-bottom-nav.tsx   (MODIFIED)
@@ -29,6 +29,20 @@ then `git push` as usual.
      bubble on the gallery photo itself is untouched (that wasn't part
      of what you asked to remove) — shoppers can still tap that, or use
      the new Video tab in the bottom nav, to watch product videos.
+
+5. app/api/products/video-feed/route.ts (MODIFIED)
+   - Now also selects category_name and includes it as `category` on each
+     feed item, so the video card (below) has something to show.
+
+3. components/product/video-reels.tsx (MODIFIED — updated again)
+   - Added the returnHref prop (as before), PLUS a new row under the
+     price on the bottom product card: the category name (e.g. "Jamdani
+     Sarees") and a "Free Delivery" badge, same style as the shop grid's
+     product card. Only shown when the feed item has a category — the
+     two older entry points (product-video-trigger.tsx and
+     product-video-peek.tsx, opened from a single product page) don't
+     send one today, so their slides just don't show this row; nothing
+     breaks for them.
 
 VERIFIED
 --------

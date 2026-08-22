@@ -28,7 +28,7 @@ export async function GET() {
 
   const { data: products, error: productsError } = await supabase
     .from('products')
-    .select('id, slug, name, price, mrp, images, video_url, video_like_count, video_share_count')
+    .select('id, slug, name, price, mrp, images, video_url, video_like_count, video_share_count, category_name')
     .order('created_at', { ascending: false });
 
   if (productsError) {
@@ -60,6 +60,7 @@ export async function GET() {
       likeCount: (p.video_like_count as number | null) ?? 0,
       shareCount: (p.video_share_count as number | null) ?? 0,
       productId: p.id as string,
+      category: (p.category_name as string | null) ?? null,
     }));
 
   const variantItems = (variants ?? [])
@@ -79,6 +80,7 @@ export async function GET() {
         likeCount: (parent.video_like_count as number | null) ?? 0,
         shareCount: (parent.video_share_count as number | null) ?? 0,
         productId: parent.id as string,
+        category: (parent.category_name as string | null) ?? null,
       };
     })
     .filter((item): item is NonNullable<typeof item> => item !== null);

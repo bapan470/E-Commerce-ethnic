@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { Heart, Share2, Volume2, VolumeX, X } from 'lucide-react';
+import { Heart, Share2, Volume2, VolumeX, X, Truck } from 'lucide-react';
 import { hasLikedReel, toggleLikedReel } from '@/lib/video-reels-likes';
 import { guessVideoMime } from '@/lib/video-mime';
 import { fetchVariantsForProduct, ProductVariant } from '@/lib/variants-api';
@@ -18,6 +18,12 @@ export type ReelItem = {
   videoUrl: string;
   likeCount: number;
   shareCount: number;
+  /** Category label shown under the price on the bottom product card
+   *  (e.g. "Jamdani Sarees"), same category used on the shop grid card.
+   *  Optional/null for older callers (product-video-trigger.tsx,
+   *  product-video-peek.tsx) that don't have it on hand — the row is
+   *  simply omitted for those slides rather than showing a blank label. */
+  category?: string | null;
   /** The base product's own id — always present, even when `id` above is a
    *  colour variant's own id. Used to look up every colour this product
    *  comes in (VariantSwatches uses the same field) so the reel can show
@@ -600,6 +606,15 @@ function ReelSlide({
               ₹{item.price.toLocaleString('en-IN')}
               {discountPct !== null && <span className="text-xs text-white/60 line-through">₹{item.mrp!.toLocaleString('en-IN')}</span>}
             </p>
+            {item.category && (
+              <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px]">
+                <span className="font-semibold uppercase tracking-wide text-white/70">{item.category}</span>
+                <span className="flex items-center gap-0.5 font-semibold uppercase tracking-wide text-emerald-400">
+                  <Truck className="h-2.5 w-2.5" />
+                  Free Delivery
+                </span>
+              </p>
+            )}
           </div>
           <button
             type="button"
