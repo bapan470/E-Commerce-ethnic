@@ -37,6 +37,7 @@ type WarmStatus = {
   cf_other: number;
   cf_unknown: number;
   sample_non_hit_urls: string[];
+  failed_urls: string[]; // every URL that failed (up to a cap), with reason
   started_at: string | null;
   finished_at: string | null;
   error?: string;
@@ -62,7 +63,7 @@ function emptyWarmStatus(): WarmStatus {
   return {
     state: 'idle', total: 0, offset: 0, cached: 0, failed: 0,
     cf_hit: 0, cf_miss: 0, cf_other: 0, cf_unknown: 0,
-    sample_non_hit_urls: [], started_at: null, finished_at: null,
+    sample_non_hit_urls: [], failed_urls: [], started_at: null, finished_at: null,
   };
 }
 
@@ -169,16 +170,32 @@ async function collectMediaUrls(admin: ReturnType<typeof getSupabaseAdmin>): Pro
 // cdn.aruhihandlooms.com, the header we read is from that final hop —
 // exactly what a real browser would see).
 // -----------------------------------------------------------------------
-type UrlOutcome = { url: string; ok: boolean; cfStatus: string | null };
+type UrlOutcome = { url: string; ok: boolean; cfStatus: string | null; reason: string };
 
 async function fetchBatch(urls: string[]): Promise<UrlOutcome[]> {
   const results = await Promise.allSettled(
     urls.map(async (url) => {
-      const res = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(12_000) });
-      return { url, ok: res.ok || res.status === 206, cfStatus: res.headers.get('cf-cache-status') };
+      try {
+        const res = await fetch(url, { method: 'GET', signal: AbortSignal.timeout(12_000) });
+        const ok = res.ok || res.status === 206;
+        return {
+          url,
+          ok,
+          cfStatus: res.headers.get('cf-cache-status'),
+          reason: ok ? '' : `HTTP ${res.status}`,
+        };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'fetch failed';
+        const reason = msg.toLowerCase().includes('timeout') || msg.toLowerCase().includes('abort')
+          ? 'timeout (12s)'
+          : msg;
+        return { url, ok: false, cfStatus: null, reason };
+      }
     })
   );
-  return results.map((r, i) => (r.status === 'fulfilled' ? r.value : { url: urls[i], ok: false, cfStatus: null }));
+  return results.map((r, i) =>
+    r.status === 'fulfilled' ? r.value : { url: urls[i], ok: false, cfStatus: null, reason: 'request rejected' }
+  );
 }
 
 function classifyCfStatus(cfStatus: string | null): 'hit' | 'miss' | 'other' | 'unknown' {
@@ -268,7 +285,14 @@ export async function POST(req: NextRequest) {
 
     const outcomes = await fetchBatch(batch);
     for (const o of outcomes) {
-      if (o.ok) status.cached++; else status.failed++;
+      if (o.ok) {
+        status.cached++;
+      } else {
+        status.failed++;
+        if (status.failed_urls.length < 50) {
+          status.failed_urls.push(`${o.url} — ${o.reason}`);
+        }
+      }
     }
     applyOutcomes(outcomes, status);
     status.offset += batch.length;

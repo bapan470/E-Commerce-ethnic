@@ -26,6 +26,7 @@ type WarmStatus = {
   cf_other: number;
   cf_unknown: number;
   sample_non_hit_urls: string[];
+  failed_urls: string[];
   started_at: string | null;
   finished_at: string | null;
   error?: string;
@@ -48,7 +49,7 @@ type VerifyStatus = {
 const EMPTY_WARM: WarmStatus = {
   state: 'idle', total: 0, offset: 0, cached: 0, failed: 0,
   cf_hit: 0, cf_miss: 0, cf_other: 0, cf_unknown: 0,
-  sample_non_hit_urls: [], started_at: null, finished_at: null,
+  sample_non_hit_urls: [], failed_urls: [], started_at: null, finished_at: null,
 };
 
 const EMPTY_VERIFY: VerifyStatus = {
@@ -331,6 +332,20 @@ export default function CacheWarmPanel() {
 
           {isError && warm.error && (
             <p className="text-sm text-red-700 bg-red-100 rounded p-2 font-mono">{warm.error}</p>
+          )}
+
+          {/* Failed URLs — exact reason each one didn't succeed */}
+          {warm.failed_urls.length > 0 && (
+            <div className="pt-1 border-t">
+              <p className="text-xs font-medium text-red-700 mb-2 mt-2">
+                {warm.failed} Failed URLs {warm.failed_urls.length < warm.failed ? `(showing first ${warm.failed_urls.length})` : ''}:
+              </p>
+              <ul className="space-y-1 font-mono text-[11px] text-red-800 bg-red-100/60 rounded p-2 max-h-48 overflow-y-auto">
+                {warm.failed_urls.map((u) => (
+                  <li key={u} className="break-all">{u}</li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
       )}
