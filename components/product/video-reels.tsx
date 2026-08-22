@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { Heart, Share2, Volume2, VolumeX, X, Truck } from 'lucide-react';
+import { Heart, Share2, Volume2, VolumeX, X, Truck, ChevronRight } from 'lucide-react';
 import { hasLikedReel, toggleLikedReel } from '@/lib/video-reels-likes';
 import { guessVideoMime } from '@/lib/video-mime';
 import { fetchVariantsForProduct, ProductVariant } from '@/lib/variants-api';
@@ -580,7 +580,7 @@ function ReelSlide({
           rendered once fetched and only when there's more than one colour
           to choose from (a single-colour product has nothing to switch to). */}
       {colours && colours.length > 1 && (
-        <div className="absolute bottom-[5.75rem] left-3 right-16 z-10 flex gap-2 overflow-x-auto pb-1 sm:left-5 sm:right-20 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="absolute bottom-32 left-3 right-16 z-10 flex gap-2 overflow-x-auto pb-1 sm:left-5 sm:right-20 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {colours.map((v) => {
             const isCurrentColour = v.slug === item.slug || v.id === item.id;
             return (
@@ -631,9 +631,10 @@ function ReelSlide({
                     e.stopPropagation();
                     onGoToCategory(item.category!);
                   }}
-                  className="font-semibold uppercase tracking-wide text-white/70 underline-offset-2 hover:text-white hover:underline"
+                  className="flex items-center gap-0.5 font-semibold uppercase tracking-wide text-white/70 underline-offset-2 hover:text-white hover:underline"
                 >
                   {item.category}
+                  <ChevronRight className="h-2.5 w-2.5" />
                 </button>
                 <span className="flex items-center gap-0.5 font-semibold uppercase tracking-wide text-emerald-400">
                   <Truck className="h-2.5 w-2.5" />
