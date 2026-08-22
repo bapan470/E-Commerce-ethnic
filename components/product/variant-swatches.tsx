@@ -62,7 +62,7 @@ export default function VariantSwatches({
           </span>
         )}
       </p>
-      <div className="flex flex-wrap gap-3">
+      <div className="flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {variants.map((v) => {
           const isActive = v.slug === activeSlug;
           const thumb = v.images[0];
@@ -73,7 +73,7 @@ export default function VariantSwatches({
               onClick={() => onSelect(v)}
               title={v.color}
               aria-label={`View in ${v.color}`}
-              className="group flex flex-col items-center gap-1.5"
+              className="group flex shrink-0 flex-col items-center gap-1.5"
             >
               <span
                 className={`relative block h-16 w-14 shrink-0 overflow-hidden rounded-md border-2 bg-muted ${
