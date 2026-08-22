@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Minus,
   Plus,
+  Zap,
 } from 'lucide-react';
 import { useProducts, usePaymentDiscount, useCart, getVisibleBogoPromotion, formatBogoLabel } from '@/lib/cart-context';
 import { fetchProductBySlug } from '@/lib/products-api';
@@ -1000,15 +1001,20 @@ function ProductInfo({
       )}
 
       {onlinePaymentSavings > 0 && (
-        <div className="flex w-fit items-baseline gap-2 border-l-2 border-emerald-600 py-0.5 pl-3">
-          <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
-            Get this at
+        <div className="relative flex w-fit items-center gap-2 overflow-hidden rounded-full border border-emerald-600/25 bg-gradient-to-r from-emerald-50 via-secondary/10 to-transparent py-1.5 pl-1.5 pr-4 dark:from-emerald-950/40">
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 shadow-sm shadow-emerald-600/30">
+            <Zap className="h-3.5 w-3.5 fill-white text-white" />
           </span>
-          <span className="text-base font-semibold text-emerald-700">
-            {formatINR(Math.max(0, priceAfterCoupon - onlinePaymentSavings))}
-          </span>
-          <span className="text-[11px] text-muted-foreground">
-            via {paymentDiscount.label}
+          <span className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800/70 dark:text-emerald-300/70">
+              Get this at
+            </span>
+            <span className="font-serif text-lg font-bold leading-none text-emerald-700 dark:text-emerald-400">
+              {formatINR(Math.max(0, priceAfterCoupon - onlinePaymentSavings))}
+            </span>
+            <span className="text-[11px] text-muted-foreground">
+              via {paymentDiscount.label}
+            </span>
           </span>
         </div>
       )}
