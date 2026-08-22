@@ -371,5 +371,19 @@ export async function uploadProductVideo(file: File, seoName?: string): Promise<
     .uploadToSignedUrl(path, token, file);
   if (uploadError) throw new Error(uploadError.message || 'Video upload failed');
 
+  // Best-effort R2 mirror. Direct-to-Supabase uploads (this whole function)
+  // never touch R2 on their own -- see lib/storage.ts's createDirectUploadTarget
+  // comment -- which left videos uploaded this way relying entirely on the
+  // Supabase copy. Fire this and don't await/block the caller on it: a slow
+  // or failed mirror should never hold up "Save product", and the video
+  // still plays either way via the /media/ proxy's normal fallback.
+  fetch('/api/upload-video/confirm', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, contentType: file.type || 'video/mp4' }),
+  }).catch(() => {
+    // Non-blocking -- see comment above.
+  });
+
   return url;
 }

@@ -208,6 +208,57 @@ export async function createR2PresignedUpload(params: {
   return { uploadUrl, url: canonicalMediaUrl(bucket, path) };
 }
 
+/**
+ * Mirrors an object that already exists in Supabase Storage over to R2.
+ * Used as a post-upload step for the DIRECT-to-Supabase video upload flow
+ * (createDirectUploadTarget above) — that flow intentionally skips R2 at
+ * upload time (the browser talks to Supabase only, to dodge the Vercel
+ * function body-size limit), which left every video uploaded that way
+ * living in Supabase ONLY. That's exactly the gap that caused product
+ * videos under storage path `product-videos/manual-uploads/...` to fail
+ * to load for real shoppers: the /media/ proxy tries the site's
+ * `preferredBackend` first (R2, when that's the admin's selected
+ * backend) and only falls back to Supabase on a miss — so any hiccup
+ * reading the Supabase copy directly (private-bucket misconfig, RLS,
+ * a transient Supabase Storage error) had no R2 copy to fall back to.
+ * Calling this right after a direct upload closes that gap going
+ * forward: every video ends up on both backends, same as every other
+ * upload path in this file. Best-effort by design — if it fails, the
+ * Supabase copy (source of truth) is still there and the video still
+ * works via the proxy's normal fallback; this only improves resilience,
+ * it's never load-bearing for the upload to "succeed".
+ */
+export async function mirrorSupabaseObjectToR2(params: {
+  bucket: StorageBucket;
+  path: string;
+  contentType: string;
+}): Promise<{ mirrored: boolean; reason?: string }> {
+  const { bucket, path, contentType } = params;
+  if (!r2EnvPresent()) return { mirrored: false, reason: 'R2 env vars not configured' };
+
+  try {
+    const admin = getSupabaseAdmin();
+    const { data, error } = await admin.storage.from(bucket).download(path);
+    if (error || !data) return { mirrored: false, reason: error?.message || 'Supabase download failed' };
+
+    const buffer = Buffer.from(await data.arrayBuffer());
+    const client = getR2Client();
+    await client.send(
+      new PutObjectCommand({
+        Bucket: process.env.R2_BUCKET_NAME,
+        Key: `${bucket}/${path}`,
+        Body: buffer,
+        ContentType: contentType,
+        CacheControl: 'public, max-age=31536000, immutable',
+      })
+    );
+    return { mirrored: true };
+  } catch (err) {
+    console.error('[storage] mirrorSupabaseObjectToR2 failed (non-blocking):', err);
+    return { mirrored: false, reason: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
 // Kept for any code that still calls activeStorageProvider() —
 // returns 'supabase' always since we now always write to both.
 // @deprecated — dual-write makes this concept meaningless; will be removed.
