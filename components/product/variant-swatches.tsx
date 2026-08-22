@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { fetchVariantsForProduct, ProductVariant } from '@/lib/variants-api';
+import { toPublicMediaUrl } from '@/lib/media-url';
 
 export default function VariantSwatches({
   productId,
@@ -27,6 +28,26 @@ export default function VariantSwatches({
   baseVariant: ProductVariant | null;
 }) {
   const [fetchedVariants, setFetchedVariants] = useState<ProductVariant[]>([]);
+
+  // Background-preload the OTHER colours' photos the moment this page is
+  // viewed, so the very first colour switch is instant instead of showing
+  // a network-fetch delay (that delay only ever hit the *first* switch --
+  // any switch back afterwards was already browser-cached, which is why it
+  // looked like it "fixed itself" after the first try). Delayed via
+  // requestIdleCallback so it never competes with the current colour's own
+  // photos for bandwidth/priority on first paint, and skipped outright on
+  // Data Saver / a slow connection so it never costs someone a expensive
+  // mobile-data preload they didn't ask for.
+  const [preloadReady, setPreloadReady] = useState(false);
+  useEffect(() => {
+    const conn = (navigator as any).connection;
+    if (conn && (conn.saveData || /2g/.test(conn.effectiveType || ''))) return;
+    const idle =
+      (window as any).requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1200));
+    const cancelIdle = (window as any).cancelIdleCallback ?? window.clearTimeout;
+    const handle = idle(() => setPreloadReady(true));
+    return () => cancelIdle(handle);
+  }, []);
 
   useEffect(() => {
     fetchVariantsForProduct(productId)
@@ -112,6 +133,39 @@ export default function VariantSwatches({
           );
         })}
       </div>
+
+      {/* Invisible — never shown, never affects layout. Renders the same
+          <Image> the main gallery stage renders (identical src/sizes/quality
+          props, see components/product/product-gallery.tsx) so the browser
+          fetches and caches the EXACT url the gallery will request once the
+          shopper actually taps this colour. Only the first 2 photos per
+          colour are warmed (front + back), which covers the common
+          one-or-two-swipe glance without preloading a whole gallery's worth
+          of photos for colours that might never get picked. */}
+      {preloadReady && (
+        <div aria-hidden className="pointer-events-none absolute h-0 w-0 overflow-hidden opacity-0">
+          {variants
+            .filter((v) => v.slug !== activeSlug)
+            .flatMap((v) =>
+              v.images.slice(0, 2).map((raw, i) => {
+                const src = toPublicMediaUrl(raw);
+                if (!src) return null;
+                return (
+                  <div key={`${v.id}-${i}`} className="relative h-px w-px">
+                    <Image
+                      src={src}
+                      alt=""
+                      fill
+                      sizes="(max-width: 1024px) 100vw, 50vw"
+                      quality={80}
+                      loading="eager"
+                    />
+                  </div>
+                );
+              })
+            )}
+        </div>
+      )}
     </div>
   );
 }
