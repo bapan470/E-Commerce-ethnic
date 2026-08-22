@@ -38,6 +38,7 @@ import {
   Newspaper,
   EyeOff,
   Download,
+  Flame,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import NotificationBell from './notification-bell';
@@ -75,6 +76,7 @@ export type AdminSection =
   | 'vendor-ops'
   | 'vendor-reports'
   | 'product-sources'
+  | 'cache-warm'
   | 'settings';
 
 interface NavItem {
@@ -151,7 +153,10 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: 'Configuration',
-    items: [{ value: 'settings', label: 'Settings', icon: Settings }],
+    items: [
+      { value: 'settings', label: 'Settings', icon: Settings },
+      { value: 'cache-warm', label: 'Cache Warm', icon: Flame },
+    ],
   },
 ];
 
