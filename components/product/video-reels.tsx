@@ -127,7 +127,11 @@ export default function VideoReels({
   const containerRef = useRef<HTMLDivElement>(null);
   const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
   const [activeIndex, setActiveIndex] = useState(notFound ? 0 : startIndex);
-  const [muted, setMuted] = useState(true);
+  // Starts unmuted — the shopper just tapped a "Watch Product Video"
+  // button/bubble, which counts as the user gesture browsers require
+  // before allowing audio autoplay, so this doesn't get silently blocked.
+  // Still exposed via the mute button in case they'd rather watch silently.
+  const [muted, setMuted] = useState(false);
 
   // Opens as a single video first — same full-screen player, but swiping to
   // any other product's video is disabled and the clip plays once (no loop)
