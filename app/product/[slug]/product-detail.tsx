@@ -745,6 +745,26 @@ export default function ProductDetail() {
         />
       </div>
 
+      <div className="mt-8">
+        <RelatedProducts
+          current={product}
+          allProducts={products}
+          overrideProducts={bogoCollectionProducts}
+          viewAllHref={bogoPromotion?.collection_slug ? `/collection/${bogoPromotion.collection_slug}` : undefined}
+          title={bogoCollectionProducts.length > 0 ? `Complete your ${formatBogoLabel(bogoPromotion!)} offer` : undefined}
+        />
+
+        {/* When the BOGO carousel above is showing (overrideProducts in use),
+            RelatedProducts swaps out the scored same-category matches for the
+            BOGO collection, so the generic "You may also like" picks never
+            render on those pages. Rendering a second, plain RelatedProducts
+            here (no overrideProducts) restores it -- BOGO offer first, then
+            "You may also like" -- both ahead of Reviews below. */}
+        {bogoCollectionProducts.length > 0 && (
+          <RelatedProducts current={product} allProducts={products} />
+        )}
+      </div>
+
       <div id="product-reviews" className="mt-8 scroll-mt-24">
         <h2 className="mb-3 text-sm font-semibold text-foreground">
           Reviews ({displayRatingsCount})
@@ -808,24 +828,6 @@ export default function ProductDetail() {
       </div>
 
       <FrequentlyBoughtTogether productId={baseProduct.id} />
-
-      <RelatedProducts
-        current={product}
-        allProducts={products}
-        overrideProducts={bogoCollectionProducts}
-        viewAllHref={bogoPromotion?.collection_slug ? `/collection/${bogoPromotion.collection_slug}` : undefined}
-        title={bogoCollectionProducts.length > 0 ? `Complete your ${formatBogoLabel(bogoPromotion!)} offer` : undefined}
-      />
-
-      {/* When the BOGO carousel above is showing (overrideProducts in use),
-          RelatedProducts swaps out the scored same-category matches for the
-          BOGO collection, so the generic "You may also like" picks never
-          render on those pages. Rendering a second, plain RelatedProducts
-          here (no overrideProducts) restores it -- BOGO offer first, then
-          "You may also like", then Recently Viewed below. */}
-      {bogoCollectionProducts.length > 0 && (
-        <RelatedProducts current={product} allProducts={products} />
-      )}
 
       <VendorCollection productId={baseProduct.id} />
 
