@@ -264,6 +264,17 @@ export default function VideoReels({
     [onClose, router]
   );
 
+  // Same destination product-card.tsx's own category label uses
+  // (/shop?category=...) — keeps this consistent with the rest of the
+  // site instead of inventing a second category-linking convention.
+  const goToCategory = useCallback(
+    (category: string) => {
+      onClose();
+      router.push(`/shop?category=${encodeURIComponent(category)}`);
+    },
+    [onClose, router]
+  );
+
   const handleClose = useCallback(() => {
     onClose();
     router.push(returnHref ?? `/product/${returnSlug}`);
@@ -350,6 +361,7 @@ export default function VideoReels({
             onToggleMute={() => setMuted((m) => !m)}
             onShopNow={() => goToProduct(item.slug)}
             onSelectColour={goToProduct}
+            onGoToCategory={goToCategory}
             // Only the very first slide the shopper opened on plays "once,
             // then unlock"; every other slide behaves exactly as before
             // (loops while active) both before and after that unlock.
@@ -372,6 +384,7 @@ function ReelSlide({
   onToggleMute,
   onShopNow,
   onSelectColour,
+  onGoToCategory,
   loopVideo = true,
   onVideoEnded,
   ref,
@@ -383,6 +396,10 @@ function ReelSlide({
   onShopNow: () => void;
   /** Navigates straight to the clicked colour's own product page. */
   onSelectColour: (slug: string) => void;
+  /** Navigates to the shop page filtered to this item's category
+   *  (/shop?category=...), same destination the shop grid's own
+   *  category label links to. */
+  onGoToCategory: (category: string) => void;
   /** False only for the opening slide during its single "watch it once"
    *  stage — see VideoReels' `unlocked` state above. Every other slide,
    *  and this same slide once unlocked, loops normally. */
@@ -573,12 +590,12 @@ function ReelSlide({
                 onClick={() => onSelectColour(v.slug)}
                 title={v.color}
                 aria-label={`View in ${v.color}`}
-                className={`relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border-2 bg-muted shadow-sm ${
+                className={`relative h-16 w-11 shrink-0 overflow-hidden rounded-lg border-2 bg-muted shadow-sm sm:h-[4.5rem] sm:w-12 ${
                   isCurrentColour ? 'border-white' : 'border-white/40'
                 }`}
               >
                 {v.images[0] ? (
-                  <Image src={v.images[0]} alt={v.color} fill sizes="44px" className="object-cover" />
+                  <Image src={v.images[0]} alt={v.color} fill sizes="48px" className="object-cover object-top" />
                 ) : v.color_hex ? (
                   <span className="block h-full w-full" style={{ backgroundColor: v.color_hex }} />
                 ) : (
@@ -608,7 +625,16 @@ function ReelSlide({
             </p>
             {item.category && (
               <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px]">
-                <span className="font-semibold uppercase tracking-wide text-white/70">{item.category}</span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onGoToCategory(item.category!);
+                  }}
+                  className="font-semibold uppercase tracking-wide text-white/70 underline-offset-2 hover:text-white hover:underline"
+                >
+                  {item.category}
+                </button>
                 <span className="flex items-center gap-0.5 font-semibold uppercase tracking-wide text-emerald-400">
                   <Truck className="h-2.5 w-2.5" />
                   Free Delivery
