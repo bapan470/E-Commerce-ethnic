@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import {
   MessageSquareText,
-  MessageCircle,
   X,
   ChevronRight,
   ArrowLeft,
@@ -14,6 +13,7 @@ import {
   Mail,
   LifeBuoy,
 } from 'lucide-react';
+import WhatsAppIcon from '@/components/icons/whatsapp-icon';
 import {
   fetchMarketingSettings,
   fetchLegalPagesResolved,
@@ -564,7 +564,7 @@ export default function LiveChatWidget() {
               className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-[#25D366]/10 px-4 py-2 text-xs font-medium text-[#128C4A] transition-colors hover:bg-[#25D366]/20"
             >
               <span className="flex items-center gap-1.5">
-                <MessageCircle className="h-3.5 w-3.5" fill="#25D366" strokeWidth={0} />
+                <WhatsAppIcon className="h-3.5 w-3.5 text-[#25D366]" />
                 Prefer WhatsApp? Chat with our team directly
               </span>
               <ChevronRight className="h-3.5 w-3.5 shrink-0" />
