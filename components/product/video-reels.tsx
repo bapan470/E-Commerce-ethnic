@@ -93,6 +93,18 @@ export default function VideoReels({
   const [activeIndex, setActiveIndex] = useState(notFound ? 0 : startIndex);
   const [muted, setMuted] = useState(true);
 
+  // Opens as a single video first — same full-screen player, but swiping to
+  // any other product's video is disabled and the clip plays once (no loop)
+  // instead of looping immediately. Only once that first watch finishes does
+  // this flips to true, unlocking the rest of the feed so it becomes the
+  // normal swipeable Reels experience (looping + swipe up/down). This is a
+  // deliberate two-stage open: "tap opens just that video" first, "then it
+  // turns into Reels" second — see handleFirstVideoEnded below.
+  const [unlocked, setUnlocked] = useState(false);
+  const handleFirstVideoEnded = useCallback(() => {
+    setUnlocked(true);
+  }, []);
+
   // Lock body scroll while the overlay is open, restore on close, and let
   // Escape close it the same as the X button (desktop convenience).
   useEffect(() => {
@@ -198,9 +210,46 @@ export default function VideoReels({
         <X className="h-6 w-6" />
       </button>
 
+      {/* Small one-time hint that appears the moment the feed unlocks, so it's
+          obvious the overlay just turned into a swipeable Reels feed instead
+          of the shopper wondering why nothing happens on a swipe attempt
+          during the single-video stage. Auto-hides itself via CSS animation. */}
+      {unlocked && (
+        <div
+          key={activeItem?.id}
+          className="pointer-events-none absolute inset-x-0 top-16 z-20 flex justify-center animate-[fadeOutUp_2.2s_ease-out_forwards]"
+        >
+          <span className="rounded-full bg-black/50 px-3 py-1 text-xs font-medium text-white backdrop-blur-sm">
+            Swipe up for more ↑
+          </span>
+        </div>
+      )}
+      <style jsx>{`
+        @keyframes fadeOutUp {
+          0% {
+            opacity: 0;
+            transform: translateY(4px);
+          }
+          15% {
+            opacity: 1;
+            transform: translateY(0);
+          }
+          75% {
+            opacity: 1;
+          }
+          100% {
+            opacity: 0;
+            transform: translateY(-4px);
+          }
+        }
+      `}</style>
+
       <div
         ref={containerRef}
-        className="h-full w-full snap-y snap-mandatory overflow-y-scroll scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className={`h-full w-full overflow-y-scroll scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+          unlocked ? 'snap-y snap-mandatory' : 'overflow-hidden overscroll-none'
+        }`}
+        style={!unlocked ? { touchAction: 'none' } : undefined}
       >
         {items.map((item, idx) => (
           <ReelSlide
@@ -211,6 +260,11 @@ export default function VideoReels({
             onToggleMute={() => setMuted((m) => !m)}
             onShopNow={() => goToProduct(item.slug)}
             onSelectColour={goToProduct}
+            // Only the very first slide the shopper opened on plays "once,
+            // then unlock"; every other slide behaves exactly as before
+            // (loops while active) both before and after that unlock.
+            loopVideo={unlocked || idx !== startIndex}
+            onVideoEnded={idx === startIndex && !unlocked ? handleFirstVideoEnded : undefined}
             ref={(el) => {
               slideRefs.current[idx] = el;
             }}
@@ -228,6 +282,8 @@ function ReelSlide({
   onToggleMute,
   onShopNow,
   onSelectColour,
+  loopVideo = true,
+  onVideoEnded,
   ref,
 }: {
   item: ReelItem;
@@ -237,6 +293,12 @@ function ReelSlide({
   onShopNow: () => void;
   /** Navigates straight to the clicked colour's own product page. */
   onSelectColour: (slug: string) => void;
+  /** False only for the opening slide during its single "watch it once"
+   *  stage — see VideoReels' `unlocked` state above. Every other slide,
+   *  and this same slide once unlocked, loops normally. */
+  loopVideo?: boolean;
+  /** Fires once, when this slide's video finishes an unlooped play-through. */
+  onVideoEnded?: () => void;
   ref: (el: HTMLDivElement | null) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -338,7 +400,8 @@ function ReelSlide({
       <video
         ref={videoRef}
         muted={muted}
-        loop
+        loop={loopVideo}
+        onEnded={onVideoEnded}
         playsInline
         // eslint-disable-next-line react/no-unknown-property
         webkit-playsinline="true"
