@@ -1,21 +1,61 @@
-PRODUCT PAGE — VARIANT SWATCHES NOW SCROLL HORIZONTALLY
-==========================================================
+VIDEO SHOPPING BOTTOM-NAV TAB — WHAT CHANGED
+=============================================
 
-1 file, matching your repo's folder structure. Copy it into the same
-path in your project (overwrite the existing one), then `git push`.
+5 files, matching your repo's folder structure. Copy each into the same
+path in your project (overwrite the 4 existing ones, add the 1 new one),
+then `git push` as usual.
 
-1. components/product/variant-swatches.tsx (MODIFIED)
-   - Was `flex flex-wrap` — colour swatches on the product page wrapped
-     onto a second row once there were more than ~5 colours (Green,
-     Ivory, Navy Blue, Maroon, Forest Green on row 1; Rust Pink, Rani
-     Pink dropping to row 2).
-   - Now a single-row horizontal-scroll strip (overflow-x-auto, hidden
-     scrollbar), same behaviour as the colour swatches inside the video
-     shopping Reels feed. Each swatch button got shrink-0 added too —
-     without it, flex would just squeeze all the swatches narrower to
-     fit instead of actually scrolling.
+1. components/mobile-bottom-nav.tsx   (MODIFIED)
+   - "Offers" tab removed, replaced with a "Video" tab (Video icon,
+     links to /video-shopping).
+
+2. app/video-shopping/page.tsx        (NEW)
+   - New standalone page. Fetches every product/variant that has a
+     video (same /api/products/video-feed your product pages already
+     use) and opens the existing full-screen Reels-style video feed,
+     starting on the newest video. Closing (X) goes back to Home.
+   - If no product has a video yet, shows "No product videos available
+     right now — tap anywhere to go back" instead of a blank/broken page.
+
+3. components/product/video-reels.tsx (MODIFIED)
+   - Added one optional prop: returnHref. When the feed is opened from
+     a product page (unchanged, existing behaviour), closing still goes
+     back to that product. When opened from the new /video-shopping
+     page, closing goes back to "/" instead. No other behaviour changed.
+
+4. app/product/[slug]/product-detail.tsx (MODIFIED)
+   - Removed the standalone "Watch Product Video" button below the
+     product gallery on the product page. The small round video-peek
+     bubble on the gallery photo itself is untouched (that wasn't part
+     of what you asked to remove) — shoppers can still tap that, or use
+     the new Video tab in the bottom nav, to watch product videos.
+
+5. app/api/products/video-feed/route.ts (MODIFIED)
+   - Now also selects category_name and includes it as `category` on each
+     feed item, so the video card (below) has something to show.
+
+3. components/product/video-reels.tsx (MODIFIED — updated again)
+   - Added returnHref (as before) and the category/Free Delivery row
+     under the price (as before).
+   - FIX: variation swatch thumbnails were 44x44 squares, cropping tall
+     saree photos to a thin cut-off-looking middle slice. Now 44x64
+     (portrait, closer to the real photo's proportions) and anchored to
+     the top of the image instead of the center, so the full look shows
+     properly instead of appearing "half cut".
+   - FIX: category label under the price is now clickable — tapping it
+     navigates to /shop?category=... (same destination the shop grid's
+     own category label already uses), so a shopper can jump straight
+     to that category from inside the video feed.
 
 VERIFIED
 --------
-Ran `tsc --noEmit` (full project type-check) after this change —
+Ran `tsc --noEmit` (full project type-check) after these changes —
 0 errors.
+
+NOTE
+----
+This only adds the tab and wires up the feed. It does NOT touch which
+products actually have videos — that's still whatever you've already
+uploaded via the admin panel's product video field. If the tab opens to
+"No product videos available", it just means no product currently has
+a video attached.
