@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import {
-  MessageSquareText,
   X,
   ChevronRight,
   ArrowLeft,
@@ -763,7 +762,7 @@ export default function LiveChatWidget() {
         aria-expanded={open}
         className="fixed bottom-40 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 sm:bottom-24"
       >
-        {open ? <X className="h-6 w-6" /> : <MessageSquareText className="h-6 w-6" />}
+        {open ? <X className="h-6 w-6" /> : <WhatsAppIcon className="h-7 w-7" />}
         {!hasOpenedOnce && (
           <span className="absolute -right-0.5 -top-0.5 flex h-3.5 w-3.5">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-secondary opacity-75" />
