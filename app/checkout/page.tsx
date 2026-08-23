@@ -80,7 +80,10 @@ import {
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
 import TrustBadges from '@/components/checkout/trust-badges';
+import StickyOrderBar from '@/components/checkout/sticky-order-bar';
 import { toast } from 'sonner';
+
+const CHECKOUT_FORM_ID = 'checkout-form';
 
 // All Indian states & union territories, for the Shipping Address "State"
 // dropdown. Pincode auto-fill (via India Post's API) sets this field to
@@ -775,6 +778,23 @@ export default function CheckoutPage() {
   // haven't set a price yet (shouldn't normally happen — see validation below).
   const payableTotal = isResale && resaleSellingPriceNum > 0 ? resaleSellingPriceNum : total;
   const resaleProfit = payableTotal - total;
+
+  // Everything the customer is saving vs. sticker price, rolled into one
+  // number for the sticky order bar up top: MRP markdown on each item, plus
+  // every discount actually applied (coupon, BOGO, gift card, loyalty
+  // points, online-payment incentive).
+  const mrpSavings = items.reduce((sum, item) => {
+    const mrp = item.product.mrp;
+    if (!mrp || mrp <= item.product.price) return sum;
+    return sum + (mrp - item.product.price) * item.quantity;
+  }, 0);
+  const totalSavings =
+    mrpSavings +
+    couponDiscount +
+    bogoDiscount +
+    clampedGiftCardDiscount +
+    loyaltyDiscount +
+    onlinePaymentDiscount;
   const resalePriceTooLow = isResale && resaleSellingPriceNum > 0 && resaleSellingPriceNum < total;
 
   const handleResaleCheckboxChange = (checked: boolean) => {
@@ -1322,9 +1342,19 @@ export default function CheckoutPage() {
           checkout page ever opens the Razorpay popup — this used to load
           on every single page load across the whole site for no reason. */}
       <NextScript src="https://checkout.razorpay.com/v1/checkout.js" strategy="afterInteractive" />
-      <h1 className="mb-6 font-serif text-3xl font-bold text-primary sm:text-4xl">
+      <h1 className="mb-4 font-serif text-3xl font-bold text-primary sm:text-4xl">
         Checkout
       </h1>
+
+      <StickyOrderBar
+        items={items}
+        payableTotal={payableTotal}
+        totalSavings={totalSavings}
+        paymentMethod={paymentMethod}
+        onlineDiscountPercent={paymentDiscount.enabled ? paymentDiscount.percent : 0}
+        placing={placing}
+        formId={CHECKOUT_FORM_ID}
+      />
 
       <Dialog open={showAddressPicker} onOpenChange={setShowAddressPicker}>
         <DialogContent className="max-h-[85vh] overflow-y-auto">
@@ -1394,7 +1424,7 @@ export default function CheckoutPage() {
         </div>
       )}
 
-      <form onSubmit={onSubmit} className="grid gap-8 lg:grid-cols-3">
+      <form id={CHECKOUT_FORM_ID} onSubmit={onSubmit} className="grid gap-8 lg:grid-cols-3">
         <div className="lg:col-span-2">
           {/* Login status — always shown, whether the saved-address summary
               or the editable guest form is what's displayed below it. */}
