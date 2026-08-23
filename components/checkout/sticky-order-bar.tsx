@@ -11,6 +11,9 @@ import type { CartItem } from '@/lib/types';
 interface StickyOrderBarProps {
   items: CartItem[];
   subtotal: number;
+  /** Sum of each item's MRP (sticker price) — shown struck-through above
+   *  Subtotal so the customer sees the markdown, not just the final total. */
+  mrpTotal: number;
   shipping: number;
   payableTotal: number;
   totalSavings: number;
@@ -34,6 +37,7 @@ interface StickyOrderBarProps {
 export default function StickyOrderBar({
   items,
   subtotal,
+  mrpTotal,
   shipping,
   payableTotal,
   totalSavings,
@@ -131,6 +135,12 @@ export default function StickyOrderBar({
           )}
 
           <div className="mt-4 flex flex-col gap-1.5 border-t border-border/60 pt-3 text-sm">
+            {mrpTotal > subtotal && (
+              <div className="flex justify-between text-muted-foreground">
+                <span>MRP Total</span>
+                <span className="line-through">{formatINR(mrpTotal)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-muted-foreground">
               <span>Subtotal</span>
               <span>{formatINR(subtotal)}</span>

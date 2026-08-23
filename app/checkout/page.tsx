@@ -793,6 +793,14 @@ export default function CheckoutPage() {
     if (!mrp || mrp <= item.product.price) return sum;
     return sum + (mrp - item.product.price) * item.quantity;
   }, 0);
+  // Sum of each item's MRP (falling back to its selling price when it has
+  // no MRP set) — the "struck-through" total shown above Subtotal in the
+  // sticky order bar, so the customer sees exactly how the sticker price
+  // came down to what they're actually paying.
+  const mrpTotal = items.reduce((sum, item) => {
+    const mrp = item.product.mrp && item.product.mrp > item.product.price ? item.product.mrp : item.product.price;
+    return sum + mrp * item.quantity;
+  }, 0);
   const totalSavings =
     mrpSavings +
     couponDiscount +
@@ -1378,6 +1386,7 @@ export default function CheckoutPage() {
       <StickyOrderBar
         items={items}
         subtotal={subtotal}
+        mrpTotal={mrpTotal}
         shipping={shipping}
         payableTotal={payableTotal}
         totalSavings={totalSavings}
