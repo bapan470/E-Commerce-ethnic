@@ -49,6 +49,7 @@ import MobileStickyCartBar from '@/components/product/mobile-sticky-cart-bar';
 import RelatedProducts from '@/components/product/related-products';
 import VendorCollection from '@/components/product/vendor-collection';
 import RecentlyViewedSection from '@/components/product/recently-viewed';
+import PromoSlider from '@/components/home/promo-slider';
 import NotifyMeForm from '@/components/product/notify-me-form';
 import LowStockBadge from '@/components/growth/low-stock-badge';
 import CouponList from '@/components/product/coupon-list';
@@ -763,6 +764,13 @@ export default function ProductDetail() {
         {bogoCollectionProducts.length > 0 && (
           <RelatedProducts current={product} allProducts={products} />
         )}
+      </div>
+
+      {/* Same Refer & Earn / trust-signal carousel shown on the home page,
+          repeated here right after "You may also like" so the loyalty/
+          referral nudge reaches shoppers deep on a product page too. */}
+      <div className="mt-8">
+        <PromoSlider />
       </div>
 
       <div id="product-reviews" className="mt-8 scroll-mt-24">
