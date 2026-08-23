@@ -15,7 +15,14 @@ interface StickyOrderBarProps {
   payableTotal: number;
   totalSavings: number;
   paymentMethod: 'online' | 'cod';
-  onlineDiscountPercent: number;
+  /** Rupee amount of the online-payment incentive (not the raw percent) —
+   *  already computed against the current subtotal, so it's ready to show
+   *  directly regardless of which payment method is currently selected. */
+  onlineDiscountAmount: number;
+  /** Every other active discount (coupon, BOGO, gift card, loyalty points),
+   *  each with its rupee amount, so the whole breakdown lives inside this
+   *  one collapsible tab instead of being scattered across the page. */
+  discountBreakdown?: { label: string; amount: number }[];
 }
 
 // Collapsible sticky bar pinned just under the site header on the checkout
@@ -31,7 +38,8 @@ export default function StickyOrderBar({
   payableTotal,
   totalSavings,
   paymentMethod,
-  onlineDiscountPercent,
+  onlineDiscountAmount,
+  discountBreakdown = [],
 }: StickyOrderBarProps) {
   const [open, setOpen] = useState(false);
 
@@ -90,6 +98,7 @@ export default function StickyOrderBar({
                     <p className="text-xs text-muted-foreground">
                       Qty: {item.quantity}
                       {item.size ? ` · Size: ${item.size}` : ''}
+                      {item.product.colors?.[0] ? ` · Color: ${item.product.colors[0]}` : ''}
                     </p>
                   </div>
                   <span className="shrink-0 text-sm font-semibold">
@@ -100,12 +109,25 @@ export default function StickyOrderBar({
             })}
           </ul>
 
-          {onlineDiscountPercent > 0 && (
-            <p className="mt-3 rounded-md bg-secondary/10 px-3 py-2 text-xs font-medium text-secondary-foreground">
-              {paymentMethod === 'online'
-                ? `${onlineDiscountPercent}% online payment discount applied`
-                : `Pay online to get an extra ${onlineDiscountPercent}% off`}
-            </p>
+          {(discountBreakdown.length > 0 || onlineDiscountAmount > 0) && (
+            <div className="mt-3 flex flex-col gap-1.5 rounded-md bg-secondary/10 px-3 py-2 text-xs">
+              {discountBreakdown.map((d) => (
+                <div key={d.label} className="flex justify-between font-medium text-secondary-foreground">
+                  <span>{d.label}</span>
+                  <span>-{formatINR(d.amount)}</span>
+                </div>
+              ))}
+              {onlineDiscountAmount > 0 && (
+                <div className="flex justify-between font-medium text-secondary-foreground">
+                  <span>
+                    {paymentMethod === 'online'
+                      ? 'Online payment discount'
+                      : `Pay online to save an extra`}
+                  </span>
+                  <span>{paymentMethod === 'online' ? '-' : ''}{formatINR(onlineDiscountAmount)}</span>
+                </div>
+              )}
+            </div>
           )}
 
           <div className="mt-4 flex flex-col gap-1.5 border-t border-border/60 pt-3 text-sm">

@@ -759,6 +759,13 @@ export default function CheckoutPage() {
     paymentMethod === 'online' && paymentDiscount.enabled && paymentDiscount.percent > 0
       ? Math.round((discountedSubtotal * paymentDiscount.percent) / 100)
       : 0;
+  // Same discount, computed regardless of which payment method is currently
+  // selected — used to show the customer the actual rupee amount (not just
+  // the percent) next to "Pay Online", even before they've picked it.
+  const potentialOnlinePaymentDiscount =
+    paymentDiscount.enabled && paymentDiscount.percent > 0
+      ? Math.round((discountedSubtotal * paymentDiscount.percent) / 100)
+      : 0;
   const subtotalAfterPaymentDiscount = Math.max(0, discountedSubtotal - onlinePaymentDiscount);
   // Prices are GST-inclusive: the tax is already baked into discountedSubtotal,
   // so we only extract it here for display/invoice purposes and do NOT add it
@@ -794,6 +801,23 @@ export default function CheckoutPage() {
     loyaltyDiscount +
     onlinePaymentDiscount;
   const resalePriceTooLow = isResale && resaleSellingPriceNum > 0 && resaleSellingPriceNum < total;
+
+  // Every individual discount that's actually active right now (coupon,
+  // BOGO, gift card, loyalty points) rolled into one list — shown, with
+  // amounts, inside the collapsible order-details tab so the customer can
+  // see exactly where the savings came from without cluttering the top banner.
+  const discountBreakdown: { label: string; amount: number }[] = [
+    ...(couponDiscount > 0
+      ? [{ label: `Coupon${appliedCoupon?.code ? ` (${appliedCoupon.code})` : ''}`, amount: couponDiscount }]
+      : []),
+    ...(bogoDiscount > 0 ? [{ label: 'BOGO offer applied', amount: bogoDiscount }] : []),
+    ...(clampedGiftCardDiscount > 0
+      ? [{ label: `Gift card${appliedGiftCard?.code ? ` (${appliedGiftCard.code})` : ''}`, amount: clampedGiftCardDiscount }]
+      : []),
+    ...(loyaltyDiscount > 0
+      ? [{ label: `Points redeemed (${pointsToRedeem})`, amount: loyaltyDiscount }]
+      : []),
+  ];
 
   const handleResaleCheckboxChange = (checked: boolean) => {
     if (checked) {
@@ -1340,9 +1364,16 @@ export default function CheckoutPage() {
           checkout page ever opens the Razorpay popup — this used to load
           on every single page load across the whole site for no reason. */}
       <NextScript src="https://checkout.razorpay.com/v1/checkout.js" strategy="afterInteractive" />
-      <h1 className="mb-4 font-serif text-3xl font-bold text-primary sm:text-4xl">
+      <h1 className="mb-2 font-serif text-3xl font-bold text-primary sm:text-4xl">
         Checkout
       </h1>
+
+      {totalSavings > 0 && (
+        <div className="mb-4 flex items-center justify-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-2.5 text-sm font-semibold text-green-700">
+          <Tag className="h-4 w-4 shrink-0" />
+          <span>You're saving {formatINR(totalSavings)} on this order</span>
+        </div>
+      )}
 
       <StickyOrderBar
         items={items}
@@ -1351,7 +1382,8 @@ export default function CheckoutPage() {
         payableTotal={payableTotal}
         totalSavings={totalSavings}
         paymentMethod={paymentMethod}
-        onlineDiscountPercent={paymentDiscount.enabled ? paymentDiscount.percent : 0}
+        onlineDiscountAmount={potentialOnlinePaymentDiscount}
+        discountBreakdown={discountBreakdown}
       />
 
       <Dialog open={showAddressPicker} onOpenChange={setShowAddressPicker}>
@@ -1411,16 +1443,6 @@ export default function CheckoutPage() {
           </div>
         </DialogContent>
       </Dialog>
-
-      {appliedCoupon && couponDiscount > 0 && (
-        <div className="mb-6 flex items-center gap-2 rounded-md border border-secondary/30 bg-secondary/10 px-4 py-3 text-sm font-medium text-secondary-foreground">
-          <Tag className="h-4 w-4 shrink-0" />
-          <span>
-            You saved {formatINR(couponDiscount)} on this order with coupon{' '}
-            <span className="font-semibold">{appliedCoupon.code}</span>!
-          </span>
-        </div>
-      )}
 
       <form onSubmit={onSubmit} className="grid gap-8 lg:grid-cols-3">
         <div className="lg:col-span-2">
@@ -1721,9 +1743,9 @@ export default function CheckoutPage() {
                   <p className="text-xs text-muted-foreground">
                     Razorpay — card, UPI, netbanking
                   </p>
-                  {paymentDiscount.enabled && paymentDiscount.percent > 0 && (
+                  {paymentDiscount.enabled && potentialOnlinePaymentDiscount > 0 && (
                     <p className="mt-0.5 text-xs font-medium text-green-700">
-                      Get {paymentDiscount.percent}% off — applied automatically
+                      Get {formatINR(potentialOnlinePaymentDiscount)} off — applied automatically
                     </p>
                   )}
                 </div>
@@ -1786,6 +1808,7 @@ export default function CheckoutPage() {
                       </p>
                       <p className="text-[11px] text-muted-foreground">
                         Size: {item.size}
+                        {item.product.colors?.[0] ? ` · Color: ${item.product.colors[0]}` : ''}
                       </p>
                       {itemBogoPromotion && (
                         <Badge className="mt-0.5 w-fit border-transparent bg-secondary text-[10px] text-secondary-foreground shadow-sm hover:bg-secondary">
@@ -2025,7 +2048,7 @@ export default function CheckoutPage() {
               )}
               {onlinePaymentDiscount > 0 && (
                 <div className="flex justify-between text-green-700">
-                  <span>Online payment discount ({paymentDiscount.percent}%)</span>
+                  <span>Online payment discount</span>
                   <span>-{formatINR(onlinePaymentDiscount)}</span>
                 </div>
               )}
