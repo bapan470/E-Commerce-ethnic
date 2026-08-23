@@ -95,10 +95,10 @@ function tierWindow(f: FulfillmentSettings, tier: Tier): { min: number; max: num
   return { min: f.delivery_other_min, max: f.delivery_other_max };
 }
 
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
 function formatDeliveryDate(date: Date): string {
-  const day = date.getDate();
-  const month = date.toLocaleDateString('en-IN', { month: 'short' });
-  return `${day} ${month}`;
+  return `${date.getDate()} ${SHORT_MONTHS[date.getMonth()]}`;
 }
 
 function addDays(date: Date, days: number): Date {
@@ -108,11 +108,10 @@ function addDays(date: Date, days: number): Date {
 }
 
 function formatCountdown(ms: number): string {
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-  return `${String(h).padStart(2, '0')}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`;
+  const totalMinutes = Math.max(0, Math.ceil(ms / 60000));
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${h}h ${String(m).padStart(2, '0')}m`;
 }
 
 function DeliveryCountdown() {
@@ -121,14 +120,17 @@ function DeliveryCountdown() {
   useEffect(() => {
     const id = setInterval(() => {
       setMsLeft(nextCutoff(new Date()).getTime() - Date.now());
-    }, 1000);
+    }, 30000);
     return () => clearInterval(id);
   }, []);
 
   return (
-    <span className="flex items-center gap-1 text-xs font-medium text-destructive">
-      <Clock className="h-3 w-3" />
-      Order in {formatCountdown(msLeft)}
+    <span
+      className="flex shrink-0 items-center gap-1 whitespace-nowrap text-[11px] font-medium text-destructive"
+      title="Order within this time to get the delivery estimate above"
+    >
+      <Clock className="h-3 w-3 shrink-0" />
+      {formatCountdown(msLeft)} left
     </span>
   );
 }
@@ -219,15 +221,13 @@ export default function PincodeChecker() {
             </button>
           </div>
 
-          <div className="flex items-center justify-between gap-3 border-t border-border/60 pt-2.5">
-            <p className="flex items-center gap-1.5 text-sm font-medium">
-              <Truck className="h-4 w-4 text-muted-foreground" />
+          <div className="flex items-center justify-between gap-2 border-t border-border/60 pt-2.5">
+            <p className="flex min-w-0 shrink items-center gap-1.5 whitespace-nowrap text-xs font-medium sm:text-sm">
+              <Truck className="h-4 w-4 shrink-0 text-muted-foreground" />
               {deliveryRange &&
                 (formatDeliveryDate(deliveryRange.minDate) === formatDeliveryDate(deliveryRange.maxDate)
-                  ? `Delivery by ${formatDeliveryDate(deliveryRange.maxDate)}`
-                  : `Delivery between ${formatDeliveryDate(deliveryRange.minDate)} – ${formatDeliveryDate(
-                      deliveryRange.maxDate
-                    )}`)}
+                  ? `By ${formatDeliveryDate(deliveryRange.maxDate)}`
+                  : `${formatDeliveryDate(deliveryRange.minDate)} – ${formatDeliveryDate(deliveryRange.maxDate)}`)}
             </p>
             <DeliveryCountdown />
           </div>
