@@ -83,8 +83,6 @@ import TrustBadges from '@/components/checkout/trust-badges';
 import StickyOrderBar from '@/components/checkout/sticky-order-bar';
 import { toast } from 'sonner';
 
-const CHECKOUT_FORM_ID = 'checkout-form';
-
 // All Indian states & union territories, for the Shipping Address "State"
 // dropdown. Pincode auto-fill (via India Post's API) sets this field to
 // whatever it returns — if that ever doesn't exactly match an entry here,
@@ -1348,12 +1346,12 @@ export default function CheckoutPage() {
 
       <StickyOrderBar
         items={items}
+        subtotal={subtotal}
+        shipping={shipping}
         payableTotal={payableTotal}
         totalSavings={totalSavings}
         paymentMethod={paymentMethod}
         onlineDiscountPercent={paymentDiscount.enabled ? paymentDiscount.percent : 0}
-        placing={placing}
-        formId={CHECKOUT_FORM_ID}
       />
 
       <Dialog open={showAddressPicker} onOpenChange={setShowAddressPicker}>
@@ -1424,7 +1422,7 @@ export default function CheckoutPage() {
         </div>
       )}
 
-      <form id={CHECKOUT_FORM_ID} onSubmit={onSubmit} className="grid gap-8 lg:grid-cols-3">
+      <form onSubmit={onSubmit} className="grid gap-8 lg:grid-cols-3">
         <div className="lg:col-span-2">
           {/* Login status — always shown, whether the saved-address summary
               or the editable guest form is what's displayed below it. */}

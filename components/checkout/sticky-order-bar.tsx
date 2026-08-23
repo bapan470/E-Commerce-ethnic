@@ -1,116 +1,132 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ShieldCheck, Loader2, ChevronRight, BadgePercent } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { toPublicMediaUrl } from '@/lib/media-url';
 import { formatINR } from '@/lib/format';
 import type { CartItem } from '@/lib/types';
 
 interface StickyOrderBarProps {
   items: CartItem[];
+  subtotal: number;
+  shipping: number;
   payableTotal: number;
   totalSavings: number;
   paymentMethod: 'online' | 'cod';
   onlineDiscountPercent: number;
-  placing: boolean;
-  formId: string;
 }
 
-// Sticky bar pinned just under the site header on the checkout page. Keeps
-// the product the customer is buying, the price, and how much they're
-// saving in view at all times — including while they're filling in the
-// address/payment form further down — so nothing about "what am I even
-// paying for" ever needs a scroll back up to check.
+// Collapsible sticky bar pinned just under the site header on the checkout
+// page. Collapsed, it's just "N item(s) — ₹total" so it never gets in the
+// way of the form below; tapping it drops down the full item-by-item
+// summary (image, title, qty, price) plus the subtotal/shipping/total
+// breakdown, so the customer can double-check what they're paying for
+// without losing their place in the form.
 export default function StickyOrderBar({
   items,
+  subtotal,
+  shipping,
   payableTotal,
   totalSavings,
   paymentMethod,
   onlineDiscountPercent,
-  placing,
-  formId,
 }: StickyOrderBarProps) {
+  const [open, setOpen] = useState(false);
+
   if (items.length === 0) return null;
 
-  const primaryItem = items[0];
-  const extraCount = items.length - 1;
-  const thumbnail =
-    toPublicMediaUrl(primaryItem.product.images?.[0]) || 'https://placehold.co/64x64?text=No+Image';
+  const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
-    <div className="sticky top-12 z-30 -mx-4 mb-6 border-b border-border/60 bg-background/95 px-4 py-2.5 shadow-sm backdrop-blur-md sm:mx-0 sm:rounded-lg sm:border sm:px-4">
-      <div className="flex items-center gap-3">
-        <Link
-          href={`/product/${primaryItem.product.slug}`}
-          className="relative h-12 w-11 shrink-0 overflow-hidden rounded-md bg-muted ring-1 ring-border/60 transition-opacity hover:opacity-80"
-          aria-label={`View ${primaryItem.product.name}`}
-        >
-          <Image
-            src={thumbnail}
-            alt={primaryItem.product.name}
-            fill
-            sizes="44px"
-            className="object-cover"
+    <div className="sticky top-12 z-30 -mx-4 mb-6 border-b border-border/60 bg-background/95 shadow-sm backdrop-blur-md sm:mx-0 sm:rounded-lg sm:border">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-3 px-4 py-2.5"
+      >
+        <span className="text-xs font-medium text-muted-foreground">
+          {itemCount} item{itemCount > 1 ? 's' : ''}
+          {totalSavings > 0 && (
+            <span className="ml-2 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold text-green-700">
+              You save {formatINR(totalSavings)}
+            </span>
+          )}
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="font-serif text-base font-bold text-primary sm:text-lg">
+            {formatINR(payableTotal)}
+          </span>
+          <ChevronDown
+            className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`}
           />
-        </Link>
+        </span>
+      </button>
 
-        <div className="min-w-0 flex-1">
-          <Link
-            href={`/product/${primaryItem.product.slug}`}
-            className="line-clamp-1 flex items-center gap-0.5 text-xs font-semibold text-foreground hover:text-primary sm:text-sm"
-          >
-            {primaryItem.product.name}
-            <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
-          </Link>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-            {extraCount > 0 && (
-              <span className="text-[11px] text-muted-foreground">
-                + {extraCount} more item{extraCount > 1 ? 's' : ''}
-              </span>
-            )}
-            {totalSavings > 0 && (
-              <span className="rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold text-green-700">
-                You save {formatINR(totalSavings)}
-              </span>
-            )}
-            {onlineDiscountPercent > 0 && (
-              <span className="hidden items-center gap-0.5 rounded-full bg-secondary/15 px-1.5 py-0.5 text-[10px] font-semibold text-secondary-foreground sm:inline-flex">
-                <BadgePercent className="h-3 w-3" />
-                {paymentMethod === 'online'
-                  ? `${onlineDiscountPercent}% off applied`
-                  : `Extra ${onlineDiscountPercent}% off on online payment`}
-              </span>
-            )}
+      {open && (
+        <div className="border-t border-border/60 px-4 pb-4 pt-3">
+          <ul className="flex flex-col gap-3">
+            {items.map((item) => {
+              const thumbnail =
+                toPublicMediaUrl(item.product.images?.[0]) || 'https://placehold.co/56x64?text=No+Image';
+              return (
+                <li key={`${item.product.id}-${item.size}`} className="flex items-center gap-3">
+                  <Link
+                    href={`/product/${item.product.slug}`}
+                    className="relative h-12 w-11 shrink-0 overflow-hidden rounded-md bg-muted ring-1 ring-border/60 transition-opacity hover:opacity-80"
+                    aria-label={`View ${item.product.name}`}
+                  >
+                    <Image src={thumbnail} alt={item.product.name} fill sizes="44px" className="object-cover" />
+                  </Link>
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      href={`/product/${item.product.slug}`}
+                      className="line-clamp-1 text-sm font-medium text-foreground hover:text-primary"
+                    >
+                      {item.product.name}
+                    </Link>
+                    <p className="text-xs text-muted-foreground">
+                      Qty: {item.quantity}
+                      {item.size ? ` · Size: ${item.size}` : ''}
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-sm font-semibold">
+                    {formatINR(item.product.price * item.quantity)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+
+          {onlineDiscountPercent > 0 && (
+            <p className="mt-3 rounded-md bg-secondary/10 px-3 py-2 text-xs font-medium text-secondary-foreground">
+              {paymentMethod === 'online'
+                ? `${onlineDiscountPercent}% online payment discount applied`
+                : `Pay online to get an extra ${onlineDiscountPercent}% off`}
+            </p>
+          )}
+
+          <div className="mt-4 flex flex-col gap-1.5 border-t border-border/60 pt-3 text-sm">
+            <div className="flex justify-between text-muted-foreground">
+              <span>Subtotal</span>
+              <span>{formatINR(subtotal)}</span>
+            </div>
+            <div className="flex justify-between text-muted-foreground">
+              <span>Shipping</span>
+              <span>{shipping > 0 ? formatINR(shipping) : 'Free'}</span>
+            </div>
           </div>
-        </div>
 
-        <div className="flex shrink-0 items-center gap-3">
-          <div className="text-right">
-            <p className="font-serif text-base font-bold text-primary sm:text-lg">
+          <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-3">
+            <span className="text-sm font-bold">To Pay</span>
+            <span className="font-serif text-base font-bold text-primary">
               {formatINR(payableTotal)}
-            </p>
-            <p className="hidden items-center gap-1 text-[10px] text-muted-foreground sm:flex">
-              <ShieldCheck className="h-3 w-3" />
-              Secure checkout
-            </p>
+            </span>
           </div>
-          <button
-            type="submit"
-            form={formId}
-            disabled={placing}
-            className="flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-primary px-3.5 text-xs font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 sm:px-4 sm:text-sm"
-          >
-            {placing ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <>
-                {paymentMethod === 'cod' ? 'Place Order' : 'Pay Now'}
-              </>
-            )}
-          </button>
         </div>
-      </div>
+      )}
     </div>
   );
 }
