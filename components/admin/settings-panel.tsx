@@ -46,6 +46,9 @@ import {
   CatalogVideoSettings,
   fetchCatalogVideoSettings,
   saveCatalogVideoSettings,
+  CatalogListingSettings,
+  fetchCatalogListingSettings,
+  saveCatalogListingSettings,
 } from '@/lib/settings-api';
 import type { BackfillProgress } from '@/lib/media-backfill';
 import { uploadProductImage } from '@/lib/products-api';
@@ -117,6 +120,8 @@ export default function SettingsPanel() {
   const [savingPaymentDiscount, setSavingPaymentDiscount] = useState(false);
   const [catalogVideoForm, setCatalogVideoForm] = useState<CatalogVideoSettings | null>(null);
   const [savingCatalogVideo, setSavingCatalogVideo] = useState(false);
+  const [catalogListingForm, setCatalogListingForm] = useState<CatalogListingSettings | null>(null);
+  const [savingCatalogListing, setSavingCatalogListing] = useState(false);
   const [refundAutomationForm, setRefundAutomationForm] = useState<RefundAutomationSettings | null>(null);
   const [savingRefundAutomation, setSavingRefundAutomation] = useState(false);
   const [mediaDeliveryForm, setMediaDeliveryForm] = useState<MediaDeliverySettings | null>(null);
@@ -180,6 +185,10 @@ export default function SettingsPanel() {
     fetchCatalogVideoSettings()
       .then(setCatalogVideoForm)
       .catch(() => toast.error('Failed to load catalog video settings'));
+
+    fetchCatalogListingSettings()
+      .then(setCatalogListingForm)
+      .catch(() => toast.error('Failed to load catalog listing settings'));
 
     fetchRefundAutomationSettings()
       .then(setRefundAutomationForm)
@@ -362,6 +371,20 @@ export default function SettingsPanel() {
       setCatalogVideoForm(catalogVideoForm);
     } finally {
       setSavingCatalogVideo(false);
+    }
+  };
+
+  const onSubmitCatalogListing = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!catalogListingForm) return;
+    setSavingCatalogListing(true);
+    try {
+      await saveCatalogListingSettings(catalogListingForm);
+      toast.success('Catalog listing size saved');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSavingCatalogListing(false);
     }
   };
 
@@ -1360,6 +1383,75 @@ export default function SettingsPanel() {
             onCheckedChange={onToggleCatalogVideoDefault}
           />
         </div>
+      )}
+
+      <div className="mt-8">
+        <h2 className="font-serif text-2xl font-bold text-primary">Catalog Listing Size</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Controls how many product cards load on /shop and category pages, and how many colour
+          cards one multi-colour product is allowed to show as separate cards in those grids.
+          Lower these if pages feel slow to open — fewer cards means fewer images to load.
+        </p>
+      </div>
+
+      {!catalogListingForm ? (
+        <p className="py-4 text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <form
+          onSubmit={onSubmitCatalogListing}
+          className="mt-4 max-w-xl space-y-4 rounded-lg border border-border/60 bg-card p-5"
+        >
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="catalog-page-size">Products per page</Label>
+            <p className="text-xs text-muted-foreground">
+              How many cards show at first, and how many more load each time a shopper taps
+              &quot;Load more&quot;. Lower = faster first load, more clicks to see everything.
+            </p>
+            <Input
+              id="catalog-page-size"
+              type="number"
+              min={4}
+              max={100}
+              value={catalogListingForm.page_size}
+              onChange={(e) =>
+                setCatalogListingForm((f) =>
+                  f && { ...f, page_size: Math.max(4, Math.min(100, Number(e.target.value) || 0)) }
+                )
+              }
+              className="w-32"
+            />
+          </div>
+
+          <div className="flex flex-col gap-2 border-t border-border/60 pt-4">
+            <Label htmlFor="catalog-max-variant-cards">Max colour cards per product</Label>
+            <p className="text-xs text-muted-foreground">
+              A product with 7 colours normally shows 7 separate cards in the grid. Cap that
+              here — e.g. 4 shows only its first 4 colours as cards. Set to 0 to turn this off
+              entirely and show just one card per product, like before.
+            </p>
+            <Input
+              id="catalog-max-variant-cards"
+              type="number"
+              min={0}
+              max={20}
+              value={catalogListingForm.max_variant_cards_per_product}
+              onChange={(e) =>
+                setCatalogListingForm((f) =>
+                  f && {
+                    ...f,
+                    max_variant_cards_per_product: Math.max(0, Math.min(20, Number(e.target.value) || 0)),
+                  }
+                )
+              }
+              className="w-32"
+            />
+          </div>
+
+          <Button type="submit" disabled={savingCatalogListing} className="mt-2 w-fit bg-primary">
+            <Save className="mr-1.5 h-4 w-4" />{' '}
+            {savingCatalogListing ? 'Saving…' : 'Save Catalog Listing Size'}
+          </Button>
+        </form>
       )}
 
       <div className="mt-8">

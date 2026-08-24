@@ -24,7 +24,11 @@ import { getVariantDisplayName } from './variant-display-name';
  * just its own photo, no redundant dots for colours already shown as
  * separate cards.
  */
-export function expandProductVariants(products: Product[]): Product[] {
+export function expandProductVariants(products: Product[], maxPerProduct?: number): Product[] {
+  // 0 (or anything falsy but explicitly set) means "off" -- one card per
+  // product, same as before this feature existed. Undefined means no
+  // caller-supplied limit, i.e. unlimited.
+  if (maxPerProduct === 0) return products;
   const expanded: Product[] = [];
   for (const product of products) {
     const baseColor = (product.colors?.[0] ?? '').trim();
@@ -35,11 +39,14 @@ export function expandProductVariants(products: Product[]): Product[] {
     }
     // The base colour's own card, unchanged — same as today.
     expanded.push(product);
+    let cardCount = 1;
     const seen = new Set([baseColor.toLowerCase()]);
     for (const v of variants) {
+      if (maxPerProduct && cardCount >= maxPerProduct) break;
       const key = v.color.trim().toLowerCase();
       if (!key || seen.has(key)) continue; // skip the base colour re-added as a variant row
       seen.add(key);
+      cardCount += 1;
       expanded.push({
         ...product,
         slug: v.slug,

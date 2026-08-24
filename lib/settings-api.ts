@@ -817,6 +817,49 @@ export async function saveCatalogVideoSettings(settings: CatalogVideoSettings) {
 }
 
 // ---------------------------------------------------------------------
+// Catalog listing size (Admin > Settings) — controls how many product
+// cards load per page/batch on /shop and category pages, and how many
+// colour cards a single multi-colour product is allowed to explode into
+// in those grids (see lib/expand-product-variants.ts). Both exist purely
+// to keep first-load speed in check: showing every colour of every
+// product as its own card can multiply the grid's card count several
+// times over, so admins who see load times creeping up can pull either
+// number down without a code change.
+// ---------------------------------------------------------------------
+export interface CatalogListingSettings {
+  /** Cards shown initially and added per "Load more" click on /shop and
+   *  category pages. */
+  page_size: number;
+  /** Ceiling on how many colour cards one product can contribute to a
+   *  listing grid — e.g. 4 means a product with 7 colours only shows its
+   *  first 4 as separate cards. 0 disables the explode-into-cards
+   *  behaviour entirely, showing one card per product like before. */
+  max_variant_cards_per_product: number;
+}
+
+export const DEFAULT_CATALOG_LISTING_SETTINGS: CatalogListingSettings = {
+  page_size: 24,
+  max_variant_cards_per_product: 4,
+};
+
+export async function fetchCatalogListingSettings(): Promise<CatalogListingSettings> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'catalog_listing_size')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_CATALOG_LISTING_SETTINGS;
+  return { ...DEFAULT_CATALOG_LISTING_SETTINGS, ...(data.value as Partial<CatalogListingSettings>) };
+}
+
+export async function saveCatalogListingSettings(settings: CatalogListingSettings) {
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ key: 'catalog_listing_size', value: settings }, { onConflict: 'key' });
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------
 // Media Storage Backend — controls which backend the /media/ proxy tries
 // FIRST when serving files (Supabase or R2). Both backends always receive
 // new uploads (dual-write), so this toggle only affects serve order, not

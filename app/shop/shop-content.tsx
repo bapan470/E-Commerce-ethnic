@@ -37,7 +37,7 @@ import { trackEvent } from '@/lib/track-api';
 import { fireGtagEvent } from '@/lib/gtag-track';
 import { blurDataURL } from '@/lib/utils';
 import QuickNavIcons from '@/components/quick-nav-icons';
-import { fetchCatalogVideoSettings } from '@/lib/settings-api';
+import { fetchCatalogVideoSettings, fetchCatalogListingSettings, DEFAULT_CATALOG_LISTING_SETTINGS } from '@/lib/settings-api';
 
 const CATALOG_VIDEO_PREF_KEY = 'aruhi-catalog-video-enabled';
 
@@ -282,6 +282,23 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
     selectedOccasions.length +
     (priceRange[0] > 0 || priceRange[1] < 35000 ? 1 : 0);
 
+  // Admin > Settings > Catalog Listing Size -- how many cards load per
+  // page/batch, and how many colour cards one product may contribute to
+  // this grid (see lib/expand-product-variants.ts). Falls back to this
+  // page's original defaults if the setting hasn't been saved yet.
+  const [listingSettings, setListingSettings] = useState(DEFAULT_CATALOG_LISTING_SETTINGS);
+  useEffect(() => {
+    let cancelled = false;
+    fetchCatalogListingSettings()
+      .then((s) => {
+        if (!cancelled) setListingSettings(s);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Progressive reveal instead of rendering every matching product (and
   // therefore every product's images) at once -- a 71-product catalog was
   // shipping 200+ image requests and 15MB+ on first paint. Starts at
@@ -289,11 +306,11 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
   // PAGE_SIZE whenever the actual result set changes (new filter/sort/
   // search) so a narrowed search doesn't stay scrolled deep into a stale
   // count from the previous broader list.
-  const PAGE_SIZE = 24;
+  const PAGE_SIZE = listingSettings.page_size;
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [selectedCats, selectedSizes, selectedColors, selectedFabrics, selectedOccasions, priceRange, query, sort, imageSearchIds]);
+  }, [selectedCats, selectedSizes, selectedColors, selectedFabrics, selectedOccasions, priceRange, query, sort, imageSearchIds, PAGE_SIZE]);
   const visibleProducts = filtered.slice(0, visibleCount);
   const hasMore = visibleCount < filtered.length;
 
@@ -813,7 +830,7 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
                 {(isSearchPage || imageSearchIds
                   ? visibleProducts
-                  : expandProductVariants(visibleProducts)
+                  : expandProductVariants(visibleProducts, listingSettings.max_variant_cards_per_product)
                 ).map((p: Product, idx: number) => {
                   const q = query.trim();
                   // Use productMatchesQuery to get the exact matched variant (same logic as search suggestions)

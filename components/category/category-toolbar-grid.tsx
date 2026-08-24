@@ -10,7 +10,7 @@ import QuickNavIcons from '@/components/quick-nav-icons';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { fetchCatalogVideoSettings } from '@/lib/settings-api';
+import { fetchCatalogVideoSettings, fetchCatalogListingSettings, DEFAULT_CATALOG_LISTING_SETTINGS } from '@/lib/settings-api';
 import {
   Select,
   SelectContent,
@@ -96,15 +96,34 @@ export default function CategoryToolbarGrid({ products, categoryName }: Category
     return list;
   }, [products, sort]);
 
+  // Admin > Settings > Catalog Listing Size -- how many cards load per
+  // page/batch, and how many colour cards one product may contribute to
+  // this grid (see lib/expand-product-variants.ts). Falls back to the
+  // same defaults this page always used if the setting hasn't been
+  // saved yet or fails to load, so nothing breaks/blanks while it's
+  // still fetching.
+  const [listingSettings, setListingSettings] = useState(DEFAULT_CATALOG_LISTING_SETTINGS);
+  useEffect(() => {
+    let cancelled = false;
+    fetchCatalogListingSettings()
+      .then((s) => {
+        if (!cancelled) setListingSettings(s);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Same progressive reveal as /shop (see app/shop/shop-content.tsx for
   // the fuller rationale) -- a category page renders this same product
   // grid, so it needs the same guard against shipping every product's
   // images on first paint.
-  const PAGE_SIZE = 24;
+  const PAGE_SIZE = listingSettings.page_size;
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [sort]);
+  }, [sort, PAGE_SIZE]);
   const visibleProducts = sorted.slice(0, visibleCount);
   const hasMore = visibleCount < sorted.length;
 
@@ -170,7 +189,7 @@ export default function CategoryToolbarGrid({ products, categoryName }: Category
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-        {expandProductVariants(visibleProducts).map((p, i) => (
+        {expandProductVariants(visibleProducts, listingSettings.max_variant_cards_per_product).map((p, i) => (
           <ProductCard key={`${p.id}-${p.slug}`} product={p} priority={i < 4} disableAutoplayVideo={!videoEnabled} />
         ))}
       </div>
