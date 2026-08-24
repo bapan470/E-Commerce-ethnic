@@ -1,177 +1,220 @@
-# Implementation Guide: Show Top Products Based on Clicks/Views
+# 🎯 Product Views Tracking System - Implementation Guide
 
-## Overview
-This implementation makes products with the most clicks, views, and purchases appear at the top of shop and category pages - just like Google Ads shows top-performing ads first.
+## ✅ What This System Does
 
-## Files to Replace/Update
+- ✨ **Tracks product views** automatically when users view products
+- 📊 **Sorts products by popularity** (most viewed first)
+- 📈 **Admin dashboard** to see analytics and metrics
+- 🔗 **Click tracking** from Google Ads and other sources
+- 💾 **Persistent logging** of all views for detailed analytics
 
-### 1. **lib/popularity-rank-server.ts** ✓ (REPLACE)
-The core ranking engine. This file:
-- Fetches activity events from Supabase (purchases, views, cart adds, clicks)
-- Calculates weighted scores for each product
-- Applies time decay (recent events matter more)
-- Returns products ranked by engagement
+---
 
-**Key Features:**
-- Purchase: 100 points (highest value)
-- Checkout Start: 30 points
-- Add to Cart: 10 points  
-- Product Click: 2 points
-- Wishlist Add: 5 points
-- Product View: 1 point
+## 📁 Files Included
 
-- Recent events (0-7 days): Full weight
-- Medium term (7-30 days): 70% weight
-- Older (30-90 days): 30% weight
+| File | Path | Purpose |
+|------|------|---------|
+| `add_product_views_tracking.sql` | `supabase/migrations/` | Database schema update |
+| `route-track-view.ts` | `app/api/track-view/route.ts` | API for tracking views |
+| `route-products-popular.ts` | `app/api/products/popular/route.ts` | API for fetching popular products |
+| `lib-track-views.ts` | `lib/track-views.ts` | Tracking utilities |
+| `hooks-useProductTracking.ts` | `hooks/useProductTracking.ts` | React hook for tracking |
+| `product-card-updated.tsx` | `components/product-card.tsx` | Updated product card component |
+| `shop-content-updated.tsx` | `app/shop/shop-content.tsx` | Updated shop page with sorting |
+| `admin-analytics-page.tsx` | `app/admin/analytics/page.tsx` | Admin dashboard |
 
-### 2. **app/shop/shop-content.tsx** (UPDATE - line 48-52)
-Already has `initialSort = 'popularity'` as default ✓
+---
 
-**Optional enhancement:** Add trending badge to quick filters:
+## 🚀 Step-by-Step Implementation
+
+### Step 1: Update Database Schema
+```bash
+# Run the migration in Supabase
+# Option A: Using Supabase CLI
+supabase migration up
+
+# Option B: Manually in Supabase Studio
+# Go to SQL Editor → Copy content from add_product_views_tracking.sql → Run
+```
+
+### Step 2: Create/Update API Routes
+
+1. **Create** `app/api/track-view/route.ts`
+   - Copy content from `route-track-view.ts`
+
+2. **Create** `app/api/products/popular/route.ts`
+   - Copy content from `route-products-popular.ts`
+
+### Step 3: Update Utilities
+
+1. **Create/Update** `lib/track-views.ts`
+   - Copy content from `lib-track-views.ts`
+
+2. **Create/Update** `hooks/useProductTracking.ts`
+   - Copy content from `hooks-useProductTracking.ts`
+
+### Step 4: Update Components
+
+1. **Update** `components/product-card.tsx`
+   - Replace with content from `product-card-updated.tsx`
+   - This adds click tracking to every product
+
+2. **Update** `app/shop/shop-content.tsx`
+   - Replace with content from `shop-content-updated.tsx`
+   - This adds "Popularity" sorting button
+
+### Step 5: Create Admin Dashboard
+
+1. **Create folder** `app/admin/analytics/`
+2. **Create** `app/admin/analytics/page.tsx`
+   - Copy content from `admin-analytics-page.tsx`
+
+### Step 6: Environment Variables
+
+Make sure you have these in `.env.local`:
+```
+NEXT_PUBLIC_SUPABASE_URL=your_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_key
+SUPABASE_SERVICE_KEY=your_service_key
+```
+
+---
+
+## 🎮 How It Works
+
+### When User Clicks a Product:
+```
+1. Product Card renders → useProductTracking hook initializes
+2. User clicks product → handleProductClick() called
+3. trackProductView() sends POST to /api/track-view
+4. API increments views count in database
+5. View logged to product_views_log table
+6. Product sorted to top (by views)
+```
+
+### Shop Page Sorting:
+```
+1. Click "Popularity" button
+2. Shop page queries database ORDER BY views DESC
+3. Most viewed products appear first
+4. Google Ads clicks automatically increase views
+```
+
+### Admin Dashboard:
+```
+1. Visit /admin/analytics
+2. See top products by views/clicks
+3. View charts and conversion rates
+4. All data updates in real-time
+```
+
+---
+
+## 🔧 Customization
+
+### Change Sort Order
+In `shop-content-updated.tsx`, modify the switch statement:
 ```typescript
-// Add this to QUICK_FILTERS
-{ key: 'popularity', label: 'Trending Now', icon: Flame }
-```
-
-### 3. **components/category/category-toolbar-grid.tsx** (VERIFY - already correct)
-Already defaults to popularity sort ✓
-Already fetches popularity updates every 10 minutes ✓
-
-### 4. **components/trending-badge.tsx** ⭐ (NEW - RECOMMENDED)
-Add visual "TRENDING" badges to top 10 products
-- Shows on product cards
-- Animates with pulse effect
-- Highlights best performers to customers
-
-## How It Works
-
-### Data Flow:
-1. **User Action** (view, click, purchase) → Tracked in `activity_events` table
-2. **Supabase Trigger** → Records event with timestamp and product_id
-3. **Server-side Fetch** → `fetchPopularityRankServer()` calculates rankings
-4. **Products Sorted** → Listed by popularity score on /shop and /category pages
-5. **Client Display** → Users see best-selling products first
-
-### Activity Events Tracked:
-- `product_view` - User viewed a product
-- `product_click` - User clicked on product link
-- `add_to_cart` - User added to shopping cart
-- `checkout_start` - User initiated checkout
-- `purchase` - User completed purchase
-- `wishlist_add` - User saved product
-
-## Database Schema Required
-
-Make sure your Supabase has an `activity_events` table with:
-```sql
-CREATE TABLE activity_events (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  product_id TEXT NOT NULL,
-  event_type TEXT NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW(),
-  user_id UUID,
-  INDEX (product_id),
-  INDEX (created_at),
-  INDEX (event_type)
-);
-```
-
-## API Endpoints Used
-
-### `/api/products/popularity` (GET)
-**Returns:**
-```json
-{
-  "ranked": ["product-id-1", "product-id-2", "product-id-3", ...]
-}
-```
-Used by category pages to refresh popularity rankings every 10 minutes.
-
-## Testing the Implementation
-
-### Test 1: Verify Popularity Sorting
-1. Go to `/shop` - products should be sorted by engagement
-2. Go to `/category/sarees` - products should be sorted by engagement
-3. Sort dropdown should show "Popularity" as first option
-
-### Test 2: Check Trending Badges
-1. Add the `trending-badge.tsx` component
-2. Products in top 10 by popularity should show "TRENDING" badge
-3. Badge should be animated
-
-### Test 3: Verify Data Collection
-1. Make sure clicks/views are being tracked in `activity_events` table
-2. Check Supabase dashboard → activity_events table
-3. Should see entries for product views, clicks, purchases
-
-## Performance Considerations
-
-1. **Server-side Ranking**: Computed once per request, cached for 60 seconds
-2. **Client Refresh**: Category pages refresh every 10 minutes (configurable)
-3. **Time Decay**: Automatically reduces weight of old events
-4. **Indexed Queries**: Fast lookups on product_id and created_at
-
-## Configuration
-
-### Adjust Weights (in popularity-rank-server.ts)
-```typescript
-const WEIGHTS: Record<string, number> = {
-  purchase: 100,        // ← Increase to prioritize sales more
-  checkout_start: 30,
-  add_to_cart: 10,
-  product_view: 1,      // ← Increase to value views more
-  product_click: 2,
-  wishlist_add: 5,
-};
-```
-
-### Adjust Time Windows (in popularity-rank-server.ts)
-```typescript
-const WEIGHT_DECAY = {
-  recent_days: 7,       // ← Extend for longer recent period
-  medium_days: 30,
-  older_days: 90,
-};
-```
-
-### Trending Badge Threshold (in trending-badge.tsx or shop-content.tsx)
-```typescript
-// Show trending badge for top N products (currently 10)
-if (rankIndex !== undefined && rankIndex < 10) {
-  // Show badge
+switch (sortBy) {
+  case 'popular':
+    query = query.order('views', { ascending: false }); // HIGH to LOW
+    break;
 }
 ```
 
-## Troubleshooting
+### Add More Metrics
+In `admin-analytics-page.tsx`, add new charts:
+```typescript
+// Example: Add revenue chart
+const revenueData = topProducts.map(p => ({
+  name: p.name,
+  revenue: p.price * p.clicks
+}));
+```
 
-### Products not sorting by popularity
-- Check that `activity_events` table has recent entries
-- Verify tracking is working with `trackEvent()` calls
-- Clear browser cache and hard refresh
+### Track Custom Events
+Use the tracking hook anywhere:
+```typescript
+import { useProductTracking } from '@/hooks/useProductTracking';
 
-### Empty popularity ranking
-- Make sure Supabase connection is working
-- Check that products exist and have activity
-- Look at server logs for query errors
+export default function MyComponent() {
+  const { trackView } = useProductTracking();
 
-### Badges not showing
-- Make sure trending-badge component is imported
-- Check CSS classes are in Tailwind config
-- Verify rankIndex is being passed correctly
+  const handleCustomAction = async () => {
+    await trackView(productId, 'custom-event');
+  };
+}
+```
 
-## Next Steps
+---
 
-1. ✓ Copy `popularity-rank-server.ts` to `lib/`
-2. ✓ Copy `trending-badge.tsx` to `components/` (optional)
-3. ✓ Update shop-content.tsx QUICK_FILTERS (optional)
-4. ✓ Test sorting on /shop and /category pages
-5. ✓ Monitor activity_events table for tracking data
-6. ✓ Adjust weights based on business goals
+## 📊 Database Schema
 
-## Support
+### New Columns in `products` table:
+- `views` (INTEGER) - Total views count
+- `clicks` (INTEGER) - Total clicks count
+- `last_viewed_at` (TIMESTAMP) - Last view timestamp
 
-For issues or questions:
-- Check Supabase activity_events table for data
-- Verify server logs for errors
-- Test with different products
-- Review popularity-rank-server.ts for scoring logic
+### New Table `product_views_log`:
+| Column | Type | Purpose |
+|--------|------|---------|
+| id | UUID | Primary key |
+| product_id | UUID | Product reference |
+| user_id | UUID | User reference (optional) |
+| viewed_at | TIMESTAMP | When viewed |
+| referrer | TEXT | Page referrer |
+| source | TEXT | Click source (google-ads, direct, etc) |
+
+---
+
+## ✨ Features
+
+- ✅ **Real-time tracking** - Updates instantly
+- ✅ **No API key needed** - Uses Supabase anon key
+- ✅ **Automatic sorting** - Popularity button ready
+- ✅ **Admin dashboard** - Full analytics view
+- ✅ **Google Ads compatible** - Tracks ads clicks
+- ✅ **Detailed logging** - Each view is logged
+- ✅ **Performance optimized** - Indexed queries
+
+---
+
+## 🐛 Troubleshooting
+
+### Views not incrementing?
+1. Check `/api/track-view` is working (check Network tab in DevTools)
+2. Verify Supabase connection and credentials
+3. Check database has `views` column
+
+### Sorting not working?
+1. Make sure `views` column exists in products table
+2. Check `order()` query syntax is correct
+3. Verify data is being sent to database
+
+### Admin dashboard empty?
+1. Ensure there are products with views > 0
+2. Check Supabase connection
+3. Verify RLS policies allow reading products
+
+---
+
+## 📞 Support
+
+If you face any issues:
+1. Check browser console for errors
+2. Check Supabase logs for API errors
+3. Verify all files are created in correct paths
+4. Make sure imports are correct
+
+---
+
+## 🚀 Next Steps
+
+1. ✅ Implement the files above
+2. ✅ Test with local `npm run dev`
+3. ✅ Push to GitHub
+4. ✅ Vercel will auto-deploy
+5. ✅ Check admin dashboard: `/admin/analytics`
+6. ✅ Watch products get sorted by popularity!
+
+**Happy tracking! 📊🎉**
