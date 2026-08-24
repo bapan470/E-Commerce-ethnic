@@ -1,5 +1,5 @@
 diff --git a/app/checkout/page.tsx b/app/checkout/page.tsx
-index ccc85bb..57faa4e 100644
+index ccc85bb..ab71109 100644
 --- a/app/checkout/page.tsx
 +++ b/app/checkout/page.tsx
 @@ -6,7 +6,7 @@ import Image from 'next/image';
@@ -11,7 +11,7 @@ index ccc85bb..57faa4e 100644
  import {
    useCart,
    usePaymentDiscount,
-@@ -1394,6 +1394,82 @@ export default function CheckoutPage() {
+@@ -1394,6 +1394,92 @@ export default function CheckoutPage() {
          </div>
        )}
  
@@ -70,11 +70,21 @@ index ccc85bb..57faa4e 100644
 +                        : formatINR(availableCoupons[0].discount_value)}{' '}
 +                      with &quot;{availableCoupons[0].code}&quot;
 +                    </p>
-+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
-+                      {availableCoupons[0].min_order_value > 0
-+                        ? `On orders above ${formatINR(availableCoupons[0].min_order_value)}`
-+                        : 'No minimum order value'}
-+                    </p>
++                    {availableCoupons.length > 1 ? (
++                      <button
++                        type="button"
++                        onClick={() => setShowAllCoupons((v) => !v)}
++                        className="mt-0.5 flex items-center gap-0.5 text-xs font-medium text-secondary hover:underline"
++                      >
++                        View all coupons <ChevronRight className="h-3 w-3" />
++                      </button>
++                    ) : (
++                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
++                        {availableCoupons[0].min_order_value > 0
++                          ? `On orders above ${formatINR(availableCoupons[0].min_order_value)}`
++                          : 'No minimum order value'}
++                      </p>
++                    )}
 +                  </div>
 +                </div>
 +                <button

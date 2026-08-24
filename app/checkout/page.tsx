@@ -1449,11 +1449,21 @@ export default function CheckoutPage() {
                         : formatINR(availableCoupons[0].discount_value)}{' '}
                       with &quot;{availableCoupons[0].code}&quot;
                     </p>
-                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                      {availableCoupons[0].min_order_value > 0
-                        ? `On orders above ${formatINR(availableCoupons[0].min_order_value)}`
-                        : 'No minimum order value'}
-                    </p>
+                    {availableCoupons.length > 1 ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllCoupons((v) => !v)}
+                        className="mt-0.5 flex items-center gap-0.5 text-xs font-medium text-secondary hover:underline"
+                      >
+                        View all coupons <ChevronRight className="h-3 w-3" />
+                      </button>
+                    ) : (
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {availableCoupons[0].min_order_value > 0
+                          ? `On orders above ${formatINR(availableCoupons[0].min_order_value)}`
+                          : 'No minimum order value'}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <button
