@@ -43,7 +43,7 @@ const CATALOG_VIDEO_PREF_KEY = 'aruhi-catalog-video-enabled';
 
 const ALL_SIZES = [...STANDARD_SIZES];
 
-type SortKey = 'featured' | 'price-asc' | 'price-desc' | 'rating' | 'newest' | 'price-drop' | 'most-gifted';
+type SortKey = 'featured' | 'price-asc' | 'price-desc' | 'rating' | 'newest' | 'price-drop' | 'most-gifted' | 'popularity';
 
 const QUICK_FILTERS: { key: SortKey; label: string; icon: typeof TrendingDown }[] = [
   { key: 'price-drop', label: 'Price Drop', icon: TrendingDown },
@@ -98,6 +98,18 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
   const [query, setQuery] = useState(initialQuery);
   const [sort, setSort] = useState<SortKey>(initialSort);
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Popularity rank — fetched once and used when sort === 'popularity'.
+  // Maps product id -> rank index (0 = most popular). Empty map = not yet
+  // loaded or fetch failed; falls back to featured order in that case.
+  const [popularityRank, setPopularityRank] = useState<Map<string, number>>(new Map());
+  useEffect(() => {
+    fetch('/api/products/popularity')
+      .then((r) => r.json())
+      .then(({ ranked }: { ranked: string[] }) => {
+        setPopularityRank(new Map(ranked.map((id: string, i: number) => [id, i])));
+      })
+      .catch(() => {});
+  }, []);
 
   // Shopper-facing "Video" toggle (next to Filters/Sort) — lets them turn
   // the autoplaying catalog video previews on/off for their own browsing.
@@ -268,11 +280,20 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
       case 'most-gifted':
         list.sort((a, b) => b.reviews - a.reviews);
         break;
+      case 'popularity':
+        list.sort((a, b) => {
+          const ra = popularityRank.has(a.id) ? popularityRank.get(a.id)! : Infinity;
+          const rb = popularityRank.has(b.id) ? popularityRank.get(b.id)! : Infinity;
+          if (ra !== rb) return ra - rb;
+          // Tie-break: featured products first, then by rating
+          return Number(!!b.featured) - Number(!!a.featured) || b.rating - a.rating;
+        });
+        break;
       default:
         list.sort((a, b) => Number(!!b.featured) - Number(!!a.featured));
     }
     return list;
-  }, [products, selectedCats, selectedSizes, selectedColors, selectedFabrics, selectedOccasions, priceRange, query, sort, imageSearchIds]);
+  }, [products, selectedCats, selectedSizes, selectedColors, selectedFabrics, selectedOccasions, priceRange, query, sort, imageSearchIds, popularityRank]);
 
   const activeCount =
     selectedCats.length +
@@ -777,11 +798,12 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
                 Sort by
               </Label>
               <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
-                <SelectTrigger className="w-44">
+                <SelectTrigger className="w-36 sm:w-44">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="featured">Featured</SelectItem>
+                  <SelectItem value="popularity">Popularity</SelectItem>
                   <SelectItem value="price-asc">Price: Low to High</SelectItem>
                   <SelectItem value="price-desc">Price: High to Low</SelectItem>
                   <SelectItem value="rating">Top Rated</SelectItem>

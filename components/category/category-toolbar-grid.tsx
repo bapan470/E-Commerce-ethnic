@@ -21,7 +21,7 @@ import {
 
 const CATALOG_VIDEO_PREF_KEY = 'aruhi-catalog-video-enabled';
 
-type SortKey = 'featured' | 'price-asc' | 'price-desc' | 'rating' | 'newest';
+type SortKey = 'featured' | 'price-asc' | 'price-desc' | 'rating' | 'newest' | 'popularity';
 
 interface CategoryToolbarGridProps {
   products: Product[];
@@ -43,6 +43,15 @@ interface CategoryToolbarGridProps {
  */
 export default function CategoryToolbarGrid({ products, categoryName }: CategoryToolbarGridProps) {
   const [sort, setSort] = useState<SortKey>('featured');
+  const [popularityRank, setPopularityRank] = useState<Map<string, number>>(new Map());
+  useEffect(() => {
+    fetch('/api/products/popularity')
+      .then((r) => r.json())
+      .then(({ ranked }: { ranked: string[] }) => {
+        setPopularityRank(new Map(ranked.map((id: string, i: number) => [id, i])));
+      })
+      .catch(() => {});
+  }, []);
 
   // Same shopper-facing "Video" toggle as /shop (see app/shop/shop-content.tsx
   // for the fuller rationale) -- shares the same localStorage key so a
@@ -90,11 +99,19 @@ export default function CategoryToolbarGrid({ products, categoryName }: Category
       case 'newest':
         list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
         break;
+      case 'popularity':
+        list.sort((a, b) => {
+          const ra = popularityRank.has(a.id) ? popularityRank.get(a.id)! : Infinity;
+          const rb = popularityRank.has(b.id) ? popularityRank.get(b.id)! : Infinity;
+          if (ra !== rb) return ra - rb;
+          return Number(!!b.featured) - Number(!!a.featured) || b.rating - a.rating;
+        });
+        break;
       default:
         list.sort((a, b) => Number(!!b.featured) - Number(!!a.featured));
     }
     return list;
-  }, [products, sort]);
+  }, [products, sort, popularityRank]);
 
   // Admin > Settings > Catalog Listing Size -- how many cards load per
   // page/batch, and how many colour cards one product may contribute to
@@ -174,11 +191,12 @@ export default function CategoryToolbarGrid({ products, categoryName }: Category
           </div>
           <Label className="hidden text-sm text-muted-foreground sm:inline">Sort by</Label>
           <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
-            <SelectTrigger className="w-44">
+            <SelectTrigger className="w-36 sm:w-44">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="featured">Featured</SelectItem>
+              <SelectItem value="popularity">Popularity</SelectItem>
               <SelectItem value="price-asc">Price: Low to High</SelectItem>
               <SelectItem value="price-desc">Price: High to Low</SelectItem>
               <SelectItem value="rating">Top Rated</SelectItem>
