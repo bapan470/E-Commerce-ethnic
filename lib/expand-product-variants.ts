@@ -1,6 +1,12 @@
 import { Product } from './types';
 import { getVariantDisplayName } from './variant-display-name';
 
+/** An exploded card carries this extra marker (not part of the `Product`
+ *  shape itself) so callers can tell it apart from the base "shows every
+ *  colour as a swatch dot" card — e.g. to only autoplay the catalog video
+ *  on that one base card instead of on every near-duplicate colour card. */
+export type ExpandedProduct = Product & { isVariantCard?: boolean };
+
 /**
  * Expands each product into one card per colour it comes in — its own
  * base colour, plus every `product_variants` row — instead of folding
@@ -24,12 +30,12 @@ import { getVariantDisplayName } from './variant-display-name';
  * just its own photo, no redundant dots for colours already shown as
  * separate cards.
  */
-export function expandProductVariants(products: Product[], maxPerProduct?: number): Product[] {
+export function expandProductVariants(products: Product[], maxPerProduct?: number): ExpandedProduct[] {
   // 0 (or anything falsy but explicitly set) means "off" -- one card per
   // product, same as before this feature existed. Undefined means no
   // caller-supplied limit, i.e. unlimited.
   if (maxPerProduct === 0) return products;
-  const expanded: Product[] = [];
+  const expanded: ExpandedProduct[] = [];
   for (const product of products) {
     const baseColor = (product.colors?.[0] ?? '').trim();
     const variants = product.variant_list ?? [];
@@ -37,7 +43,8 @@ export function expandProductVariants(products: Product[], maxPerProduct?: numbe
       expanded.push(product);
       continue;
     }
-    // The base colour's own card, unchanged — same as today.
+    // The base colour's own card, unchanged — same as today. This is the
+    // one card that still shows every colour as a swatch dot.
     expanded.push(product);
     let cardCount = 1;
     const seen = new Set([baseColor.toLowerCase()]);
@@ -58,6 +65,7 @@ export function expandProductVariants(products: Product[], maxPerProduct?: numbe
         default_variant_image: undefined,
         default_variant_color: undefined,
         variant_list: [],
+        isVariantCard: true,
       });
     }
   }

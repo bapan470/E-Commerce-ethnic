@@ -94,7 +94,7 @@ export default function StorePageClient() {
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
           {expandedProducts.map((p, idx) => (
-            <ProductCard key={`${p.id}-${p.slug}`} product={p} priority={idx < 4} />
+            <ProductCard key={`${p.id}-${p.slug}`} product={p} priority={idx < 4} disableAutoplayVideo={!!p.isVariantCard} />
           ))}
         </div>
       )}

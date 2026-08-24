@@ -190,7 +190,12 @@ export default function CategoryToolbarGrid({ products, categoryName }: Category
 
       <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
         {expandProductVariants(visibleProducts, listingSettings.max_variant_cards_per_product).map((p, i) => (
-          <ProductCard key={`${p.id}-${p.slug}`} product={p} priority={i < 4} disableAutoplayVideo={!videoEnabled} />
+          <ProductCard
+            key={`${p.id}-${p.slug}`}
+            product={p}
+            priority={i < 4}
+            disableAutoplayVideo={!videoEnabled || !!p.isVariantCard}
+          />
         ))}
       </div>
 

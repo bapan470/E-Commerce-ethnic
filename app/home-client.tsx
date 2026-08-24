@@ -347,7 +347,7 @@ export default function HomeClient({
           </div>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
             {featured.map((p, idx) => (
-              <ProductCard key={`${p.id}-${p.slug}`} product={p} priority={idx < 4} />
+              <ProductCard key={`${p.id}-${p.slug}`} product={p} priority={idx < 4} disableAutoplayVideo={!!p.isVariantCard} />
             ))}
           </div>
         </div>
@@ -394,7 +394,7 @@ export default function HomeClient({
         </div>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
           {newArrivals.map((p) => (
-            <ProductCard key={`${p.id}-${p.slug}`} product={p} />
+            <ProductCard key={`${p.id}-${p.slug}`} product={p} disableAutoplayVideo={!!p.isVariantCard} />
           ))}
         </div>
       </section>

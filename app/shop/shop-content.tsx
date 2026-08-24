@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { SlidersHorizontal, TrendingDown, Flame, Gift, Camera, ChevronRight, ImageOff, Video, VideoOff } from 'lucide-react';
 import { Product, CategoryRow } from '@/lib/types';
-import { expandProductVariants } from '@/lib/expand-product-variants';
+import { expandProductVariants, ExpandedProduct } from '@/lib/expand-product-variants';
 import ProductCard from '@/components/product-card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -831,7 +831,7 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
                 {(isSearchPage || imageSearchIds
                   ? visibleProducts
                   : expandProductVariants(visibleProducts, listingSettings.max_variant_cards_per_product)
-                ).map((p: Product, idx: number) => {
+                ).map((p: ExpandedProduct, idx: number) => {
                   const q = query.trim();
                   // Use productMatchesQuery to get the exact matched variant (same logic as search suggestions)
                   const { matchedVariant } = q ? productMatchesQuery(p, q) : { matchedVariant: undefined };
@@ -853,7 +853,12 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
                       // video preview stays on /shop, category pages, etc.
                       // Also off whenever the shopper has switched the
                       // catalog "Video" toggle off for this browsing session.
-                      disableAutoplayVideo={isSearchPage || !videoEnabled}
+                      // Per-colour exploded cards (isVariantCard) never
+                      // autoplay -- only the one base card that still shows
+                      // every colour as a swatch dot does, so the grid
+                      // doesn't end up with the same video playing 4-5
+                      // times in a row for one product's colours.
+                      disableAutoplayVideo={isSearchPage || !videoEnabled || !!p.isVariantCard}
                     />
                   );
                 })}
