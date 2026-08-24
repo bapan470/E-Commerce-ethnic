@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { SlidersHorizontal, Video, VideoOff } from 'lucide-react';
 import { Product } from '@/lib/types';
+import { expandProductVariants } from '@/lib/expand-product-variants';
 import ProductCard from '@/components/product-card';
 import QuickNavIcons from '@/components/quick-nav-icons';
 import { Button } from '@/components/ui/button';
@@ -238,11 +239,11 @@ export default function CategoryToolbarGrid({
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-        {visibleProducts.map((p, i) => {
+        {expandProductVariants(visibleProducts, listingSettings.max_variant_cards_per_product).map((p, i) => {
           // Show this product's best-performing colour instead of always
-          // its default. Variant cards are disabled — one card per product
-          // with colour swatches keeps the sort order intact.
-          const topVariant = topVariants[p.id];
+          // its default -- skipped for already-exploded per-colour cards,
+          // which already show one specific colour on purpose.
+          const topVariant = !p.isVariantCard ? topVariants[p.id] : undefined;
           return (
             <ProductCard
               key={`${p.id}-${p.slug}`}
@@ -250,7 +251,7 @@ export default function CategoryToolbarGrid({
               priority={i < 4}
               imageOverride={topVariant?.image || undefined}
               slugOverride={topVariant?.slug || undefined}
-              disableAutoplayVideo={!videoEnabled}
+              disableAutoplayVideo={!videoEnabled || !!p.isVariantCard}
             />
           );
         })}
