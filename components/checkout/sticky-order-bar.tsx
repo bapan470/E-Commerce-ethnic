@@ -135,12 +135,6 @@ export default function StickyOrderBar({
           )}
 
           <div className="mt-4 flex flex-col gap-1.5 border-t border-border/60 pt-3 text-sm">
-            {mrpTotal > subtotal && (
-              <div className="flex justify-between text-muted-foreground">
-                <span>MRP Total</span>
-                <span className="line-through">{formatINR(mrpTotal)}</span>
-              </div>
-            )}
             <div className="flex justify-between text-muted-foreground">
               <span>Subtotal</span>
               <span>{formatINR(subtotal)}</span>

@@ -810,7 +810,6 @@ export default function CheckoutPage() {
     return sum + mrp * item.quantity;
   }, 0);
   const totalSavings =
-    mrpSavings +
     couponDiscount +
     bogoDiscount +
     clampedGiftCardDiscount +
