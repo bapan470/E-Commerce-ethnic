@@ -7,6 +7,7 @@ import { fetchTopVariantMapServer, toJSON } from '@/lib/top-variant-server';
 import ViewItemListTracker from '@/components/analytics/view-item-list-tracker';
 import CategoryToolbarGrid from '@/components/category/category-toolbar-grid';
 import { safeJsonLd } from '@/lib/json-ld';
+import { expandProductVariants } from '@/lib/expand-product-variants';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
@@ -111,6 +112,11 @@ export default async function CategoryPage({ params }: Params) {
   if (!category) notFound();
 
   const categoryProducts = products.filter((p) => p.category === category.name);
+  // Counts every colour card the grid below actually renders (base colour
+  // + each distinct `product_variants` colour), not just the number of
+  // underlying product rows -- otherwise a single product with 10 colours
+  // showed as "1 product" here while the grid rendered 10 cards for it.
+  const displayCount = expandProductVariants(categoryProducts).length;
   const intro = category.description || fallbackIntro(category.name);
   const url = `${SITE_URL}/category/${category.slug}`;
 
@@ -178,7 +184,7 @@ export default async function CategoryPage({ params }: Params) {
         {intro}
       </p>
       <p className="mt-1 text-xs text-muted-foreground">
-        {categoryProducts.length} {categoryProducts.length === 1 ? 'product' : 'products'}
+        {displayCount} {displayCount === 1 ? 'product' : 'products'}
       </p>
 
       {categoryProducts.length === 0 ? (

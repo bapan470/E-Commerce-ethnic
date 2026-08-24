@@ -839,7 +839,13 @@ export interface CatalogListingSettings {
 
 export const DEFAULT_CATALOG_LISTING_SETTINGS: CatalogListingSettings = {
   page_size: 24,
-  max_variant_cards_per_product: 4,
+  // 20 = the same ceiling the admin "Catalog Listing Size" input caps out
+  // at (see components/admin/settings-panel.tsx), i.e. effectively "show
+  // every colour" for any real product -- no saree/kurti in this catalog
+  // comes in more than a handful of colours. Used to default to 4, which
+  // silently hid most of a multi-colour product's variations from the
+  // catalog grid until an admin discovered and raised this setting.
+  max_variant_cards_per_product: 20,
 };
 
 export async function fetchCatalogListingSettings(): Promise<CatalogListingSettings> {

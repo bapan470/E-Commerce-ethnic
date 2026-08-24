@@ -374,6 +374,16 @@ function ShopContentInner({
   const visibleProducts = filtered.slice(0, visibleCount);
   const hasMore = visibleCount < filtered.length;
 
+  // "X pieces found" should match what the grid below actually renders.
+  // `filtered.length` only counts underlying product rows -- once search
+  // results explode into one card per colour (same as /shop and category
+  // pages), a single matching product with 10 colours needs to read as
+  // 10 here too, not 1. Image search stays on the raw (unexploded) count
+  // since that grid isn't expanded (see the render condition below).
+  const displayCount = imageSearchIds
+    ? filtered.length
+    : expandProductVariants(filtered, listingSettings.max_variant_cards_per_product).length;
+
   // Log searches for Admin > Analytics > Search -- debounced so a shopper
   // still typing doesn't fire an event per keystroke, and deduped so the
   // same query text (e.g. re-rendering after an unrelated filter toggle)
@@ -669,7 +679,7 @@ function ShopContentInner({
           )}
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          {filtered.length} {filtered.length === 1 ? 'piece' : 'pieces'} found
+          {displayCount} {displayCount === 1 ? 'piece' : 'pieces'} found
         </p>
 
         {relatedCategory && (
@@ -889,7 +899,7 @@ function ShopContentInner({
           ) : (
             <>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
-                {(isSearchPage || imageSearchIds
+                {(imageSearchIds
                   ? visibleProducts
                   : expandProductVariants(visibleProducts, listingSettings.max_variant_cards_per_product)
                 ).map((p: ExpandedProduct, idx: number) => {
