@@ -10,6 +10,7 @@ import type { PublicCollectionRow } from '@/lib/collections-api-server';
 import type { HomepageTile } from '@/lib/homepage-tiles-api';
 import type { HeroBanner } from '@/lib/hero-banners-api';
 import ProductCard from '@/components/product-card';
+import { expandProductVariants } from '@/lib/expand-product-variants';
 import CouponStrip from '@/components/home/coupon-strip';
 import PromoSlider from '@/components/home/promo-slider';
 import HomepageGrid from '@/components/home/homepage-grid';
@@ -40,8 +41,11 @@ export default function HomeClient({
   collectionSlugById,
   promotionCollectionSlugById,
 }: HomeClientProps) {
-  const featured = products.filter((p) => p.featured).slice(0, 8);
-  const newArrivals = products.slice(0, 4);
+  // Explode each grid's finite pick list into one card per colour, so a
+  // featured/new-arrival piece that comes in several colours shows every
+  // one of them here too, not just its default colour.
+  const featured = expandProductVariants(products.filter((p) => p.featured).slice(0, 8));
+  const newArrivals = expandProductVariants(products.slice(0, 4));
 
   // Each category row's circle is pulled live from that category's own
   // products — the admin's Featured pick first, else just the newest —
@@ -343,7 +347,7 @@ export default function HomeClient({
           </div>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
             {featured.map((p, idx) => (
-              <ProductCard key={p.id} product={p} priority={idx < 4} />
+              <ProductCard key={`${p.id}-${p.slug}`} product={p} priority={idx < 4} />
             ))}
           </div>
         </div>
@@ -390,7 +394,7 @@ export default function HomeClient({
         </div>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
           {newArrivals.map((p) => (
-            <ProductCard key={p.id} product={p} />
+            <ProductCard key={`${p.id}-${p.slug}`} product={p} />
           ))}
         </div>
       </section>

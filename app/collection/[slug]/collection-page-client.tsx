@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Star, Store } from 'lucide-react';
 import ProductCard from '@/components/product-card';
+import { expandProductVariants } from '@/lib/expand-product-variants';
 import { Skeleton } from '@/components/ui/skeleton';
 import { fetchVendorStorefront, VendorStorefront } from '@/lib/vendor-storefront-api';
 import { fireGtagEvent } from '@/lib/gtag-track';
@@ -69,6 +70,7 @@ export default function CollectionPageClient() {
   }
 
   const { vendor, showRating, rating, reviewCount, products } = data;
+  const expandedProducts = expandProductVariants(products);
 
   return (
     <div className="container-boutique py-8 pb-24 md:pb-8">
@@ -98,7 +100,7 @@ export default function CollectionPageClient() {
         )}
 
         <p className="mt-2 text-sm text-muted-foreground">
-          {products.length} {products.length === 1 ? 'piece' : 'pieces'} from {vendor.name}
+          {expandedProducts.length} {expandedProducts.length === 1 ? 'piece' : 'pieces'} from {vendor.name}
         </p>
       </div>
 
@@ -108,8 +110,8 @@ export default function CollectionPageClient() {
         </p>
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-          {products.map((p, idx) => (
-            <ProductCard key={p.id} product={p} priority={idx < 4} />
+          {expandedProducts.map((p, idx) => (
+            <ProductCard key={`${p.id}-${p.slug}`} product={p} priority={idx < 4} />
           ))}
         </div>
       )}

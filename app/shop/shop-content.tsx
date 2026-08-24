@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { SlidersHorizontal, TrendingDown, Flame, Gift, Camera, ChevronRight, ImageOff, Video, VideoOff } from 'lucide-react';
 import { Product, CategoryRow } from '@/lib/types';
+import { expandProductVariants } from '@/lib/expand-product-variants';
 import ProductCard from '@/components/product-card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -810,7 +811,10 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
           ) : (
             <>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
-                {visibleProducts.map((p: Product, idx: number) => {
+                {(isSearchPage || imageSearchIds
+                  ? visibleProducts
+                  : expandProductVariants(visibleProducts)
+                ).map((p: Product, idx: number) => {
                   const q = query.trim();
                   // Use productMatchesQuery to get the exact matched variant (same logic as search suggestions)
                   const { matchedVariant } = q ? productMatchesQuery(p, q) : { matchedVariant: undefined };
@@ -821,7 +825,7 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
                     : undefined;
                   return (
                     <ProductCard
-                      key={p.id}
+                      key={`${p.id}-${p.slug}`}
                       product={p}
                       priority={idx < 4}
                       imageOverride={imageSearchIds ? imageSearchMatches[p.id] : (colorMatchImage || undefined)}

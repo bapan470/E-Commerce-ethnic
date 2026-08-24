@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ShoppingBag, Star } from 'lucide-react';
@@ -83,14 +84,49 @@ export default function ProductCard({
     e.stopPropagation();
     if (product.collection) router.push(`/collection/${product.collection.slug}`);
   };
+  // Same nested-inside-<Link> constraint as goToCategory/goToCollection
+  // above -- stop the click from following the card's own href (which
+  // points at the default variant) and send it straight to the colour
+  // that was actually clicked.
+  const goToVariant = (e: React.MouseEvent, variant: (typeof swatchVariants)[number]) => {
+    e.preventDefault();
+    e.stopPropagation();
+    router.push(`/product/${variant.slug}`);
+  };
 
   const discount = discountPct(product.price, product.mrp);
+  // Every colour this card can switch straight to: the base product's own
+  // colour (product_variants rows never include it) plus every real
+  // variant. Deduped by colour name so a base colour already re-added as
+  // a variant row doesn't show twice. Each entry carries the slug the
+  // swatch should link to and the image it should preview on hover.
+  const swatchVariants = useMemo(() => {
+    type Swatch = { slug: string; color: string; image?: string | null };
+    const base: Swatch = {
+      slug: product.slug,
+      color: product.colors?.[0] ?? '',
+      image: product.images?.[0] ?? null,
+    };
+    const seen = new Set<string>();
+    const merged: Swatch[] = [];
+    for (const v of [base, ...(product.variant_list ?? [])]) {
+      const key = v.color.trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      merged.push(v);
+    }
+    return merged;
+  }, [product]);
+  // Set while a shopper is hovering/focusing a swatch dot -- swaps the
+  // card's photo to that colour's photo so they can see it before
+  // committing to the click, same pattern as the product-detail gallery.
+  const [previewVariant, setPreviewVariant] = useState<(typeof swatchVariants)[number] | null>(null);
   // When this product has colour variants, the card should show and link to
   // the default one -- shoppers land straight on that colour, and clicking
   // through from shop/category always opens that exact variant.
   const href = `/product/${slugOverride || product.default_variant_slug || product.slug}`;
   const img = toPublicMediaUrl(
-    imageOverride || product.default_variant_image || product.images[0]
+    previewVariant?.image || imageOverride || product.default_variant_image || product.images[0]
   ) || 'https://placehold.co/800x1000?text=No+Image';
   const hoverImg = toPublicMediaUrl(product.images[1]) || undefined;
   // The card's photo (`img` above) can be the default variant's photo,
@@ -231,26 +267,29 @@ export default function ProductCard({
           )}
         </div>
 
-        {(() => {
-          // `all_colors` merges the base product's own colour with every
-          // colour added later as a variant, so this always reflects every
-          // colour the product actually comes in (falls back to `colors`
-          // for any product shape that predates this field).
-          const swatchColors = product.all_colors?.length ? product.all_colors : product.colors;
-          if (swatchColors.length === 0) return null;
-          return (
-            <div className="mt-1 flex flex-wrap items-center gap-1">
-              {swatchColors.map((c, i) => (
-                <span
-                  key={i}
-                  title={c}
-                  className="h-3.5 w-3.5 shrink-0 rounded-full border border-border/70"
-                  style={{ backgroundColor: c.toLowerCase().replace(/\s+/g, '') }}
-                />
-              ))}
-            </div>
-          );
-        })()}
+        {swatchVariants.length > 1 && (
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            {swatchVariants.map((v) => (
+              <button
+                key={v.slug}
+                type="button"
+                title={v.color}
+                aria-label={`View in ${v.color}`}
+                onClick={(e) => goToVariant(e, v)}
+                onMouseEnter={() => setPreviewVariant(v)}
+                onMouseLeave={() => setPreviewVariant(null)}
+                onFocus={() => setPreviewVariant(v)}
+                onBlur={() => setPreviewVariant(null)}
+                className={`h-3.5 w-3.5 shrink-0 rounded-full border transition-transform hover:scale-125 ${
+                  previewVariant?.slug === v.slug
+                    ? 'border-primary ring-1 ring-primary ring-offset-1'
+                    : 'border-border/70'
+                }`}
+                style={{ backgroundColor: v.color.toLowerCase().replace(/\s+/g, '') }}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </Link>
   );

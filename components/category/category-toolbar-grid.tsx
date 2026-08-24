@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { SlidersHorizontal, Video, VideoOff } from 'lucide-react';
 import { Product } from '@/lib/types';
+import { expandProductVariants } from '@/lib/expand-product-variants';
 import ProductCard from '@/components/product-card';
 import QuickNavIcons from '@/components/quick-nav-icons';
 import { Button } from '@/components/ui/button';
@@ -169,8 +170,8 @@ export default function CategoryToolbarGrid({ products, categoryName }: Category
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-        {visibleProducts.map((p, i) => (
-          <ProductCard key={p.id} product={p} priority={i < 4} disableAutoplayVideo={!videoEnabled} />
+        {expandProductVariants(visibleProducts).map((p, i) => (
+          <ProductCard key={`${p.id}-${p.slug}`} product={p} priority={i < 4} disableAutoplayVideo={!videoEnabled} />
         ))}
       </div>
 
