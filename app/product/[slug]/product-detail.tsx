@@ -283,6 +283,23 @@ export default function ProductDetail() {
   // The thumbnail/price/colour change instantly using data we already have;
   // sizes (needed for stock accuracy) fill in a moment later in the background.
   const handleSelectVariant = (v: ProductVariant) => {
+    // Log which colour the shopper is switching FROM/TO, keyed to the base
+    // product id so every colour of one product rolls up together in the
+    // admin's "most-switched variant" report (app/api/admin/variant-switches).
+    // Fire-and-forget, best-effort — trackEvent() never throws.
+    if (baseProduct) {
+      trackEvent('variant_switch', {
+        productId: baseProduct.id,
+        userId: user?.id ?? null,
+        metadata: {
+          fromColor: variant?.color ?? baseProduct.colors?.[0] ?? null,
+          toColor: v.color,
+          toVariantId: v.id,
+          toSlug: v.slug,
+        },
+      });
+    }
+
     // Picking the base product's own colour (synthetic, id '__base__') --
     // there's no product_variants row to fetch, so just drop back to the
     // base product itself (same state fetchVariantBySlug-based defaulting

@@ -268,7 +268,8 @@ export type ActivityEventType =
   | 'wishlist'
   | 'checkout_start'
   | 'purchase'
-  | 'search';
+  | 'search'
+  | 'variant_switch';
 
 export interface ActivityEvent {
   id: string;

@@ -17,7 +17,7 @@ import {
   LabelList,
   Cell,
 } from 'recharts';
-import { AlertTriangle, TrendingUp, ShoppingBag, Percent, PackageX, BarChart3, Wifi, Receipt, Search, ShoppingCart, CreditCard, CheckCircle2, PackagePlus, Loader2, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { AlertTriangle, TrendingUp, ShoppingBag, Percent, PackageX, BarChart3, Wifi, Receipt, Search, ShoppingCart, CreditCard, CheckCircle2, PackagePlus, Loader2, ArrowUp, ArrowDown, ArrowUpDown, Repeat } from 'lucide-react';
 import { startOfDay, endOfDay, subDays } from 'date-fns';
 import { fetchAnalytics, AnalyticsData } from '@/lib/analytics-api';
 import { updateProduct, extractErrorMessage } from '@/lib/products-api';
@@ -26,6 +26,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import TrafficPanel from '@/components/admin/traffic-panel';
 import SearchInsightsPanel from '@/components/admin/search-insights-panel';
+import VariantSwitchesPanel from '@/components/admin/variant-switches-panel';
 import { DateRangePicker, SimpleRange } from '@/components/admin/date-range-picker';
 
 const FUNNEL_COLORS = ['#8b5e3c', '#a9744f', '#c68b5f', '#e0a374', '#f0b98a'];
@@ -34,7 +35,7 @@ const ORDER_DOT_COLOR = '#8b5e3c';
 
 // ── Tab bar ────────────────────────────────────────────────────────────────
 
-type Tab = 'sales' | 'traffic' | 'search';
+type Tab = 'sales' | 'traffic' | 'search' | 'variants';
 
 function TabBar({
   active,
@@ -56,6 +57,9 @@ function TabBar({
         </TabButton>
         <TabButton value="search" active={active} onChange={onChange} icon={<Search className="h-4 w-4" />}>
           Search
+        </TabButton>
+        <TabButton value="variants" active={active} onChange={onChange} icon={<Repeat className="h-4 w-4" />}>
+          Variant Switches
         </TabButton>
       </div>
       {active === 'sales' && right}
@@ -755,8 +759,10 @@ export default function AnalyticsPanel() {
         <SalesPanel range={range} onRangeChange={setRange} />
       ) : activeTab === 'traffic' ? (
         <TrafficPanel />
-      ) : (
+      ) : activeTab === 'search' ? (
         <SearchInsightsPanel />
+      ) : (
+        <VariantSwitchesPanel />
       )}
     </div>
   );
