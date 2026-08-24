@@ -27,21 +27,24 @@ export interface FunnelStage {
 }
 
 export interface ProductPerformance {
-  /** Row id -- the underlying product id, or `${productId}::${color}` for a
-   *  colour-broken-out row (see `variantColor`). Always unique per row. */
   productId: string;
   name: string;
-  /** This exact row's own product page -- the colour variant's slug for a
-   *  colour row, the base product's slug otherwise. Always populated when
-   *  a page exists for it, so "View" never silently disappears. */
+  /** This exact row's own product page -- the top-performing colour
+   *  variant's slug when one is known, the base product's slug otherwise.
+   *  Always populated when a page exists for it, so "View" never silently
+   *  disappears. */
   slug: string | null;
+  /** The photo shown above -- the top-performing colour's own photo when
+   *  `variantColor` is set, the product's plain default photo otherwise. */
   image: string | null;
-  /** Set when this row represents one specific colour's activity (see
-   *  route.ts) rather than a whole product's combined totals -- e.g.
-   *  "Maroon" for one row and "Dark Maroon" for another row of the same
-   *  underlying product, each with its own impressions/etc. Null for a
-   *  plain single-colour product or leftover activity with no colour
-   *  metadata attached. */
+  /** The colour this row's photo/name/link represent, when any colour-level
+   *  activity has been recorded for this product (ranked Purchase > Begin
+   *  checkout > Add to cart > Impressions, same ranking used elsewhere on
+   *  this dashboard). Null means no colour-level data exists yet -- the
+   *  photo above is just the product's generic default, not any specific
+   *  variant. Impressions/addToCart/beginCheckout/purchases below are
+   *  always the *whole product's* totals across every colour, regardless
+   *  of which colour is highlighted here. */
   variantColor: string | null;
   impressions: number;
   /** sessions that added this product to cart, within the window */

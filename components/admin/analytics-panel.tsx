@@ -554,9 +554,17 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
                             <div className="min-w-0">
                               <span className="block max-w-[220px] truncate font-medium">{p.name}</span>
                               <div className="mt-1 flex items-center gap-1.5">
+                                {/* Explicit "Colour: X" (rather than a bare
+                                    thumbnail) so it's never ambiguous whether
+                                    the photo above is one specific colour
+                                    variant's own photo or just the product's
+                                    generic default -- when this is blank, no
+                                    colour-level activity has been recorded
+                                    for this product yet, and the photo above
+                                    is the plain default. */}
                                 {p.variantColor && (
                                   <span className="truncate text-[11px] text-muted-foreground">
-                                    {p.variantColor}
+                                    Colour: {p.variantColor}
                                   </span>
                                 )}
                                 {p.slug && (
