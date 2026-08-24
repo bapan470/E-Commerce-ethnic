@@ -4,56 +4,61 @@ import { getServerSupabase } from '@/lib/supabase-server';
 /**
  * GET /api/products/popularity
  *
- * Returns a list of product IDs ordered by their total "product_view"
- * event count over the last 30 days (most-viewed first).
+ * Returns product IDs ranked by a weighted popularity score over the
+ * last 30 days, using this priority order:
  *
- * Response: { ranked: string[] }  — array of product_id strings, most
- * popular first. Products with zero views are not included; the caller
- * should fall back to any remaining products appended at the end.
+ *   purchase        → 100 points  (strongest signal: someone actually bought it)
+ *   checkout_start  →  30 points  (strong intent: entered checkout)
+ *   add_to_cart     →  10 points  (moderate intent: added to cart)
+ *   product_view    →   1 point   (weak signal: clicked/viewed the product)
  *
- * Cached by Next.js for 10 minutes (revalidate: 600) so every shop
- * page load doesn't hit the database with a heavy aggregation query.
+ * Response: { ranked: string[] }  — product_id strings, highest score first.
+ * Products with zero events are not included; callers append them at the end.
+ *
+ * Cached for 10 minutes so the aggregation query doesn't run on every
+ * page load.
  */
 export const revalidate = 600; // 10 minutes
+
+const WEIGHTS: Record<string, number> = {
+  purchase: 100,
+  checkout_start: 30,
+  add_to_cart: 10,
+  product_view: 1,
+};
 
 export async function GET() {
   try {
     const supabase = getServerSupabase();
 
-    // Count product_view events per product over the last 30 days.
-    // We use a raw RPC or a plain select — Supabase JS client supports
-    // .select() with group-by via a view, but the simplest portable
-    // approach here is to pull the raw rows and aggregate in JS.
-    // For even large catalogs (< 10k rows/day) this is fast enough and
-    // avoids needing a custom DB function.
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
+    // Fetch all relevant events in one query
     const { data, error } = await supabase
       .from('activity_events')
-      .select('product_id')
-      .eq('event_type', 'product_view')
+      .select('product_id, event_type')
+      .in('event_type', ['purchase', 'checkout_start', 'add_to_cart', 'product_view'])
       .gte('created_at', since)
       .not('product_id', 'is', null);
 
     if (error) throw error;
 
-    // Tally view counts per product id
-    const counts: Record<string, number> = {};
+    // Compute weighted score per product
+    const scores: Record<string, number> = {};
     for (const row of data ?? []) {
-      if (row.product_id) {
-        counts[row.product_id] = (counts[row.product_id] ?? 0) + 1;
-      }
+      if (!row.product_id) continue;
+      const weight = WEIGHTS[row.event_type] ?? 0;
+      scores[row.product_id] = (scores[row.product_id] ?? 0) + weight;
     }
 
-    // Sort descending by count
-    const ranked = Object.entries(counts)
+    // Sort descending by score
+    const ranked = Object.entries(scores)
       .sort((a, b) => b[1] - a[1])
       .map(([id]) => id);
 
     return NextResponse.json({ ranked });
   } catch (err) {
     console.error('[popularity] error', err);
-    // Return empty list on error — callers fall back to default sort
     return NextResponse.json({ ranked: [] });
   }
 }
