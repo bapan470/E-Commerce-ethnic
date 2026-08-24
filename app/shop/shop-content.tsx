@@ -81,6 +81,7 @@ function ShopContentInner({
   // any navigation back to "the current listing page" must use whichever
   // path we're actually on instead of a hardcoded '/shop'.
   const pathname = usePathname();
+  const isSearchPage = pathname === '/search';
 
   // Set by the header's "search by image" camera button: it ranks the
   // catalog by visual similarity client-side (lib/image-search.ts) and
@@ -374,13 +375,14 @@ function ShopContentInner({
   const visibleProducts = filtered.slice(0, visibleCount);
   const hasMore = visibleCount < filtered.length;
 
-  // "X pieces found" should match what the grid below actually renders.
-  // `filtered.length` only counts underlying product rows -- once search
-  // results explode into one card per colour (same as /shop and category
-  // pages), a single matching product with 10 colours needs to read as
-  // 10 here too, not 1. Image search stays on the raw (unexploded) count
-  // since that grid isn't expanded (see the render condition below).
-  const displayCount = imageSearchIds
+  // "X pieces found" should match what the grid below actually renders --
+  // mirror its render condition exactly (see the .map() further down).
+  // /search and image-search both render ONE card per matching product
+  // (that product's own matched-colour photo swapped in, not every colour
+  // exploded into its own card -- a "red saree" search showing 7 other
+  // colours of the same design isn't what was searched for). Only the
+  // plain /shop and category grids explode into one card per colour.
+  const displayCount = isSearchPage || imageSearchIds
     ? filtered.length
     : expandProductVariants(filtered, listingSettings.max_variant_cards_per_product).length;
 
@@ -618,7 +620,6 @@ function ShopContentInner({
   // a suggestion), the heading should reflect exactly what was searched
   // instead of the generic "Shop All Sarees" title -- so it's obvious at
   // the top of the page which search actually ran.
-  const isSearchPage = pathname === '/search';
   const trimmedQuery = query.trim();
   const showingSearchHeading = isSearchPage && trimmedQuery.length > 0;
 
@@ -899,7 +900,7 @@ function ShopContentInner({
           ) : (
             <>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
-                {(imageSearchIds
+                {(isSearchPage || imageSearchIds
                   ? visibleProducts
                   : expandProductVariants(visibleProducts, listingSettings.max_variant_cards_per_product)
                 ).map((p: ExpandedProduct, idx: number) => {
