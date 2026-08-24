@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { SlidersHorizontal, TrendingDown, Flame, Gift, Camera, ChevronRight, ImageOff, Video, VideoOff } from 'lucide-react';
 import { Product, CategoryRow } from '@/lib/types';
-import { expandProductVariants, ExpandedProduct } from '@/lib/expand-product-variants';
+import type { ExpandedProduct } from '@/lib/expand-product-variants';
 import ProductCard from '@/components/product-card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -382,9 +382,15 @@ function ShopContentInner({
   // exploded into its own card -- a "red saree" search showing 7 other
   // colours of the same design isn't what was searched for). Only the
   // plain /shop and category grids explode into one card per colour.
+  // Variant cards are intentionally disabled on the shop/category grid —
+  // each product shows as one card with colour swatches, not N separate
+  // cards per colour. This keeps the popularity/sort order intact (e.g.
+  // "Mulmul Cotton Maroon Saree" stays 2nd instead of being pushed down
+  // by 3–4 colour cards for the product ranked above it). Pass 0 to
+  // expandProductVariants which is the "off" / one-card-per-product mode.
   const displayCount = isSearchPage || imageSearchIds
     ? filtered.length
-    : expandProductVariants(filtered, listingSettings.max_variant_cards_per_product).length;
+    : filtered.length;
 
   // Log searches for Admin > Analytics > Search -- debounced so a shopper
   // still typing doesn't fire an event per keystroke, and deduped so the
@@ -900,10 +906,7 @@ function ShopContentInner({
           ) : (
             <>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4">
-                {(isSearchPage || imageSearchIds
-                  ? visibleProducts
-                  : expandProductVariants(visibleProducts, listingSettings.max_variant_cards_per_product)
-                ).map((p: ExpandedProduct, idx: number) => {
+                {(visibleProducts as ExpandedProduct[]).map((p: ExpandedProduct, idx: number) => {
                   const q = query.trim();
                   // Use productMatchesQuery to get the exact matched variant (same logic as search suggestions)
                   const { matchedVariant } = q ? productMatchesQuery(p, q) : { matchedVariant: undefined };
