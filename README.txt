@@ -1,23 +1,27 @@
-IMPRESSIONS-FIRST SHOP SORT
-============================
-Yeh zip sirf 2 files replace karta hai (same path structure hai, seedha
-project root me paste kar do, overwrite confirm kar dena):
+IMPRESSIONS-FIRST SHOP SORT — v2 (ASAL FIX)
+=============================================
+Pehle wala zip sirf ranking priority (impressions-first) fix karta tha,
+lekin asli bug alag nikla:
+
+  activity_events table par Row Level Security (RLS) hai. Anon key
+  (getServerSupabase) se woh table read nahi ho pa rahi thi, isliye
+  fetchPopularityRankServer() hamesha khaali result de raha tha aur
+  shop page popularity ranking silently fail ho rahi thi (fallback
+  order = Bestseller/featured-first, jo tum dekh rahe the).
+
+  Fix: dono files ab getSupabaseAdmin() (service role key, RLS bypass)
+  use karte hain — same jaisa Admin > Analytics aur top-variant-server.ts
+  pehle se karte hain.
+
+Files (same path structure, project root me overwrite karke paste karo):
 
   lib/popularity-rank-server.ts
   app/api/products/popularity/route.ts
 
-Kya change hua:
-Shop page (aur category pages) ka default "Popularity" sort ab sabse
-pehle Impressions (product_view) dekh kar order karta hai — jis product
-ka impression sabse zyada hai, wo sabse upar dikhega.
+Push karne ke baad 1-2 min wait karke /shop hard-refresh (incognito)
+karke check karo — sabse zyada impression wala product (abhi
+"Green Dhakai Jamdani Saree with Kardana Hand Ari Work", 1205
+impressions) sabse upar dikhna chahiye.
 
-Agar impressions barabar hon do products ke beech, tab tie-break ke liye
-Purchase > Begin checkout > Add to cart dekha jayega (isi order me).
-
-Pehle yeh order Purchase-first tha (purchase sabse important, impression
-sirf last tie-breaker), ab Impression-first kar diya gaya hai jaisa
-tumne bola.
-
-changes.diff file me exact diff bhi hai reference ke liye — git apply
-bhi kar sakte ho agar chaho:
-  git apply changes.diff
+changes-v2.diff me exact diff hai:
+  git apply changes-v2.diff

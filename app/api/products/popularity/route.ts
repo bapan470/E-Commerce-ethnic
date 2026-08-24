@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 /**
  * GET /api/products/popularity
@@ -33,7 +33,7 @@ interface ProductActivityCounts {
 
 export async function GET() {
   try {
-    const supabase = getServerSupabase();
+    const supabase = getSupabaseAdmin();
 
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 

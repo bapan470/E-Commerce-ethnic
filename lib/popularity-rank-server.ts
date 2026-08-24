@@ -12,7 +12,7 @@
  * then Add to cart.
  */
 
-import { getServerSupabase } from '@/lib/supabase-server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 interface ProductActivityCounts {
   purchase: number;
@@ -23,7 +23,7 @@ interface ProductActivityCounts {
 
 export async function fetchPopularityRankServer(): Promise<Map<string, number>> {
   try {
-    const supabase = getServerSupabase();
+    const supabase = getSupabaseAdmin();
 
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
