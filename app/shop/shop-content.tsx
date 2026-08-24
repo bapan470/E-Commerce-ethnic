@@ -59,9 +59,10 @@ const QUICK_FILTERS: { key: SortKey; label: string; icon: typeof TrendingDown }[
 interface ShopContentProps {
   products: Product[];
   categories: CategoryRow[];
+  initialPopularityRank?: Map<string, number>;
 }
 
-function ShopContentInner({ products, categories }: ShopContentProps) {
+function ShopContentInner({ products, categories, initialPopularityRank = new Map() }: ShopContentProps) {
   const params = useSearchParams();
   const router = useRouter();
   // This component is now mounted at both /shop (category/filter browsing)
@@ -98,17 +99,24 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
   const [query, setQuery] = useState(initialQuery);
   const [sort, setSort] = useState<SortKey>(initialSort);
   const [mobileOpen, setMobileOpen] = useState(false);
-  // Popularity rank — fetched once and used when sort === 'popularity'.
+  // Popularity rank — initialized from server-side data (initialPopularityRank)
+  // and kept in sync via periodic client-side fetches.
   // Maps product id -> rank index (0 = most popular). Empty map = not yet
   // loaded or fetch failed; falls back to featured order in that case.
-  const [popularityRank, setPopularityRank] = useState<Map<string, number>>(new Map());
+  const [popularityRank, setPopularityRank] = useState<Map<string, number>>(initialPopularityRank);
   useEffect(() => {
-    fetch('/api/products/popularity')
-      .then((r) => r.json())
-      .then(({ ranked }: { ranked: string[] }) => {
-        setPopularityRank(new Map(ranked.map((id: string, i: number) => [id, i])));
-      })
-      .catch(() => {});
+    // Refresh popularity data every 10 minutes (same cache period as the API)
+    // to keep up with new purchases/views, but the server-side initial data
+    // means the first paint is already in the right order.
+    const interval = setInterval(() => {
+      fetch('/api/products/popularity')
+        .then((r) => r.json())
+        .then(({ ranked }: { ranked: string[] }) => {
+          setPopularityRank(new Map(ranked.map((id: string, i: number) => [id, i])));
+        })
+        .catch(() => {});
+    }, 10 * 60 * 1000); // 10 minutes
+    return () => clearInterval(interval);
   }, []);
 
   // Shopper-facing "Video" toggle (next to Filters/Sort) — lets them turn

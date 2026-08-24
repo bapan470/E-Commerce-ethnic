@@ -2,6 +2,7 @@ import { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { fetchProductsServer } from '@/lib/products-api-server';
 import { fetchCategoriesServer } from '@/lib/products-api-server';
+import { fetchPopularityRankServer } from '@/lib/popularity-rank-server';
 import ShopContent from './shop-content';
 
 // Same reasoning as app/category/[slug]/page.tsx: this page has no
@@ -45,14 +46,16 @@ export default async function ShopPage({
   // client-fetched page ever showed for the same failure.
   let products: Awaited<ReturnType<typeof fetchProductsServer>> = [];
   let categories: Awaited<ReturnType<typeof fetchCategoriesServer>> = [];
+  let initialPopularityRank: Map<string, number> = new Map();
   try {
-    [products, categories] = await Promise.all([
+    [products, categories, initialPopularityRank] = await Promise.all([
       fetchProductsServer(),
       fetchCategoriesServer(),
+      fetchPopularityRankServer(),
     ]);
   } catch (err) {
     console.error('Failed to load /shop data:', err);
   }
 
-  return <ShopContent products={products} categories={categories} />;
+  return <ShopContent products={products} categories={categories} initialPopularityRank={initialPopularityRank} />;
 }

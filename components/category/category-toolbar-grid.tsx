@@ -29,6 +29,10 @@ interface CategoryToolbarGridProps {
    *  the product's category name, same as every other link into it
    *  (footer, product-card "view all in category", related products). */
   categoryName: string;
+  /** Initial popularity rank from server-side rendering.
+   *  Passed to ensure the first page paint shows products in popularity order
+   *  instead of waiting for the client-side fetch to complete. */
+  initialPopularityRank?: Map<string, number>;
 }
 
 /**
@@ -41,16 +45,22 @@ interface CategoryToolbarGridProps {
  * off to /shop pre-filtered to this category instead of duplicating that
  * whole panel for a single-category view.
  */
-export default function CategoryToolbarGrid({ products, categoryName }: CategoryToolbarGridProps) {
+export default function CategoryToolbarGrid({ products, categoryName, initialPopularityRank = new Map() }: CategoryToolbarGridProps) {
   const [sort, setSort] = useState<SortKey>('popularity');
-  const [popularityRank, setPopularityRank] = useState<Map<string, number>>(new Map());
+  const [popularityRank, setPopularityRank] = useState<Map<string, number>>(initialPopularityRank);
   useEffect(() => {
-    fetch('/api/products/popularity')
-      .then((r) => r.json())
-      .then(({ ranked }: { ranked: string[] }) => {
-        setPopularityRank(new Map(ranked.map((id: string, i: number) => [id, i])));
-      })
-      .catch(() => {});
+    // Refresh popularity data every 10 minutes (same cache period as the API)
+    // to keep up with new purchases/views, but the server-side initial data
+    // means the first paint is already in the right order.
+    const interval = setInterval(() => {
+      fetch('/api/products/popularity')
+        .then((r) => r.json())
+        .then(({ ranked }: { ranked: string[] }) => {
+          setPopularityRank(new Map(ranked.map((id: string, i: number) => [id, i])));
+        })
+        .catch(() => {});
+    }, 10 * 60 * 1000); // 10 minutes
+    return () => clearInterval(interval);
   }, []);
 
   // Same shopper-facing "Video" toggle as /shop (see app/shop/shop-content.tsx
