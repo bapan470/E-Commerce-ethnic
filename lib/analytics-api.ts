@@ -26,19 +26,40 @@ export interface FunnelStage {
   sessions: number;
 }
 
+export interface ProductPerformanceTopVariant {
+  /** Colour name, e.g. "Maroon" */
+  color: string;
+  image: string | null;
+  /** Slug of this exact colour's product page -- null if it can't be resolved. */
+  slug: string | null;
+  impressions: number;
+  addToCart: number;
+  beginCheckout: number;
+  purchases: number;
+}
+
 export interface ProductPerformance {
   productId: string;
   name: string;
+  /** Base product's own slug, e.g. for linking the product name/thumbnail. */
+  slug: string | null;
   image: string | null;
   impressions: number;
   /** sessions that added this product to cart, within the window */
   addToCart: number;
   /** sessions that reached checkout with this product in cart, within the window */
   beginCheckout: number;
-  /** completed orders containing this product, within the window */
+  /** completed orders containing this product, within the window (any order
+   *  that isn't cancelled/failed -- includes Cash on Delivery orders that
+   *  are still 'pending' payment collection). */
   purchases: number;
   conversions: number;
   conversionRate: number;
+  /** The best-performing colour variation for this product (ranked Purchase
+   *  > Begin checkout > Add to cart > Impressions), when the product has
+   *  more than one colour with recorded activity. Null for single-colour
+   *  products or when no colour data is available yet. */
+  topVariant: ProductPerformanceTopVariant | null;
 }
 
 export interface LowStockProduct {

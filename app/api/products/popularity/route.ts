@@ -4,28 +4,32 @@ import { getServerSupabase } from '@/lib/supabase-server';
 /**
  * GET /api/products/popularity
  *
- * Returns product IDs ranked by a weighted popularity score over the
- * last 30 days, using this priority order:
+ * Returns product IDs ranked by strict funnel-stage priority over the last
+ * 30 days -- NOT a weighted score. A product with even one purchase always
+ * outranks a product with zero purchases, no matter how many add-to-carts/
+ * views the other one has:
  *
- *   purchase        → 100 points  (strongest signal: someone actually bought it)
- *   checkout_start  →  30 points  (strong intent: entered checkout)
- *   add_to_cart     →  10 points  (moderate intent: added to cart)
- *   product_view    →   1 point   (weak signal: clicked/viewed the product)
+ *   1. Purchase        (most add_to_cart etc. never outweighs this)
+ *   2. Begin checkout   (tie-break within the same purchase count)
+ *   3. Add to cart      (tie-break within the same purchase+checkout count)
+ *   4. Impressions       (product_view — final tie-break)
  *
- * Response: { ranked: string[] }  — product_id strings, highest score first.
+ * Response: { ranked: string[] }  — product_id strings, highest priority first.
  * Products with zero events are not included; callers append them at the end.
  *
  * Cached for 10 minutes so the aggregation query doesn't run on every
- * page load.
+ * page load. Mirrors lib/popularity-rank-server.ts (used for the initial
+ * server-rendered order) -- this route exists so the client can silently
+ * refresh that order every 10 minutes without a full page reload.
  */
 export const revalidate = 600; // 10 minutes
 
-const WEIGHTS: Record<string, number> = {
-  purchase: 100,
-  checkout_start: 30,
-  add_to_cart: 10,
-  product_view: 1,
-};
+interface ProductActivityCounts {
+  purchase: number;
+  checkout_start: number;
+  add_to_cart: number;
+  product_view: number;
+}
 
 export async function GET() {
   try {
@@ -43,17 +47,29 @@ export async function GET() {
 
     if (error) throw error;
 
-    // Compute weighted score per product
-    const scores: Record<string, number> = {};
+    const counts = new Map<string, ProductActivityCounts>();
     for (const row of data ?? []) {
       if (!row.product_id) continue;
-      const weight = WEIGHTS[row.event_type] ?? 0;
-      scores[row.product_id] = (scores[row.product_id] ?? 0) + weight;
+      const entry = counts.get(row.product_id) ?? {
+        purchase: 0,
+        checkout_start: 0,
+        add_to_cart: 0,
+        product_view: 0,
+      };
+      if (row.event_type in entry) {
+        entry[row.event_type as keyof ProductActivityCounts] += 1;
+      }
+      counts.set(row.product_id, entry);
     }
 
-    // Sort descending by score
-    const ranked = Object.entries(scores)
-      .sort((a, b) => b[1] - a[1])
+    const ranked = Array.from(counts.entries())
+      .sort(
+        ([, a], [, b]) =>
+          b.purchase - a.purchase ||
+          b.checkout_start - a.checkout_start ||
+          b.add_to_cart - a.add_to_cart ||
+          b.product_view - a.product_view
+      )
       .map(([id]) => id);
 
     return NextResponse.json({ ranked });

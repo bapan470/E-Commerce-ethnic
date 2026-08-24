@@ -60,9 +60,20 @@ interface ShopContentProps {
   products: Product[];
   categories: CategoryRow[];
   initialPopularityRank?: Map<string, number>;
+  /** productId -> best-performing colour variation (image/slug), from
+   *  lib/top-variant-server.ts. Used to swap a product's default card photo
+   *  for whichever colour is actually getting the most impressions/adds/
+   *  checkouts/purchases -- same "jiska jada click/purchase hua wahi pehle
+   *  dikhe" idea as the popularity sort, but at the colour level. */
+  initialTopVariants?: Record<string, { color: string; image: string | null; slug: string | null }>;
 }
 
-function ShopContentInner({ products, categories, initialPopularityRank = new Map() }: ShopContentProps) {
+function ShopContentInner({
+  products,
+  categories,
+  initialPopularityRank = new Map(),
+  initialTopVariants = {},
+}: ShopContentProps) {
   const params = useSearchParams();
   const router = useRouter();
   // This component is now mounted at both /shop (category/filter browsing)
@@ -104,6 +115,11 @@ function ShopContentInner({ products, categories, initialPopularityRank = new Ma
   // Maps product id -> rank index (0 = most popular). Empty map = not yet
   // loaded or fetch failed; falls back to featured order in that case.
   const [popularityRank, setPopularityRank] = useState<Map<string, number>>(initialPopularityRank);
+  // Best-performing colour per product (see lib/top-variant-server.ts) —
+  // used to swap a card's default photo/link for that colour instead.
+  const [topVariants, setTopVariants] = useState<Record<string, { color: string; image: string | null; slug: string | null }>>(
+    initialTopVariants
+  );
   useEffect(() => {
     // Refresh popularity data every 10 minutes (same cache period as the API)
     // to keep up with new purchases/views, but the server-side initial data
@@ -113,6 +129,12 @@ function ShopContentInner({ products, categories, initialPopularityRank = new Ma
         .then((r) => r.json())
         .then(({ ranked }: { ranked: string[] }) => {
           setPopularityRank(new Map(ranked.map((id: string, i: number) => [id, i])));
+        })
+        .catch(() => {});
+      fetch('/api/top-variants')
+        .then((r) => r.json())
+        .then(({ variants }: { variants: Record<string, { color: string; image: string | null; slug: string | null }> }) => {
+          setTopVariants(variants ?? {});
         })
         .catch(() => {});
     }, 10 * 60 * 1000); // 10 minutes
@@ -879,13 +901,19 @@ function ShopContentInner({ products, categories, initialPopularityRank = new Ma
                   const colorMatchImage = matchedVariant
                     ? (matchedVariant.image ?? p.all_images?.[0] ?? p.images?.[0] ?? undefined)
                     : undefined;
+                  // Fallback (when there's no search match): show this
+                  // product's best-performing colour instead of always its
+                  // default. Skipped for already-exploded per-colour cards
+                  // (isVariantCard) — those already show one specific
+                  // colour on purpose.
+                  const topVariant = !p.isVariantCard ? topVariants[p.id] : undefined;
                   return (
                     <ProductCard
                       key={`${p.id}-${p.slug}`}
                       product={p}
                       priority={idx < 4}
-                      imageOverride={imageSearchIds ? imageSearchMatches[p.id] : (colorMatchImage || undefined)}
-                      slugOverride={colorMatchSlug}
+                      imageOverride={imageSearchIds ? imageSearchMatches[p.id] : (colorMatchImage || topVariant?.image || undefined)}
+                      slugOverride={colorMatchSlug || topVariant?.slug || undefined}
                       // Search results should always show a still photo (the
                       // matched colour variant's photo when the query matched
                       // one) instead of the autoplaying catalog video -- the

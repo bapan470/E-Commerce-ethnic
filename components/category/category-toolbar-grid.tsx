@@ -33,6 +33,9 @@ interface CategoryToolbarGridProps {
    *  Passed to ensure the first page paint shows products in popularity order
    *  instead of waiting for the client-side fetch to complete. */
   initialPopularityRank?: Map<string, number>;
+  /** productId -> best-performing colour variation (image/slug). See
+   *  lib/top-variant-server.ts and the matching prop on ShopContent. */
+  initialTopVariants?: Record<string, { color: string; image: string | null; slug: string | null }>;
 }
 
 /**
@@ -45,9 +48,17 @@ interface CategoryToolbarGridProps {
  * off to /shop pre-filtered to this category instead of duplicating that
  * whole panel for a single-category view.
  */
-export default function CategoryToolbarGrid({ products, categoryName, initialPopularityRank = new Map() }: CategoryToolbarGridProps) {
+export default function CategoryToolbarGrid({
+  products,
+  categoryName,
+  initialPopularityRank = new Map(),
+  initialTopVariants = {},
+}: CategoryToolbarGridProps) {
   const [sort, setSort] = useState<SortKey>('popularity');
   const [popularityRank, setPopularityRank] = useState<Map<string, number>>(initialPopularityRank);
+  const [topVariants, setTopVariants] = useState<Record<string, { color: string; image: string | null; slug: string | null }>>(
+    initialTopVariants
+  );
   useEffect(() => {
     // Refresh popularity data every 10 minutes (same cache period as the API)
     // to keep up with new purchases/views, but the server-side initial data
@@ -58,6 +69,13 @@ export default function CategoryToolbarGrid({ products, categoryName, initialPop
         .then(({ ranked }: { ranked: string[] }) => {
           setPopularityRank(new Map(ranked.map((id: string, i: number) => [id, i])));
         })
+        .catch(() => {});
+      fetch('/api/top-variants')
+        .then((r) => r.json())
+        .then(({ variants }: { variants: Record<string, { color: string; image: string | null; slug: string | null }> }) => {
+          setTopVariants(variants ?? {});
+        })
+
         .catch(() => {});
     }, 10 * 60 * 1000); // 10 minutes
     return () => clearInterval(interval);
@@ -221,14 +239,22 @@ export default function CategoryToolbarGrid({ products, categoryName, initialPop
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-        {expandProductVariants(visibleProducts, listingSettings.max_variant_cards_per_product).map((p, i) => (
-          <ProductCard
-            key={`${p.id}-${p.slug}`}
-            product={p}
-            priority={i < 4}
-            disableAutoplayVideo={!videoEnabled || !!p.isVariantCard}
-          />
-        ))}
+        {expandProductVariants(visibleProducts, listingSettings.max_variant_cards_per_product).map((p, i) => {
+          // Show this product's best-performing colour instead of always
+          // its default -- skipped for already-exploded per-colour cards,
+          // which already show one specific colour on purpose.
+          const topVariant = !p.isVariantCard ? topVariants[p.id] : undefined;
+          return (
+            <ProductCard
+              key={`${p.id}-${p.slug}`}
+              product={p}
+              priority={i < 4}
+              imageOverride={topVariant?.image || undefined}
+              slugOverride={topVariant?.slug || undefined}
+              disableAutoplayVideo={!videoEnabled || !!p.isVariantCard}
+            />
+          );
+        })}
       </div>
 
       {hasMore && (

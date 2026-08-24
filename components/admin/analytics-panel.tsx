@@ -551,7 +551,37 @@ function SalesPanel({ range, onRangeChange }: { range: SimpleRange; onRangeChang
                             ) : (
                               <div className="h-8 w-8 rounded-md bg-muted" />
                             )}
-                            <span className="max-w-[220px] truncate font-medium">{p.name}</span>
+                            <div className="min-w-0">
+                              <span className="block max-w-[220px] truncate font-medium">{p.name}</span>
+                              {p.topVariant && (
+                                <div className="mt-1 flex items-center gap-1.5">
+                                  {p.topVariant.image ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      src={p.topVariant.image}
+                                      alt={p.topVariant.color}
+                                      className="h-4 w-4 rounded-full border border-border/60 object-cover"
+                                    />
+                                  ) : (
+                                    <div className="h-4 w-4 rounded-full border border-border/60 bg-muted" />
+                                  )}
+                                  <span className="truncate text-[11px] text-muted-foreground">
+                                    Top: {p.topVariant.color}
+                                  </span>
+                                  {p.topVariant.slug && (
+                                    <a
+                                      href={`/product/${p.topVariant.slug}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="ml-0.5 shrink-0 rounded border border-border/60 px-1.5 py-0.5 text-[10px] font-medium text-primary transition-colors hover:bg-accent"
+                                      title={`Open the ${p.topVariant.color} variation`}
+                                    >
+                                      View →
+                                    </a>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td className="py-2 pr-3 text-emerald-600">{p.impressions}</td>

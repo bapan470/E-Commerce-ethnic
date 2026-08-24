@@ -701,7 +701,15 @@ export default function CheckoutPage() {
       items.forEach((item) => {
         trackEvent('checkout_start', {
           productId: item.product.id,
-          metadata: { itemCount: items.length, cartValue: subtotal, quantity: item.quantity ?? 1 },
+          metadata: {
+            itemCount: items.length,
+            cartValue: subtotal,
+            quantity: item.quantity ?? 1,
+            // Which colour was actually in the cart at checkout, so Admin >
+            // Analytics > Product Performance can break "Begin checkout"
+            // down by colour variation too, matching add_to_cart/purchase.
+            color: item.product.colors?.[0] ?? null,
+          },
         });
       });
       // Fire GA4 / Google Ads begin_checkout event (retries if gtag.js

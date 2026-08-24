@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import { Product } from '@/lib/types';
 import ProductCarousel from '@/components/product/product-carousel';
+import { useTopVariants } from '@/lib/top-variant-api';
 
 /**
  * Scores every candidate against the current product and returns the best
@@ -55,12 +56,14 @@ export default function RelatedProducts({
   }, [current, allProducts, limit]);
 
   const related = overrideProducts && overrideProducts.length > 0 ? overrideProducts.slice(0, limit) : scored;
+  const topVariants = useTopVariants();
 
   return (
     <ProductCarousel
       title={title}
       products={related}
       viewAllHref={viewAllHref ?? `/shop?category=${encodeURIComponent(current.category)}`}
+      variantOverrides={topVariants}
     />
   );
 }

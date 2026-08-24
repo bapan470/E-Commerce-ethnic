@@ -74,29 +74,48 @@ export async function GET(req: Request) {
     // different actual time windows. It now shares the exact same `from`/
     // `to` range as the summary cards, funnel, and sales trend -- one
     // control, one window, everywhere on this dashboard.
-    const [ordersRes, productsRes, eventsRes] = await Promise.all([
+    const [ordersRes, productsRes, eventsRes, variantsRes] = await Promise.all([
       supabase
         .from('orders')
         .select('id, items, total_amount, status, created_at')
         .order('created_at', { ascending: false }),
       supabase
         .from('products')
-        .select('id, name, images, stock_quantity, low_stock_threshold, in_stock')
+        .select('id, name, slug, images, colors, stock_quantity, low_stock_threshold, in_stock')
         .order('stock_quantity', { ascending: true }),
       supabase
         .from('activity_events')
-        .select('session_id, event_type, product_id, created_at')
+        // `metadata` is included so we can read the colour a shopper was
+        // looking at/adding to cart/checking out with (metadata.color),
+        // which powers the per-colour breakdown in Product Performance below.
+        .select('session_id, event_type, product_id, metadata, created_at')
         .gte('created_at', from.toISOString())
         .lte('created_at', to.toISOString()),
+      supabase
+        .from('product_variants')
+        .select('id, product_id, color, images, slug'),
     ]);
 
     if (ordersRes.error) throw ordersRes.error;
     if (productsRes.error) throw productsRes.error;
     if (eventsRes.error) throw eventsRes.error;
+    if (variantsRes.error) throw variantsRes.error;
 
     const orders = ordersRes.data ?? [];
     const products = productsRes.data ?? [];
     const events = eventsRes.data ?? [];
+    const variants = variantsRes.data ?? [];
+
+    // productId -> color -> { image, slug }. Used to resolve a "top colour"
+    // (see Product Performance below) to an actual clickable variant page
+    // and thumbnail, without a second round trip from the dashboard.
+    const variantLookup = new Map<string, Map<string, { image: string | null; slug: string }>>();
+    for (const v of variants) {
+      if (!v.product_id || !v.color) continue;
+      const byColor = variantLookup.get(v.product_id) ?? new Map();
+      byColor.set(v.color, { image: v.images?.[0] ?? null, slug: v.slug });
+      variantLookup.set(v.product_id, byColor);
+    }
 
     // ---------------- Orders that fall inside the selected date range ----------------
     const ordersInRange = orders.filter((o) => {
@@ -218,39 +237,117 @@ export async function GET(req: Request) {
       .sort((a, b) => a.stock_quantity - b.stock_quantity);
 
     // ---------------- Product performance: Impressions vs Conversion (same [from, to] window as everything else above) ----------------
+    // Per-colour breakdown alongside the per-product totals: `metadata.color`
+    // is stamped on product_view / add_to_cart / checkout_start events (see
+    // app/product/[slug]/product-detail.tsx and app/checkout/page.tsx), and
+    // each order line item already carries the exact colour that was bought
+    // (order.items[].color). Grouping those by (product_id, color) lets the
+    // dashboard surface which *variation* is actually driving clicks/carts/
+    // checkouts/purchases, not just which base product.
+    type ColorStats = { color: string; impressions: number; addToCart: number; beginCheckout: number; purchases: number };
     const productViewCounts = new Map<string, number>();
     const productAddToCartCounts = new Map<string, number>();
     const productCheckoutStartCounts = new Map<string, number>();
+    const productColorStats = new Map<string, Map<string, ColorStats>>();
+
+    const bumpColor = (
+      productId: string,
+      color: string | null | undefined,
+      field: 'impressions' | 'addToCart' | 'beginCheckout' | 'purchases',
+      amount = 1
+    ) => {
+      if (!color) return;
+      const byColor = productColorStats.get(productId) ?? new Map<string, ColorStats>();
+      const entry = byColor.get(color) ?? { color, impressions: 0, addToCart: 0, beginCheckout: 0, purchases: 0 };
+      entry[field] += amount;
+      byColor.set(color, entry);
+      productColorStats.set(productId, byColor);
+    };
+
     for (const ev of eventsInRange) {
       if (!ev.product_id) continue;
+      const color = typeof ev.metadata?.color === 'string' ? ev.metadata.color : null;
       if (ev.event_type === 'product_view') {
         productViewCounts.set(ev.product_id, (productViewCounts.get(ev.product_id) ?? 0) + 1);
+        bumpColor(ev.product_id, color, 'impressions');
       } else if (ev.event_type === 'add_to_cart') {
         productAddToCartCounts.set(ev.product_id, (productAddToCartCounts.get(ev.product_id) ?? 0) + 1);
+        bumpColor(ev.product_id, color, 'addToCart');
       } else if (ev.event_type === 'checkout_start') {
         productCheckoutStartCounts.set(ev.product_id, (productCheckoutStartCounts.get(ev.product_id) ?? 0) + 1);
+        bumpColor(ev.product_id, color, 'beginCheckout');
       }
     }
+
+    // "Purchased" = a real order was placed for this product and it wasn't
+    // cancelled/failed. Previously this only counted orders already marked
+    // paid/shipped/delivered, which meant Cash-on-Delivery orders (created
+    // with status 'pending' and often left that way until dispatch) never
+    // showed up here at all -- the Purchase column looked stuck at 0 even
+    // with real orders coming in. `orderCount`/the sales-trend "orders"
+    // bucket above already use this same not-cancelled/failed rule, so this
+    // now matches them instead of silently using a stricter definition.
     const productPurchaseCounts = new Map<string, number>();
     for (const o of ordersInRange) {
-      if (!REVENUE_STATUSES.includes(o.status)) continue;
+      if (EXCLUDED_ORDER_STATUSES.includes(o.status)) continue;
       const items = Array.isArray(o.items) ? o.items : [];
       const countedInThisOrder = new Set<string>();
       for (const it of items) {
         if (!it.product_id || countedInThisOrder.has(it.product_id)) continue;
         countedInThisOrder.add(it.product_id);
         productPurchaseCounts.set(it.product_id, (productPurchaseCounts.get(it.product_id) ?? 0) + 1);
+        bumpColor(it.product_id, it.color ?? null, 'purchases');
       }
     }
+
     const productPerformance = products
       .map((p) => {
         const impressions = productViewCounts.get(p.id) ?? 0;
         const addToCart = productAddToCartCounts.get(p.id) ?? 0;
         const beginCheckout = productCheckoutStartCounts.get(p.id) ?? 0;
         const purchases = productPurchaseCounts.get(p.id) ?? 0;
+
+        // Pick the best-performing colour for this product, ranked exactly
+        // like the shop/category popularity sort: Purchase first, then
+        // Begin checkout, then Add to cart, then Impressions. Only surfaced
+        // when the product actually has more than one colour with activity
+        // -- a single-colour product doesn't need a "top variation" badge.
+        const byColor = productColorStats.get(p.id);
+        let topVariant: {
+          color: string;
+          image: string | null;
+          slug: string | null;
+          impressions: number;
+          addToCart: number;
+          beginCheckout: number;
+          purchases: number;
+        } | null = null;
+        if (byColor && byColor.size > 1) {
+          const ranked = Array.from(byColor.values()).sort(
+            (a, b) =>
+              b.purchases - a.purchases ||
+              b.beginCheckout - a.beginCheckout ||
+              b.addToCart - a.addToCart ||
+              b.impressions - a.impressions
+          );
+          const best = ranked[0];
+          const variantMatch = variantLookup.get(p.id)?.get(best.color) ?? null;
+          const isBaseColor = (p.colors ?? [])[0] === best.color;
+          topVariant = {
+            color: best.color,
+            image: variantMatch?.image ?? (isBaseColor ? p.images?.[0] ?? null : null),
+            slug: variantMatch?.slug ?? (isBaseColor ? p.slug ?? null : null),
+            impressions: best.impressions,
+            addToCart: best.addToCart,
+            beginCheckout: best.beginCheckout,
+            purchases: best.purchases,
+          };
+        }
+
         return {
           productId: p.id,
           name: p.name,
+          slug: p.slug ?? null,
           image: p.images?.[0] ?? null,
           impressions,
           addToCart,
@@ -258,6 +355,7 @@ export async function GET(req: Request) {
           purchases,
           conversions: purchases,
           conversionRate: impressions > 0 ? Number(((purchases / impressions) * 100).toFixed(2)) : 0,
+          topVariant,
         };
       })
       .filter((p) => p.impressions > 0 || p.addToCart > 0 || p.beginCheckout > 0 || p.purchases > 0)

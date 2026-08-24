@@ -1,52 +1,56 @@
-# Fixes in this package
+# Changes — Purchase fix + Variation Analytics + Popularity Sort
 
-Extract this zip into your project root and overwrite the matching files, then commit and push.
+Repo: bapan470/E-Commerce-ethnic — clone karke, is zip ke andar jo folder
+structure hai, wahi paths par apni repo me **replace/copy-paste** kar dein
+(sab paths repo-root ke relative hain), phir `git add -A && git commit && git push`.
 
-## 1. AI "Zari Border" / "Maroon" anchoring bug — FIXED (finally, in the actual repo)
+## 1) Purchase column 0 dikhna — FIX
+- `app/api/admin/analytics/route.ts`
+  - Root cause: Purchase sirf `paid/shipped/delivered` status wale orders
+    count karta tha. COD orders `pending` status pe hi reh jaate hain, isliye
+    kabhi count nahi hote the.
+  - Ab "Purchase" = koi bhi order jo cancelled/failed nahi hai (jaisa
+    `orderCount` pehle se karta tha) — matlab COD bhi count hoga.
 
-Files:
-- `lib/vendor-ai-listing.ts` — the prompt used automatically when a vendor publishes/edits a product.
-- `app/api/admin/generate-listing/route.ts` — the prompt used by the admin panel's "Generate Listing" button.
+## 2) Color/Variation-level analytics — NAYA
+- `app/product/[slug]/product-detail.tsx` — `product_view` event ab current
+  color/variation ke saath fire hota hai.
+- `app/checkout/page.tsx` — `checkout_start` event ab color ke saath fire
+  hota hai.
+- `app/api/admin/analytics/route.ts` — har product ka "Top Variant" nikalta
+  hai (Purchase > Begin Checkout > Add to Cart > Impression priority se),
+  color image + slug ke saath.
+- `lib/analytics-api.ts` — naya `topVariant` field type me add kiya.
+- `components/admin/analytics-panel.tsx` — Product Performance table me ab
+  color swatch image + color name + **"View →"** button dikhta hai jo seedha
+  us variation ke product page pe jaata hai.
 
-What changed:
-- Every field that previously had only 1–2 example values (pattern, border, ornamentation,
-  surface_styling, print_or_pattern_type, colors, fabric, origin, material, blouse fields, neck,
-  sleeve_styling, add_on) now lists 6–9 realistic alternatives instead of a single example.
-- Added an explicit **"CRITICAL — DO NOT ANCHOR ON THE EXAMPLE VALUES"** instruction near the top of
-  both prompts, telling the model the "e.g." values are just format examples, and specifically telling
-  it not to say "Zari" or default to "Maroon" unless that's actually visible in the photo.
+## 3) Shop/Category priority sort — FIX
+Pehle weighted-score tha (add-to-cart zyada hone par purchase wale product
+ko peeche daal sakta tha). Ab **strict priority**: Purchase > Begin Checkout
+> Add to Cart > Impression.
+- `lib/popularity-rank-server.ts`
+- `app/api/products/popularity/route.ts`
 
-This was previously discussed and a `fixes.zip` was built for it, but it never got extracted/committed —
-the last commits in the repo were only `final_price` TS-type fixes, unrelated to this. This package is
-the real fix, sitting directly in your actual project files.
+## 4) "You may also like" / "Recently Viewed" / Shop / Category cards
+Best-performing color variation ka image + link ab in sab jagah dikhta hai
+(agar us product ka koi ek color dusron se zyada perform kar raha ho):
+- `lib/top-variant-server.ts` — naya shared server helper (orders + events se
+  best color nikaalta hai)
+- `app/api/top-variants/route.ts` — naya public API (client components ke
+  liye)
+- `lib/top-variant-api.ts` — naya client hook `useTopVariants()`
+- `components/product/product-carousel.tsx`
+- `components/product/recently-viewed.tsx`
+- `components/product/related-products.tsx`
+- `app/shop/page.tsx`, `app/shop/shop-content.tsx`
+- `app/category/[slug]/page.tsx`, `components/category/category-toolbar-grid.tsx`
 
-## 2. Vendor "Delete Product" option — NEW
-
-Colour variation delete already existed (via "Variations" → trash icon). This adds the ability to
-delete a whole product listing.
-
-Files:
-- `app/api/vendor/products/[id]/route.ts` — added a `DELETE` handler.
-  - Confirms the product belongs to the logged-in vendor.
-  - Blocked if the product is `awaiting_stock` (already committed to a pickup).
-  - Blocked if any order for this product is still being fulfilled (stage in
-    `placed / vendor_accepted / picked_from_vendor / received_at_warehouse / packed /
-    shipped_to_customer / quality_hold`) — so a vendor can't delete stock that's mid-order.
-  - Otherwise deletes the product row. Colour variations (`product_variants`) cascade-delete
-    automatically at the DB level. Past `order_items` are untouched (their `product_id` just
-    becomes `NULL`; they already keep their own copy of the product name), so order history/reports
-    are unaffected.
-- `lib/vendor-api.ts` — added `deleteVendorProduct(id)` client helper.
-- `app/vendor/dashboard/products/page.tsx` — added a "Delete" button next to "Edit" for products in
-  `live` / `rejected` / `draft` status, with a confirmation dialog (same style as the existing
-  variation-delete dialog) before it actually deletes.
-
-## How to apply
-
-1. Extract this zip into your project root (paths already match: `app/...`, `lib/...`).
-2. Overwrite the 5 files when prompted.
-3. `git add -A && git commit -m "Fix AI pattern/colour anchoring + add vendor product delete" && git push`
-4. Redeploy (Vercel will pick it up automatically on push if it's connected to this repo).
-
-No database migration needed — `product_variants` already cascade-deletes and `order_items.product_id`
-is already `ON DELETE SET NULL` in your existing schema.
+## Notes
+- Koi naya database migration/table nahi lagi — sab existing columns
+  (`activity_events.metadata`, `orders.items[].color`, `product_variants`)
+  use kiye hain.
+- `npx tsc --noEmit` clean pass ho chuka hai (0 errors) is repo par.
+- `next build` yahan sandbox me sirf Google Fonts CDN block hone ki wajah se
+  fail hua tha (network restriction) — code ka issue nahi, aapke machine par
+  normally build hoga.

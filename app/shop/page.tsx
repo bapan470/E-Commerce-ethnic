@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { fetchProductsServer } from '@/lib/products-api-server';
 import { fetchCategoriesServer } from '@/lib/products-api-server';
 import { fetchPopularityRankServer } from '@/lib/popularity-rank-server';
+import { fetchTopVariantMapServer, toJSON, TopVariantMapJSON } from '@/lib/top-variant-server';
 import ShopContent from './shop-content';
 
 // Same reasoning as app/category/[slug]/page.tsx: this page has no
@@ -47,15 +48,28 @@ export default async function ShopPage({
   let products: Awaited<ReturnType<typeof fetchProductsServer>> = [];
   let categories: Awaited<ReturnType<typeof fetchCategoriesServer>> = [];
   let initialPopularityRank: Map<string, number> = new Map();
+  let initialTopVariants: TopVariantMapJSON = {};
   try {
-    [products, categories, initialPopularityRank] = await Promise.all([
+    const [productsRes, categoriesRes, popularityRes, topVariantsRes] = await Promise.all([
       fetchProductsServer(),
       fetchCategoriesServer(),
       fetchPopularityRankServer(),
+      fetchTopVariantMapServer(),
     ]);
+    products = productsRes;
+    categories = categoriesRes;
+    initialPopularityRank = popularityRes;
+    initialTopVariants = toJSON(topVariantsRes);
   } catch (err) {
     console.error('Failed to load /shop data:', err);
   }
 
-  return <ShopContent products={products} categories={categories} initialPopularityRank={initialPopularityRank} />;
+  return (
+    <ShopContent
+      products={products}
+      categories={categories}
+      initialPopularityRank={initialPopularityRank}
+      initialTopVariants={initialTopVariants}
+    />
+  );
 }

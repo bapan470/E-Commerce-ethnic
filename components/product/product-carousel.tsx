@@ -10,6 +10,7 @@ export default function ProductCarousel({
   title,
   products,
   viewAllHref,
+  variantOverrides,
 }: {
   /** Small uppercase label shown above the title, e.g. "Collection" --
    *  same visual pattern as the "BRIDAL" category tag above a product
@@ -19,6 +20,14 @@ export default function ProductCarousel({
   products: Product[];
   /** Shown as a "View All" link in the section header when provided. */
   viewAllHref?: string;
+  /**
+   * productId -> that product's best-performing colour variation (from
+   * lib/top-variant-api.ts). When present for a product, its card shows
+   * that colour's photo and links straight to that colour's page instead
+   * of the product's default -- e.g. "Recently Viewed" / "You May Also
+   * Like" showing the exact variation shoppers actually engage with most.
+   */
+  variantOverrides?: Record<string, { image?: string | null; slug?: string | null }>;
 }) {
   if (products.length === 0) return null;
 
@@ -63,14 +72,23 @@ export default function ProductCarousel({
           else (no edge-to-edge bleed), just tighter card size/gap so more
           items peek into view and invite a swipe, like the reference. */}
       <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar snap-x snap-mandatory">
-        {products.map((p, idx) => (
-          <div
-            key={p.id}
-            className="w-[42%] shrink-0 snap-start sm:w-[180px] md:w-[200px]"
-          >
-            <ProductCard product={p} compact priority={idx < 2} />
-          </div>
-        ))}
+        {products.map((p, idx) => {
+          const override = variantOverrides?.[p.id];
+          return (
+            <div
+              key={p.id}
+              className="w-[42%] shrink-0 snap-start sm:w-[180px] md:w-[200px]"
+            >
+              <ProductCard
+                product={p}
+                compact
+                priority={idx < 2}
+                imageOverride={override?.image ?? undefined}
+                slugOverride={override?.slug ?? undefined}
+              />
+            </div>
+          );
+        })}
       </div>
     </section>
   );

@@ -5,10 +5,12 @@ import { useProducts } from '@/lib/cart-context';
 import { getRecentlyViewed } from '@/lib/recently-viewed';
 import { Product } from '@/lib/types';
 import ProductCarousel from '@/components/product/product-carousel';
+import { useTopVariants } from '@/lib/top-variant-api';
 
 export default function RecentlyViewedSection({ excludeId }: { excludeId?: string }) {
   const { products } = useProducts();
   const [ids, setIds] = useState<string[]>([]);
+  const topVariants = useTopVariants();
 
   // Read localStorage only on the client, after mount, to avoid SSR mismatch.
   useEffect(() => {
@@ -23,5 +25,5 @@ export default function RecentlyViewedSection({ excludeId }: { excludeId?: strin
     .filter((p): p is Product => Boolean(p))
     .slice(0, 10);
 
-  return <ProductCarousel title="Recently Viewed" products={items} />;
+  return <ProductCarousel title="Recently Viewed" products={items} variantOverrides={topVariants} />;
 }

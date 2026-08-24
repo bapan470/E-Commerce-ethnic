@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { fetchCategoriesServer, fetchProductsServer } from '@/lib/products-api-server';
 import { fetchPopularityRankServer } from '@/lib/popularity-rank-server';
+import { fetchTopVariantMapServer, toJSON } from '@/lib/top-variant-server';
 import ViewItemListTracker from '@/components/analytics/view-item-list-tracker';
 import CategoryToolbarGrid from '@/components/category/category-toolbar-grid';
 import { safeJsonLd } from '@/lib/json-ld';
@@ -98,11 +99,13 @@ export async function generateStaticParams() {
 }
 
 export default async function CategoryPage({ params }: Params) {
-  const [categories, products, initialPopularityRank] = await Promise.all([
+  const [categories, products, initialPopularityRank, topVariantMap] = await Promise.all([
     fetchCategoriesServer(),
     fetchProductsServer(),
     fetchPopularityRankServer(),
+    fetchTopVariantMapServer(),
   ]);
+  const initialTopVariants = toJSON(topVariantMap);
 
   const category = categories.find((c) => c.slug === params.slug);
   if (!category) notFound();
@@ -189,7 +192,12 @@ export default async function CategoryPage({ params }: Params) {
           </Link>
         </div>
       ) : (
-        <CategoryToolbarGrid products={categoryProducts} categoryName={category.name} initialPopularityRank={initialPopularityRank} />
+        <CategoryToolbarGrid
+          products={categoryProducts}
+          categoryName={category.name}
+          initialPopularityRank={initialPopularityRank}
+          initialTopVariants={initialTopVariants}
+        />
       )}
       <ViewItemListTracker
         listName={category.name}

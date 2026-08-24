@@ -500,10 +500,17 @@ export default function ProductDetail() {
 
   useEffect(() => {
     if (baseProduct) {
-      trackEvent('product_view', { productId: baseProduct.id, userId: user?.id ?? null });
+      // metadata.color is which colour variation was actually being looked
+      // at, so Admin > Analytics > Product Performance can show a
+      // per-colour impressions breakdown, not just a per-product total.
+      trackEvent('product_view', {
+        productId: baseProduct.id,
+        userId: user?.id ?? null,
+        metadata: { color: variant?.color ?? baseProduct.colors?.[0] ?? null },
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseProduct?.id]);
+  }, [baseProduct?.id, variant?.color]);
 
   // Fire GA4 / Google Ads view_item event once per product load. Uses
   // `product` (not `baseProduct`) so the price reflects the currently
