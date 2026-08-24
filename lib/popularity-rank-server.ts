@@ -3,13 +3,13 @@
  * This allows us to pass the initial popularity data from the server
  * to the client, so the first page paint shows products in the right order.
  *
- * Ranking rule (strict priority, not a weighted score): a product with even
- * one Purchase always outranks a product with zero purchases, no matter how
- * many add-to-carts/impressions the other one has. Ties within the same
- * purchase count are broken by Begin checkout, then Add to cart, then
- * Impressions (product_view) -- i.e. exactly the funnel order, most-committed
- * step first. This mirrors the same ranking used for each product's "top
- * colour variation" in Admin > Analytics > Product Performance.
+ * Ranking rule (strict priority, not a weighted score): a product with more
+ * Impressions (product_view) always outranks a product with fewer
+ * impressions, no matter how many purchases/checkouts/add-to-carts the other
+ * one has -- i.e. the shop page's default "Popularity" order mirrors the
+ * Impressions column in Admin > Analytics > Product Performance. Ties within
+ * the same impression count are broken by Purchase, then Begin checkout,
+ * then Add to cart.
  */
 
 import { getServerSupabase } from '@/lib/supabase-server';
@@ -54,16 +54,16 @@ export async function fetchPopularityRankServer(): Promise<Map<string, number>> 
       counts.set(row.product_id, entry);
     }
 
-    // Sort by strict priority: Purchase, then Begin checkout, then Add to
-    // cart, then Impressions -- each tier only ever breaks ties in the tier
-    // above it, it never outweighs it.
+    // Sort by strict priority: Impressions (product_view) first, then
+    // Purchase, then Begin checkout, then Add to cart -- each tier only ever
+    // breaks ties in the tier above it, it never outweighs it.
     const ranked = Array.from(counts.entries())
       .sort(
         ([, a], [, b]) =>
+          b.product_view - a.product_view ||
           b.purchase - a.purchase ||
           b.checkout_start - a.checkout_start ||
-          b.add_to_cart - a.add_to_cart ||
-          b.product_view - a.product_view
+          b.add_to_cart - a.add_to_cart
       )
       .map(([id]) => id);
 

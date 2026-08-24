@@ -5,14 +5,14 @@ import { getServerSupabase } from '@/lib/supabase-server';
  * GET /api/products/popularity
  *
  * Returns product IDs ranked by strict funnel-stage priority over the last
- * 30 days -- NOT a weighted score. A product with even one purchase always
- * outranks a product with zero purchases, no matter how many add-to-carts/
- * views the other one has:
+ * 30 days -- NOT a weighted score. A product with more Impressions always
+ * outranks a product with fewer impressions, no matter how many
+ * purchases/checkouts/add-to-carts the other one has:
  *
- *   1. Purchase        (most add_to_cart etc. never outweighs this)
- *   2. Begin checkout   (tie-break within the same purchase count)
- *   3. Add to cart      (tie-break within the same purchase+checkout count)
- *   4. Impressions       (product_view — final tie-break)
+ *   1. Impressions       (product_view — most views always wins)
+ *   2. Purchase          (tie-break within the same impression count)
+ *   3. Begin checkout    (tie-break within the same impression+purchase count)
+ *   4. Add to cart       (final tie-break)
  *
  * Response: { ranked: string[] }  — product_id strings, highest priority first.
  * Products with zero events are not included; callers append them at the end.
@@ -65,10 +65,10 @@ export async function GET() {
     const ranked = Array.from(counts.entries())
       .sort(
         ([, a], [, b]) =>
+          b.product_view - a.product_view ||
           b.purchase - a.purchase ||
           b.checkout_start - a.checkout_start ||
-          b.add_to_cart - a.add_to_cart ||
-          b.product_view - a.product_view
+          b.add_to_cart - a.add_to_cart
       )
       .map(([id]) => id);
 
