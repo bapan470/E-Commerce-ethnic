@@ -94,7 +94,7 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
   const [selectedFabrics, setSelectedFabrics] = useState<string[]>([]);
   const [selectedOccasions, setSelectedOccasions] = useState<string[]>([]);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 35000]);
-  const initialSort = (params.get('sort') as SortKey) || 'featured';
+  const initialSort = (params.get('sort') as SortKey) || 'popularity';
   const [query, setQuery] = useState(initialQuery);
   const [sort, setSort] = useState<SortKey>(initialSort);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -282,10 +282,19 @@ function ShopContentInner({ products, categories }: ShopContentProps) {
         break;
       case 'popularity':
         list.sort((a, b) => {
+          // Variant cards share the same `id` as their parent product,
+          // so they inherit the same popularity rank — the whole colour
+          // family of a popular product floats to the top together.
           const ra = popularityRank.has(a.id) ? popularityRank.get(a.id)! : Infinity;
           const rb = popularityRank.has(b.id) ? popularityRank.get(b.id)! : Infinity;
           if (ra !== rb) return ra - rb;
-          // Tie-break: featured products first, then by rating
+          // Same rank (same product family): show the base card first,
+          // then variant cards, so users see the main product then its
+          // colour options immediately after.
+          const aIsVariant = !!(a as any).isVariantCard;
+          const bIsVariant = !!(b as any).isVariantCard;
+          if (aIsVariant !== bIsVariant) return aIsVariant ? 1 : -1;
+          // Final tie-break: featured first, then highest rating
           return Number(!!b.featured) - Number(!!a.featured) || b.rating - a.rating;
         });
         break;

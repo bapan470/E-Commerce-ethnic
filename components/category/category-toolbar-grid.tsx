@@ -42,7 +42,7 @@ interface CategoryToolbarGridProps {
  * whole panel for a single-category view.
  */
 export default function CategoryToolbarGrid({ products, categoryName }: CategoryToolbarGridProps) {
-  const [sort, setSort] = useState<SortKey>('featured');
+  const [sort, setSort] = useState<SortKey>('popularity');
   const [popularityRank, setPopularityRank] = useState<Map<string, number>>(new Map());
   useEffect(() => {
     fetch('/api/products/popularity')
@@ -104,6 +104,10 @@ export default function CategoryToolbarGrid({ products, categoryName }: Category
           const ra = popularityRank.has(a.id) ? popularityRank.get(a.id)! : Infinity;
           const rb = popularityRank.has(b.id) ? popularityRank.get(b.id)! : Infinity;
           if (ra !== rb) return ra - rb;
+          // Same product family: base card first, then variant cards
+          const aIsVariant = !!(a as any).isVariantCard;
+          const bIsVariant = !!(b as any).isVariantCard;
+          if (aIsVariant !== bIsVariant) return aIsVariant ? 1 : -1;
           return Number(!!b.featured) - Number(!!a.featured) || b.rating - a.rating;
         });
         break;
