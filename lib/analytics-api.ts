@@ -26,24 +26,23 @@ export interface FunnelStage {
   sessions: number;
 }
 
-export interface ProductPerformanceTopVariant {
-  /** Colour name, e.g. "Maroon" */
-  color: string;
-  image: string | null;
-  /** Slug of this exact colour's product page -- null if it can't be resolved. */
-  slug: string | null;
-  impressions: number;
-  addToCart: number;
-  beginCheckout: number;
-  purchases: number;
-}
-
 export interface ProductPerformance {
+  /** Row id -- the underlying product id, or `${productId}::${color}` for a
+   *  colour-broken-out row (see `variantColor`). Always unique per row. */
   productId: string;
   name: string;
-  /** Base product's own slug, e.g. for linking the product name/thumbnail. */
+  /** This exact row's own product page -- the colour variant's slug for a
+   *  colour row, the base product's slug otherwise. Always populated when
+   *  a page exists for it, so "View" never silently disappears. */
   slug: string | null;
   image: string | null;
+  /** Set when this row represents one specific colour's activity (see
+   *  route.ts) rather than a whole product's combined totals -- e.g.
+   *  "Maroon" for one row and "Dark Maroon" for another row of the same
+   *  underlying product, each with its own impressions/etc. Null for a
+   *  plain single-colour product or leftover activity with no colour
+   *  metadata attached. */
+  variantColor: string | null;
   impressions: number;
   /** sessions that added this product to cart, within the window */
   addToCart: number;
@@ -55,11 +54,6 @@ export interface ProductPerformance {
   purchases: number;
   conversions: number;
   conversionRate: number;
-  /** The best-performing colour variation for this product (ranked Purchase
-   *  > Begin checkout > Add to cart > Impressions), when the product has
-   *  more than one colour with recorded activity. Null for single-colour
-   *  products or when no colour data is available yet. */
-  topVariant: ProductPerformanceTopVariant | null;
 }
 
 export interface LowStockProduct {

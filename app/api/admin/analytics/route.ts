@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { getVariantDisplayName } from '@/lib/variant-display-name';
 
 const REVENUE_STATUSES = ['paid', 'shipped', 'delivered'];
 const EXCLUDED_ORDER_STATUSES = ['cancelled', 'failed'];
@@ -300,63 +301,103 @@ export async function GET(req: Request) {
       }
     }
 
+    // One row per product used to lump every colour's activity together
+    // behind a single "Top: X" badge for whichever colour performed best --
+    // every *other* colour's numbers were invisible, and a product with no
+    // colour breakdown yet (or literally one colour) had nothing to click
+    // through to it at all when its own row also had no `topVariant`. Now
+    // each colour with recorded activity gets its own row -- same "one card
+    // per colour" treatment the storefront catalog/search grids already
+    // got -- with its own working link, so nothing is hidden and nothing
+    // is missing a View button.
     const productPerformance = products
-      .map((p) => {
-        const impressions = productViewCounts.get(p.id) ?? 0;
-        const addToCart = productAddToCartCounts.get(p.id) ?? 0;
-        const beginCheckout = productCheckoutStartCounts.get(p.id) ?? 0;
-        const purchases = productPurchaseCounts.get(p.id) ?? 0;
-
-        // Pick the best-performing colour for this product, ranked exactly
-        // like the shop/category popularity sort: Purchase first, then
-        // Begin checkout, then Add to cart, then Impressions. Only surfaced
-        // when the product actually has more than one colour with activity
-        // -- a single-colour product doesn't need a "top variation" badge.
+      .flatMap((p) => {
+        const totalImpressions = productViewCounts.get(p.id) ?? 0;
+        const totalAddToCart = productAddToCartCounts.get(p.id) ?? 0;
+        const totalBeginCheckout = productCheckoutStartCounts.get(p.id) ?? 0;
+        const totalPurchases = productPurchaseCounts.get(p.id) ?? 0;
         const byColor = productColorStats.get(p.id);
-        let topVariant: {
-          color: string;
-          image: string | null;
-          slug: string | null;
-          impressions: number;
-          addToCart: number;
-          beginCheckout: number;
-          purchases: number;
-        } | null = null;
-        if (byColor && byColor.size > 1) {
-          const ranked = Array.from(byColor.values()).sort(
-            (a, b) =>
-              b.purchases - a.purchases ||
-              b.beginCheckout - a.beginCheckout ||
-              b.addToCart - a.addToCart ||
-              b.impressions - a.impressions
-          );
-          const best = ranked[0];
-          const variantMatch = variantLookup.get(p.id)?.get(best.color) ?? null;
-          const isBaseColor = (p.colors ?? [])[0] === best.color;
-          topVariant = {
-            color: best.color,
-            image: variantMatch?.image ?? (isBaseColor ? p.images?.[0] ?? null : null),
-            slug: variantMatch?.slug ?? (isBaseColor ? p.slug ?? null : null),
-            impressions: best.impressions,
-            addToCart: best.addToCart,
-            beginCheckout: best.beginCheckout,
-            purchases: best.purchases,
-          };
-        }
+        const baseColor = (p.colors ?? [])[0] ?? null;
 
-        return {
-          productId: p.id,
-          name: p.name,
-          slug: p.slug ?? null,
-          image: p.images?.[0] ?? null,
+        const toRow = (
+          rowId: string,
+          name: string,
+          slug: string | null,
+          image: string | null,
+          variantColor: string | null,
+          impressions: number,
+          addToCart: number,
+          beginCheckout: number,
+          purchases: number
+        ) => ({
+          productId: rowId,
+          name,
+          slug,
+          image,
+          variantColor,
           impressions,
           addToCart,
           beginCheckout,
           purchases,
           conversions: purchases,
           conversionRate: impressions > 0 ? Number(((purchases / impressions) * 100).toFixed(2)) : 0,
-          topVariant,
-        };
+        });
+
+        if (!byColor || byColor.size === 0) {
+          // No colour metadata recorded for this product at all -- one row,
+          // same as before colour tracking existed.
+          return [
+            toRow(p.id, p.name, p.slug ?? null, p.images?.[0] ?? null, null, totalImpressions, totalAddToCart, totalBeginCheckout, totalPurchases),
+          ];
+        }
+
+        const colorRows = Array.from(byColor.values()).map((stats) => {
+          const variantMatch = variantLookup.get(p.id)?.get(stats.color) ?? null;
+          const isBaseColor = baseColor === stats.color;
+          return toRow(
+            `${p.id}::${stats.color}`,
+            getVariantDisplayName(p.name, baseColor, stats.color),
+            variantMatch?.slug ?? (isBaseColor ? p.slug ?? null : null),
+            variantMatch?.image ?? (isBaseColor ? p.images?.[0] ?? null : null),
+            stats.color,
+            stats.impressions,
+            stats.addToCart,
+            stats.beginCheckout,
+            stats.purchases
+          );
+        });
+
+        // Some events/orders may predate colour tracking, or simply arrived
+        // without colour metadata -- their counts still live in the
+        // product-level totals above but not in `byColor`. Surface any such
+        // leftover as its own base-product row instead of silently dropping
+        // it from the totals a shopper/admin would otherwise expect to add
+        // up.
+        const trackedImpressions = colorRows.reduce((s, r) => s + r.impressions, 0);
+        const trackedAddToCart = colorRows.reduce((s, r) => s + r.addToCart, 0);
+        const trackedBeginCheckout = colorRows.reduce((s, r) => s + r.beginCheckout, 0);
+        const trackedPurchases = colorRows.reduce((s, r) => s + r.purchases, 0);
+        const leftoverImpressions = totalImpressions - trackedImpressions;
+        const leftoverAddToCart = totalAddToCart - trackedAddToCart;
+        const leftoverBeginCheckout = totalBeginCheckout - trackedBeginCheckout;
+        const leftoverPurchases = totalPurchases - trackedPurchases;
+        if (leftoverImpressions > 0 || leftoverAddToCart > 0 || leftoverBeginCheckout > 0 || leftoverPurchases > 0) {
+          colorRows.push(
+            toRow(
+              p.id,
+              p.name,
+              p.slug ?? null,
+              p.images?.[0] ?? null,
+              null,
+              Math.max(0, leftoverImpressions),
+              Math.max(0, leftoverAddToCart),
+              Math.max(0, leftoverBeginCheckout),
+              Math.max(0, leftoverPurchases)
+            )
+          );
+        }
+
+        return colorRows;
       })
       .filter((p) => p.impressions > 0 || p.addToCart > 0 || p.beginCheckout > 0 || p.purchases > 0)
       .sort((a, b) => b.impressions - a.impressions)
