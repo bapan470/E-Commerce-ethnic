@@ -6,6 +6,7 @@ import Providers from '@/components/providers';
 import AnalyticsScripts from '@/components/analytics-scripts';
 import { getServerSupabase } from '@/lib/supabase-server';
 import { SeoSettings, AnalyticsSettings } from '@/lib/marketing-api';
+import { PaymentDiscountSettings, DEFAULT_PAYMENT_DISCOUNT_SETTINGS } from '@/lib/settings-api';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -139,12 +140,34 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
+// Reads Admin > Payments > "extra % off on online payment" incentive
+// server-side so the checkout/product-page badge ("Upto ₹X off on prepaid
+// orders") is already correct in the very first HTML sent to the browser —
+// no client-side round trip to wait on. That round trip is what made the
+// badge look "delayed" on mobile: same fetch, but mobile's higher network
+// latency made the gap before it appeared much more noticeable than on a
+// fast desktop connection.
+async function getPaymentDiscountSettings(): Promise<PaymentDiscountSettings> {
+  try {
+    const supabase = getServerSupabase();
+    const { data } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'payment_discount')
+      .maybeSingle();
+    return { ...DEFAULT_PAYMENT_DISCOUNT_SETTINGS, ...((data?.value as Partial<PaymentDiscountSettings>) || {}) };
+  } catch {
+    return DEFAULT_PAYMENT_DISCOUNT_SETTINGS;
+  }
+}
+
 export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const analytics = await getAnalyticsSettings();
+  const initialPaymentDiscount = await getPaymentDiscountSettings();
   const gaId = analytics.ga_enabled ? analytics.ga_measurement_id.trim() : '';
   const gtmId = analytics.gtm_enabled ? analytics.gtm_container_id.trim() : '';
   const googleAdsId = analytics.google_ads_id.trim();
@@ -174,7 +197,7 @@ export default async function RootLayout({
         <AnalyticsScripts gaId={gaId} gtmId={gtmId} googleAdsId={googleAdsId} pixelId={pixelId} />
       </head>
       <body className="font-sans antialiased">
-        <Providers>{children}</Providers>
+        <Providers initialPaymentDiscount={initialPaymentDiscount}>{children}</Providers>
       </body>
     </html>
   );

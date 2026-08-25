@@ -4,6 +4,7 @@ import React from 'react';
 import dynamic from 'next/dynamic';
 import { usePathname } from 'next/navigation';
 import { CartProvider, CategoriesProvider, PaymentDiscountProvider } from '@/lib/cart-context';
+import type { PaymentDiscountSettings } from '@/lib/settings-api';
 import { AuthProvider } from '@/lib/auth-context';
 import { Toaster } from 'sonner';
 import CartDrawer from './cart-drawer';
@@ -29,7 +30,16 @@ const SaleCountdownBar = dynamic(() => import('./growth/sale-countdown-bar'), { 
 const ExitIntentModal = dynamic(() => import('./growth/exit-intent-modal'), { ssr: false });
 const SocialProofToast = dynamic(() => import('./growth/social-proof-toast'), { ssr: false });
 
-export default function Providers({ children }: { children: React.ReactNode }) {
+export default function Providers({
+  children,
+  initialPaymentDiscount,
+}: {
+  children: React.ReactNode;
+  /** Server-fetched so the payment-discount badge is correct in the very
+   *  first paint — see app/layout.tsx. Optional only so the type still
+   *  works for any other place Providers might be mounted without it. */
+  initialPaymentDiscount?: PaymentDiscountSettings;
+}) {
   const pathname = usePathname();
   const isHome = pathname === '/';
   const isAdminRoute = pathname?.startsWith('/admin');
@@ -53,7 +63,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     return (
       <AuthProvider>
         <CategoriesProvider>
-          <PaymentDiscountProvider>
+          <PaymentDiscountProvider initialValue={initialPaymentDiscount}>
             <CartProvider>
               {children}
               <Toaster position="top-center" richColors closeButton offset="68px" />
@@ -67,7 +77,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
       <CategoriesProvider>
-        <PaymentDiscountProvider>
+        <PaymentDiscountProvider initialValue={initialPaymentDiscount}>
           <CartProvider>
             <ActivityTracker />
             <AffiliateTracker />

@@ -622,12 +622,26 @@ const readCachedPaymentDiscount = (): PaymentDiscountSettings => {
   }
 };
 
-export function PaymentDiscountProvider({ children }: { children: React.ReactNode }) {
+export function PaymentDiscountProvider({
+  children,
+  initialValue,
+}: {
+  children: React.ReactNode;
+  /** Server-fetched value passed down from app/layout.tsx (see there for
+   *  why) — used as the very first state instead of the generic default,
+   *  so there's nothing to "catch up" to on the client at all. Falls back
+   *  to the localStorage cache, then the hardcoded default, only for the
+   *  rare case this provider is mounted somewhere without it. */
+  initialValue?: PaymentDiscountSettings;
+}) {
   const [paymentDiscount, setPaymentDiscount] = useState<PaymentDiscountSettings>(
-    readCachedPaymentDiscount
+    () => initialValue ?? readCachedPaymentDiscount()
   );
 
   useEffect(() => {
+    // Server already gave us a fresh value for this request — still worth
+    // a background refresh (an admin could save a change between this
+    // page's server render and the moment it's viewed), but no rush.
     fetchPaymentDiscountSettings()
       .then((settings) => {
         setPaymentDiscount(settings);
@@ -637,7 +651,10 @@ export function PaymentDiscountProvider({ children }: { children: React.ReactNod
           // storage full/unavailable — cache is a nice-to-have, safe to skip
         }
       })
-      .catch(() => setPaymentDiscount(DEFAULT_PAYMENT_DISCOUNT_SETTINGS));
+      .catch(() => {
+        // keep whatever we already have (server value or cache) rather
+        // than clobbering it with the generic default on a failed refresh
+      });
   }, []);
 
   const value: PaymentDiscountContextValue = { paymentDiscount };
