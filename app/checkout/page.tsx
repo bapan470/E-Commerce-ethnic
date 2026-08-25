@@ -1483,7 +1483,7 @@ export default function CheckoutPage() {
       <StickyOrderBar
         items={items}
         subtotal={subtotal}
-        mrpTotal={mrpTotal}
+        mrpTotal={mrpTotal + shipping}
         shipping={shipping}
         payableTotal={payableTotal}
         totalSavings={totalSavings}
