@@ -728,14 +728,22 @@ export default function Header() {
           {user && (
             <Button
               variant="ghost"
-              size="sm"
+              size="icon"
               asChild
               aria-label="Store credit"
-              className="hidden items-center gap-1.5 px-2 sm:flex"
+              className="relative flex items-center justify-center sm:h-auto sm:w-auto sm:gap-1.5 sm:px-2"
             >
               <Link href="/account/store-credit">
                 <Wallet className="h-5 w-5" />
-                <span className="text-sm font-semibold">₹{storeCredit.toLocaleString('en-IN')}</span>
+                {/* Mobile: small badge like the cart count, so the icon
+                    row stays compact. Desktop (sm+): full ₹ amount text
+                    next to the icon instead of a cramped badge. */}
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-secondary px-0.5 text-[9px] font-bold leading-none text-secondary-foreground sm:hidden">
+                  ₹
+                </span>
+                <span className="hidden text-sm font-semibold sm:inline">
+                  ₹{storeCredit.toLocaleString('en-IN')}
+                </span>
               </Link>
             </Button>
           )}

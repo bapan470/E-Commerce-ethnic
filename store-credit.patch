@@ -1,3 +1,78 @@
+diff --git a/app/account/page.tsx b/app/account/page.tsx
+index 9752cbe..1197b46 100644
+--- a/app/account/page.tsx
++++ b/app/account/page.tsx
+@@ -1,7 +1,7 @@
+ import Link from 'next/link';
+ import {
+   Package, MapPin, User, Heart, RotateCcw,
+-  Gift, Users2, Store, Link2, ChevronRight, LogOut,
++  Gift, Users2, Store, Link2, ChevronRight, LogOut, Wallet,
+ } from 'lucide-react';
+ import { getCurrentUser, getSupabaseServer } from '@/lib/supabase-server-auth';
+ import { formatINR } from '@/lib/format';
+@@ -13,6 +13,7 @@ const sections = [
+     items: [
+       { href: '/account/orders',    label: 'My Orders',          icon: Package,   desc: 'Track & manage orders' },
+       { href: '/account/wishlist',  label: 'Wishlist',           icon: Heart,     desc: 'Saved items' },
++      { href: '/account/store-credit', label: 'Store Credit',    icon: Wallet,    desc: 'Check your credit balance' },
+       { href: '/account/returns',   label: 'Returns & Exchanges',icon: RotateCcw, desc: 'Request or track returns' },
+       { href: '/account/addresses', label: 'Addresses',          icon: MapPin,    desc: 'Manage delivery addresses' },
+     ],
+@@ -39,15 +40,17 @@ export default async function AccountDashboard() {
+   const supabase = await getSupabaseServer();
+ 
+   // Quick stats
+-  const [{ count: orderCount }, { data: profile }] = await Promise.all([
++  const [{ count: orderCount }, { data: profile }, { data: credit }] = await Promise.all([
+     supabase
+       .from('orders')
+       .select('id', { count: 'exact', head: true })
+       .or(`user_id.eq.${user!.id},customer_email.ilike.${user!.email}`),
+     supabase.from('profiles').select('loyalty_balance').eq('id', user!.id).maybeSingle(),
++    supabase.from('store_credits').select('balance').eq('user_id', user!.id).maybeSingle(),
+   ]);
+ 
+   const loyaltyBalance = profile?.loyalty_balance ?? 0;
++  const storeCreditBalance = Number(credit?.balance) || 0;
+ 
+   return (
+     <div className="space-y-6">
+@@ -57,20 +60,27 @@ export default async function AccountDashboard() {
+         <p className="mt-0.5 font-serif text-xl font-bold text-primary truncate">{user!.email}</p>
+ 
+         {/* Quick stats */}
+-        <div className="mt-4 grid grid-cols-2 gap-3">
++        <div className="mt-4 grid grid-cols-3 gap-2">
+           <Link
+             href="/account/orders"
+-            className="rounded-lg bg-background border border-border/60 px-3 py-3 text-center hover:border-primary/30 transition-colors"
++            className="rounded-lg bg-background border border-border/60 px-2 py-3 text-center hover:border-primary/30 transition-colors"
+           >
+-            <p className="font-serif text-2xl font-bold text-primary">{orderCount ?? 0}</p>
+-            <p className="text-xs text-muted-foreground mt-0.5">Orders</p>
++            <p className="font-serif text-xl font-bold text-primary">{orderCount ?? 0}</p>
++            <p className="text-[11px] text-muted-foreground mt-0.5">Orders</p>
+           </Link>
+           <Link
+             href="/account/loyalty"
+-            className="rounded-lg bg-background border border-border/60 px-3 py-3 text-center hover:border-primary/30 transition-colors"
++            className="rounded-lg bg-background border border-border/60 px-2 py-3 text-center hover:border-primary/30 transition-colors"
+           >
+-            <p className="font-serif text-2xl font-bold text-primary">{loyaltyBalance}</p>
+-            <p className="text-xs text-muted-foreground mt-0.5">Reward Points</p>
++            <p className="font-serif text-xl font-bold text-primary">{loyaltyBalance}</p>
++            <p className="text-[11px] text-muted-foreground mt-0.5">Reward Points</p>
++          </Link>
++          <Link
++            href="/account/store-credit"
++            className="rounded-lg bg-background border border-border/60 px-2 py-3 text-center hover:border-primary/30 transition-colors"
++          >
++            <p className="font-serif text-xl font-bold text-primary">₹{storeCreditBalance.toLocaleString('en-IN')}</p>
++            <p className="text-[11px] text-muted-foreground mt-0.5">Store Credit</p>
+           </Link>
+         </div>
+       </div>
 diff --git a/app/account/store-credit/page.tsx b/app/account/store-credit/page.tsx
 new file mode 100644
 index 0000000..858ed2a
@@ -306,7 +381,7 @@ index 98f68df..5c73f4c 100644
    { href: '/account/referrals', label: 'Refer & Earn',       icon: Users2 },
    { href: '/account/reseller',  label: 'Reseller',           icon: Store },
 diff --git a/components/header.tsx b/components/header.tsx
-index 3f389aa..3ed2747 100644
+index 3f389aa..27610a5 100644
 --- a/components/header.tsx
 +++ b/components/header.tsx
 @@ -3,9 +3,10 @@
@@ -378,21 +453,29 @@ index 3f389aa..3ed2747 100644
                      </Link>
                    ))}
                  </nav>
-@@ -693,6 +725,21 @@ export default function Header() {
+@@ -693,6 +725,29 @@ export default function Header() {
              <Search className="h-5 w-5" />
            </Button>
  
 +          {user && (
 +            <Button
 +              variant="ghost"
-+              size="sm"
++              size="icon"
 +              asChild
 +              aria-label="Store credit"
-+              className="hidden items-center gap-1.5 px-2 sm:flex"
++              className="relative flex items-center justify-center sm:h-auto sm:w-auto sm:gap-1.5 sm:px-2"
 +            >
 +              <Link href="/account/store-credit">
 +                <Wallet className="h-5 w-5" />
-+                <span className="text-sm font-semibold">₹{storeCredit.toLocaleString('en-IN')}</span>
++                {/* Mobile: small badge like the cart count, so the icon
++                    row stays compact. Desktop (sm+): full ₹ amount text
++                    next to the icon instead of a cramped badge. */}
++                <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-secondary px-0.5 text-[9px] font-bold leading-none text-secondary-foreground sm:hidden">
++                  ₹
++                </span>
++                <span className="hidden text-sm font-semibold sm:inline">
++                  ₹{storeCredit.toLocaleString('en-IN')}
++                </span>
 +              </Link>
 +            </Button>
 +          )}
