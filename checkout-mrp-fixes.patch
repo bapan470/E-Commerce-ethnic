@@ -1,5 +1,5 @@
 diff --git a/app/checkout/page.tsx b/app/checkout/page.tsx
-index ab71109..cc6b459 100644
+index ab71109..989917e 100644
 --- a/app/checkout/page.tsx
 +++ b/app/checkout/page.tsx
 @@ -1483,7 +1483,7 @@ export default function CheckoutPage() {
@@ -7,7 +7,7 @@ index ab71109..cc6b459 100644
          items={items}
          subtotal={subtotal}
 -        mrpTotal={mrpTotal}
-+        mrpTotal={mrpTotal + shipping}
++        mrpTotal={subtotal + shipping}
          shipping={shipping}
          payableTotal={payableTotal}
          totalSavings={totalSavings}
