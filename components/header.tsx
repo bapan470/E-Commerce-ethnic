@@ -751,16 +751,17 @@ export default function Header() {
               size="icon"
               asChild
               aria-label="Store credit"
-              className="relative hidden items-center justify-center md:flex md:h-auto md:w-auto md:gap-1.5 md:px-2"
+              className="relative flex items-center justify-center sm:h-auto sm:w-auto sm:gap-1.5 sm:px-2"
             >
               <Link href="/account/store-credit">
                 <Wallet className="h-5 w-5" />
-                {/* Desktop only — like the account icon below, this was
-                    crowding the mobile row (search/wallet/wishlist/cart
-                    all fighting for space), and mobile users can already
-                    reach store credit from the hamburger menu / account
-                    page. Full ₹ amount text next to the icon on desktop. */}
-                <span className="text-sm font-semibold">
+                {/* Mobile: small badge like the cart count, so the icon
+                    row stays compact. Desktop (sm+): full ₹ amount text
+                    next to the icon instead of a cramped badge. */}
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-secondary px-0.5 text-[9px] font-bold leading-none text-secondary-foreground sm:hidden">
+                  ₹
+                </span>
+                <span className="hidden text-sm font-semibold sm:inline">
                   ₹{storeCredit.toLocaleString('en-IN')}
                 </span>
               </Link>
@@ -773,16 +774,11 @@ export default function Header() {
             </Link>
           </Button>
 
-          {/* Account icon — desktop only. Mobile users already have "My
-              Account" in the hamburger menu, and on mobile this row was
-              getting cramped with search/wishlist/cart all fighting for
-              space, so this one's hidden below the md breakpoint. */}
           <Button
             variant="ghost"
             size="icon"
             asChild
             aria-label={user ? 'My account' : 'Login'}
-            className="hidden md:inline-flex"
           >
             <Link href={user ? '/account' : '/login'}>
               <User className="h-5 w-5" />
