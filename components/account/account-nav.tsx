@@ -6,13 +6,12 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
 import {
   Package, MapPin, User, Heart, RotateCcw, LogOut,
-  Gift, Users2, Store, Link2, LayoutDashboard, Wallet,
+  Gift, Users2, Store, Link2, LayoutDashboard,
 } from 'lucide-react';
 
 const links = [
   { href: '/account/orders',       label: 'Orders',        icon: Package },
   { href: '/account/wishlist',     label: 'Wishlist',      icon: Heart },
-  { href: '/account/store-credit', label: 'Store Credit',  icon: Wallet },
   { href: '/account/loyalty',   label: 'Rewards',            icon: Gift },
   { href: '/account/referrals', label: 'Refer & Earn',       icon: Users2 },
   { href: '/account/reseller',  label: 'Reseller',           icon: Store },

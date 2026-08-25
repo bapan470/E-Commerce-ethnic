@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import {
   Package, MapPin, User, Heart, RotateCcw,
-  Gift, Users2, Store, Link2, ChevronRight, LogOut, Wallet,
+  Gift, Users2, Store, Link2, ChevronRight, LogOut,
 } from 'lucide-react';
 import { getCurrentUser, getSupabaseServer } from '@/lib/supabase-server-auth';
 import { formatINR } from '@/lib/format';
@@ -13,7 +13,6 @@ const sections = [
     items: [
       { href: '/account/orders',    label: 'My Orders',          icon: Package,   desc: 'Track & manage orders' },
       { href: '/account/wishlist',  label: 'Wishlist',           icon: Heart,     desc: 'Saved items' },
-      { href: '/account/store-credit', label: 'Store Credit',    icon: Wallet,    desc: 'Check your credit balance' },
       { href: '/account/returns',   label: 'Returns & Exchanges',icon: RotateCcw, desc: 'Request or track returns' },
       { href: '/account/addresses', label: 'Addresses',          icon: MapPin,    desc: 'Manage delivery addresses' },
     ],
@@ -40,17 +39,15 @@ export default async function AccountDashboard() {
   const supabase = await getSupabaseServer();
 
   // Quick stats
-  const [{ count: orderCount }, { data: profile }, { data: credit }] = await Promise.all([
+  const [{ count: orderCount }, { data: profile }] = await Promise.all([
     supabase
       .from('orders')
       .select('id', { count: 'exact', head: true })
       .or(`user_id.eq.${user!.id},customer_email.ilike.${user!.email}`),
     supabase.from('profiles').select('loyalty_balance').eq('id', user!.id).maybeSingle(),
-    supabase.from('store_credits').select('balance').eq('user_id', user!.id).maybeSingle(),
   ]);
 
   const loyaltyBalance = profile?.loyalty_balance ?? 0;
-  const storeCreditBalance = Number(credit?.balance) || 0;
 
   return (
     <div className="space-y-6">
@@ -60,7 +57,7 @@ export default async function AccountDashboard() {
         <p className="mt-0.5 font-serif text-xl font-bold text-primary truncate">{user!.email}</p>
 
         {/* Quick stats */}
-        <div className="mt-4 grid grid-cols-3 gap-2">
+        <div className="mt-4 grid grid-cols-2 gap-2">
           <Link
             href="/account/orders"
             className="rounded-lg bg-background border border-border/60 px-2 py-3 text-center hover:border-primary/30 transition-colors"
@@ -74,13 +71,6 @@ export default async function AccountDashboard() {
           >
             <p className="font-serif text-xl font-bold text-primary">{loyaltyBalance}</p>
             <p className="text-[11px] text-muted-foreground mt-0.5">Reward Points</p>
-          </Link>
-          <Link
-            href="/account/store-credit"
-            className="rounded-lg bg-background border border-border/60 px-2 py-3 text-center hover:border-primary/30 transition-colors"
-          >
-            <p className="font-serif text-xl font-bold text-primary">₹{storeCreditBalance.toLocaleString('en-IN')}</p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Store Credit</p>
           </Link>
         </div>
       </div>
