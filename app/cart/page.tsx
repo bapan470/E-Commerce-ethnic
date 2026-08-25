@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { toPublicMediaUrl } from '@/lib/media-url';
-import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Tag, X, Loader2, PartyPopper, Wallet } from 'lucide-react';
+import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Tag, X, Loader2, PartyPopper, Wallet, Gift, ChevronDown, ChevronRight } from 'lucide-react';
 import {
   useCart,
   usePaymentDiscount,
@@ -15,6 +15,7 @@ import {
 import { markCheckoutEntry } from '@/lib/checkout-return';
 import { fireGtagEvent } from '@/lib/gtag-track';
 import { formatINR } from '@/lib/format';
+import { validateGiftCard, GiftCard } from '@/lib/giftcards-api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -49,6 +50,17 @@ export default function CartPage() {
   const [couponInput, setCouponInput] = useState('');
   const [applyingCoupon, setApplyingCoupon] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
+  const [couponPanelOpen, setCouponPanelOpen] = useState(false);
+
+  // Gift card — same collapsed-pill pattern as Coupons, and same
+  // "checkout re-validates before actually redeeming" relationship the
+  // checkout page's own gift card box has to /api/giftcards/redeem.
+  const [giftCardInput, setGiftCardInput] = useState('');
+  const [applyingGiftCard, setApplyingGiftCard] = useState(false);
+  const [giftCardError, setGiftCardError] = useState<string | null>(null);
+  const [giftCardPanelOpen, setGiftCardPanelOpen] = useState(false);
+  const [appliedGiftCard, setAppliedGiftCard] = useState<GiftCard | null>(null);
+  const [giftCardDiscount, setGiftCardDiscount] = useState(0);
 
   const handleApplyCoupon = async () => {
     setCouponError(null);
@@ -60,12 +72,39 @@ export default function CartPage() {
       return;
     }
     setCouponInput('');
+    setCouponPanelOpen(false);
   };
 
   const handleRemoveCoupon = () => {
     removeCoupon();
     setCouponInput('');
     setCouponError(null);
+  };
+
+  const handleApplyGiftCard = async () => {
+    if (!giftCardInput.trim()) return;
+    setGiftCardError(null);
+    setApplyingGiftCard(true);
+    const result = await validateGiftCard(
+      giftCardInput,
+      Math.max(0, subtotal - couponDiscount - bogoDiscount)
+    );
+    setApplyingGiftCard(false);
+    if (!result.ok || !result.giftCard) {
+      setGiftCardError(result.error || 'Invalid gift card code');
+      return;
+    }
+    setAppliedGiftCard(result.giftCard);
+    setGiftCardDiscount(result.redeemable || 0);
+    setGiftCardInput('');
+    setGiftCardPanelOpen(false);
+  };
+
+  const handleRemoveGiftCard = () => {
+    setAppliedGiftCard(null);
+    setGiftCardDiscount(0);
+    setGiftCardInput('');
+    setGiftCardError(null);
   };
 
   // Same "Add N more to get M FREE!" progress + "already unlocked" math the
@@ -142,7 +181,8 @@ export default function CartPage() {
       ? 0
       : shippingSettings.flat_rate;
   const discountedSubtotal = Math.max(0, subtotal - couponDiscount - bogoDiscount);
-  const total = discountedSubtotal + shipping;
+  const clampedGiftCardDiscount = Math.min(giftCardDiscount, discountedSubtotal);
+  const total = discountedSubtotal - clampedGiftCardDiscount + shipping;
   const onlinePaymentSavings =
     paymentDiscount.enabled && paymentDiscount.percent > 0
       ? Math.round((discountedSubtotal * paymentDiscount.percent) / 100)
@@ -314,9 +354,9 @@ export default function CartPage() {
             <Separator className="my-4" />
 
             {/* Coupon */}
-            <div>
+            <div className="rounded-lg border border-border/60">
               {appliedCoupon ? (
-                <div className="flex items-center justify-between rounded-md bg-secondary/10 px-3 py-2 text-sm">
+                <div className="flex items-center justify-between p-3 text-sm">
                   <span className="flex items-center gap-1.5 font-medium text-secondary-foreground">
                     <Tag className="h-3.5 w-3.5" /> {appliedCoupon.code} applied
                   </span>
@@ -330,25 +370,114 @@ export default function CartPage() {
                   </button>
                 </div>
               ) : (
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Coupon code"
-                      value={couponInput}
-                      onChange={(e) => setCouponInput(e.target.value)}
-                      className="h-9"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-9 shrink-0"
-                      disabled={applyingCoupon || !couponInput.trim()}
-                      onClick={handleApplyCoupon}
-                    >
-                      {applyingCoupon ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}
-                    </Button>
+                <button
+                  type="button"
+                  onClick={() => setCouponPanelOpen((o) => !o)}
+                  className="flex w-full items-center justify-between gap-2 p-3 text-left"
+                >
+                  <span className="flex items-center gap-3">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-primary">
+                      <Tag className="h-4 w-4" />
+                    </span>
+                    <span>
+                      <span className="block text-sm font-semibold">Coupons</span>
+                      <span className="block text-xs text-primary">Apply now and save extra!</span>
+                    </span>
+                  </span>
+                  {couponPanelOpen ? (
+                    <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  )}
+                </button>
+              )}
+              {!appliedCoupon && couponPanelOpen && (
+                <div className="border-t border-border/60 p-3">
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Coupon code"
+                        value={couponInput}
+                        onChange={(e) => setCouponInput(e.target.value)}
+                        className="h-9"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-9 shrink-0"
+                        disabled={applyingCoupon || !couponInput.trim()}
+                        onClick={handleApplyCoupon}
+                      >
+                        {applyingCoupon ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}
+                      </Button>
+                    </div>
+                    {couponError && <p className="text-xs text-destructive">{couponError}</p>}
                   </div>
-                  {couponError && <p className="text-xs text-destructive">{couponError}</p>}
+                </div>
+              )}
+            </div>
+
+            {/* Gift card */}
+            <div className="mt-3 rounded-lg border border-border/60">
+              {appliedGiftCard ? (
+                <div className="flex items-center justify-between p-3 text-sm">
+                  <span className="flex items-center gap-1.5 font-medium text-secondary-foreground">
+                    <Gift className="h-3.5 w-3.5" /> {appliedGiftCard.code} applied (-
+                    {formatINR(clampedGiftCardDiscount)})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleRemoveGiftCard}
+                    aria-label="Remove gift card"
+                    className="text-muted-foreground hover:text-destructive"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setGiftCardPanelOpen((o) => !o)}
+                  className="flex w-full items-center justify-between gap-2 p-3 text-left"
+                >
+                  <span className="flex items-center gap-3">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-primary">
+                      <Gift className="h-4 w-4" />
+                    </span>
+                    <span>
+                      <span className="block text-sm font-semibold">Gift card</span>
+                      <span className="block text-xs text-primary">Redeem your gift card balance</span>
+                    </span>
+                  </span>
+                  {giftCardPanelOpen ? (
+                    <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  )}
+                </button>
+              )}
+              {!appliedGiftCard && giftCardPanelOpen && (
+                <div className="border-t border-border/60 p-3">
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Gift card code"
+                        value={giftCardInput}
+                        onChange={(e) => setGiftCardInput(e.target.value)}
+                        className="h-9"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-9 shrink-0"
+                        disabled={applyingGiftCard || !giftCardInput.trim()}
+                        onClick={handleApplyGiftCard}
+                      >
+                        {applyingGiftCard ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}
+                      </Button>
+                    </div>
+                    {giftCardError && <p className="text-xs text-destructive">{giftCardError}</p>}
+                  </div>
                 </div>
               )}
             </div>
@@ -373,6 +502,14 @@ export default function CartPage() {
                       : 'BOGO offer applied'}
                   </span>
                   <span>-{formatINR(bogoDiscount)}</span>
+                </div>
+              )}
+              {appliedGiftCard && clampedGiftCardDiscount > 0 && (
+                <div className="flex justify-between text-secondary-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <Gift className="h-3.5 w-3.5" /> Gift card ({appliedGiftCard.code})
+                  </span>
+                  <span>-{formatINR(clampedGiftCardDiscount)}</span>
                 </div>
               )}
               <div className="flex justify-between">

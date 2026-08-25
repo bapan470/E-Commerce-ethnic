@@ -18,6 +18,7 @@ import {
   Info,
   Wallet,
   PartyPopper,
+  Gift,
 } from 'lucide-react';
 import {
   useCart,
@@ -31,6 +32,7 @@ import { markCheckoutEntry } from '@/lib/checkout-return';
 import { fireGtagEvent } from '@/lib/gtag-track';
 import { formatINR, discountPct } from '@/lib/format';
 import { fetchProductPageCoupons, computeItemCouponDiscount, Coupon } from '@/lib/coupons-api';
+import { validateGiftCard, GiftCard } from '@/lib/giftcards-api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -94,6 +96,22 @@ export default function CartDrawer() {
   const [couponError, setCouponError] = useState<string | null>(null);
   const [couponPanelOpen, setCouponPanelOpen] = useState(false);
   const [priceDetailsOpen, setPriceDetailsOpen] = useState(false);
+
+  // Gift card — same collapsed-pill pattern as Coupons above. Applying here
+  // is a preview (checkout re-validates and does the actual redemption
+  // against the order), same relationship the checkout page's own gift
+  // card box has to the /api/giftcards/redeem call.
+  const [giftCardInput, setGiftCardInput] = useState('');
+  const [applyingGiftCard, setApplyingGiftCard] = useState(false);
+  const [giftCardError, setGiftCardError] = useState<string | null>(null);
+  const [giftCardPanelOpen, setGiftCardPanelOpen] = useState(false);
+  const [appliedGiftCard, setAppliedGiftCard] = useState<GiftCard | null>(null);
+  const [giftCardDiscount, setGiftCardDiscount] = useState(0);
+  const clampedGiftCardDiscount = Math.min(
+    giftCardDiscount,
+    Math.max(0, subtotal - couponDiscount - bogoDiscount)
+  );
+  const finalTotal = Math.max(0, subtotal - couponDiscount - bogoDiscount - clampedGiftCardDiscount);
 
   // Coupons the admin has flagged "Show on Product Page" (Admin > Coupons)
   // — surfaced here too, in the cart drawer, so a shopper who never
@@ -245,6 +263,32 @@ export default function CartDrawer() {
     removeCoupon();
     setCouponInput('');
     setCouponError(null);
+  };
+
+  const handleApplyGiftCard = async () => {
+    if (!giftCardInput.trim()) return;
+    setGiftCardError(null);
+    setApplyingGiftCard(true);
+    const result = await validateGiftCard(
+      giftCardInput,
+      Math.max(0, subtotal - couponDiscount - bogoDiscount)
+    );
+    setApplyingGiftCard(false);
+    if (!result.ok || !result.giftCard) {
+      setGiftCardError(result.error || 'Invalid gift card code');
+      return;
+    }
+    setAppliedGiftCard(result.giftCard);
+    setGiftCardDiscount(result.redeemable || 0);
+    setGiftCardInput('');
+    setGiftCardPanelOpen(false);
+  };
+
+  const handleRemoveGiftCard = () => {
+    setAppliedGiftCard(null);
+    setGiftCardDiscount(0);
+    setGiftCardInput('');
+    setGiftCardError(null);
   };
 
   const handleApplyFromList = async (c: Coupon) => {
@@ -648,6 +692,73 @@ export default function CartDrawer() {
                 </div>
               )}
 
+              {/* Gift card */}
+              <div className="rounded-lg border border-border/60 bg-card">
+                {appliedGiftCard ? (
+                  <div className="flex items-center justify-between p-4">
+                    <span className="flex items-center gap-1.5 text-sm font-medium text-secondary-foreground">
+                      <Gift className="h-3.5 w-3.5" /> {appliedGiftCard.code} applied (-
+                      {formatINR(giftCardDiscount)})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleRemoveGiftCard}
+                      aria-label="Remove gift card"
+                      className="text-muted-foreground hover:text-destructive"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setGiftCardPanelOpen((o) => !o)}
+                    className="flex w-full items-center justify-between gap-2 p-4 text-left"
+                  >
+                    <span className="flex items-center gap-3">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-primary">
+                        <Gift className="h-4 w-4" />
+                      </span>
+                      <span>
+                        <span className="block text-sm font-semibold">Gift card</span>
+                        <span className="block text-xs text-primary">
+                          Redeem your gift card balance
+                        </span>
+                      </span>
+                    </span>
+                    {giftCardPanelOpen ? (
+                      <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    )}
+                  </button>
+                )}
+                {!appliedGiftCard && giftCardPanelOpen && (
+                  <div className="border-t border-border/60 p-4">
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Gift card code"
+                          value={giftCardInput}
+                          onChange={(e) => setGiftCardInput(e.target.value)}
+                          className="h-9"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-9 shrink-0"
+                          disabled={applyingGiftCard || !giftCardInput.trim()}
+                          onClick={handleApplyGiftCard}
+                        >
+                          {applyingGiftCard ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}
+                        </Button>
+                      </div>
+                      {giftCardError && <p className="text-xs text-destructive">{giftCardError}</p>}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Price details */}
               <div className="rounded-lg border border-border/60 bg-card">
                 <button
@@ -660,7 +771,7 @@ export default function CartDrawer() {
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="text-sm font-semibold">
-                      {formatINR(Math.max(0, subtotal - couponDiscount - bogoDiscount))}
+                      {formatINR(finalTotal)}
                     </span>
                     {priceDetailsOpen ? (
                       <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -694,10 +805,18 @@ export default function CartDrawer() {
                         <span>-{formatINR(bogoDiscount)}</span>
                       </div>
                     )}
+                    {appliedGiftCard && clampedGiftCardDiscount > 0 && (
+                      <div className="flex items-center justify-between text-secondary-foreground">
+                        <span className="flex items-center gap-1.5">
+                          <Gift className="h-3.5 w-3.5" /> {appliedGiftCard.code}
+                        </span>
+                        <span>-{formatINR(clampedGiftCardDiscount)}</span>
+                      </div>
+                    )}
                     <Separator />
                     <div className="flex items-center justify-between font-serif text-base font-bold text-primary">
                       <span>Total</span>
-                      <span>{formatINR(Math.max(0, subtotal - couponDiscount - bogoDiscount))}</span>
+                      <span>{formatINR(finalTotal)}</span>
                     </div>
                   </div>
                 )}
@@ -720,7 +839,20 @@ export default function CartDrawer() {
                   <span className="flex items-center gap-2">
                     <span className="text-muted-foreground line-through">{formatINR(subtotal)}</span>
                     <span className="font-serif text-base font-bold text-primary">
-                      {formatINR(Math.max(0, subtotal - couponDiscount - bogoDiscount))}
+                      {formatINR(finalTotal)}
+                    </span>
+                  </span>
+                </div>
+              )}
+              {appliedGiftCard && clampedGiftCardDiscount > 0 && (
+                <div className="flex items-center justify-between px-5 pt-4 text-sm">
+                  <span className="flex items-center gap-1.5 font-medium text-secondary-foreground">
+                    <Gift className="h-3.5 w-3.5" /> {appliedGiftCard.code} applied — you pay
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <span className="text-muted-foreground line-through">{formatINR(subtotal)}</span>
+                    <span className="font-serif text-base font-bold text-primary">
+                      {formatINR(finalTotal)}
                     </span>
                   </span>
                 </div>
@@ -733,9 +865,7 @@ export default function CartDrawer() {
                       Pay online &amp; get this at
                     </span>
                     <span className="font-serif text-base font-bold text-emerald-700">
-                      {formatINR(
-                        Math.max(0, subtotal - couponDiscount - bogoDiscount - onlinePaymentSavings)
-                      )}
+                      {formatINR(Math.max(0, finalTotal - onlinePaymentSavings))}
                     </span>
                   </div>
                   <p className="text-[11px] leading-snug text-emerald-700/80">

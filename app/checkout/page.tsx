@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { toPublicMediaUrl } from '@/lib/media-url';
 import NextScript from 'next/script';
 import { useRouter } from 'next/navigation';
-import { Lock, Loader2, CreditCard, Tag, X, Wallet, Sparkles, Gift, Store, Minus, Plus, ChevronRight, BadgePercent, BadgeCheck } from 'lucide-react';
+import { Lock, Loader2, CreditCard, Tag, X, Wallet, Sparkles, Gift, Store, Minus, Plus, ChevronRight, ChevronDown, BadgePercent, BadgeCheck } from 'lucide-react';
 import {
   useCart,
   usePaymentDiscount,
@@ -480,6 +480,9 @@ export default function CheckoutPage() {
   const [couponInput, setCouponInput] = useState('');
   const [applyingCoupon, setApplyingCoupon] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
+  // Same collapsed-pill teaser as the cart drawer / cart page — closed by
+  // default, expands on tap to reveal the offer banner / manual entry.
+  const [couponPanelOpen, setCouponPanelOpen] = useState(false);
 
   // Coupons the admin has flagged "Show on Product Page" (Admin > Coupons)
   // — same list already shown on product pages and in the cart drawer,
@@ -512,6 +515,7 @@ export default function CheckoutPage() {
   const [giftCardError, setGiftCardError] = useState<string | null>(null);
   const [appliedGiftCard, setAppliedGiftCard] = useState<GiftCard | null>(null);
   const [giftCardDiscount, setGiftCardDiscount] = useState(0);
+  const [giftCardPanelOpen, setGiftCardPanelOpen] = useState(false);
 
   const [shippingSettings, setShippingSettings] = useState<ShippingSettings>(
     DEFAULT_SHIPPING_SETTINGS
@@ -2009,9 +2013,9 @@ export default function CheckoutPage() {
             <Separator className="my-4" />
 
             {/* Coupon */}
-            <div>
+            <div className="rounded-lg border border-border/60">
               {appliedCoupon ? (
-                <div className="flex items-center justify-between rounded-md bg-secondary/10 px-3 py-2 text-sm">
+                <div className="flex items-center justify-between p-3 text-sm">
                   <span className="flex items-center gap-1.5 font-medium text-secondary-foreground">
                     <Tag className="h-3.5 w-3.5" /> {appliedCoupon.code} applied
                   </span>
@@ -2024,8 +2028,38 @@ export default function CheckoutPage() {
                     <X className="h-4 w-4" />
                   </button>
                 </div>
+              ) : !couponPanelOpen ? (
+                <button
+                  type="button"
+                  onClick={() => setCouponPanelOpen(true)}
+                  className="flex w-full items-center justify-between gap-2 p-3 text-left"
+                >
+                  <span className="flex items-center gap-3">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-primary">
+                      <Tag className="h-4 w-4" />
+                    </span>
+                    <span>
+                      <span className="block text-sm font-semibold">Coupons</span>
+                      <span className="block text-xs text-primary">Apply now and save extra!</span>
+                    </span>
+                  </span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                </button>
               ) : (
-                <div className="overflow-hidden rounded-lg border border-border/60">
+                <div className="overflow-hidden border-t border-border/60">
+                  <div className="flex items-center justify-between px-3 pt-3">
+                    <span className="flex items-center gap-1.5 text-sm font-semibold">
+                      <Tag className="h-3.5 w-3.5 text-primary" /> Coupons
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setCouponPanelOpen(false)}
+                      aria-label="Collapse coupons"
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <ChevronDown className="h-4 w-4" />
+                    </button>
+                  </div>
                   {availableCoupons.length > 0 ? (
                     <div className="flex items-center justify-between gap-3 bg-card px-3 py-3">
                       <div className="flex min-w-0 items-start gap-2.5">
@@ -2094,7 +2128,7 @@ export default function CheckoutPage() {
                 private/referral codes that aren't in the "Show on Product
                 Page" list. Only reachable via "View all coupons" above, and
                 only while nothing is applied yet. */}
-            {!appliedCoupon && showAllCoupons && availableCoupons.length > 0 && (
+            {!appliedCoupon && couponPanelOpen && showAllCoupons && availableCoupons.length > 0 && (
               <div className="mt-3 flex flex-col gap-2 rounded-lg border border-border/60 bg-muted/30 p-3">
                 <div className="flex items-center gap-1.5 text-sm font-semibold">
                   <Tag className="h-3.5 w-3.5 text-secondary" />
@@ -2148,9 +2182,9 @@ export default function CheckoutPage() {
 
             {/* Gift card */}
             <Separator className="my-4" />
-            <div>
+            <div className="rounded-lg border border-border/60">
               {appliedGiftCard ? (
-                <div className="flex items-center justify-between rounded-md bg-secondary/10 px-3 py-2 text-sm">
+                <div className="flex items-center justify-between p-3 text-sm">
                   <span className="flex items-center gap-1.5 font-medium text-secondary-foreground">
                     <Gift className="h-3.5 w-3.5" /> {appliedGiftCard.code} applied (-
                     {formatINR(clampedGiftCardDiscount)})
@@ -2165,25 +2199,49 @@ export default function CheckoutPage() {
                   </button>
                 </div>
               ) : (
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Apply gift card code"
-                      value={giftCardInput}
-                      onChange={(e) => setGiftCardInput(e.target.value)}
-                      className="h-9"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-9 shrink-0"
-                      disabled={applyingGiftCard || !giftCardInput.trim()}
-                      onClick={handleApplyGiftCard}
-                    >
-                      {applyingGiftCard ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}
-                    </Button>
+                <button
+                  type="button"
+                  onClick={() => setGiftCardPanelOpen((o) => !o)}
+                  className="flex w-full items-center justify-between gap-2 p-3 text-left"
+                >
+                  <span className="flex items-center gap-3">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-primary">
+                      <Gift className="h-4 w-4" />
+                    </span>
+                    <span>
+                      <span className="block text-sm font-semibold">Gift card</span>
+                      <span className="block text-xs text-primary">Redeem your gift card balance</span>
+                    </span>
+                  </span>
+                  {giftCardPanelOpen ? (
+                    <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  )}
+                </button>
+              )}
+              {!appliedGiftCard && giftCardPanelOpen && (
+                <div className="border-t border-border/60 p-3">
+                  <div className="flex flex-col gap-1.5">
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Apply gift card code"
+                        value={giftCardInput}
+                        onChange={(e) => setGiftCardInput(e.target.value)}
+                        className="h-9"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-9 shrink-0"
+                        disabled={applyingGiftCard || !giftCardInput.trim()}
+                        onClick={handleApplyGiftCard}
+                      >
+                        {applyingGiftCard ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}
+                      </Button>
+                    </div>
+                    {giftCardError && <p className="text-xs text-destructive">{giftCardError}</p>}
                   </div>
-                  {giftCardError && <p className="text-xs text-destructive">{giftCardError}</p>}
                 </div>
               )}
             </div>
