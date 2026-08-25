@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { ChevronDown } from 'lucide-react';
 import { toPublicMediaUrl } from '@/lib/media-url';
 import { formatINR } from '@/lib/format';
+import { useForceMobileRepaint } from '@/hooks/use-force-mobile-repaint';
 import type { CartItem } from '@/lib/types';
 
 interface StickyOrderBarProps {
@@ -46,13 +47,26 @@ export default function StickyOrderBar({
   discountBreakdown = [],
 }: StickyOrderBarProps) {
   const [open, setOpen] = useState(false);
+  const barRef = useRef<HTMLDivElement>(null);
+
+  // See hooks/use-force-mobile-repaint.ts — without this, switching
+  // Pay Online <-> Cash on Delivery updates this bar's price instantly in
+  // desktop DevTools' mobile emulation, but on a real phone the new price
+  // only paints once the user taps or scrolls, because this bar is
+  // `sticky` + blurred and mobile browsers cache that layer once it's
+  // stuck to the top.
+  useForceMobileRepaint(barRef, [payableTotal, mrpTotal, totalSavings, paymentMethod, onlineDiscountAmount]);
 
   if (items.length === 0) return null;
 
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
-    <div className="sticky top-12 z-30 -mx-4 mb-6 border-b border-border/60 bg-background/95 shadow-sm backdrop-blur-md sm:mx-0 sm:rounded-lg sm:border">
+    <div
+      ref={barRef}
+      style={{ transform: 'translateZ(0)', WebkitBackfaceVisibility: 'hidden', backfaceVisibility: 'hidden' }}
+      className="sticky top-12 z-30 -mx-4 mb-6 border-b border-border/60 bg-background/95 shadow-sm backdrop-blur-md sm:mx-0 sm:rounded-lg sm:border"
+    >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
