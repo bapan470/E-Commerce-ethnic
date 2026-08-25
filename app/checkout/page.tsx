@@ -81,6 +81,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import TrustBadges from '@/components/checkout/trust-badges';
 import StickyOrderBar from '@/components/checkout/sticky-order-bar';
+import { useForceMobileRepaint } from '@/hooks/use-force-mobile-repaint';
 import { toast } from 'sonner';
 
 // All Indian states & union territories, for the Shipping Address "State"
@@ -178,6 +179,18 @@ export default function CheckoutPage() {
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('online');
   const { user } = useAuth();
+
+  // Same real-device repaint bug as StickyOrderBar (see
+  // hooks/use-force-mobile-repaint.ts): the Payment section's selected-card
+  // highlight and the "Get ₹X off" line only change border/background
+  // color, no layout shift, so once this section has been painted once,
+  // iOS Safari / some Android WebViews cache that layer and only repaint it
+  // on the next scroll or touch — not on the React re-render triggered by
+  // tapping "Pay Online" / "Cash on Delivery". Desktop and DevTools mobile
+  // emulation don't show this, which is why it can look fine while testing
+  // and only show up for real phone users.
+  const paymentSectionRef = useRef<HTMLDivElement>(null);
+  const orderSummaryRef = useRef<HTMLDivElement>(null);
 
   // Saved addresses — lets a logged-in customer pick a previously saved
   // address instead of retyping it. Shipping fields are controlled so we
@@ -795,6 +808,23 @@ export default function CheckoutPage() {
   // haven't set a price yet (shouldn't normally happen — see validation below).
   const payableTotal = isResale && resaleSellingPriceNum > 0 ? resaleSellingPriceNum : total;
   const resaleProfit = payableTotal - total;
+
+  // Repaint fix (see hooks/use-force-mobile-repaint.ts) — must sit here,
+  // after payableTotal/total/onlinePaymentDiscount exist, not up near the
+  // other useRef() calls.
+  //
+  // paymentSectionRef: the Payment card's selected-option highlight only
+  // changes border/background color (no layout shift), so on a real phone
+  // it can silently wait for the next scroll/tap to repaint.
+  //
+  // orderSummaryRef: the big Order Summary card is `sticky top-24` on ALL
+  // screen sizes (not just desktop), so on a real phone its price line and
+  // "Place Order (COD) / Pay ₹X" button label are exactly the kind of
+  // stuck layer iOS Safari / some Android WebViews only repaint on
+  // scroll/touch, not on the re-render triggered by tapping "Pay Online" /
+  // "Cash on Delivery". This is almost certainly the one users notice.
+  useForceMobileRepaint(paymentSectionRef, [paymentMethod]);
+  useForceMobileRepaint(orderSummaryRef, [paymentMethod, payableTotal, onlinePaymentDiscount, total]);
 
   // Everything the customer is saving vs. sticker price, rolled into one
   // number for the sticky order bar up top: MRP markdown on each item, plus
@@ -1827,7 +1857,11 @@ export default function CheckoutPage() {
           )}
 
           {/* Payment info */}
-          <section className="mt-4 rounded-lg border border-border/60 bg-card p-5">
+          <section
+            ref={paymentSectionRef}
+            style={{ transform: 'translateZ(0)', WebkitBackfaceVisibility: 'hidden', backfaceVisibility: 'hidden' }}
+            className="mt-4 rounded-lg border border-border/60 bg-card p-5"
+          >
             <h2 className="mb-1 font-serif text-lg font-bold text-primary">Payment</h2>
             <p className="mb-4 flex items-center gap-1.5 text-xs text-muted-foreground">
               <Lock className="h-3 w-3" /> Choose how you'd like to pay
@@ -1878,7 +1912,11 @@ export default function CheckoutPage() {
 
         {/* Summary */}
         <aside className="lg:col-span-1">
-          <div className="sticky top-24 rounded-lg border border-border/60 bg-card p-5">
+          <div
+            ref={orderSummaryRef}
+            style={{ transform: 'translateZ(0)', WebkitBackfaceVisibility: 'hidden', backfaceVisibility: 'hidden' }}
+            className="sticky top-24 rounded-lg border border-border/60 bg-card p-5"
+          >
             <h2 className="font-serif text-lg font-bold text-primary">Order Summary</h2>
             <Separator className="my-4" />
             <ul className="flex max-h-72 flex-col gap-3 overflow-y-auto">
