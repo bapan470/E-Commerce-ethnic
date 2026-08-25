@@ -604,15 +604,39 @@ interface PaymentDiscountContextValue {
 const PaymentDiscountContext = createContext<PaymentDiscountContextValue | undefined>(
   undefined
 );
+const PAYMENT_DISCOUNT_CACHE_KEY = 'saaj-payment-discount-v1';
+
+// Reads whatever was cached from the last successful fetch, synchronously,
+// so the very first render already has real data instead of the "off"
+// placeholder — that placeholder is what made the discount badge look like
+// it was "delayed" until something else (e.g. a scroll) forced a re-render
+// once the network call finally came back. Falls through safely on SSR
+// (no window) and on any parse error.
+const readCachedPaymentDiscount = (): PaymentDiscountSettings => {
+  if (typeof window === 'undefined') return DEFAULT_PAYMENT_DISCOUNT_SETTINGS;
+  try {
+    const raw = localStorage.getItem(PAYMENT_DISCOUNT_CACHE_KEY);
+    return raw ? (JSON.parse(raw) as PaymentDiscountSettings) : DEFAULT_PAYMENT_DISCOUNT_SETTINGS;
+  } catch {
+    return DEFAULT_PAYMENT_DISCOUNT_SETTINGS;
+  }
+};
 
 export function PaymentDiscountProvider({ children }: { children: React.ReactNode }) {
   const [paymentDiscount, setPaymentDiscount] = useState<PaymentDiscountSettings>(
-    DEFAULT_PAYMENT_DISCOUNT_SETTINGS
+    readCachedPaymentDiscount
   );
 
   useEffect(() => {
     fetchPaymentDiscountSettings()
-      .then(setPaymentDiscount)
+      .then((settings) => {
+        setPaymentDiscount(settings);
+        try {
+          localStorage.setItem(PAYMENT_DISCOUNT_CACHE_KEY, JSON.stringify(settings));
+        } catch {
+          // storage full/unavailable — cache is a nice-to-have, safe to skip
+        }
+      })
       .catch(() => setPaymentDiscount(DEFAULT_PAYMENT_DISCOUNT_SETTINGS));
   }, []);
 
