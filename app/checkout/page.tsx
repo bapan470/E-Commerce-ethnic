@@ -1417,13 +1417,6 @@ export default function CheckoutPage() {
         Checkout
       </h1>
 
-      {totalSavings > 0 && (
-        <div className="mb-4 flex items-center justify-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-2.5 text-sm font-semibold text-green-700">
-          <Tag className="h-4 w-4 shrink-0" />
-          <span>You're saving {formatINR(totalSavings)} on this order</span>
-        </div>
-      )}
-
       {/* Top coupon banner — same offer shown lower down inside the Order
           Summary card, but surfaced here too so it's visible immediately
           on page load instead of only after scrolling past the whole
@@ -1457,13 +1450,27 @@ export default function CheckoutPage() {
           )}
         </div>
       ) : (
-        (paymentDiscount.enabled && potentialOnlinePaymentDiscount > 0 || availableCoupons.length > 0) && (
+        (paymentDiscount.enabled && potentialOnlinePaymentDiscount > 0 || availableCoupons.length > 0 || totalSavings > 0) && (
           <div className="mb-4 overflow-hidden rounded-lg border border-border/60">
-            {paymentDiscount.enabled && potentialOnlinePaymentDiscount > 0 && (
+            {/* Single banner now doing both jobs: once any discount is
+                actually applied (coupon, BOGO, gift card, loyalty points,
+                or the online-payment discount) it shows the real combined
+                total the customer is saving; before that, it falls back to
+                nudging them toward the prepaid discount. Used to be two
+                separate banners (a green "you're saving" one up top plus
+                this one) — merged into one so only one shows at a time. */}
+            {totalSavings > 0 ? (
               <div className="flex items-center justify-center gap-1.5 bg-primary px-3 py-1.5 text-center text-xs font-semibold text-primary-foreground">
                 <BadgePercent className="h-3.5 w-3.5" />
-                Upto {formatINR(potentialOnlinePaymentDiscount)} off on prepaid orders
+                You're saving {formatINR(totalSavings)} on this order
               </div>
+            ) : (
+              paymentDiscount.enabled && potentialOnlinePaymentDiscount > 0 && (
+                <div className="flex items-center justify-center gap-1.5 bg-primary px-3 py-1.5 text-center text-xs font-semibold text-primary-foreground">
+                  <BadgePercent className="h-3.5 w-3.5" />
+                  Upto {formatINR(potentialOnlinePaymentDiscount)} off on prepaid orders
+                </div>
+              )
             )}
             {availableCoupons.length > 0 && (
               <div className="flex items-center justify-between gap-3 bg-card px-3 py-3">
@@ -2019,15 +2026,21 @@ export default function CheckoutPage() {
                 </div>
               ) : (
                 <div className="overflow-hidden rounded-lg border border-border/60">
-                  {/* Prepaid discount strip — only when Admin > Settings > Online
-                      Payment Discount is actually enabled, using the real
-                      percent/₹ figure for this cart (same number shown next to
-                      "Pay Online" below), not a hardcoded claim. */}
-                  {paymentDiscount.enabled && potentialOnlinePaymentDiscount > 0 && (
+                  {/* Same merged banner as the one at the top of the page —
+                      shows real combined savings once anything's applied,
+                      otherwise nudges toward the prepaid discount. */}
+                  {totalSavings > 0 ? (
                     <div className="flex items-center justify-center gap-1.5 bg-primary px-3 py-1.5 text-center text-xs font-semibold text-primary-foreground">
                       <BadgePercent className="h-3.5 w-3.5" />
-                      Upto {formatINR(potentialOnlinePaymentDiscount)} off on prepaid orders
+                      You're saving {formatINR(totalSavings)} on this order
                     </div>
+                  ) : (
+                    paymentDiscount.enabled && potentialOnlinePaymentDiscount > 0 && (
+                      <div className="flex items-center justify-center gap-1.5 bg-primary px-3 py-1.5 text-center text-xs font-semibold text-primary-foreground">
+                        <BadgePercent className="h-3.5 w-3.5" />
+                        Upto {formatINR(potentialOnlinePaymentDiscount)} off on prepaid orders
+                      </div>
+                    )
                   )}
 
                   {availableCoupons.length > 0 ? (
