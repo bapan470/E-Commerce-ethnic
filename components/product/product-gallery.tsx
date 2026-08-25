@@ -1,10 +1,11 @@
 'use client';
 
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X, ZoomIn } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { preloadImages } from '@/lib/preload-image';
 import ProductVideoPeek from './product-video-peek';
 
 interface ProductGalleryProps {
@@ -82,7 +83,10 @@ export default function ProductGallery({
   productPrice,
   productMrp,
 }: ProductGalleryProps) {
-  const valid = images.length > 0 ? images : [PLACEHOLDER];
+  // Memoized so this array is referentially stable across renders (it's a
+  // dependency of the preload effect below) -- without this, a brand new
+  // array would be created every render and defeat that effect's guard.
+  const valid = useMemo(() => (images.length > 0 ? images : [PLACEHOLDER]), [images]);
 
   const [active, setActive] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -98,6 +102,17 @@ export default function ProductGallery({
   }, [images]);
 
   const clamp = useCallback((idx: number) => (idx + valid.length) % valid.length, [valid.length]);
+
+  // Fixes the "blank/white frame while swiping" issue: every image except
+  // the very first one was purely lazy-loaded, so the browser only started
+  // fetching it once it scrolled into view -- exactly when the shopper was
+  // already looking at it. Here we preload the photo on either side of the
+  // current one the moment `active` changes (and on first mount), so by the
+  // time a swipe finishes the next photo is already sitting in the browser
+  // cache and just paints instantly instead of popping in late.
+  useEffect(() => {
+    preloadImages([valid[clamp(active + 1)], valid[clamp(active - 1)]]);
+  }, [active, valid, clamp]);
 
   // `goTo` now drives the native scroller instead of a JS transform — it
   // scrolls the stage to the target photo and lets the browser animate it,
@@ -256,7 +271,7 @@ export default function ProductGallery({
                       src={img}
                       alt={`${alt} - ${angleLabel(idx)}`}
                       fill
-                      priority={idx === 0}
+                      priority={Math.abs(idx - active) <= 1}
                       draggable={false}
                       sizes="(max-width: 1024px) 100vw, 50vw"
                       quality={80}
@@ -388,6 +403,14 @@ function Lightbox({
     setScale(1);
     setOffset({ x: 0, y: 0 });
   };
+
+  // Same fix as the main stage: preload the photo on either side so
+  // swiping inside the full-screen viewer doesn't show a blank frame either.
+  useEffect(() => {
+    const next = images[(active + 1 + images.length) % images.length];
+    const prev = images[(active - 1 + images.length) % images.length];
+    preloadImages([next, prev]);
+  }, [active, images]);
 
   // Jumps (arrow buttons / thumbnail row / keyboard) just update `active`;
   // the effect below notices the strip's scroll position doesn't match
@@ -550,7 +573,7 @@ function Lightbox({
                     draggable={false}
                     sizes="100vw"
                     quality={90}
-                    priority={idx === active}
+                    priority={Math.abs(idx - active) <= 1}
                     className="select-none object-contain"
                   />
                 </div>
