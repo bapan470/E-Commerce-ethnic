@@ -3,9 +3,10 @@
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { useState, useMemo, useRef, useEffect, useCallback, FormEvent } from 'react';
-import { Search, ShoppingBag, Menu, User, Heart, ArrowLeft, Camera, Loader2, Clock } from 'lucide-react';
+import { Search, ShoppingBag, Menu, User, Heart, ArrowLeft, Camera, Loader2, Clock, Wallet } from 'lucide-react';
 import { useCart, useCategories } from '@/lib/cart-context';
 import { useAuth } from '@/lib/auth-context';
+import { fetchMyStoreCredit } from '@/lib/store-credit-api';
 import { getCheckoutReturnPath, isCheckoutReturnFromBuyNow, clearCheckoutReturnBuyNowFlag } from '@/lib/checkout-return';
 import { rankProductIdsByImage, createSearchThumbnail } from '@/lib/image-search';
 import { getKeywordSuggestions, fuzzyMatch } from '@/lib/search-utils';
@@ -72,6 +73,31 @@ export default function Header() {
   const { count, setCartOpen, addItem, buyNowItem, clearBuyNow } = useCart();
   const { categories } = useCategories();
   const { user } = useAuth();
+
+  // Store credit balance for the header wallet pill / mobile menu row.
+  // Only fetched once someone is logged in — guests always see 0/hidden,
+  // and we don't want an extra Supabase round trip on every anonymous
+  // page load. Re-fetches whenever the logged-in user id changes (e.g.
+  // login/logout) so the pill can't show a stale balance across accounts.
+  const [storeCredit, setStoreCredit] = useState<number>(0);
+  useEffect(() => {
+    if (!user) {
+      setStoreCredit(0);
+      return;
+    }
+    let cancelled = false;
+    fetchMyStoreCredit()
+      .then((res) => {
+        if (!cancelled) setStoreCredit(res.balance);
+      })
+      .catch(() => {
+        if (!cancelled) setStoreCredit(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
   // Header renders on every page, so it can't sit behind the heavy
   // ProductsProvider (root layout only carries the light Categories/
   // PaymentDiscount providers now). Products are only needed for search
@@ -132,6 +158,7 @@ export default function Header() {
       { href: '/blog', label: 'Blog' },
       { href: '/about', label: 'About Us' },
       { href: '/account', label: 'My Account' },
+      { href: '/account/store-credit', label: 'Store Credit' },
       { href: '/account/reseller', label: 'Reseller' },
       { href: '/contact', label: 'Contact Us' },
     ];
@@ -534,9 +561,14 @@ export default function Header() {
                       key={l.href}
                       href={l.href}
                       onClick={() => setMobileOpen(false)}
-                      className="rounded-md px-3 py-2 text-sm font-medium text-foreground/80 transition-colors hover:bg-accent hover:text-accent-foreground"
+                      className="flex items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-foreground/80 transition-colors hover:bg-accent hover:text-accent-foreground"
                     >
-                      {l.label}
+                      <span>{l.label}</span>
+                      {l.href === '/account/store-credit' && user && (
+                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+                          ₹{storeCredit.toLocaleString('en-IN')}
+                        </span>
+                      )}
                     </Link>
                   ))}
                 </nav>
@@ -692,6 +724,21 @@ export default function Header() {
           >
             <Search className="h-5 w-5" />
           </Button>
+
+          {user && (
+            <Button
+              variant="ghost"
+              size="sm"
+              asChild
+              aria-label="Store credit"
+              className="hidden items-center gap-1.5 px-2 sm:flex"
+            >
+              <Link href="/account/store-credit">
+                <Wallet className="h-5 w-5" />
+                <span className="text-sm font-semibold">₹{storeCredit.toLocaleString('en-IN')}</span>
+              </Link>
+            </Button>
+          )}
 
           <Button variant="ghost" size="icon" asChild aria-label="Wishlist">
             <Link href="/account/wishlist">
