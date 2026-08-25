@@ -295,12 +295,6 @@ interface CartContextValue {
   startBuyNow: (product: Product, size: string, quantity?: number, feedItemId?: string) => void;
   updateBuyNowQuantity: (quantity: number) => void;
   clearBuyNow: () => void;
-  /** True once the cart has finished reading from localStorage on mount.
-   *  Pages that compute totals (checkout, cart) should wait for this before
-   *  rendering prices — otherwise they briefly render against the empty
-   *  initial state before the real cart loads in, showing a wrong total
-   *  for a moment (most visible on slower mobile devices). */
-  hydrated: boolean;
 }
 
 const CartContext = createContext<CartContextValue | undefined>(undefined);
@@ -534,7 +528,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     startBuyNow,
     updateBuyNowQuantity,
     clearBuyNow,
-    hydrated,
   };
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

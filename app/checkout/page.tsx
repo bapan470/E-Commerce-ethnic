@@ -151,7 +151,6 @@ export default function CheckoutPage() {
     buyNowItem,
     updateBuyNowQuantity,
     clearBuyNow,
-    hydrated: cartHydrated,
   } = useCart();
   const { paymentDiscount } = usePaymentDiscount();
   // Buy Now sends the shopper straight here with just the one item, kept
@@ -504,13 +503,6 @@ export default function CheckoutPage() {
   const [shippingSettings, setShippingSettings] = useState<ShippingSettings>(
     DEFAULT_SHIPPING_SETTINGS
   );
-  // True once the real shipping/GST settings have come back from the
-  // server (success or failure) — until then shippingSettings is just the
-  // hardcoded DEFAULT_SHIPPING_SETTINGS placeholder, which rarely matches
-  // the store's actual flat rate / free-shipping threshold / GST rate. On
-  // a slow mobile connection that gap is wide enough for the customer to
-  // see a wrong total before it snaps to the correct one.
-  const [shippingSettingsLoaded, setShippingSettingsLoaded] = useState(false);
 
   // Loyalty points — only relevant for logged-in customers.
   const [loyaltySettings, setLoyaltySettings] = useState<LoyaltySettings>(
@@ -545,12 +537,9 @@ export default function CheckoutPage() {
   }, [trackingEmail, items, subtotal]);
 
   useEffect(() => {
-    fetchShippingSettings()
-      .then(setShippingSettings)
-      .catch(() => {
-        // fall back to defaults already set above
-      })
-      .finally(() => setShippingSettingsLoaded(true));
+    fetchShippingSettings().then(setShippingSettings).catch(() => {
+      // fall back to defaults already set above
+    });
   }, []);
 
   // Show the customer a real estimated delivery window for their own pincode
@@ -1365,21 +1354,6 @@ export default function CheckoutPage() {
     );
   }
 
-  // Wait for the cart to finish reading from localStorage AND the real
-  // shipping/GST settings to come back before showing any totals. Skipping
-  // this shows the customer a price computed from empty/placeholder data
-  // for a moment, which only self-corrects once something else forces a
-  // re-render (e.g. the address bar hiding on scroll on mobile) — the bug
-  // was never the resize itself, just that it happened to trigger the fix.
-  if (!cartHydrated || !shippingSettingsLoaded) {
-    return (
-      <div className="container-boutique flex flex-col items-center gap-3 py-24 text-center">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">Loading your order…</p>
-      </div>
-    );
-  }
-
   if (items.length === 0) {
     return (
       <div className="container-boutique flex flex-col items-center gap-5 py-24 text-center">
@@ -1509,7 +1483,7 @@ export default function CheckoutPage() {
       <StickyOrderBar
         items={items}
         subtotal={subtotal}
-        mrpTotal={subtotal + shipping}
+        mrpTotal={mrpTotal}
         shipping={shipping}
         payableTotal={payableTotal}
         totalSavings={totalSavings}
