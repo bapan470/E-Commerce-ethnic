@@ -110,8 +110,15 @@ export default function StickyOrderBar({
                       {item.product.colors?.[0] ? ` · Color: ${item.product.colors[0]}` : ''}
                     </p>
                   </div>
-                  <span className="shrink-0 text-sm font-semibold">
-                    {formatINR(item.product.price * item.quantity)}
+                  <span className="flex shrink-0 items-baseline gap-1.5">
+                    {item.product.mrp && item.product.mrp > item.product.price && (
+                      <span className="text-xs text-muted-foreground line-through">
+                        {formatINR(item.product.mrp * item.quantity)}
+                      </span>
+                    )}
+                    <span className="text-sm font-semibold">
+                      {formatINR(item.product.price * item.quantity)}
+                    </span>
                   </span>
                 </li>
               );

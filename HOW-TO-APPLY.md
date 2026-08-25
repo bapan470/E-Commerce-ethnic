@@ -1,18 +1,24 @@
-# Checkout — crossed-out original price next to final price
+# Checkout item row — MRP crossed-out + sale price, same line
 
 ## Kya change hua
-`components/checkout/sticky-order-bar.tsx` — checkout ke top wali collapsed
-bar me ("1 item · You save ₹167 · ₹1,221") ab final price (₹1,221) ke
-**left me original price (₹1,388) crossed-out** dikhta hai. Data pehle se
-hi checkout page se aa raha tha (`mrpTotal` prop) — sirf display missing
-tha, wo add kar diya.
+`components/checkout/sticky-order-bar.tsx` — expanded order summary me har
+item ki price ab ek hi line me dikhti hai: **₹2,200 (crossed) ₹1,388**.
+Pehle ye do lines me stacked thi (MRP upar, sale price niche).
+
+## ⚠️ Zaroori — data check
+Ye sirf layout fix hai. Crossed-out MRP (₹2,200) **tabhi dikhega jab us
+product ka MRP field, price se zyada set ho** (Admin panel → Products →
+us product ko edit karo → MRP field check/set karo). Agar MRP set nahi hai
+ya price ke barabar/kam hai, to sirf sale price (₹1,388) dikhega — jo already
+sahi behavior hai (jab discount hai hi nahi to crossed price dikhana galat
+hoga).
 
 ## Apply kaise karein
 1. Zip extract karo.
 2. `components/checkout/sticky-order-bar.tsx` ko apne repo me **usi path**
    par replace karo.
    — Ya —
-   `git apply checkout-strike-price.patch` chala do repo root se.
-3. `git add -A && git commit -m "Show crossed-out MRP next to checkout total" && git push`
+   `git apply checkout-item-mrp.patch` chala do repo root se.
+3. `git add -A && git commit -m "Show item MRP crossed-out inline with sale price at checkout" && git push`
 
-Koi migration ya naya package nahi chahiye — sirf ye ek file.
+Koi migration ya naya package nahi chahiye.
