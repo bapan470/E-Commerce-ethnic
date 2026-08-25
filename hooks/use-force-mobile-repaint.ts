@@ -15,11 +15,17 @@ import type { RefObject } from 'react';
  * mobile view and still visibly lag on a real iPhone/Android until the
  * user happens to tap or scroll.
  *
- * This hook nudges the element's transform by a fraction of a pixel and
- * back on the very next animation frame whenever any value in `deps`
- * changes. That forces the browser to recomposite the layer immediately —
- * with no visible movement, since translateZ(0) and translateZ(0.01px)
- * render identically — instead of waiting for the user to scroll or tap.
+ * A `transform` nudge alone recomposites the *element*, but on WebKit it's
+ * specifically the `backdrop-filter` blur layer's *content* that gets
+ * stuck — nudging transform doesn't reliably force that layer to repaint.
+ * So this hook does three things, each forced onto its own paint via a
+ * synchronous reflow read (`el.offsetHeight`) so the browser can't batch
+ * them away into a single no-op style recalculation:
+ *   1. Nudge `transform` by a fraction of a pixel (recomposite the layer).
+ *   2. Momentarily drop `backdrop-filter` to `none` (forces WebKit to
+ *      actually repaint that layer's contents instead of just moving it).
+ *   3. On the next frame, restore both — invisibly, since translateZ(0)
+ *      vs translateZ(0.01px) and the original blur render identically.
  */
 export function useForceMobileRepaint<T extends HTMLElement>(
   ref: RefObject<T | null>,
@@ -28,9 +34,19 @@ export function useForceMobileRepaint<T extends HTMLElement>(
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+
     el.style.transform = 'translateZ(0.01px)';
+    el.style.setProperty('backdrop-filter', 'none');
+    el.style.setProperty('-webkit-backdrop-filter', 'none');
+    // Force a synchronous layout/paint commit right now, so the two writes
+    // above land on their own frame instead of being coalesced with the
+    // restore below.
+    void el.offsetHeight;
+
     const raf = requestAnimationFrame(() => {
       el.style.transform = 'translateZ(0)';
+      el.style.removeProperty('backdrop-filter');
+      el.style.removeProperty('-webkit-backdrop-filter');
     });
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
