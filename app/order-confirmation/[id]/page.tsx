@@ -162,6 +162,7 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
           product_name: item.product_name,
           price: item.price,
           quantity: item.quantity,
+          feed_item_id: item.feed_item_id ?? null,
         }))}
         customerEmail={order.customer_email}
         customerPhone={order.customer_phone}

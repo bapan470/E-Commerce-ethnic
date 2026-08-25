@@ -8,6 +8,10 @@ interface PurchaseTrackerItem {
   product_name: string;
   price: number;
   quantity: number;
+  // Colour/size-matched id from the Merchant Center feed (see
+  // lib/gtag-track.ts's feedMatchedItemId). Falls back to product_id for
+  // orders placed before this field existed.
+  feed_item_id?: string | null;
 }
 
 interface PurchaseTrackerProps {
@@ -93,7 +97,12 @@ export default function PurchaseTracker({
           tax: tax ?? 0,
           coupon: couponCode ?? undefined,
           items: items.map((item) => ({
-            item_id: item.product_id ?? item.product_name,
+            // Feed-matched id first, so this event lines up with
+            // view_item/add_to_cart's item_id and Google Ads can match this
+            // purchase back to the exact Merchant Center feed item (needed
+            // for retail audience "already purchased" exclusion and
+            // dynamic remarketing accuracy).
+            item_id: item.feed_item_id ?? item.product_id ?? item.product_name,
             item_name: item.product_name,
             price: item.price,
             quantity: item.quantity,

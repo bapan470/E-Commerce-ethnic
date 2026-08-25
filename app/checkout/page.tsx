@@ -1138,6 +1138,14 @@ export default function CheckoutPage() {
         size: i.size,
         quantity: i.quantity,
         price: i.product.price,
+        // Same colour/size-matched id used in the Merchant Center feed's
+        // <g:id> (see lib/gtag-track.ts's feedMatchedItemId). Carried through
+        // to the order row so PurchaseTracker on the confirmation page can
+        // report the *exact* feed item that was bought, keeping the
+        // "purchase" event's item_id consistent with view_item/add_to_cart —
+        // without this, Google Ads can't reliably match this event back to
+        // the feed item for retail audiences / dynamic remarketing.
+        feed_item_id: i.feedItemId ?? i.product.id,
       }));
 
       const {
