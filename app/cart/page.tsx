@@ -353,8 +353,9 @@ export default function CartPage() {
             </h2>
             <Separator className="my-4" />
 
-            {/* Coupon */}
-            <div className="rounded-lg border border-border/60">
+            {/* Coupon + Gift card — one combined card */}
+            <div className="divide-y divide-border/60 rounded-lg border border-border/60">
+              <div>
               {appliedCoupon ? (
                 <div className="flex items-center justify-between p-3 text-sm">
                   <span className="flex items-center gap-1.5 font-medium text-secondary-foreground">
@@ -415,10 +416,9 @@ export default function CartPage() {
                   </div>
                 </div>
               )}
-            </div>
+              </div>
 
-            {/* Gift card */}
-            <div className="mt-3 rounded-lg border border-border/60">
+              <div>
               {appliedGiftCard ? (
                 <div className="flex items-center justify-between p-3 text-sm">
                   <span className="flex items-center gap-1.5 font-medium text-secondary-foreground">
@@ -480,6 +480,7 @@ export default function CartPage() {
                   </div>
                 </div>
               )}
+              </div>
             </div>
             <Separator className="my-4" />
 

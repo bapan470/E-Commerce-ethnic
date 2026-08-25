@@ -582,8 +582,11 @@ export default function CartDrawer() {
                 })}
               </div>
 
-              {/* Coupons */}
-              <div className="rounded-lg border border-border/60 bg-card">
+              {/* Coupons + Gift card — one combined card so the two
+                  offer rows read as a single collapsible unit instead of
+                  two separate boxes. */}
+              <div className="divide-y divide-border/60 rounded-lg border border-border/60 bg-card">
+                <div>
                 {appliedCoupon ? (
                   <div className="flex items-center justify-between p-4">
                     <span className="flex items-center gap-1.5 text-sm font-medium text-secondary-foreground">
@@ -646,54 +649,9 @@ export default function CartDrawer() {
                     </div>
                   </div>
                 )}
-              </div>
-
-              {/* Available coupons (admin-flagged "Show on Product Page"), only
-                  while nothing is applied yet — same offers a shopper would see
-                  on a product page, surfaced here too. */}
-              {!appliedCoupon && availableCoupons.length > 0 && (
-                <div className="flex flex-col gap-2 rounded-lg border border-border/60 bg-card p-4">
-                  <div className="flex items-center gap-1.5 text-sm font-semibold">
-                    <Tag className="h-4 w-4 text-secondary" />
-                    Available Coupons
-                  </div>
-                  {availableCoupons.map((c) => (
-                    <div
-                      key={c.id}
-                      className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-secondary/60 bg-secondary/10 px-3 py-2.5"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-mono text-sm font-bold tracking-wide text-primary">
-                            {c.code}
-                          </span>
-                          <span className="text-xs font-semibold text-secondary-foreground">
-                            {c.discount_type === 'percentage'
-                              ? `${c.discount_value}% OFF`
-                              : `${formatINR(c.discount_value)} OFF`}
-                          </span>
-                        </div>
-                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                          {c.min_order_value > 0
-                            ? `On orders above ${formatINR(c.min_order_value)}`
-                            : 'No minimum order value'}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleApplyFromList(c)}
-                        disabled={applyingFromList === c.code}
-                        className="flex shrink-0 items-center gap-1 rounded-md border border-primary bg-background px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary hover:text-primary-foreground disabled:opacity-60"
-                      >
-                        {applyingFromList === c.code ? 'Applying…' : 'Apply'}
-                      </button>
-                    </div>
-                  ))}
                 </div>
-              )}
 
-              {/* Gift card */}
-              <div className="rounded-lg border border-border/60 bg-card">
+                <div>
                 {appliedGiftCard ? (
                   <div className="flex items-center justify-between p-4">
                     <span className="flex items-center gap-1.5 text-sm font-medium text-secondary-foreground">
@@ -757,7 +715,52 @@ export default function CartDrawer() {
                     </div>
                   </div>
                 )}
+                </div>
               </div>
+
+              {/* Available coupons (admin-flagged "Show on Product Page"), only
+                  while nothing is applied yet — same offers a shopper would see
+                  on a product page, surfaced here too. */}
+              {!appliedCoupon && availableCoupons.length > 0 && (
+                <div className="flex flex-col gap-2 rounded-lg border border-border/60 bg-card p-4">
+                  <div className="flex items-center gap-1.5 text-sm font-semibold">
+                    <Tag className="h-4 w-4 text-secondary" />
+                    Available Coupons
+                  </div>
+                  {availableCoupons.map((c) => (
+                    <div
+                      key={c.id}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-secondary/60 bg-secondary/10 px-3 py-2.5"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-sm font-bold tracking-wide text-primary">
+                            {c.code}
+                          </span>
+                          <span className="text-xs font-semibold text-secondary-foreground">
+                            {c.discount_type === 'percentage'
+                              ? `${c.discount_value}% OFF`
+                              : `${formatINR(c.discount_value)} OFF`}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                          {c.min_order_value > 0
+                            ? `On orders above ${formatINR(c.min_order_value)}`
+                            : 'No minimum order value'}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyFromList(c)}
+                        disabled={applyingFromList === c.code}
+                        className="flex shrink-0 items-center gap-1 rounded-md border border-primary bg-background px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary hover:text-primary-foreground disabled:opacity-60"
+                      >
+                        {applyingFromList === c.code ? 'Applying…' : 'Apply'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Price details */}
               <div className="rounded-lg border border-border/60 bg-card">

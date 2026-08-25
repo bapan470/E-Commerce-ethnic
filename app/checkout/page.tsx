@@ -2012,8 +2012,9 @@ export default function CheckoutPage() {
             </ul>
             <Separator className="my-4" />
 
-            {/* Coupon */}
-            <div className="rounded-lg border border-border/60">
+            {/* Coupon + Gift card — one combined card */}
+            <div className="divide-y divide-border/60 rounded-lg border border-border/60">
+              <div>
               {appliedCoupon ? (
                 <div className="flex items-center justify-between p-3 text-sm">
                   <span className="flex items-center gap-1.5 font-medium text-secondary-foreground">
@@ -2122,67 +2123,9 @@ export default function CheckoutPage() {
                 </div>
               )}
               {couponError && <p className="mt-1.5 text-xs text-destructive">{couponError}</p>}
-            </div>
-
-            {/* Expanded view: full coupon list + a manual-code fallback for
-                private/referral codes that aren't in the "Show on Product
-                Page" list. Only reachable via "View all coupons" above, and
-                only while nothing is applied yet. */}
-            {!appliedCoupon && couponPanelOpen && showAllCoupons && availableCoupons.length > 0 && (
-              <div className="mt-3 flex flex-col gap-2 rounded-lg border border-border/60 bg-muted/30 p-3">
-                <div className="flex items-center gap-1.5 text-sm font-semibold">
-                  <Tag className="h-3.5 w-3.5 text-secondary" />
-                  Available Coupons
-                </div>
-                {availableCoupons.map((c) => (
-                  <div
-                    key={c.id}
-                    className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-secondary/60 bg-secondary/10 px-3 py-2.5"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-sm font-bold tracking-wide text-primary">{c.code}</span>
-                        <span className="text-xs font-semibold text-secondary-foreground">
-                          {c.discount_type === 'percentage' ? `${c.discount_value}% OFF` : `${formatINR(c.discount_value)} OFF`}
-                        </span>
-                      </div>
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {c.min_order_value > 0 ? `On orders above ${formatINR(c.min_order_value)}` : 'No minimum order value'}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleApplyFromList(c)}
-                      disabled={applyingFromList === c.code}
-                      className="flex shrink-0 items-center gap-1 rounded-md border border-primary bg-background px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary hover:text-primary-foreground disabled:opacity-60"
-                    >
-                      {applyingFromList === c.code ? 'Applying…' : 'Apply'}
-                    </button>
-                  </div>
-                ))}
-                <div className="mt-1 flex gap-2 border-t border-border/60 pt-2.5">
-                  <Input
-                    placeholder="Have a different code?"
-                    value={couponInput}
-                    onChange={(e) => setCouponInput(e.target.value)}
-                    className="h-9"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="h-9 shrink-0"
-                    disabled={applyingCoupon || !couponInput.trim()}
-                    onClick={handleApplyCoupon}
-                  >
-                    {applyingCoupon ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}
-                  </Button>
-                </div>
               </div>
-            )}
 
-            {/* Gift card */}
-            <Separator className="my-4" />
-            <div className="rounded-lg border border-border/60">
+              <div>
               {appliedGiftCard ? (
                 <div className="flex items-center justify-between p-3 text-sm">
                   <span className="flex items-center gap-1.5 font-medium text-secondary-foreground">
@@ -2244,7 +2187,64 @@ export default function CheckoutPage() {
                   </div>
                 </div>
               )}
+              </div>
             </div>
+
+            {/* Expanded view: full coupon list + a manual-code fallback for
+                private/referral codes that aren't in the "Show on Product
+                Page" list. Only reachable via "View all coupons" above, and
+                only while nothing is applied yet. */}
+            {!appliedCoupon && couponPanelOpen && showAllCoupons && availableCoupons.length > 0 && (
+              <div className="mt-3 flex flex-col gap-2 rounded-lg border border-border/60 bg-muted/30 p-3">
+                <div className="flex items-center gap-1.5 text-sm font-semibold">
+                  <Tag className="h-3.5 w-3.5 text-secondary" />
+                  Available Coupons
+                </div>
+                {availableCoupons.map((c) => (
+                  <div
+                    key={c.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-secondary/60 bg-secondary/10 px-3 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-sm font-bold tracking-wide text-primary">{c.code}</span>
+                        <span className="text-xs font-semibold text-secondary-foreground">
+                          {c.discount_type === 'percentage' ? `${c.discount_value}% OFF` : `${formatINR(c.discount_value)} OFF`}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                        {c.min_order_value > 0 ? `On orders above ${formatINR(c.min_order_value)}` : 'No minimum order value'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleApplyFromList(c)}
+                      disabled={applyingFromList === c.code}
+                      className="flex shrink-0 items-center gap-1 rounded-md border border-primary bg-background px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary hover:text-primary-foreground disabled:opacity-60"
+                    >
+                      {applyingFromList === c.code ? 'Applying…' : 'Apply'}
+                    </button>
+                  </div>
+                ))}
+                <div className="mt-1 flex gap-2 border-t border-border/60 pt-2.5">
+                  <Input
+                    placeholder="Have a different code?"
+                    value={couponInput}
+                    onChange={(e) => setCouponInput(e.target.value)}
+                    className="h-9"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-9 shrink-0"
+                    disabled={applyingCoupon || !couponInput.trim()}
+                    onClick={handleApplyCoupon}
+                  >
+                    {applyingCoupon ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}
+                  </Button>
+                </div>
+              </div>
+            )}
 
             {/* Loyalty points redeem */}
             {loyaltySettings.enabled && pointsBalance > 0 && (
