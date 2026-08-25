@@ -1870,7 +1870,7 @@ export default function CheckoutPage() {
             className="mt-4 rounded-lg border border-border/60 bg-card p-5"
           >
             <h2 className="mb-1 font-serif text-lg font-bold text-primary">Payment</h2>
-            <p className="mb-4 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <p className="mb-3 flex items-center gap-1.5 text-xs text-muted-foreground">
               <Lock className="h-3 w-3" /> Choose how you'd like to pay
             </p>
 
@@ -2026,23 +2026,6 @@ export default function CheckoutPage() {
                 </div>
               ) : (
                 <div className="overflow-hidden rounded-lg border border-border/60">
-                  {/* Same merged banner as the one at the top of the page —
-                      shows real combined savings once anything's applied,
-                      otherwise nudges toward the prepaid discount. */}
-                  {totalSavings > 0 ? (
-                    <div className="flex items-center justify-center gap-1.5 bg-primary px-3 py-1.5 text-center text-xs font-semibold text-primary-foreground">
-                      <BadgePercent className="h-3.5 w-3.5" />
-                      You're saving {formatINR(totalSavings)} on this order
-                    </div>
-                  ) : (
-                    paymentDiscount.enabled && potentialOnlinePaymentDiscount > 0 && (
-                      <div className="flex items-center justify-center gap-1.5 bg-primary px-3 py-1.5 text-center text-xs font-semibold text-primary-foreground">
-                        <BadgePercent className="h-3.5 w-3.5" />
-                        Upto {formatINR(potentialOnlinePaymentDiscount)} off on prepaid orders
-                      </div>
-                    )
-                  )}
-
                   {availableCoupons.length > 0 ? (
                     <div className="flex items-center justify-between gap-3 bg-card px-3 py-3">
                       <div className="flex min-w-0 items-start gap-2.5">
