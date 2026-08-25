@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { useState, useMemo, useRef, useEffect, useCallback, FormEvent } from 'react';
-import { Search, ShoppingBag, Menu, User, Heart, ArrowLeft, Camera, Loader2, Clock, Wallet } from 'lucide-react';
+import { Search, ShoppingBag, Menu, User, Heart, ArrowLeft, Camera, Loader2, Clock, Gift } from 'lucide-react';
 import { useCart, useCategories } from '@/lib/cart-context';
 import { useAuth } from '@/lib/auth-context';
 import { fetchMyStoreCredit } from '@/lib/store-credit-api';
@@ -158,7 +158,6 @@ export default function Header() {
       { href: '/blog', label: 'Blog' },
       { href: '/about', label: 'About Us' },
       { href: '/account', label: 'My Account' },
-      { href: '/account/store-credit', label: 'Store Credit' },
       { href: '/account/reseller', label: 'Reseller' },
       { href: '/contact', label: 'Contact Us' },
     ];
@@ -584,11 +583,6 @@ export default function Header() {
                       className="flex items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-foreground/80 transition-colors hover:bg-accent hover:text-accent-foreground"
                     >
                       <span>{l.label}</span>
-                      {l.href === '/account/store-credit' && user && (
-                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
-                          ₹{storeCredit.toLocaleString('en-IN')}
-                        </span>
-                      )}
                     </Link>
                   ))}
                 </nav>
@@ -750,18 +744,14 @@ export default function Header() {
               variant="ghost"
               size="icon"
               asChild
-              aria-label="Store credit"
-              className="relative flex items-center justify-center sm:h-auto sm:w-auto sm:gap-1.5 sm:px-2"
+              aria-label="Reward points"
+              className="relative flex h-auto w-auto items-center justify-center gap-1 px-1.5 sm:gap-1.5 sm:px-2"
             >
               <Link href="/account/store-credit">
-                <Wallet className="h-5 w-5" />
-                {/* Mobile: small badge like the cart count, so the icon
-                    row stays compact. Desktop (sm+): full ₹ amount text
-                    next to the icon instead of a cramped badge. */}
-                <span className="absolute -right-1 -top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-secondary px-0.5 text-[9px] font-bold leading-none text-secondary-foreground sm:hidden">
-                  ₹
-                </span>
-                <span className="hidden text-sm font-semibold sm:inline">
+                <Gift className="h-5 w-5" />
+                {/* Reward-points balance shown as a price next to the icon,
+                    on mobile as well as desktop. */}
+                <span className="text-xs font-semibold sm:text-sm">
                   ₹{storeCredit.toLocaleString('en-IN')}
                 </span>
               </Link>
@@ -774,6 +764,7 @@ export default function Header() {
             </Link>
           </Button>
 
+          {/* Account icon — shown on mobile and desktop. */}
           <Button
             variant="ghost"
             size="icon"
