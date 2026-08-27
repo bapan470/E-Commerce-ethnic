@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Loader2, ShoppingCart, Mail, CheckCircle2, Search, X } from 'lucide-react';
+import { Loader2, ShoppingCart, Mail, MessageCircle, CheckCircle2, Search, X } from 'lucide-react';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 type AbandonedCart = {
   id: string;
   email: string | null;
+  phone: string | null;
   items: any[];
   cart_value: number;
   last_activity_at: string;
@@ -24,6 +25,28 @@ type AbandonedCart = {
   recovery_email_sent_at?: string | null;
   recovered: boolean;
 };
+
+// Builds a free wa.me click-to-chat link — no WhatsApp Business API / BSP
+// involved, so no per-message Meta billing. Opening it starts a chat from
+// whichever WhatsApp (Web or app) the admin is logged into, with the
+// recovery message already typed in; the admin just taps Send. Returns
+// null if the stored phone number doesn't look like a valid 10-digit
+// Indian mobile number, so the button can hide itself instead of building
+// a broken link.
+function buildWhatsAppRecoveryLink(phone: string, cartValue: number): string | null {
+  let digits = phone.replace(/\D/g, '');
+  if (digits.startsWith('91') && digits.length === 12) digits = digits.slice(2);
+  if (digits.startsWith('0') && digits.length === 11) digits = digits.slice(1);
+  if (!/^[6-9][0-9]{9}$/.test(digits)) return null;
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
+  const message =
+    `Hi! You left some beautiful pieces in your AruhiHandlooms cart` +
+    (cartValue ? ` (worth ${formatINR(cartValue)})` : '') +
+    `. Complete your order here: ${siteUrl}/cart`;
+
+  return `https://wa.me/91${digits}?text=${encodeURIComponent(message)}`;
+}
 
 export default function AbandonedCartsPanel() {
   const [carts, setCarts] = useState<AbandonedCart[]>([]);
@@ -190,7 +213,10 @@ export default function AbandonedCartsPanel() {
             <tbody>
               {filteredCarts.map((c) => (
                 <tr key={c.id} className="border-t">
-                  <td className="px-4 py-3 align-top text-sm">{c.email || '—'}</td>
+                  <td className="px-4 py-3 align-top text-sm">
+                    <div>{c.email || '—'}</div>
+                    {c.phone && <div className="text-xs text-muted-foreground">{c.phone}</div>}
+                  </td>
                   <td className="px-4 py-3 align-top text-sm text-muted-foreground">
                     {(c.items || []).length} item{(c.items || []).length === 1 ? '' : 's'}
                   </td>
@@ -214,20 +240,36 @@ export default function AbandonedCartsPanel() {
                     )}
                   </td>
                   <td className="px-4 py-3 align-top text-sm">
-                    {!c.recovered && c.email && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={sendingId === c.id}
-                        onClick={() => sendNow(c.id)}
-                      >
-                        {sendingId === c.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          'Send recovery email'
-                        )}
-                      </Button>
-                    )}
+                    <div className="flex flex-wrap gap-2">
+                      {!c.recovered && c.email && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={sendingId === c.id}
+                          onClick={() => sendNow(c.id)}
+                        >
+                          {sendingId === c.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            'Send recovery email'
+                          )}
+                        </Button>
+                      )}
+                      {!c.recovered &&
+                        c.phone &&
+                        (() => {
+                          const link = buildWhatsAppRecoveryLink(c.phone, c.cart_value);
+                          if (!link) return null;
+                          return (
+                            <Button size="sm" variant="outline" asChild>
+                              <a href={link} target="_blank" rel="noopener noreferrer">
+                                <MessageCircle className="mr-1.5 h-3.5 w-3.5" />
+                                Send WhatsApp
+                              </a>
+                            </Button>
+                          );
+                        })()}
+                    </div>
                   </td>
                 </tr>
               ))}

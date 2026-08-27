@@ -8,6 +8,10 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const email = (body?.email as string | undefined)?.trim();
+  // Optional — only present once the shopper has also typed a phone number.
+  // Stored so the admin panel can offer a free "Send WhatsApp" (wa.me)
+  // recovery action alongside the existing recovery email.
+  const phone = (body?.phone as string | undefined)?.trim() || null;
   const items = Array.isArray(body?.items) ? body.items : [];
   const cartValue = Number(body?.cartValue) || 0;
 
@@ -34,6 +38,10 @@ export async function POST(req: Request) {
           items,
           cart_value: cartValue,
           last_activity_at: new Date().toISOString(),
+          // Only overwrite phone once we actually have one — don't blank
+          // out a previously-captured number on a later update that fires
+          // before the phone field is filled in again.
+          ...(phone ? { phone } : {}),
           // Cart changed again — give it a fresh chance before we email.
           recovery_email_sent: false,
         })
@@ -42,6 +50,7 @@ export async function POST(req: Request) {
     } else {
       const { error } = await supabase.from('abandoned_carts').insert({
         email,
+        phone,
         items,
         cart_value: cartValue,
         last_activity_at: new Date().toISOString(),

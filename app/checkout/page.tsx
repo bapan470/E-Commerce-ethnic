@@ -540,6 +540,9 @@ export default function CheckoutPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: trackingEmail,
+          // Sent as typed — /api/cart-track stores it as-is; the admin
+          // panel's wa.me link normalizes it before building the URL.
+          phone: shipPhone,
           items: items.map((i) => ({
             product_name: i.product.name,
             size: i.size,
@@ -551,7 +554,10 @@ export default function CheckoutPage() {
       }).catch(() => {});
     }, 1500);
     return () => clearTimeout(timer);
-  }, [trackingEmail, items, subtotal]);
+    // Re-fires (debounced) when the phone number is filled in/edited too,
+    // not just the email, so a late-typed phone still gets captured.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackingEmail, shipPhone, items, subtotal]);
 
   useEffect(() => {
     fetchShippingSettings().then(setShippingSettings).catch(() => {
