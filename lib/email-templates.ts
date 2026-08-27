@@ -800,13 +800,47 @@ export function restockEmail(product: { name: string; slug: string; price: numbe
   return { subject, html };
 }
 
-export function cartRecoveryEmail(cart: { items: any[]; cart_value: number }) {
-  const subject = `You left something behind — complete your order`;
+// sequenceNumber: 1 = first nudge (~1hr later, soft), 2 = second email
+// (~1 day later, a bit more direct), 3 = final email (~3 days later,
+// last-chance framing). Each step can also carry its own coupon code
+// (set by the admin under Admin -> Abandoned Carts -> Sequence
+// Settings, or typed in manually when sending one-off from the table).
+export function cartRecoveryEmail(
+  cart: { items: any[]; cart_value: number },
+  opts: { couponCode?: string | null; sequenceNumber?: number } = {}
+) {
+  const seq = opts.sequenceNumber || 1;
+  const couponCode = opts.couponCode?.trim();
+
+  const heading =
+    seq >= 3
+      ? "Last chance — your cart is about to expire"
+      : seq === 2
+      ? "Still thinking it over?"
+      : "Still thinking it over?";
+  const intro =
+    seq >= 3
+      ? "This is our final reminder — the items below are still in your cart, but popular pieces don't stay in stock for long."
+      : "You left a few items in your cart. They're still waiting for you!";
+  const subject =
+    seq >= 3
+      ? `Last chance — your cart is waiting${couponCode ? ` (use ${couponCode})` : ''}`
+      : seq === 2
+      ? `Still there? Your cart is waiting${couponCode ? ` — here's ${couponCode}` : ''}`
+      : `You left something behind — complete your order`;
+
+  const couponBlock = couponCode
+    ? `<p style="text-align:center; margin: 16px 0; padding: 12px; background:#fbf6f0; border:1px dashed ${GOLD_ACCENT}; border-radius:6px;">
+        Use code <strong style="color:${BRAND_COLOR};">${couponCode}</strong> at checkout for a special discount.
+      </p>`
+    : '';
+
   const html = wrapper(`
-    <h2 style="margin-top:0; color:${BRAND_COLOR};">Still thinking it over?</h2>
-    <p>You left a few items in your cart. They're still waiting for you!</p>
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">${heading}</h2>
+    <p>${intro}</p>
     ${itemsTable(cart.items)}
     <p style="text-align:right; font-size:16px; font-weight:bold;">Cart total: ${formatINR(cart.cart_value)}</p>
+    ${couponBlock}
     <p style="text-align:center; margin-top: 20px;">
       <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/cart" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px;">
         Complete your purchase
@@ -814,6 +848,64 @@ export function cartRecoveryEmail(cart: { items: any[]; cart_value: number }) {
     </p>
   `);
   return { subject, html };
+}
+
+// Merge fields an admin can use inside a custom subject/body for the
+// cart-recovery sequence (Admin -> Abandoned Carts -> Sequence
+// Settings, or the one-off "Send custom email" dialog):
+//   {{items_table}}   -> the cart's line items as an HTML table
+//   {{cart_total}}    -> formatted cart value, e.g. "₹2,499"
+//   {{cart_url}}      -> link back to /cart
+//   {{coupon_code}}   -> the coupon code for this send, or '' if none
+//   {{coupon_line}}   -> a ready-made "use code X" paragraph, or '' if
+//                        no coupon code was set for this send
+//
+// If the admin left both subject and body blank for a given step,
+// falls back to the default cartRecoveryEmail() above.
+export function renderCartRecoveryEmail(
+  cart: { items: any[]; cart_value: number },
+  step: { subject?: string; html?: string; coupon_code?: string | null },
+  sequenceNumber: number
+) {
+  const couponCode = step.coupon_code?.trim() || '';
+  const customHtml = step.html?.trim();
+  const customSubject = step.subject?.trim();
+
+  if (!customHtml && !customSubject) {
+    return cartRecoveryEmail(cart, { couponCode, sequenceNumber });
+  }
+
+  const cartUrl = `${process.env.NEXT_PUBLIC_SITE_URL || ''}/cart`;
+  const couponLine = couponCode
+    ? `<p style="text-align:center; margin: 16px 0; padding: 12px; background:#fbf6f0; border:1px dashed ${GOLD_ACCENT}; border-radius:6px;">Use code <strong style="color:${BRAND_COLOR};">${couponCode}</strong> at checkout for a special discount.</p>`
+    : '';
+
+  const applyMergeFields = (text: string) =>
+    text
+      .split('{{items_table}}').join(itemsTable(cart.items))
+      .split('{{cart_total}}').join(formatINR(cart.cart_value))
+      .split('{{cart_url}}').join(cartUrl)
+      .split('{{coupon_code}}').join(couponCode)
+      .split('{{coupon_line}}').join(couponLine);
+
+  const bodyHtml = customHtml ? applyMergeFields(customHtml) : applyMergeFields(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Still thinking it over?</h2>
+    <p>You left a few items in your cart. They're still waiting for you!</p>
+    {{items_table}}
+    <p style="text-align:right; font-size:16px; font-weight:bold;">Cart total: {{cart_total}}</p>
+    {{coupon_line}}
+    <p style="text-align:center; margin-top: 20px;">
+      <a href="{{cart_url}}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px;">
+        Complete your purchase
+      </a>
+    </p>
+  `);
+
+  const subject = customSubject
+    ? applyMergeFields(customSubject)
+    : `You left something behind — complete your order`;
+
+  return { subject, html: wrapper(bodyHtml) };
 }
 
 // Unlike cartRecoveryEmail (sent when someone never even reaches checkout),

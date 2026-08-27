@@ -24,13 +24,15 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { sendEmail } from '@/lib/email';
 import {
-  cartRecoveryEmail,
+  renderCartRecoveryEmail,
   paymentReminderEmail,
   welcomeSeriesEmail,
   winbackEmail,
   vendorProductLiveEmail,
   vendorProductEditLiveEmail,
 } from '@/lib/email-templates';
+import { getCartRecoverySequenceSettings } from '@/lib/cart-recovery-settings';
+import { createEmailTrackingRecord, instrumentEmailHtml } from '@/lib/email-tracking';
 import { publishVendorProductWithAI } from '@/lib/vendor-ai-listing';
 import { checkPickupStatusForReturn, getReturnAutomationMode } from '@/lib/return-automation';
 import { trackDelhiveryShipment } from '@/lib/delhivery-api';
@@ -52,41 +54,93 @@ export async function runWooCommerceDripJob() {
 }
 
 // ----------------------------- Abandoned carts -----------------------------
+// Sends up to 3 recovery emails per cart (a "sequence"), instead of the
+// single one-off email this job used to send. Which steps are enabled,
+// their delay, and any custom subject/html/coupon per step live in
+// `settings.cart_recovery_sequence_settings` -- see
+// lib/cart-recovery-settings.ts and Admin -> Abandoned Carts ->
+// Sequence Settings. Every send is logged to `abandoned_cart_emails`
+// (see migration 20260928010000_cart_recovery_sequence.sql) with a
+// tracking token so opens/clicks can be measured.
+//
+// cart.recovery_stage tracks how many emails have gone out so far (0,
+// 1, 2 or 3) -- step N only fires for carts currently at stage N-1.
+// recovery_email_sent / recovery_email_sent_at are still kept in sync
+// (recovery_email_sent = recovery_stage > 0) for anything else reading
+// those columns.
 export async function runAbandonedCartsJob() {
   // SECURITY/FIX: abandoned_carts is now locked to service_role only
   // (see 20260826020000_lock_newsletter_abandoned_stock_pii.sql) since
   // no client component ever needed anon access to it. This job — and
   // app/api/cart-track/route.ts — now use the admin client instead.
   const supabase = getSupabaseAdmin();
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const settings = await getCartRecoverySequenceSettings(supabase);
+
+  if (!settings.enabled) {
+    return { checked: 0, sent: 0 };
+  }
 
   const { data: carts, error } = await supabase
     .from('abandoned_carts')
     .select('*')
-    .eq('recovery_email_sent', false)
+    .lt('recovery_stage', 3)
     .eq('recovered', false)
-    .not('email', 'is', null)
-    .lte('last_activity_at', oneHourAgo);
+    .not('email', 'is', null);
 
   if (error) throw error;
 
+  let checked = 0;
   let sent = 0;
+  const now = Date.now();
+
   for (const cart of carts || []) {
-    const { subject, html } = cartRecoveryEmail({
-      items: Array.isArray(cart.items) ? cart.items : [],
-      cart_value: cart.cart_value,
-    });
-    const result = await sendEmail({ to: cart.email, subject, html });
+    const stage = cart.recovery_stage || 0;
+    const step = settings.steps[stage]; // stage 0 -> step 1, stage 1 -> step 2, stage 2 -> step 3
+    if (!step || !step.enabled) continue;
+
+    // Step 1 counts down from the cart going stale; steps 2 & 3 count
+    // down from the previous email in the sequence actually going out.
+    const anchor = stage === 0 ? cart.last_activity_at : cart.recovery_email_sent_at;
+    if (!anchor) continue;
+    const dueAt = new Date(anchor).getTime() + step.delay_hours * 60 * 60 * 1000;
+    if (dueAt > now) continue;
+
+    checked++;
+    const sequenceNumber = stage + 1;
+    const { subject, html } = renderCartRecoveryEmail(
+      { items: Array.isArray(cart.items) ? cart.items : [], cart_value: cart.cart_value },
+      step,
+      sequenceNumber
+    );
+
+    let finalHtml = html;
+    try {
+      const token = await createEmailTrackingRecord({
+        cartId: cart.id,
+        sequenceNumber,
+        subject,
+        couponCode: step.coupon_code,
+      });
+      finalHtml = instrumentEmailHtml(html, token);
+    } catch (err) {
+      console.error('[abandoned-carts] failed to create tracking record:', err);
+    }
+
+    const result = await sendEmail({ to: cart.email, subject, html: finalHtml });
     if (result.success) {
       await supabase
         .from('abandoned_carts')
-        .update({ recovery_email_sent: true, recovery_email_sent_at: new Date().toISOString() })
+        .update({
+          recovery_stage: sequenceNumber,
+          recovery_email_sent: true,
+          recovery_email_sent_at: new Date().toISOString(),
+        })
         .eq('id', cart.id);
       sent++;
     }
   }
 
-  return { checked: carts?.length || 0, sent };
+  return { checked, sent };
 }
 
 // ------------------------- Payment reminder (abandoned online orders) -------------------------

@@ -55,11 +55,26 @@ export async function POST(req: NextRequest) {
     // blocks order confirmation.
     if (order.customer_email) {
       try {
-        await supabase
+        const { data: recoveredCarts } = await supabase
           .from("abandoned_carts")
           .update({ recovered: true })
           .eq("email", order.customer_email)
-          .eq("recovered", false);
+          .eq("recovered", false)
+          .select("id");
+
+        // Attribute the conversion to every recovery email that went
+        // out for this cart (see abandoned_cart_emails, added in
+        // 20260928010000_cart_recovery_sequence.sql) -- lets Admin ->
+        // Abandoned Carts show "recovered after N emails" instead of
+        // just a plain recovered/not-recovered flag.
+        const cartIds = (recoveredCarts || []).map((c: { id: string }) => c.id);
+        if (cartIds.length > 0) {
+          await supabase
+            .from("abandoned_cart_emails")
+            .update({ converted: true, converted_at: new Date().toISOString() })
+            .in("cart_id", cartIds)
+            .eq("converted", false);
+        }
       } catch (err) {
         console.log("Abandoned cart update error (non-critical):", err);
       }
