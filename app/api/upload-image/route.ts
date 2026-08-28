@@ -1,42 +1,14 @@
 import { NextResponse } from 'next/server';
 import sharp from 'sharp';
 import { uploadToStorage } from '@/lib/storage';
+import { generateResponsiveSizes } from '@/lib/image-sizes';
 
-// ---------------------------------------------------------------------
-// Server-side image upload used by lib/products-api.ts's
-// uploadProductImage() -- the "Upload to Storage" button in the admin
-// products/variants panels and the vendor add/edit-product pages.
-//
-// Previously that function uploaded the raw File straight from the
-// browser to Supabase Storage with the anon key -- whatever format the
-// browser handed it (JPEG/PNG/HEIC/whatever the phone camera produced)
-// is exactly what got stored. sharp can't run in the browser (it's a
-// native binary), so there was no way to actually convert to WebP on
-// that path -- only the URL-import route touched sharp at all.
-//
-// This route does the same anon-insertable 'product-images' bucket
-// write, but server-side, so it can run the file through sharp and
-// store a real .webp file every time -- consistent with the URL-import
-// path, and with the "converted to WebP" messaging shown in the admin
-// UI.
-// ---------------------------------------------------------------------
-
-const MAX_BYTES = 15 * 1024 * 1024; // 15MB safety cap, same as import-image
+const MAX_BYTES = 15 * 1024 * 1024;
 const WEBP_QUALITY = 82;
-// Same reasoning as import-image/route.ts's MAX_DIMENSION -- caps pixel
-// dimensions so WebP re-encoding actually shrinks phone-camera-sized
-// originals (often 3000-4000px wide) instead of just changing the format
-// while leaving files at 300-600kB+ each.
 const MAX_DIMENSION = 1600;
 const ALLOWED_TYPES = new Set([
-  'image/jpeg',
-  'image/jpg',
-  'image/png',
-  'image/webp',
-  'image/gif',
-  'image/avif',
-  'image/heic',
-  'image/heif',
+  'image/jpeg', 'image/jpg', 'image/png', 'image/webp',
+  'image/gif', 'image/avif', 'image/heic', 'image/heif',
 ]);
 
 export async function POST(req: Request) {
@@ -58,64 +30,57 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unsupported image type.' }, { status: 400 });
   }
 
-  // Allowed sub-folders within the product-images bucket.
-  // 'products' (default), 'variants', 'hero-banners', 'tiles'.
   const ALLOWED_FOLDERS = new Set(['products', 'variants', 'hero-banners', 'tiles']);
   const rawFolder = (form.get('folder') as string | null) ?? 'products';
   const folder = ALLOWED_FOLDERS.has(rawFolder) ? rawFolder : 'products';
-  // Accept either 'seoName' (product upload) or 'slug' (tile upload) for the name prefix.
   const seoName = ((form.get('seoName') ?? form.get('slug')) as string | null) ?? '';
   const slug = seoName
-    .trim()
-    .toLowerCase()
+    .trim().toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 60);
 
   try {
     const arrayBuffer = await file.arrayBuffer();
-    let uploadBuffer = Buffer.from(arrayBuffer);
-    let uploadContentType = file.type || 'application/octet-stream';
-    let ext = 'webp';
+    let sourceBuffer = Buffer.from(arrayBuffer);
 
-    // Real WebP conversion via sharp. `failOn: 'none'` is important here --
-    // sharp's default (`'warning'`) hard-throws on any non-fatal decode
-    // warning, and phone-camera/watermark apps very commonly write
-    // non-standard EXIF/APP metadata that trips this even though the file
-    // opens completely fine in every browser. Without this, conversion
-    // would silently fail for exactly those photos and the original file
-    // (wrong extension, no real compression) would get uploaded instead --
-    // which is what was happening. `.rotate()` with no args auto-applies
-    // the EXIF orientation before re-encoding, so photos taken in portrait
-    // don't come out sideways once the EXIF tag is dropped by the webp
-    // re-encode. Still falls back to uploading the original bytes/format
-    // if sharp genuinely can't decode the source (e.g. a truly corrupt
-    // file), so an unusual file never hard-fails the whole upload.
+    // Convert source to a clean buffer first (handle HEIC, rotation, etc.)
     try {
-      uploadBuffer = await sharp(uploadBuffer, { failOn: 'none' })
+      sourceBuffer = await sharp(sourceBuffer, { failOn: 'none' })
         .rotate()
         .resize({ width: MAX_DIMENSION, height: MAX_DIMENSION, fit: 'inside', withoutEnlargement: true })
         .webp({ quality: WEBP_QUALITY })
         .toBuffer();
-      uploadContentType = 'image/webp';
-      ext = 'webp';
     } catch (convErr) {
-      console.error('[upload-image] webp conversion error, falling back to original format:', convErr);
-      const fallbackExt = (file.name.split('.').pop() || 'jpg').toLowerCase();
-      ext = fallbackExt;
+      console.error('[upload-image] initial conversion error:', convErr);
+      // Continue with original buffer — generateResponsiveSizes will try again
     }
 
-    const path = `${folder}/${slug ? `${slug}-` : ''}${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
+    // Generate 3 responsive sizes
+    const basePath = `${folder}/${slug ? `${slug}-` : ''}${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const sizes = await generateResponsiveSizes(sourceBuffer);
 
-    // Routes to Supabase Storage or Cloudflare R2 depending on the
-    // STORAGE_PROVIDER env var -- see lib/storage.ts.
-    const { url } = await uploadToStorage({
-      bucket: 'product-images',
-      path,
-      buffer: uploadBuffer,
-      contentType: uploadContentType,
-    });
-    return NextResponse.json({ url });
+    if (sizes.length === 0) {
+      return NextResponse.json({ error: 'Could not process that image. Please try again.' }, { status: 500 });
+    }
+
+    // Upload all sizes in parallel
+    let mainUrl = '';
+    await Promise.all(
+      sizes.map(async ({ suffix, buffer, contentType, ext }) => {
+        const path = `${basePath}${suffix}.${ext}`;
+        const { url } = await uploadToStorage({
+          bucket: 'product-images',
+          path,
+          buffer,
+          contentType,
+        });
+        // Return the original (no suffix) URL — this is what gets stored in DB
+        if (suffix === '') mainUrl = url;
+      })
+    );
+
+    return NextResponse.json({ url: mainUrl });
   } catch (err) {
     console.error('[upload-image] error:', err);
     return NextResponse.json({ error: 'Could not upload that image. Please try again.' }, { status: 500 });

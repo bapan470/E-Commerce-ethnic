@@ -176,15 +176,37 @@ export async function POST(req: Request) {
       }
     }
 
-    const path = `${bucketFolder}/${Date.now()}-${Math.random().toString(36).slice(2, 9)}.${ext}`;
+    // Generate 3 responsive sizes (-sm 480px, -md 900px, original 1600px)
+    const { generateResponsiveSizes } = await import('@/lib/image-sizes');
+    const basePath = `${bucketFolder}/${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const sizes = await generateResponsiveSizes(uploadBuffer);
 
-    const { url } = await uploadToStorage({
-      bucket: 'product-images',
-      path,
-      buffer: uploadBuffer,
-      contentType: uploadContentType,
-    });
-    return NextResponse.json({ url });
+    let mainUrl = '';
+    if (sizes.length > 0) {
+      await Promise.all(
+        sizes.map(async ({ suffix, buffer, contentType: ct, ext: e }) => {
+          const path = `${basePath}${suffix}.${e}`;
+          const { url: u } = await uploadToStorage({
+            bucket: 'product-images',
+            path,
+            buffer,
+            contentType: ct,
+          });
+          if (suffix === '') mainUrl = u;
+        })
+      );
+    } else {
+      // Fallback: upload single file if size generation failed
+      const path = `${basePath}.${ext}`;
+      const { url: u } = await uploadToStorage({
+        bucket: 'product-images',
+        path,
+        buffer: uploadBuffer,
+        contentType: uploadContentType,
+      });
+      mainUrl = u;
+    }
+    return NextResponse.json({ url: mainUrl });
   } catch (err) {
     console.error('[import-image] error:', err);
     return NextResponse.json(
