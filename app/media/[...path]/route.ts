@@ -227,9 +227,31 @@ export async function GET(req: NextRequest, { params }: { params: { path: string
       }
     }
 
-    const redirectUrl =
-      buildUpstreamUrl(preferredBackend, redirectPath) ??
-      buildUpstreamUrl(preferredBackend === 'r2' ? 'supabase' : 'r2', redirectPath);
+    // FIX: the preferred backend isn't guaranteed to actually have this
+    // file — dual-write to R2 is best-effort (see lib/storage.ts), so a
+    // transient R2 upload failure at write time leaves a file that only
+    // ever existed on Supabase. Previously this branch built the
+    // preferred-backend URL and redirected there unconditionally, with
+    // NO existence check for non-suffixed (normal, full-size) paths —
+    // unlike the suffixed case just above. That meant any file whose R2
+    // mirror silently failed would redirect users straight to a 404 on
+    // R2 forever, with no fallback to the Supabase copy that actually
+    // has the bytes. We now HEAD-check the preferred backend first and
+    // fall back to the other backend when it's missing, exactly like the
+    // suffixed path already does.
+    const preferredUrl = buildUpstreamUrl(preferredBackend, redirectPath);
+    const otherBackend = preferredBackend === 'r2' ? 'supabase' : 'r2';
+    const otherUrl = buildUpstreamUrl(otherBackend, redirectPath);
+
+    let redirectUrl: string | null = null;
+    if (preferredUrl && (await headExists(preferredUrl))) {
+      redirectUrl = preferredUrl;
+    } else if (otherUrl) {
+      redirectUrl = otherUrl;
+    } else {
+      redirectUrl = preferredUrl; // last resort: neither confirmed, but this is all we have
+    }
+
     if (!redirectUrl) return new NextResponse('Not found', { status: 404 });
     return NextResponse.redirect(redirectUrl, 307);
   }
