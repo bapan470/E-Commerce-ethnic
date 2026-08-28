@@ -1253,7 +1253,7 @@ function ProductInfo({
           shopper is already looking at, gives a second clear path to
           purchase instead of relying on the fixed bar being noticed. */}
 
-      <PriceQuickBrowseBar />
+      <PriceQuickBrowseBar category={product.category} />
 
       <ProductHighlights product={product} />
 

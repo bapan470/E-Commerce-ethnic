@@ -1,13 +1,23 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { IndianRupee } from 'lucide-react';
 import {
   fetchPriceRangeFilters,
   DEFAULT_PRICE_RANGE_FILTERS,
+  getAvailablePriceBuckets,
   PriceRangeBucket,
 } from '@/lib/settings-api';
+import { fetchCategoryPrices } from '@/lib/products-api';
+
+interface PriceQuickBrowseBarProps {
+  /** This product's own category (product.category) -- narrows the bar
+   *  down to only the admin-configured buckets that have at least one
+   *  LIVE product in this same category, instead of always listing every
+   *  bucket regardless of what this category actually has. */
+  category: string;
+}
 
 /**
  * "Shop by Price" quick-browse chips shown on the product detail page,
@@ -15,11 +25,26 @@ import {
  * (components/shop/price-range-filter-bar.tsx) this one isn't a live
  * in-page filter -- there's only one product on this page -- it's a
  * shortcut: tapping a chip takes the shopper to /shop already filtered to
- * that price band, so they can keep browsing at their budget. Buckets are
- * the same admin-managed list (Admin > Catalog > Price Filters).
+ * THIS product's own category and that price band, so they can keep
+ * browsing the same category at their budget.
+ *
+ * Buckets are the same admin-managed list (Admin > Catalog > Price
+ * Filters), but narrowed down here to only the ones with at least one
+ * matching LIVE product in `category` -- the exact same
+ * getAvailablePriceBuckets() rule /shop itself uses to hide empty bands
+ * (see lib/settings-api.ts) -- so a saree's page, say, never offers a
+ * price band that has nothing in it for sarees, even if that band is real
+ * and populated for some other category.
  */
-export default function PriceQuickBrowseBar() {
-  const [ranges, setRanges] = useState<PriceRangeBucket[]>(DEFAULT_PRICE_RANGE_FILTERS);
+export default function PriceQuickBrowseBar({ category }: PriceQuickBrowseBarProps) {
+  const [allRanges, setAllRanges] = useState<PriceRangeBucket[]>(DEFAULT_PRICE_RANGE_FILTERS);
+  // Prices of every other LIVE product in THIS product's category -- just
+  // the `price` column, nothing else (see fetchCategoryPrices). Starts as
+  // `null`, not `[]`, so "haven't checked this category yet" is
+  // distinguishable from "checked, and it's genuinely empty" -- we render
+  // nothing while it's null instead of flashing the full unfiltered bucket
+  // list and then narrowing it a moment later.
+  const [categoryPrices, setCategoryPrices] = useState<number[] | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   // Only show the right-edge "more to scroll" fade when the chips actually
   // overflow the visible width -- otherwise a handful of short chips left
@@ -31,13 +56,43 @@ export default function PriceQuickBrowseBar() {
     let cancelled = false;
     fetchPriceRangeFilters()
       .then((r) => {
-        if (!cancelled) setRanges(r);
+        if (!cancelled) setAllRanges(r);
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
   }, []);
+
+  // Re-fetches whenever `category` changes (e.g. clicking into a different
+  // product from "You may also like" without a full page reload). Resets
+  // to null first so the previous product's buckets don't stay on screen
+  // -- misattributed to the new product -- while the new category's prices
+  // are still loading.
+  useEffect(() => {
+    let cancelled = false;
+    setCategoryPrices(null);
+    fetchCategoryPrices(category)
+      .then((prices) => {
+        if (!cancelled) setCategoryPrices(prices);
+      })
+      .catch(() => {
+        if (!cancelled) setCategoryPrices([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [category]);
+
+  // The actual buckets to render -- every admin-configured band, narrowed
+  // down to the ones with at least one matching price in this category.
+  const ranges = useMemo(() => {
+    if (categoryPrices === null) return [];
+    return getAvailablePriceBuckets(
+      allRanges,
+      categoryPrices.map((price) => ({ price }))
+    );
+  }, [allRanges, categoryPrices]);
 
   const updateFade = useCallback(() => {
     const el = scrollerRef.current;
@@ -72,7 +127,7 @@ export default function PriceQuickBrowseBar() {
           {ranges.map((bucket) => (
             <Link
               key={bucket.id}
-              href={`/shop?pricebucket=${encodeURIComponent(bucket.id)}`}
+              href={`/shop?category=${encodeURIComponent(category)}&pricebucket=${encodeURIComponent(bucket.id)}`}
               className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground/80 transition-colors hover:border-primary/60 hover:text-primary"
             >
               <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-secondary/10 text-secondary">

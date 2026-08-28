@@ -159,6 +159,26 @@ export async function fetchProducts(): Promise<Product[]> {
   return attachCollections(products);
 }
 
+/**
+ * Prices only, for every LIVE product in one category -- used by the
+ * product-page "Shop by Price" bar (components/product/price-quick-browse-bar.tsx)
+ * to work out which admin-configured price buckets (lib/settings-api.ts:
+ * PriceRangeBucket, via getAvailablePriceBuckets) actually have a matching
+ * product in *this* product's own category, instead of listing every
+ * bucket regardless of category. Selects only `price` -- no images,
+ * variants, description, etc -- since that's the only field the bucket
+ * check needs, and this fetch runs on every product page view.
+ */
+export async function fetchCategoryPrices(category: string): Promise<number[]> {
+  const { data, error } = await supabase
+    .from('products')
+    .select('price')
+    .eq('category_name', category)
+    .eq('approval_status', 'live');
+  if (error) throw error;
+  return (data ?? []).map((row: { price: number }) => row.price);
+}
+
 export async function fetchProductBySlug(slug: string): Promise<Product | null> {
   const { data, error } = await supabase
     .from('products')
