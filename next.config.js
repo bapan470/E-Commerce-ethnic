@@ -17,26 +17,39 @@ const nextConfig = {
     serverComponentsExternalPackages: ['sharp'],
   },
   images: {
-    // Vercel's built-in Image Optimization API (the /_next/image endpoint)
-    // has a monthly quota on the Hobby plan. Once that quota is used up,
-    // Vercel returns 402 Payment Required for every further optimized
-    // image request -- which breaks every <Image> on the site (product
-    // photos, thumbnails, everything), even though the underlying files
-    // in Supabase Storage are completely fine.
+    // FIXED: `unoptimized: true` was bypassing ALL Next.js image optimisation
+    // (responsive srcset, quality reduction, lazy loading, blur placeholders).
+    // Every <Image> was serving the original full-resolution Supabase file
+    // directly — no resizing, no format conversion, nothing.
     //
-    // `unoptimized: true` makes next/image render the ORIGINAL file URL
-    // directly instead of routing it through /_next/image, so it no
-    // longer touches that paid quota at all -- images just work again.
-    // Keep this `true` even if/when the Vercel quota isn't an issue
-    // (upgraded plan, usage-based billing enabled, etc.): product images
-    // are now actually converted to WebP server-side at upload/import
-    // time (see app/api/upload-image/route.ts and
-    // app/api/admin/import-image/route.ts), so the /_next/image
-    // resize+reformat step is mostly redundant for this site's own
-    // images. Only flip this back to `false` if you specifically want
-    // Vercel's automatic responsive resizing on top of that.
-    unoptimized: true,
+    // Solution: use Cloudflare's free image resizing service as a custom loader
+    // instead of Vercel's paid /_next/image endpoint. This gives us responsive
+    // images (correct size per screen), WebP/AVIF conversion, and aggressive
+    // CDN caching — all for free via Cloudflare, with zero Vercel quota usage.
+    //
+    // HOW IT WORKS:
+    // Next.js <Image> builds a srcset URL like:
+    //   https://aruhihandlooms.com/cdn-cgi/image/w=400,q=80,f=auto/<original_url>
+    // Cloudflare intercepts /cdn-cgi/image/... paths at the edge, resizes the
+    // image, converts to WebP/AVIF, caches the result, and serves it — all
+    // without touching Vercel. Subsequent requests hit Cloudflare's cache (0ms).
+    //
+    // SETUP REQUIRED (one-time, 5 minutes):
+    // 1. Cloudflare dashboard → your domain → Speed → Optimization
+    // 2. Enable "Image Resizing" (free on all plans)
+    // 3. That's it. The loader below handles the rest automatically.
+    //
+    // If you ever move off Cloudflare, set unoptimized: false and remove the
+    // `loader` line — Next.js will fall back to /_next/image (Vercel quota).
+    loader: 'custom',
+    loaderFile: './lib/cloudflare-image-loader.js',
     formats: ['image/avif', 'image/webp'],
+    // Keep deviceSizes tight — these are the srcset breakpoints Next generates.
+    // Fewer breakpoints = fewer unique cache entries on Cloudflare.
+    deviceSizes: [390, 640, 750, 1080, 1200, 1920],
+    imageSizes: [64, 128, 256, 384],
+    // 1 year browser cache for optimised images (Cloudflare also caches at edge)
+    minimumCacheTTL: 31536000,
     remotePatterns: [
       { protocol: 'https', hostname: 'images.pexels.com' },
       { protocol: 'https', hostname: 'images.unsplash.com' },
