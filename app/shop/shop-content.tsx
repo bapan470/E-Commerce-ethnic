@@ -125,12 +125,25 @@ function ShopContentInner({
     let cancelled = false;
     fetchPriceRangeFilters()
       .then((ranges) => {
-        if (!cancelled) setPriceBuckets(ranges);
+        if (cancelled) return;
+        setPriceBuckets(ranges);
+        // Landed here from the product page's "Shop by Price" quick-browse
+        // chips (?pricebucket=<id>) -- pre-apply that band once the admin's
+        // actual bucket list is loaded, same as picking it manually here.
+        const wantedId = params.get('pricebucket');
+        if (wantedId) {
+          const match = ranges.find((r) => r.id === wantedId);
+          if (match) {
+            setActivePriceBucketId(match.id);
+            setPriceRange([match.min, match.max]);
+          }
+        }
       })
       .catch(() => {});
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const handlePriceBucketSelect = (bucket: PriceRangeBucket | null) => {
     if (bucket) {

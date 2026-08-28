@@ -41,6 +41,7 @@ import { fetchApprovedReviews, summarizeReviews, RatingSummary } from '@/lib/rev
 import PincodeChecker from '@/components/product/pincode-checker';
 import VariantSwatches from '@/components/product/variant-swatches';
 import ProductHighlights from '@/components/product/product-highlights';
+import PriceQuickBrowseBar from '@/components/product/price-quick-browse-bar';
 import BogoOfferSheet from '@/components/product/bogo-offer-sheet';
 import SizeChart from '@/components/product/size-chart';
 import ProductGallery from '@/components/product/product-gallery';
@@ -1244,6 +1245,8 @@ function ProductInfo({
           the buttons right here too, right below the coupon/stock info the
           shopper is already looking at, gives a second clear path to
           purchase instead of relying on the fixed bar being noticed. */}
+
+      <PriceQuickBrowseBar />
 
       <ProductHighlights product={product} />
 
