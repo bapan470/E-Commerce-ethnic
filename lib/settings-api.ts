@@ -952,3 +952,20 @@ export async function savePriceRangeFilters(ranges: PriceRangeBucket[]) {
     .upsert({ key: 'price_range_filters', value: { ranges } }, { onConflict: 'key' });
   if (error) throw error;
 }
+
+/**
+ * Narrows the admin-managed bucket list down to only the buckets that have
+ * at least one matching product in `products` -- so "Shop by Price" never
+ * shows a band like "₹899 - ₹1000" on a category (or filtered view) that
+ * has nothing in it. Pass whatever product set is currently on screen
+ * (e.g. category-filtered, or /shop's other active filters applied) --
+ * this only checks price, it doesn't re-apply any other filter itself.
+ */
+export function getAvailablePriceBuckets<T extends { price: number }>(
+  buckets: PriceRangeBucket[],
+  products: T[]
+): PriceRangeBucket[] {
+  return buckets.filter((bucket) =>
+    products.some((p) => p.price >= bucket.min && p.price <= bucket.max)
+  );
+}

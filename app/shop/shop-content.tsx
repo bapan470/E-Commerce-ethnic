@@ -45,6 +45,7 @@ import {
   fetchPriceRangeFilters,
   DEFAULT_PRICE_RANGE_FILTERS,
   PriceRangeBucket,
+  getAvailablePriceBuckets,
 } from '@/lib/settings-api';
 
 const CATALOG_VIDEO_PREF_KEY = 'aruhi-catalog-video-enabled';
@@ -298,7 +299,14 @@ function ShopContentInner({
   const toggle = (list: string[], value: string) =>
     list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 
-  const filtered = useMemo(() => {
+  // Same category/size/colour/fabric/occasion/search filters as `filtered`
+  // below, but WITHOUT the price filter itself -- this is what "Shop by
+  // Price" checks each bucket against, so a bucket only shows up when it
+  // actually has a matching product in whatever's currently being browsed
+  // (e.g. only this category's products once a category is selected),
+  // instead of always listing every admin-configured band regardless of
+  // whether anything in view falls into it.
+  const filteredForPriceBuckets = useMemo(() => {
     let list = [...products];
     if (selectedCats.length > 0) {
       list = list.filter((p) => selectedCats.includes(p.category));
@@ -321,12 +329,38 @@ function ShopContentInner({
     if (selectedOccasions.length > 0) {
       list = list.filter((p) => (p.occasion || []).some((o) => selectedOccasions.includes(o)));
     }
-    list = list.filter(
-      (p) => p.price >= priceRange[0] && p.price <= priceRange[1]
-    );
     if (query.trim()) {
       list = list.filter((p) => productMatchesQuery(p, query.trim()).matched);
     }
+    return list;
+  }, [products, selectedCats, selectedSizes, selectedColors, selectedFabrics, selectedOccasions, query]);
+
+  // Buckets to actually render in the "Shop by Price" bar -- narrowed down
+  // to the ones with at least one matching product for the current
+  // category/filters (see getAvailablePriceBuckets in lib/settings-api.ts).
+  const visiblePriceBuckets = useMemo(
+    () => getAvailablePriceBuckets(priceBuckets, filteredForPriceBuckets),
+    [priceBuckets, filteredForPriceBuckets]
+  );
+
+  // If the category/filters change and the currently-active bucket no
+  // longer has any matching product (e.g. switching from "Sarees" to a
+  // category that has nothing "Under ₹499"), drop back to "All Prices"
+  // instead of silently keeping a filter selected that no longer shows up
+  // as a chip.
+  useEffect(() => {
+    if (activePriceBucketId && !visiblePriceBuckets.some((b) => b.id === activePriceBucketId)) {
+      setActivePriceBucketId(null);
+      setPriceRange([0, 35000]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visiblePriceBuckets]);
+
+  const filtered = useMemo(() => {
+    let list = [...filteredForPriceBuckets];
+    list = list.filter(
+      (p) => p.price >= priceRange[0] && p.price <= priceRange[1]
+    );
     if (imageSearchIds) {
       // Visual-similarity order takes over from the regular sort dropdown —
       // most-similar-first is the whole point of an image search. Other
@@ -380,7 +414,7 @@ function ShopContentInner({
         list.sort((a, b) => Number(!!b.featured) - Number(!!a.featured));
     }
     return list;
-  }, [products, selectedCats, selectedSizes, selectedColors, selectedFabrics, selectedOccasions, priceRange, query, sort, imageSearchIds, popularityRank]);
+  }, [filteredForPriceBuckets, priceRange, sort, imageSearchIds, popularityRank]);
 
   const activeCount =
     selectedCats.length +
@@ -824,7 +858,7 @@ function ShopContentInner({
         </div>
 
         <PriceRangeFilterBar
-          ranges={priceBuckets}
+          ranges={visiblePriceBuckets}
           activeId={activePriceBucketId}
           onSelect={handlePriceBucketSelect}
           className="mt-4"

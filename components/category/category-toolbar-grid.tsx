@@ -10,7 +10,16 @@ import QuickNavIcons from '@/components/quick-nav-icons';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { fetchCatalogVideoSettings, fetchCatalogListingSettings, DEFAULT_CATALOG_LISTING_SETTINGS } from '@/lib/settings-api';
+import {
+  fetchCatalogVideoSettings,
+  fetchCatalogListingSettings,
+  DEFAULT_CATALOG_LISTING_SETTINGS,
+  fetchPriceRangeFilters,
+  DEFAULT_PRICE_RANGE_FILTERS,
+  PriceRangeBucket,
+  getAvailablePriceBuckets,
+} from '@/lib/settings-api';
+import PriceRangeFilterBar from '@/components/shop/price-range-filter-bar';
 import {
   Select,
   SelectContent,
@@ -55,6 +64,47 @@ export default function CategoryToolbarGrid({
   initialTopVariants = {},
 }: CategoryToolbarGridProps) {
   const [sort, setSort] = useState<SortKey>('popularity');
+
+  // "Shop by Price" chip bar -- same admin-managed buckets as /shop (Admin
+  // > Catalog > Price Filters), but narrowed to only the bands that have a
+  // matching product within THIS category (see getAvailablePriceBuckets in
+  // lib/settings-api.ts), so a category page never offers a price band
+  // that would leave it empty. Picking a chip filters this page's own grid
+  // client-side -- it doesn't hand off to /shop.
+  const [priceBuckets, setPriceBuckets] = useState<PriceRangeBucket[]>(DEFAULT_PRICE_RANGE_FILTERS);
+  const [activePriceBucketId, setActivePriceBucketId] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchPriceRangeFilters()
+      .then((ranges) => {
+        if (!cancelled) setPriceBuckets(ranges);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const visiblePriceBuckets = useMemo(
+    () => getAvailablePriceBuckets(priceBuckets, products),
+    [priceBuckets, products]
+  );
+  // If the category's product list changes (or on first load) and the
+  // active bucket no longer has anything in it, fall back to "All Prices"
+  // instead of silently filtering to an empty grid.
+  useEffect(() => {
+    if (activePriceBucketId && !visiblePriceBuckets.some((b) => b.id === activePriceBucketId)) {
+      setActivePriceBucketId(null);
+    }
+  }, [visiblePriceBuckets, activePriceBucketId]);
+  const activePriceBucket = visiblePriceBuckets.find((b) => b.id === activePriceBucketId) || null;
+  const handlePriceBucketSelect = (bucket: PriceRangeBucket | null) => {
+    setActivePriceBucketId(bucket ? bucket.id : null);
+  };
+  const priceFilteredProducts = useMemo(() => {
+    if (!activePriceBucket) return products;
+    return products.filter((p) => p.price >= activePriceBucket.min && p.price <= activePriceBucket.max);
+  }, [products, activePriceBucket]);
+
   const [popularityRank, setPopularityRank] = useState<Map<string, number>>(initialPopularityRank);
   const [topVariants, setTopVariants] = useState<Record<string, { color: string; image: string | null; slug: string | null }>>(
     initialTopVariants
@@ -113,7 +163,7 @@ export default function CategoryToolbarGrid({
   };
 
   const sorted = useMemo(() => {
-    const list = [...products];
+    const list = [...priceFilteredProducts];
     switch (sort) {
       case 'price-asc':
         list.sort((a, b) => a.price - b.price);
@@ -143,7 +193,7 @@ export default function CategoryToolbarGrid({
         list.sort((a, b) => Number(!!b.featured) - Number(!!a.featured));
     }
     return list;
-  }, [products, sort, popularityRank]);
+  }, [priceFilteredProducts, sort, popularityRank]);
 
   // Admin > Settings > Catalog Listing Size -- how many cards load per
   // page/batch, and how many colour cards one product may contribute to
@@ -172,7 +222,7 @@ export default function CategoryToolbarGrid({
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
-  }, [sort, PAGE_SIZE]);
+  }, [sort, PAGE_SIZE, activePriceBucketId]);
   const visibleProducts = sorted.slice(0, visibleCount);
   const hasMore = visibleCount < sorted.length;
 
@@ -237,6 +287,13 @@ export default function CategoryToolbarGrid({
           </Select>
         </div>
       </div>
+
+      <PriceRangeFilterBar
+        ranges={visiblePriceBuckets}
+        activeId={activePriceBucketId}
+        onSelect={handlePriceBucketSelect}
+        className="mt-4"
+      />
 
       <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
         {expandProductVariants(visibleProducts, listingSettings.max_variant_cards_per_product).map((p, i) => {
