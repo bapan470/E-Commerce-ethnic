@@ -78,7 +78,7 @@ export default function VariantSwatches({
   if (fetchedVariants.length === 0) return null;
 
   return (
-    <div>
+    <div className="min-w-0">
       <p className="mb-2 text-sm font-semibold">
         Colour
         {activeSlug && (

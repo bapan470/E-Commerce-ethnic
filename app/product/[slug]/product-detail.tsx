@@ -712,7 +712,7 @@ export default function ProductDetail() {
   return (
     <div className="container-boutique pt-0 pb-24 sm:pt-4 md:pb-8">
       <div className="grid gap-4 lg:grid-cols-2 lg:gap-8 lg:items-start">
-        <div className="flex flex-col gap-3 lg:sticky lg:top-24 lg:self-start">
+        <div className="min-w-0 flex flex-col gap-3 lg:sticky lg:top-24 lg:self-start">
           <div className="-mx-4 sm:mx-0">
             <ProductGallery
               images={toPublicMediaUrls(product.images)}
@@ -727,7 +727,7 @@ export default function ProductDetail() {
               productMrp={product.mrp}
             />
           </div>
-          <div className="px-4 sm:px-0">
+          <div className="min-w-0 px-4 sm:px-0">
             <VariantSwatches
               productId={baseProduct.id}
               activeSlug={variant?.slug ?? baseProduct.slug}
