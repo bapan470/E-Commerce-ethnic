@@ -37,7 +37,15 @@ import { trackEvent } from '@/lib/track-api';
 import { fireGtagEvent } from '@/lib/gtag-track';
 import { blurDataURL } from '@/lib/utils';
 import QuickNavIcons from '@/components/quick-nav-icons';
-import { fetchCatalogVideoSettings, fetchCatalogListingSettings, DEFAULT_CATALOG_LISTING_SETTINGS } from '@/lib/settings-api';
+import PriceRangeFilterBar from '@/components/shop/price-range-filter-bar';
+import {
+  fetchCatalogVideoSettings,
+  fetchCatalogListingSettings,
+  DEFAULT_CATALOG_LISTING_SETTINGS,
+  fetchPriceRangeFilters,
+  DEFAULT_PRICE_RANGE_FILTERS,
+  PriceRangeBucket,
+} from '@/lib/settings-api';
 
 const CATALOG_VIDEO_PREF_KEY = 'aruhi-catalog-video-enabled';
 
@@ -107,6 +115,32 @@ function ShopContentInner({
   const [selectedFabrics, setSelectedFabrics] = useState<string[]>([]);
   const [selectedOccasions, setSelectedOccasions] = useState<string[]>([]);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 35000]);
+  // "Shop by Price" scrollable chip bar -- the active bucket (or null when
+  // "All Prices"/the slider is being used instead). Buckets themselves are
+  // admin-managed (see fetchPriceRangeFilters below), so this only tracks
+  // which one -- if any -- is currently selected.
+  const [priceBuckets, setPriceBuckets] = useState<PriceRangeBucket[]>(DEFAULT_PRICE_RANGE_FILTERS);
+  const [activePriceBucketId, setActivePriceBucketId] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetchPriceRangeFilters()
+      .then((ranges) => {
+        if (!cancelled) setPriceBuckets(ranges);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const handlePriceBucketSelect = (bucket: PriceRangeBucket | null) => {
+    if (bucket) {
+      setActivePriceBucketId(bucket.id);
+      setPriceRange([bucket.min, bucket.max]);
+    } else {
+      setActivePriceBucketId(null);
+      setPriceRange([0, 35000]);
+    }
+  };
   const initialSort = (params.get('sort') as SortKey) || 'popularity';
   const [query, setQuery] = useState(initialQuery);
   const [sort, setSort] = useState<SortKey>(initialSort);
@@ -443,6 +477,7 @@ function ShopContentInner({
     setSelectedFabrics([]);
     setSelectedOccasions([]);
     setPriceRange([0, 35000]);
+    setActivePriceBucketId(null);
     setQuery('');
     if (imageSearchIds) clearImageSearch();
   };
@@ -599,7 +634,10 @@ function ShopContentInner({
           max={35000}
           step={500}
           value={[priceRange[0], priceRange[1]]}
-          onValueChange={(v) => setPriceRange([v[0], v[1]] as [number, number])}
+          onValueChange={(v) => {
+            setPriceRange([v[0], v[1]] as [number, number]);
+            setActivePriceBucketId(null);
+          }}
           className="py-4"
         />
         <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -771,6 +809,13 @@ function ShopContentInner({
             </button>
           ))}
         </div>
+
+        <PriceRangeFilterBar
+          ranges={priceBuckets}
+          activeId={activePriceBucketId}
+          onSelect={handlePriceBucketSelect}
+          className="mt-4"
+        />
       </div>
 
       <div className="flex gap-8">

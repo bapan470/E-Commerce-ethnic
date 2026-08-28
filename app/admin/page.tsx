@@ -6,6 +6,7 @@ import AdminShell, { type AdminSection } from '@/components/admin/admin-shell';
 import ProductsPanel from '@/components/admin/products-panel';
 import OrdersPanel from '@/components/admin/orders-panel';
 import CategoriesPanel from '@/components/admin/categories-panel';
+import PriceRangeFiltersPanel from '@/components/admin/price-range-filters-panel';
 import CollectionsPanel from '@/components/admin/collections-panel';
 import BlogPanel from '@/components/admin/blog-panel';
 import ReviewsPanel from '@/components/admin/reviews-panel';
@@ -42,6 +43,7 @@ const PANELS: Record<AdminSection, React.ComponentType> = {
   analytics: AnalyticsPanel,
   products: ProductsPanel,
   categories: CategoriesPanel,
+  'price-filters': PriceRangeFiltersPanel,
   collections: CollectionsPanel,
   blog: BlogPanel,
   reviews: ReviewsPanel,

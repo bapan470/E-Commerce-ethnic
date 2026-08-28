@@ -1,49 +1,80 @@
-# Free WhatsApp Abandoned-Cart Recovery — What Changed
+# Price Filter Bar (Shop by Price) — Apply Guide
 
-4 files. Copy each one into your repo at the SAME path, overwriting the
-existing file, then run the 1 SQL step in Supabase, then commit + push.
+## Kya add hua
+Shop page (`/shop`) par ab category ki jagah/saath ek **scrollable "Shop by
+Price" chip bar** hai — bilkul category-icons wali scroll style mein, bas
+category ki jagah price ranges hain:
 
-## Files (replace at these exact paths)
+- Under ₹499
+- ₹499 - ₹699
+- ₹699 - ₹899
+- ₹899 - ₹1000
+- ₹1000 - ₹5000
 
-1. `supabase/migrations/20260827080000_add_phone_to_abandoned_carts.sql`
-   → NEW file, just add it.
-2. `app/api/cart-track/route.ts` → replaces existing file
-3. `app/checkout/page.tsx` → replaces existing file
-4. `components/admin/abandoned-carts-panel.tsx` → replaces existing file
+Kisi bhi chip par tap karo → grid turant us price range ke products dikhayega
+(same "Filters" logic jo already price slider use karta hai, bas ab ek tap
+mein). Dobara tap karo ya "All Prices" dabao → filter clear ho jata hai.
 
-## Steps
+**Admin se fully manage hota hai** — koi bhi price range add/edit/delete/
+reorder kar sakte ho bina code chhue:
+`Admin panel → Catalog → Price Filters`
 
-1. **Run the migration** — open Supabase Dashboard → SQL Editor → paste the
-   contents of `supabase/migrations/20260827080000_add_phone_to_abandoned_carts.sql`
-   → Run. (Just adds one `phone` column to `abandoned_carts`. Safe, no data loss.)
+Koi naya database table/migration nahi chahiye — yeh existing generic
+`settings` table (jo already store info, banners, etc. ke liye use hota hai)
+mein ek naya key (`price_range_filters`) store karta hai.
 
-2. **Copy the 3 code files** into your local repo, overwriting the old ones.
+## Files (is zip mein)
+- `lib/settings-api.ts` — **replace** (naya function add hua: end mein
+  `PriceRangeBucket`, `fetchPriceRangeFilters`, `savePriceRangeFilters`)
+- `app/shop/shop-content.tsx` — **replace** (naya "Shop by Price" bar add
+  hua, category filter bar jaisi hi scroll style mein)
+- `components/shop/price-range-filter-bar.tsx` — **naya file**
+- `components/admin/price-range-filters-panel.tsx` — **naya file**
+- `app/admin/page.tsx` — **replace** (naya panel register hua)
+- `components/admin/admin-shell.tsx` — **replace** (sidebar mein "Price
+  Filters" naya menu item add hua, Catalog group ke andar, Categories ke
+  just neeche)
 
-3. **Commit + push**:
+## Apply kaise karein
+
+**Option A — Patch file (fastest, edited files ke liye):**
+Repo root se (jahan `.git` folder hai):
+```
+git apply price-filter-update.diff
+```
+Isse `lib/settings-api.ts`, `app/shop/shop-content.tsx`, `app/admin/page.tsx`,
+`components/admin/admin-shell.tsx` — ye 4 already-existing files apply ho
+jayengi. Patch sirf edits track karta hai, naye files nahi — isliye niche
+diye 2 naye components manually copy karne honge (Option B follow karo un
+2 files ke liye):
+- `components/shop/price-range-filter-bar.tsx`
+- `components/admin/price-range-filters-panel.tsx`
+
+**Option B — Sabhi files manually copy-paste (patch use nahi karna ho toh):**
+1. Is zip ke andar jo bhi files hain, unko apne local repo
+   (`E-Commerce-ethnic`) mein **same exact path** par copy-paste/replace
+   karo (folder structure zip mein bhi wahi hai).
+2. Phir:
    ```
-   git add .
-   git commit -m "Add free WhatsApp (wa.me) abandoned-cart recovery"
+   git add lib/settings-api.ts app/shop/shop-content.tsx app/admin/page.tsx components/admin/admin-shell.tsx components/shop/price-range-filter-bar.tsx components/admin/price-range-filters-panel.tsx
+   git commit -m "feat: admin-managed 'Shop by Price' scrollable price-range filter bar"
    git push
    ```
 
-4. Netlify/Vercel will auto-deploy. Once live:
-   - New abandoned carts will start saving the shopper's phone number
-     (existing/older abandoned carts won't have one — that's expected,
-     they were captured before this change).
-   - In Admin → Abandoned Carts, any cart with a phone number now shows a
-     **"Send WhatsApp"** button next to "Send recovery email".
-   - Clicking it opens `wa.me/91XXXXXXXXXX?text=...` in a new tab with the
-     recovery message already typed in — you just tap Send from your own
-     WhatsApp (Web or app, whichever you're logged into).
+(Maine patch ko ek fresh clone par `git apply --check` se verify bhi kar
+liya hai — cleanly apply hota hai.)
 
-## Why this is 100% free
+## Test karne ke liye
+1. `/shop` kholo — heading ke neeche, "Price Drop / Bestseller / Most
+   Gifted" chips ke just neeche, "Shop by Price" bar dikhna chahiye,
+   horizontally scrollable.
+2. Kisi bhi price chip pe tap karo — sirf us range ke products dikhein
+   (e.g. "Under ₹499" pe tap karo → sirf ₹100–₹499 wale products).
+3. Admin panel kholo → left sidebar mein "Catalog" group ke andar
+   "Price Filters" naya option dikhna chahiye. Wahan se koi range edit/add/
+   delete/reorder karke save karo, phir `/shop` refresh karke check karo ki
+   chip bar turant update ho gaya.
 
-No WhatsApp Business API, no BSP (AiSensy/WATI/Interakt), no per-message
-Meta billing. It's the same `wa.me` click-to-chat mechanism as a "Chat with
-us" button, just pointed the other direction (business → customer) and
-pre-filled with the recovery message. The only cost is your own time to
-click "Send WhatsApp" + "Send" for each cart — nothing is automated/bulk.
-
-If later you want it fully automatic (system sends without you clicking
-anything), that requires the paid WhatsApp Business API — happy to help
-wire that up separately when you're ready.
+## Note
+Maine already `npx tsc --noEmit` chala ke poore project mein 0 TypeScript
+errors confirm kiye hain, toh yeh changes safely apply ho jaane chahiye.

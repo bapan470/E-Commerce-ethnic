@@ -912,3 +912,43 @@ export async function saveMediaStorageBackendSettings(settings: MediaStorageBack
     cloudflare_purge: { attempted: boolean; ok: boolean; error?: string };
   };
 }
+
+// ---------------------------------------------------------------------
+// Shop price-range quick filters — the horizontally scrollable "Under
+// ₹499 / ₹499-₹699 / ..." chip bar shown on the Shop page. Admin-managed
+// (Admin > Catalog > Price Filters) so the buckets can be added, edited,
+// reordered or removed without a code change/deploy.
+// ---------------------------------------------------------------------
+export interface PriceRangeBucket {
+  id: string;
+  label: string;
+  min: number;
+  max: number;
+}
+
+export const DEFAULT_PRICE_RANGE_FILTERS: PriceRangeBucket[] = [
+  { id: 'pr-1', label: 'Under ₹499', min: 100, max: 499 },
+  { id: 'pr-2', label: '₹499 - ₹699', min: 499, max: 699 },
+  { id: 'pr-3', label: '₹699 - ₹899', min: 699, max: 899 },
+  { id: 'pr-4', label: '₹899 - ₹1000', min: 899, max: 1000 },
+  { id: 'pr-5', label: '₹1000 - ₹5000', min: 1000, max: 5000 },
+];
+
+export async function fetchPriceRangeFilters(): Promise<PriceRangeBucket[]> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'price_range_filters')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_PRICE_RANGE_FILTERS;
+  const ranges = (data.value as { ranges?: PriceRangeBucket[] } | null)?.ranges;
+  if (!Array.isArray(ranges) || ranges.length === 0) return DEFAULT_PRICE_RANGE_FILTERS;
+  return ranges;
+}
+
+export async function savePriceRangeFilters(ranges: PriceRangeBucket[]) {
+  const { error } = await supabase
+    .from('settings')
+    .upsert({ key: 'price_range_filters', value: { ranges } }, { onConflict: 'key' });
+  if (error) throw error;
+}
