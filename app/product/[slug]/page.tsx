@@ -291,7 +291,18 @@ export default async function ProductPage({ params, searchParams }: Params) {
         />
       )}
       <ProductsProvider>
-        <ProductDetail />
+        {/* `product`/`variant` were already fetched above (for the SEO
+            metadata + JSON-LD block) -- pass them straight through as the
+            client component's initial state instead of letting it discard
+            this and re-fetch the same data itself in a useEffect. That
+            duplicate client-side fetch was why the page painted a blank
+            skeleton first and the main photo only started downloading
+            after JS hydrated AND that second network round-trip finished --
+            now the gallery (and its <Image priority>, which Next turns
+            into a <link rel="preload">) is present in the very first HTML
+            response, so the browser can start fetching the photo
+            immediately in parallel with hydration. */}
+        <ProductDetail initialProduct={product} initialVariant={variant} />
       </ProductsProvider>
     </>
   );

@@ -75,7 +75,20 @@ import { getVariantDisplayName } from '@/lib/variant-display-name';
 // mirrors how the real cart coupon is persisted in lib/cart-context.tsx.
 const PRODUCT_COUPON_PREVIEW_KEY = 'saaj-product-coupon-preview-v1';
 
-export default function ProductDetail() {
+export default function ProductDetail({
+  // Server-resolved data for this exact slug (see app/product/[slug]/page.tsx,
+  // which already fetches this for SEO metadata/JSON-LD) -- seeding state
+  // with it means the gallery has a real image to render on the very first
+  // paint instead of waiting on a second, client-side fetch of the same
+  // product. Both default to null so this component still works standalone
+  // (e.g. if ever rendered without the wrapper page) -- it just falls back
+  // to the original client-fetch behaviour below in that case.
+  initialProduct = null,
+  initialVariant = null,
+}: {
+  initialProduct?: Product | null;
+  initialVariant?: VariantWithSizes | null;
+} = {}) {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
   const { getBySlug, products, loading } = useProducts();
@@ -87,9 +100,16 @@ export default function ProductDetail() {
     [params.slug, getBySlug]
   );
 
-  const [directProduct, setDirectProduct] = useState<Product | null>(null);
+  const [directProduct, setDirectProduct] = useState<Product | null>(initialProduct);
   const [directLoading, setDirectLoading] = useState(false);
-  const [variant, setVariant] = useState<VariantWithSizes | null>(null);
+  const [variant, setVariant] = useState<VariantWithSizes | null>(initialVariant);
+  // Which slug `directProduct`/`variant` above actually correspond to --
+  // starts pre-filled when the server already handed us this slug's data,
+  // so the fetch effect below knows to skip its redundant client fetch on
+  // first paint. Updated after any successful client fetch too, so
+  // navigating between product pages client-side still works exactly as
+  // before.
+  const resolvedSlugRef = useRef<string | null>(initialProduct ? params.slug : null);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [quantity, setQuantity] = useState(1);
   // Reviews now render as their own always-open section (not a tab), so
@@ -116,6 +136,9 @@ export default function ProductDetail() {
       setVariant(null);
       return;
     }
+    // Server already resolved this exact slug (see initialProduct/
+    // initialVariant above) -- nothing to (re)fetch on first paint.
+    if (resolvedSlugRef.current === params.slug) return;
     let cancelled = false;
     setDirectLoading(true);
     fetchProductBySlug(params.slug)
@@ -124,12 +147,14 @@ export default function ProductDetail() {
         if (p) {
           setDirectProduct(p);
           setVariant(null);
+          resolvedSlugRef.current = params.slug;
           return;
         }
         return fetchVariantBySlug(params.slug).then((res) => {
           if (cancelled || !res) return;
           setDirectProduct(res.product);
           setVariant(res.variant);
+          resolvedSlugRef.current = params.slug;
         });
       })
       .catch(() => setDirectProduct(null))
