@@ -72,7 +72,6 @@ export default function Header() {
   const { count, setCartOpen, addItem, buyNowItem, clearBuyNow } = useCart();
   const { categories } = useCategories();
   const { user } = useAuth();
-
   // Header renders on every page, so it can't sit behind the heavy
   // ProductsProvider (root layout only carries the light Categories/
   // PaymentDiscount providers now). Products are only needed for search
@@ -206,30 +205,10 @@ export default function Header() {
   // and replays the same recovery, correcting the landing page to the
   // exact page markCheckoutEntry() recorded if native back didn't land
   // there itself.
-  //
-  // IMPORTANT: this must only fire for an actual native back/forward
-  // navigation (a `popstate` event) — not for a normal forward tap on the
-  // wishlist/account/cart icon (or any other link) while on /checkout.
-  // Without the popstate check below, tapping e.g. the account icon on
-  // /checkout would navigate to /account for an instant and then this
-  // effect would immediately force-replace it back to the checkout-return
-  // path, since all it saw was "pathname changed away from /checkout" —
-  // making every header icon look broken/unresponsive from /checkout.
-  const isPopStateRef = useRef(false);
-  useEffect(() => {
-    const onPopState = () => {
-      isPopStateRef.current = true;
-    };
-    window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
-  }, []);
-
   const pathnameRef = useRef(pathname);
   useEffect(() => {
     const wasOnCheckout = pathnameRef.current?.startsWith('/checkout');
     const nowOnCheckout = pathname.startsWith('/checkout');
-    const wasPopState = isPopStateRef.current;
-    isPopStateRef.current = false;
     // /login and /signup are intentional detours from checkout (e.g. the
     // resell-login prompt sends the shopper there with ?next=/checkout) —
     // they bring the shopper straight back to /checkout once they're done,
@@ -241,7 +220,7 @@ export default function Header() {
     // not an accidental "left checkout" navigation, so it must never be
     // treated as one or the Thank You page gets bounced back instantly.
     const nowOnOrderConfirmation = pathname.startsWith('/order-confirmation');
-    if (wasPopState && wasOnCheckout && !nowOnCheckout && !nowOnAuthDetour && !nowOnOrderConfirmation) {
+    if (wasOnCheckout && !nowOnCheckout && !nowOnAuthDetour && !nowOnOrderConfirmation) {
       const returnPath = recoverFromCheckout(getCheckoutReturnPath());
       if (returnPath && returnPath !== pathname + window.location.search) {
         router.replace(returnPath);
@@ -553,9 +532,9 @@ export default function Header() {
                       key={l.href}
                       href={l.href}
                       onClick={() => setMobileOpen(false)}
-                      className="flex items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-foreground/80 transition-colors hover:bg-accent hover:text-accent-foreground"
+                      className="rounded-md px-3 py-2 text-sm font-medium text-foreground/80 transition-colors hover:bg-accent hover:text-accent-foreground"
                     >
-                      <span>{l.label}</span>
+                      {l.label}
                     </Link>
                   ))}
                 </nav>
@@ -698,7 +677,7 @@ export default function Header() {
           )}
         </div>
 
-        <div className="flex items-center gap-0.5 sm:gap-1">
+        <div className="flex items-center gap-1">
           <Button
             variant="ghost"
             size="icon"
@@ -718,13 +697,7 @@ export default function Header() {
             </Link>
           </Button>
 
-          {/* Account icon — shown on mobile and desktop. */}
-          <Button
-            variant="ghost"
-            size="icon"
-            asChild
-            aria-label={user ? 'My account' : 'Login'}
-          >
+          <Button variant="ghost" size="icon" asChild aria-label={user ? 'My account' : 'Login'}>
             <Link href={user ? '/account' : '/login'}>
               <User className="h-5 w-5" />
             </Link>
