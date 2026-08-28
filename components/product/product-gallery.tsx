@@ -243,7 +243,7 @@ export default function ProductGallery({
         )}
 
         <div className="relative flex-1">
-          <div className="group/stage relative aspect-[4/5] w-full overflow-hidden border border-border/60 bg-muted sm:rounded-xl">
+          <div className="group/stage relative aspect-[4/4.6] w-full overflow-hidden border border-border/60 bg-muted sm:rounded-xl">
             {/* This inner div is the ONLY thing that scrolls. Badges, the
                 zoom button, the counter and the dots live outside it (as
                 siblings below) so they stay fixed on screen instead of
