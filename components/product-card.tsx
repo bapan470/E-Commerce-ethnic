@@ -3,11 +3,11 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ShoppingBag, Star } from 'lucide-react';
+import { ShoppingBag, Star, Zap } from 'lucide-react';
 import { Product } from '@/lib/types';
 import { formatINR, discountPct } from '@/lib/format';
 import { getVariantDisplayName } from '@/lib/variant-display-name';
-import { useCart, getVisibleBogoPromotion, formatBogoLabel } from '@/lib/cart-context';
+import { useCart, getVisibleBogoPromotion, formatBogoLabel, usePaymentDiscount } from '@/lib/cart-context';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import WishlistButton from '@/components/wishlist-button';
@@ -95,6 +95,15 @@ export default function ProductCard({
   };
 
   const discount = discountPct(product.price, product.mrp);
+  // Same "pay online, save X%" banner shown on the product page (see
+  // app/product/[slug]/product-detail.tsx) -- short/no-dialog version for
+  // the catalog card. No coupon context here, so it's just a flat percent
+  // off the card's listed price.
+  const { paymentDiscount } = usePaymentDiscount();
+  const onlinePaymentSavings =
+    paymentDiscount.enabled && paymentDiscount.percent > 0
+      ? Math.round((product.price * paymentDiscount.percent) / 100)
+      : 0;
   // Every colour this card can switch straight to: the base product's own
   // colour (product_variants rows never include it) plus every real
   // variant. Deduped by colour name so a base colour already re-added as
@@ -266,6 +275,15 @@ export default function ProductCard({
             </>
           )}
         </div>
+
+        {onlinePaymentSavings > 0 && (
+          <div className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+            <Zap className="h-3 w-3 shrink-0 fill-emerald-600 text-emerald-600" />
+            <span>
+              Get this at {formatINR(Math.max(0, product.price - onlinePaymentSavings))} online
+            </span>
+          </div>
+        )}
 
         {swatchVariants.length > 1 && (
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
