@@ -118,6 +118,43 @@ async function getSettings(): Promise<{ proxyEnabled: boolean; preferredBackend:
 }
 
 // -----------------------------------------------------------------------
+// Responsive-size suffix fallback
+//
+// When Admin > Settings > Responsive Images is ON, the custom image
+// loader (lib/cloudflare-image-loader.js) requests -sm/-md suffixed
+// variants for smaller widths. Not every image has those variants yet
+// (only new uploads get them automatically; older images need the
+// "Generate Responsive Image Sizes" backfill to reach them). Rather than
+// relying on the backfill having run, or on the toggle being flipped in
+// the right order, this route strips a -sm/-md suffix and retries the
+// original file whenever the suffixed path isn't found — so a missing
+// variant NEVER shows a broken/blank image, on any image, at any time,
+// backfilled or not.
+// -----------------------------------------------------------------------
+
+const SIZE_SUFFIX_RE = /-(?:sm|md)(\.[a-zA-Z0-9]+)$/;
+
+function stripSizeSuffix(pathSegments: string[]): string[] | null {
+  if (pathSegments.length === 0) return null;
+  const last = pathSegments[pathSegments.length - 1];
+  const match = last.match(SIZE_SUFFIX_RE);
+  if (!match) return null;
+  const original = last.replace(SIZE_SUFFIX_RE, match[1]);
+  return [...pathSegments.slice(0, -1), original];
+}
+
+// Cheap existence check (no body downloaded) — used only in redirect
+// mode, so the bandwidth-saving point of that mode is never undermined.
+async function headExists(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(url, { method: 'HEAD' });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+// -----------------------------------------------------------------------
 // Upstream fetch with auto-fallback
 // -----------------------------------------------------------------------
 
@@ -173,15 +210,39 @@ export async function GET(req: NextRequest, { params }: { params: { path: string
   // the other backend if the preferred one has no URL configured (e.g. R2
   // env vars missing), so this never redirects to a broken/empty URL.
   if (!proxyEnabled) {
+    // Quota-saving redirect mode: hand off with a 307, never downloading
+    // the bytes ourselves (that's the whole point of this mode). The
+    // -sm/-md safety net here uses a cheap HEAD request (no body) to
+    // check the suffixed file exists before committing to redirect
+    // there, falling back to the original file's URL otherwise.
+    const isSuffixed = SIZE_SUFFIX_RE.test(params.path[params.path.length - 1] ?? '');
+    let redirectPath = params.path;
+
+    if (isSuffixed) {
+      const suffixedUrl = buildUpstreamUrl(preferredBackend, params.path);
+      const suffixedExists = suffixedUrl ? await headExists(suffixedUrl) : false;
+      if (!suffixedExists) {
+        const fallbackPath = stripSizeSuffix(params.path);
+        if (fallbackPath) redirectPath = fallbackPath;
+      }
+    }
+
     const redirectUrl =
-      buildUpstreamUrl(preferredBackend, params.path) ??
-      buildUpstreamUrl(preferredBackend === 'r2' ? 'supabase' : 'r2', params.path);
+      buildUpstreamUrl(preferredBackend, redirectPath) ??
+      buildUpstreamUrl(preferredBackend === 'r2' ? 'supabase' : 'r2', redirectPath);
     if (!redirectUrl) return new NextResponse('Not found', { status: 404 });
     return NextResponse.redirect(redirectUrl, 307);
   }
 
   const range = req.headers.get('range');
-  const result = await fetchFromUpstream(params.path, preferredBackend, range);
+  let result = await fetchFromUpstream(params.path, preferredBackend, range);
+
+  if (!result) {
+    const fallbackPath = stripSizeSuffix(params.path);
+    if (fallbackPath) {
+      result = await fetchFromUpstream(fallbackPath, preferredBackend, range);
+    }
+  }
 
   if (!result || !result.response.body) {
     return new NextResponse('Not found', { status: 404 });

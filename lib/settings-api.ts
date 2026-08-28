@@ -457,6 +457,53 @@ export async function saveMediaDeliverySettings(settings: MediaDeliverySettings)
 }
 
 // ---------------------------------------------------------------------
+// Responsive Images — Admin > Settings toggle.
+//
+// OFF (default): every image resolves to its original URL — identical
+//   to how the site behaved before this feature existed. Zero risk.
+// ON: the custom image loader starts requesting -sm (480px, mobile) /
+//   -md (900px, desktop) variants for smaller widths, cutting the bytes
+//   sent per image on product cards/listings significantly. Safe to
+//   flip at any time, backfilled or not — see
+//   app/media/[...path]/route.ts for why a missing variant can never
+//   show a broken image.
+//
+// Goes through /api/admin/responsive-images (server-side, requires
+// admin) rather than writing to the `settings` table directly from the
+// browser, same reasoning as every other admin-gated setting here.
+// ---------------------------------------------------------------------
+export interface ResponsiveImagesSettings {
+  enabled: boolean;
+}
+
+export const DEFAULT_RESPONSIVE_IMAGES_SETTINGS: ResponsiveImagesSettings = {
+  enabled: false,
+};
+
+export async function fetchResponsiveImagesSettings(): Promise<ResponsiveImagesSettings> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'responsive_images')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_RESPONSIVE_IMAGES_SETTINGS;
+  return { ...DEFAULT_RESPONSIVE_IMAGES_SETTINGS, ...(data.value as Partial<ResponsiveImagesSettings>) };
+}
+
+export async function saveResponsiveImagesSettings(settings: ResponsiveImagesSettings) {
+  const res = await fetch('/api/admin/responsive-images', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(json?.error || 'Failed to save responsive images setting');
+  }
+  return json as { saved: true; enabled: boolean };
+}
+
+// ---------------------------------------------------------------------
 // Order notifications — alerts YOU (the store owner), not the customer,
 // the moment a new order comes in. Independent of `support_email` in
 // StoreInfo because that address is shown publicly (footer/contact/about

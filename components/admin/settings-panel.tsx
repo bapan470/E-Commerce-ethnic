@@ -49,8 +49,12 @@ import {
   CatalogListingSettings,
   fetchCatalogListingSettings,
   saveCatalogListingSettings,
+  ResponsiveImagesSettings,
+  fetchResponsiveImagesSettings,
+  saveResponsiveImagesSettings,
 } from '@/lib/settings-api';
 import type { BackfillProgress } from '@/lib/media-backfill';
+import type { ResizeBackfillProgress } from '@/lib/image-resize-backfill';
 import { uploadProductImage } from '@/lib/products-api';
 import {
   ShippingSettings,
@@ -131,6 +135,10 @@ export default function SettingsPanel() {
   const [r2EnvConfigured, setR2EnvConfigured] = useState(false);
   const [backfillProgress, setBackfillProgress] = useState<BackfillProgress | null>(null);
   const [backfillStarting, setBackfillStarting] = useState(false);
+  const [responsiveImagesForm, setResponsiveImagesForm] = useState<ResponsiveImagesSettings | null>(null);
+  const [savingResponsiveImages, setSavingResponsiveImages] = useState(false);
+  const [resizeBackfillProgress, setResizeBackfillProgress] = useState<ResizeBackfillProgress | null>(null);
+  const [resizeBackfillStarting, setResizeBackfillStarting] = useState(false);
   const [orderNotifForm, setOrderNotifForm] = useState<OrderNotificationSettings | null>(null);
   const [savingOrderNotif, setSavingOrderNotif] = useState(false);
   const [handlingFeeForm, setHandlingFeeForm] = useState<HandlingFeeSettings | null>(null);
@@ -216,6 +224,15 @@ export default function SettingsPanel() {
       .then((r) => r.json())
       .then((j) => setR2EnvConfigured(!!j?.r2_configured))
       .catch(() => {}); // non-critical — defaults to false (disables R2 option)
+
+    fetchResponsiveImagesSettings()
+      .then(setResponsiveImagesForm)
+      .catch(() => toast.error('Failed to load responsive images setting'));
+
+    fetch('/api/admin/image-resize-backfill')
+      .then((r) => r.json())
+      .then((j) => setResizeBackfillProgress(j?.progress ?? null))
+      .catch(() => {}); // non-critical — panel just shows "Loading…" until retried
 
     fetchOrderNotificationSettings()
       .then(setOrderNotifForm)
@@ -519,6 +536,101 @@ export default function SettingsPanel() {
       toast.success('Backfill status reset. No files were changed — this only clears the progress counter.');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not reset backfill status');
+    }
+  };
+
+  // ---------------------------------------------------------------------
+  // Responsive Images toggle. OFF (default) = every image resolves to its
+  // original URL, exactly like before this feature existed. ON = smaller
+  // -sm/-md variants get requested for smaller widths. Safe to flip at
+  // any time — see app/media/[...path]/route.ts for why a missing
+  // variant can never show a broken image.
+  // ---------------------------------------------------------------------
+  const onToggleResponsiveImages = async (checked: boolean) => {
+    if (!responsiveImagesForm) return;
+    const next = { ...responsiveImagesForm, enabled: checked };
+    setResponsiveImagesForm(next); // update immediately so the switch feels responsive
+    setSavingResponsiveImages(true);
+    try {
+      await saveResponsiveImagesSettings(next);
+      toast.success(
+        checked
+          ? 'Responsive images ON — smaller sizes will be served where available. Existing images without a size yet keep working at full size, never broken.'
+          : 'Responsive images OFF — every image serves from its original URL, exactly as before.'
+      );
+    } catch (err) {
+      setResponsiveImagesForm(responsiveImagesForm); // revert the switch on failure
+      toast.error(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSavingResponsiveImages(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------
+  // Generate Responsive Image Sizes — backfill -sm/-md variants for
+  // pre-existing product/review images. Read-only on originals (only
+  // ever adds new files alongside them), idempotent, safe to re-run.
+  // ---------------------------------------------------------------------
+  useEffect(() => {
+    if (resizeBackfillProgress?.status !== 'running') return;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/admin/image-resize-backfill', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'run-batch' }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error || 'Resize backfill batch failed');
+        setResizeBackfillProgress(json.progress);
+        if (json.progress?.status === 'done') {
+          toast.success(
+            `Resize backfill complete — ${json.progress.generated} variant file(s) generated, ${json.progress.failed} failed. No original image was touched or deleted.`
+          );
+        }
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Resize backfill batch failed — will retry');
+      }
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [resizeBackfillProgress]);
+
+  const onStartResizeBackfill = async () => {
+    setResizeBackfillStarting(true);
+    try {
+      const res = await fetch('/api/admin/image-resize-backfill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'start' }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Could not start resize backfill');
+      setResizeBackfillProgress(json.progress);
+      if (json.progress?.total === 0) {
+        toast.success('Nothing to do — every existing image already has both sizes.');
+      } else {
+        toast.success(`Started — generating sizes for ${json.progress.total} existing image(s) in the background.`);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not start resize backfill');
+    } finally {
+      setResizeBackfillStarting(false);
+    }
+  };
+
+  const onResetResizeBackfill = async () => {
+    try {
+      const res = await fetch('/api/admin/image-resize-backfill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reset' }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Could not reset resize backfill status');
+      setResizeBackfillProgress(json.progress);
+      toast.success('Resize backfill status reset. No files were changed — this only clears the progress counter.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not reset resize backfill status');
     }
   };
 
@@ -1689,6 +1801,124 @@ export default function SettingsPanel() {
               </Button>
               {backfillProgress.status !== 'idle' && backfillProgress.status !== 'running' && (
                 <Button type="button" size="sm" variant="outline" onClick={onResetBackfill}>
+                  Reset Status
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Responsive Images — mobile/desktop get right-sized images instead of the full 1600px file */}
+      <div className="mt-8">
+        <h2 className="font-serif text-2xl font-bold text-primary">Responsive Images</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Serves a smaller image to mobile/desktop product cards instead of the full-size (1600px)
+          file, so pages load lighter and faster. Doesn&apos;t touch or delete any existing image —
+          only the size requested for display changes. If a size doesn&apos;t exist yet for a given
+          image, the original is served automatically instead — this can never show a broken image,
+          whether the backfill below has run or not.
+        </p>
+      </div>
+
+      {!responsiveImagesForm ? (
+        <p className="py-4 text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <div className="mt-4 flex max-w-xl items-center justify-between gap-4 rounded-lg border border-border/60 bg-card p-5">
+          <div>
+            <Label htmlFor="responsive-images-enabled">
+              {responsiveImagesForm.enabled ? 'On — serving right-sized images' : 'Off — serving original images (default)'}
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              {responsiveImagesForm.enabled
+                ? 'Mobile gets a ~480px image, desktop ~900px, and full zoom still uses the 1600px original. Safe to leave on at any time.'
+                : 'Every image serves at its original size, exactly like before this feature existed. Turn on once you\u2019re ready — no risk either way.'}
+            </p>
+          </div>
+          <Switch
+            id="responsive-images-enabled"
+            checked={responsiveImagesForm.enabled}
+            disabled={savingResponsiveImages}
+            onCheckedChange={onToggleResponsiveImages}
+          />
+        </div>
+      )}
+
+      {/* Generate Responsive Image Sizes — backfill for pre-existing images */}
+      <div className="mt-6 max-w-xl rounded-lg border border-border/60 bg-card p-5">
+        <Label>Generate Responsive Image Sizes</Label>
+        <p className="mt-1 text-xs text-muted-foreground">
+          New image uploads/imports already get all 3 sizes automatically. This generates the
+          smaller sizes for images uploaded <em>before</em> that shipped, so they benefit too.
+          <strong> Original images are never modified or deleted</strong> — this only adds new,
+          smaller files alongside them. Safe to run whether Responsive Images above is on or off,
+          and safe to re-run any time.
+        </p>
+
+        {!resizeBackfillProgress ? (
+          <p className="mt-3 text-sm text-muted-foreground">Loading status…</p>
+        ) : (
+          <div className="mt-3 space-y-3">
+            {resizeBackfillProgress.total > 0 && (
+              <div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all"
+                    style={{
+                      width: `${Math.min(100, Math.round((resizeBackfillProgress.processed / resizeBackfillProgress.total) * 100))}%`,
+                    }}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {resizeBackfillProgress.processed} / {resizeBackfillProgress.total} processed —{' '}
+                  {resizeBackfillProgress.generated} size(s) generated
+                  {resizeBackfillProgress.alreadyDone > 0
+                    ? `, ${resizeBackfillProgress.alreadyDone} image(s) already had both sizes`
+                    : ''}
+                  {resizeBackfillProgress.failed > 0 ? `, ${resizeBackfillProgress.failed} failed` : ''}.
+                </p>
+              </div>
+            )}
+
+            <p className="text-xs">
+              Status:{' '}
+              <span className="font-medium">
+                {resizeBackfillProgress.status === 'idle' && 'Not started'}
+                {resizeBackfillProgress.status === 'running' && 'Running — generating sizes live…'}
+                {resizeBackfillProgress.status === 'done' && 'Complete'}
+                {resizeBackfillProgress.status === 'error' && 'Error'}
+              </span>
+            </p>
+
+            {resizeBackfillProgress.recentErrors.length > 0 && (
+              <details className="text-xs text-muted-foreground">
+                <summary className="cursor-pointer text-yellow-800">
+                  {resizeBackfillProgress.recentErrors.length} recent error(s) — click to view
+                </summary>
+                <ul className="mt-1 list-disc pl-4">
+                  {resizeBackfillProgress.recentErrors.map((e, i) => (
+                    <li key={i}>
+                      {e.bucket}/{e.path}: {e.error}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                disabled={resizeBackfillStarting || resizeBackfillProgress.status === 'running'}
+                onClick={onStartResizeBackfill}
+              >
+                {resizeBackfillStarting || resizeBackfillProgress.status === 'running' ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
+                {resizeBackfillProgress.status === 'done' ? 'Re-run Backfill' : 'Start Backfill'}
+              </Button>
+              {resizeBackfillProgress.status !== 'idle' && resizeBackfillProgress.status !== 'running' && (
+                <Button type="button" size="sm" variant="outline" onClick={onResetResizeBackfill}>
                   Reset Status
                 </Button>
               )}

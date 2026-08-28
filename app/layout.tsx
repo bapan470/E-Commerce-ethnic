@@ -7,6 +7,7 @@ import AnalyticsScripts from '@/components/analytics-scripts';
 import { getServerSupabase } from '@/lib/supabase-server';
 import { SeoSettings, AnalyticsSettings } from '@/lib/marketing-api';
 import { PaymentDiscountSettings, DEFAULT_PAYMENT_DISCOUNT_SETTINGS } from '@/lib/settings-api';
+import { getResponsiveImagesEnabledServer, syncResponsiveImagesServerGlobal } from '@/lib/responsive-images-flag';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -168,6 +169,13 @@ export default async function RootLayout({
 }) {
   const analytics = await getAnalyticsSettings();
   const initialPaymentDiscount = await getPaymentDiscountSettings();
+  // Responsive Images admin toggle (Admin > Settings). Read once per
+  // request, then made available to lib/cloudflare-image-loader.js both
+  // on the server (Node global, set below, before children render) and
+  // in the browser (inline script in <head>, executed before hydration).
+  // Fails safe to `false` (= original URL, unchanged) on any error.
+  const responsiveImagesEnabled = await getResponsiveImagesEnabledServer();
+  syncResponsiveImagesServerGlobal(responsiveImagesEnabled);
   const gaId = analytics.ga_enabled ? analytics.ga_measurement_id.trim() : '';
   const gtmId = analytics.gtm_enabled ? analytics.gtm_container_id.trim() : '';
   const googleAdsId = analytics.google_ads_id.trim();
@@ -177,6 +185,15 @@ export default async function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${playfair.variable}`}>
       <head>
+        {/* Responsive Images feature flag — must run before any <Image>
+           hydrates on the client, so lib/cloudflare-image-loader.js sees
+           the same value the server just rendered with. Defaults to
+           `false` (original URLs, unchanged) if the setting is off or
+           couldn't be read. */}
+        <Script id="responsive-images-flag" strategy="beforeInteractive">
+          {`window.__RESPONSIVE_IMAGES_ENABLED__ = ${responsiveImagesEnabled};`}
+        </Script>
+
         {/* Trustpilot base script — registers window.tp() so
            <TrustpilotInvitation> (order confirmation page) can create
            review-invitation emails after a purchase. Key + on/off toggle
