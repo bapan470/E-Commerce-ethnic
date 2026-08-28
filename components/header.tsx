@@ -119,9 +119,7 @@ export default function Header() {
   // product (unlike the desktop nav, which keeps a fixed shortlist),
   // plus links to account management, reseller sign-up, and contact us.
   const mobileNavLinks = useMemo(() => {
-    const namesWithProducts = new Set(products.map((p) => p.category));
     const categoryLinks = categories
-      .filter((c) => namesWithProducts.has(c.name))
       .map((c) => ({
         href: `/category/${c.slug}`,
         label: c.name,
@@ -136,7 +134,7 @@ export default function Header() {
       { href: '/account/reseller', label: 'Reseller' },
       { href: '/contact', label: 'Contact Us' },
     ];
-  }, [products, categories]);
+  }, [categories]);
 
   const showBackButton =
     pathname === '/shop' ||
