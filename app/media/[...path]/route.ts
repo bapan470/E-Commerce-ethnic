@@ -155,6 +155,62 @@ async function headExists(url: string): Promise<boolean> {
 }
 
 // -----------------------------------------------------------------------
+// Resolved-backend cache (per serverless instance, in-memory)
+//
+// The HEAD-check fallback below is only needed for the (small, shrinking)
+// set of files whose R2 mirror is missing — every uploaded file is
+// IMMUTABLE (re-uploads always get a new filename, see lib/storage.ts),
+// so once we've determined which backend actually has a given path, that
+// answer never changes. Without this cache, every single image request
+// in redirect mode would pay for a HEAD round-trip to R2 before
+// redirecting — including the ~99% of images that are already mirrored
+// fine on both backends and never needed the check in the first place.
+// Caching the resolved backend means that cost is paid at most ONCE per
+// path per warm serverless instance; every subsequent request for that
+// path (from any user, crawler, or device) redirects immediately with
+// zero extra latency, same as before this fallback existed.
+//
+// Capped at a few thousand entries so a long-lived instance can't grow
+// this unboundedly — oldest entries are evicted first (simple FIFO via
+// Map insertion order) once the cap is hit.
+// -----------------------------------------------------------------------
+const RESOLVED_BACKEND_CACHE_MAX = 5000;
+const resolvedBackendCache = new Map<string, 'supabase' | 'r2'>();
+
+function cacheKey(pathSegments: string[]): string {
+  return pathSegments.join('/');
+}
+
+function getCachedBackend(pathSegments: string[]): 'supabase' | 'r2' | null {
+  return resolvedBackendCache.get(cacheKey(pathSegments)) ?? null;
+}
+
+function setCachedBackend(pathSegments: string[], backend: 'supabase' | 'r2'): void {
+  const key = cacheKey(pathSegments);
+  if (!resolvedBackendCache.has(key) && resolvedBackendCache.size >= RESOLVED_BACKEND_CACHE_MAX) {
+    const oldestKey = resolvedBackendCache.keys().next().value;
+    if (oldestKey !== undefined) resolvedBackendCache.delete(oldestKey);
+  }
+  resolvedBackendCache.set(key, backend);
+}
+
+// Separate small cache: -sm/-md paths confirmed to not exist on EITHER
+// backend yet (responsive-size backfill hasn't reached them). Once known,
+// future requests for that exact suffixed path skip straight to serving
+// the original — no repeat HEAD checks.
+const MISSING_SUFFIX_CACHE_MAX = 5000;
+const missingSuffixCache = new Set<string>();
+
+function markSuffixMissing(pathSegments: string[]): void {
+  const key = cacheKey(pathSegments);
+  if (!missingSuffixCache.has(key) && missingSuffixCache.size >= MISSING_SUFFIX_CACHE_MAX) {
+    const oldestKey = missingSuffixCache.values().next().value;
+    if (oldestKey !== undefined) missingSuffixCache.delete(oldestKey);
+  }
+  missingSuffixCache.add(key);
+}
+
+// -----------------------------------------------------------------------
 // Upstream fetch with auto-fallback
 // -----------------------------------------------------------------------
 
@@ -211,46 +267,66 @@ export async function GET(req: NextRequest, { params }: { params: { path: string
   // env vars missing), so this never redirects to a broken/empty URL.
   if (!proxyEnabled) {
     // Quota-saving redirect mode: hand off with a 307, never downloading
-    // the bytes ourselves (that's the whole point of this mode). The
-    // -sm/-md safety net here uses a cheap HEAD request (no body) to
-    // check the suffixed file exists before committing to redirect
-    // there, falling back to the original file's URL otherwise.
-    const isSuffixed = SIZE_SUFFIX_RE.test(params.path[params.path.length - 1] ?? '');
-    let redirectPath = params.path;
+    // the bytes ourselves (that's the whole point of this mode).
+    //
+    // FIX: dual-write to R2 is best-effort (see lib/storage.ts), so a
+    // transient R2 upload failure at write time can leave a file that
+    // only ever exists on Supabase. Redirecting straight to the
+    // preferred backend with no existence check sends those files to a
+    // permanent 404. We verify which backend actually has the file
+    // before redirecting — but ONLY pay for that check once per path
+    // EVER (see resolvedBackendCache above): a file's contents and
+    // location never change once uploaded, so every request after the
+    // first for that exact path redirects immediately with zero extra
+    // latency, same as before this fix existed.
+    const otherBackendOf = (b: 'supabase' | 'r2'): 'supabase' | 'r2' => (b === 'r2' ? 'supabase' : 'r2');
 
-    if (isSuffixed) {
-      const suffixedUrl = buildUpstreamUrl(preferredBackend, params.path);
-      const suffixedExists = suffixedUrl ? await headExists(suffixedUrl) : false;
-      if (!suffixedExists) {
-        const fallbackPath = stripSizeSuffix(params.path);
-        if (fallbackPath) redirectPath = fallbackPath;
+    // Resolves which backend to redirect to for one exact path. Checks
+    // the cache first (the common case, and the only thing that runs for
+    // the ~99% of files mirrored fine on both backends after their first
+    // request). Only reaches for the network on a true cache miss.
+    async function resolveBackendFor(pathSegments: string[]): Promise<'supabase' | 'r2' | null> {
+      const cached = getCachedBackend(pathSegments);
+      if (cached) return cached;
+
+      const preferredUrl = buildUpstreamUrl(preferredBackend, pathSegments);
+      if (preferredUrl && (await headExists(preferredUrl))) {
+        setCachedBackend(pathSegments, preferredBackend);
+        return preferredBackend;
       }
+
+      const fallbackBackend = otherBackendOf(preferredBackend);
+      const fallbackUrl = buildUpstreamUrl(fallbackBackend, pathSegments);
+      if (fallbackUrl && (await headExists(fallbackUrl))) {
+        setCachedBackend(pathSegments, fallbackBackend);
+        return fallbackBackend;
+      }
+
+      return null; // confirmed on neither backend
     }
 
-    // FIX: the preferred backend isn't guaranteed to actually have this
-    // file — dual-write to R2 is best-effort (see lib/storage.ts), so a
-    // transient R2 upload failure at write time leaves a file that only
-    // ever existed on Supabase. Previously this branch built the
-    // preferred-backend URL and redirected there unconditionally, with
-    // NO existence check for non-suffixed (normal, full-size) paths —
-    // unlike the suffixed case just above. That meant any file whose R2
-    // mirror silently failed would redirect users straight to a 404 on
-    // R2 forever, with no fallback to the Supabase copy that actually
-    // has the bytes. We now HEAD-check the preferred backend first and
-    // fall back to the other backend when it's missing, exactly like the
-    // suffixed path already does.
-    const preferredUrl = buildUpstreamUrl(preferredBackend, redirectPath);
-    const otherBackend = preferredBackend === 'r2' ? 'supabase' : 'r2';
-    const otherUrl = buildUpstreamUrl(otherBackend, redirectPath);
+    const last = params.path[params.path.length - 1] ?? '';
+    const isSuffixed = SIZE_SUFFIX_RE.test(last);
+    let targetPath = params.path;
 
-    let redirectUrl: string | null = null;
-    if (preferredUrl && (await headExists(preferredUrl))) {
-      redirectUrl = preferredUrl;
-    } else if (otherUrl) {
-      redirectUrl = otherUrl;
-    } else {
-      redirectUrl = preferredUrl; // last resort: neither confirmed, but this is all we have
+    if (isSuffixed && !getCachedBackend(params.path) && !missingSuffixCache.has(cacheKey(params.path))) {
+      // -sm/-md variants may not exist yet even when the original does
+      // (responsive-size backfill runs separately from upload) — resolved
+      // once per path, then cached either way (found, or known-missing)
+      // so this check never repeats for the same path again.
+      const suffixedBackend = await resolveBackendFor(params.path);
+      if (!suffixedBackend) {
+        markSuffixMissing(params.path);
+        const fallbackPath = stripSizeSuffix(params.path);
+        if (fallbackPath) targetPath = fallbackPath;
+      }
+    } else if (isSuffixed && missingSuffixCache.has(cacheKey(params.path))) {
+      const fallbackPath = stripSizeSuffix(params.path);
+      if (fallbackPath) targetPath = fallbackPath;
     }
+
+    const resolvedBackend = (await resolveBackendFor(targetPath)) ?? preferredBackend;
+    const redirectUrl = buildUpstreamUrl(resolvedBackend, targetPath) ?? buildUpstreamUrl(otherBackendOf(resolvedBackend), targetPath);
 
     if (!redirectUrl) return new NextResponse('Not found', { status: 404 });
     return NextResponse.redirect(redirectUrl, 307);
