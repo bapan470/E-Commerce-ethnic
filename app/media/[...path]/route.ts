@@ -285,7 +285,7 @@ export async function GET(req: NextRequest, { params }: { params: { path: string
     // the cache first (the common case, and the only thing that runs for
     // the ~99% of files mirrored fine on both backends after their first
     // request). Only reaches for the network on a true cache miss.
-    async function resolveBackendFor(pathSegments: string[]): Promise<'supabase' | 'r2' | null> {
+    const resolveBackendFor = async (pathSegments: string[]): Promise<'supabase' | 'r2' | null> => {
       const cached = getCachedBackend(pathSegments);
       if (cached) return cached;
 
@@ -303,7 +303,7 @@ export async function GET(req: NextRequest, { params }: { params: { path: string
       }
 
       return null; // confirmed on neither backend
-    }
+    };
 
     const last = params.path[params.path.length - 1] ?? '';
     const isSuffixed = SIZE_SUFFIX_RE.test(last);
