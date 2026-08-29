@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
 import { useState, useMemo, useRef, useEffect, useCallback, FormEvent } from 'react';
-import { Search, ShoppingBag, Menu, User, Heart, ArrowLeft, Camera, Loader2, Clock, Sparkles, ChevronRight, BookOpen, Info, Users, Phone } from 'lucide-react';
+import { Search, ShoppingBag, Menu, User, Heart, ArrowLeft, Camera, Loader2, Clock, Sparkles, ChevronRight, ChevronDown, BookOpen, Info, Users, Phone } from 'lucide-react';
 import { useCart, useCategories } from '@/lib/cart-context';
 import { useAuth } from '@/lib/auth-context';
 import { getCheckoutReturnPath, isCheckoutReturnFromBuyNow, clearCheckoutReturnBuyNowFlag } from '@/lib/checkout-return';
@@ -62,10 +62,6 @@ import {
 
 const navLinks = [
   { href: '/shop', label: 'Shop All' },
-  { href: '/category/silk-sarees', label: 'Silk Sarees' },
-  { href: '/category/cotton-silk', label: 'Cotton Silk' },
-  { href: '/category/cotton-blend', label: 'Cotton Blend' },
-  { href: '/category/mulmul-cotton-saree', label: 'Mulmul Cotton' },
   { href: '/blog', label: 'Blog' },
   { href: '/about', label: 'About Us' },
 ];
@@ -119,6 +115,12 @@ export default function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  // Desktop "Categories" mega-menu — separate from the mobile drawer's
+  // own category list (which has its own open/close via `mobileOpen`),
+  // opened on hover so a shopper never needs to leave the current page
+  // just to see what's in stock across every category, image + live
+  // count included, matching the same categoryStats data the drawer uses.
+  const [categoriesMenuOpen, setCategoriesMenuOpen] = useState(false);
   const searchWrapRef = useRef<HTMLDivElement>(null);
   const mobileSearchInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -698,16 +700,105 @@ export default function Header() {
         </div>
 
         <nav className="hidden items-center gap-7 md:flex">
-          {navLinks.map((l) =>
-            l.href === '/shop' ? (
-              <Link
-                key={l.href}
-                href={l.href}
-                className="rounded-full bg-primary px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary-foreground shadow-sm transition-transform hover:scale-[1.03] active:scale-[0.98]"
-              >
-                {l.label}
-              </Link>
-            ) : (
+          <Link
+            href="/shop"
+            className="rounded-full bg-primary px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary-foreground shadow-sm transition-transform hover:scale-[1.03] active:scale-[0.98]"
+          >
+            Shop All
+          </Link>
+
+          {/* Categories mega-menu — every category that actually has
+              stock, each with a live product+variant count and a real
+              product thumbnail, instead of a handful of hardcoded
+              category links competing for space in this row. Opens on
+              hover; products (and therefore counts/thumbs) are lazily
+              fetched the first time it's opened, same lazy-load the
+              mobile drawer already relies on. */}
+          <div
+            className="relative"
+            onMouseEnter={() => {
+              setCategoriesMenuOpen(true);
+              ensureProductsLoaded();
+            }}
+            onMouseLeave={() => setCategoriesMenuOpen(false)}
+          >
+            <button
+              type="button"
+              className="group relative flex items-center gap-1 py-1 text-sm font-medium tracking-wide text-foreground/75 transition-colors hover:text-primary"
+              aria-expanded={categoriesMenuOpen}
+            >
+              Categories
+              <ChevronDown
+                className={`h-3.5 w-3.5 transition-transform duration-200 ${categoriesMenuOpen ? 'rotate-180' : ''}`}
+              />
+              <span className="absolute -bottom-0.5 left-0 h-0.5 w-0 rounded-full bg-primary transition-all duration-300 ease-out group-hover:w-full" />
+            </button>
+
+            {categoriesMenuOpen && (
+              <div className="absolute left-1/2 top-full z-50 mt-3 w-[640px] -translate-x-1/2 overflow-hidden rounded-2xl border border-border/60 bg-background shadow-2xl">
+                <div className="max-h-[70vh] overflow-y-auto p-4">
+                  {categoriesLoading ? (
+                    <div className="grid grid-cols-3 gap-3">
+                      {[0, 1, 2, 3, 4, 5].map((i) => (
+                        <div key={i} className="h-20 animate-pulse rounded-xl bg-muted/60" />
+                      ))}
+                    </div>
+                  ) : categoriesWithProducts.length > 0 ? (
+                    <div className="grid grid-cols-3 gap-2">
+                      {categoriesWithProducts.map((c) => {
+                        const stats = categoryStats.get(c.name);
+                        const count = stats?.count ?? 0;
+                        const thumb = stats?.thumbs?.[0];
+                        return (
+                          <Link
+                            key={c.slug}
+                            href={`/category/${c.slug}`}
+                            onClick={() => setCategoriesMenuOpen(false)}
+                            className="group/cat flex items-center gap-3 rounded-xl p-2 transition-colors hover:bg-accent"
+                          >
+                            <span className="relative block h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-muted">
+                              {thumb ? (
+                                <Image src={thumb} alt={c.name} fill sizes="56px" className="object-cover" />
+                              ) : (
+                                <span className="flex h-full w-full items-center justify-center text-xs font-semibold text-muted-foreground">
+                                  {c.name.slice(0, 2).toUpperCase()}
+                                </span>
+                              )}
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-semibold text-foreground group-hover/cat:text-primary">
+                                {c.name}
+                              </span>
+                              <span className="block text-xs text-muted-foreground">
+                                {count} {count === 1 ? 'product' : 'products'}
+                              </span>
+                            </span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="px-2 py-6 text-center text-sm text-muted-foreground">
+                      No categories in stock right now.
+                    </p>
+                  )}
+                </div>
+
+                <Link
+                  href="/shop"
+                  onClick={() => setCategoriesMenuOpen(false)}
+                  className="flex items-center justify-center gap-1 border-t border-border/60 bg-muted/30 px-4 py-2.5 text-xs font-semibold uppercase tracking-wider text-primary hover:bg-muted/50"
+                >
+                  View All Categories
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </Link>
+              </div>
+            )}
+          </div>
+
+          {navLinks
+            .filter((l) => l.href !== '/shop')
+            .map((l) => (
               <Link
                 key={l.href}
                 href={l.href}
@@ -716,8 +807,7 @@ export default function Header() {
                 {l.label}
                 <span className="absolute -bottom-0.5 left-0 h-0.5 w-0 rounded-full bg-primary transition-all duration-300 ease-out group-hover:w-full" />
               </Link>
-            )
-          )}
+            ))}
         </nav>
 
         <span className="hidden h-6 w-px shrink-0 bg-border/70 md:block" />
