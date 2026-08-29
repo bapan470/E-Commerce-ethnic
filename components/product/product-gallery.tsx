@@ -409,6 +409,12 @@ function Lightbox({
   const dragRef = useRef<{ startX: number; startY: number; offX: number; offY: number } | null>(null);
   const pinchRef = useRef<{ startDist: number; startScale: number } | null>(null);
   const lastTapRef = useRef(0);
+  // Timestamp of the last zoom toggled by a touch double-tap (see
+  // onTouchStart). onDoubleClick reads this to ignore the native
+  // "dblclick" mouse event mobile browsers synthesize from the same two
+  // taps a few hundred ms later — otherwise that duplicate event undoes
+  // the zoom the touch handler just applied.
+  const lastTouchToggleRef = useRef(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const mountedRef = useRef(false);
 
@@ -546,6 +552,14 @@ function Lightbox({
       const now = Date.now();
       if (now - lastTapRef.current < 280) {
         toggleZoom(e.touches[0].clientX, e.touches[0].clientY, e.currentTarget.getBoundingClientRect());
+        // Mobile browsers also synthesize a native "dblclick" mouse event
+        // from the same two taps, arriving ~300ms *after* this — without
+        // this guard it re-runs toggleZoom a second time and immediately
+        // undoes the zoom-in we just did (zooms in, then snaps back out).
+        // onDoubleClick below checks this timestamp and ignores its own
+        // event if it lands soon after a touch double-tap we already
+        // handled here.
+        lastTouchToggleRef.current = now;
       }
       lastTapRef.current = now;
       if (scale > 1) {
@@ -609,6 +623,11 @@ function Lightbox({
     }
   };
   const onDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Skip if this dblclick is the browser's own synthetic echo of a touch
+    // double-tap we already zoomed for in onTouchStart (see the comment on
+    // lastTouchToggleRef) — real desktop double-clicks are unaffected since
+    // lastTouchToggleRef only ever gets set from a touch event.
+    if (Date.now() - lastTouchToggleRef.current < 600) return;
     toggleZoom(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect());
   };
 
