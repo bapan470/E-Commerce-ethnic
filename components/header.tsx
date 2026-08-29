@@ -735,7 +735,7 @@ export default function Header() {
             </button>
 
             {categoriesMenuOpen && (
-              <div className="absolute left-1/2 top-full z-50 mt-3 w-[640px] -translate-x-1/2 overflow-hidden rounded-2xl border border-border/60 bg-background shadow-2xl">
+              <div className="absolute left-1/2 top-full z-50 mt-3 w-[720px] -translate-x-1/2 overflow-hidden rounded-2xl border border-border/60 bg-background shadow-2xl">
                 <div className="max-h-[70vh] overflow-y-auto p-4">
                   {categoriesLoading ? (
                     <div className="grid grid-cols-3 gap-3">
@@ -754,7 +754,7 @@ export default function Header() {
                             key={c.slug}
                             href={`/category/${c.slug}`}
                             onClick={() => setCategoriesMenuOpen(false)}
-                            className="group/cat flex items-center gap-3 rounded-xl p-2 transition-colors hover:bg-accent"
+                            className="group/cat flex items-start gap-3 rounded-xl p-2 transition-colors hover:bg-accent"
                           >
                             <span className="relative block h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-muted">
                               {thumb ? (
@@ -765,11 +765,11 @@ export default function Header() {
                                 </span>
                               )}
                             </span>
-                            <span className="min-w-0">
-                              <span className="block truncate text-sm font-semibold text-foreground group-hover/cat:text-primary">
+                            <span className="min-w-0 pt-0.5">
+                              <span className="block text-sm font-semibold leading-snug text-foreground group-hover/cat:text-primary">
                                 {c.name}
                               </span>
-                              <span className="block text-xs text-muted-foreground">
+                              <span className="mt-0.5 block text-xs text-muted-foreground">
                                 {count} {count === 1 ? 'product' : 'products'}
                               </span>
                             </span>
