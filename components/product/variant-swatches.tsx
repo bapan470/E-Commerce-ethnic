@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { fetchVariantsForProduct, ProductVariant } from '@/lib/variants-api';
 import { toPublicMediaUrl } from '@/lib/media-url';
@@ -77,6 +77,36 @@ export default function VariantSwatches({
   // would just be noise.
   if (fetchedVariants.length === 0) return null;
 
+  // The strip scrolls horizontally on mobile (see the `overflow-x-auto`
+  // row below) and doesn't wrap. Opening a product straight into a colour
+  // that happens to sit further along the list (e.g. its own SEO page,
+  // or the last colour added) mounted with the strip scrolled all the
+  // way to the left, so the selected swatch's highlighted border was
+  // technically correct but scrolled off-screen -- looked like nothing
+  // was selected at all. Scrolling the active swatch into view whenever
+  // it changes (including on first mount, once the list has loaded) keeps
+  // the highlighted colour actually visible no matter where it falls in
+  // the list.
+  return <VariantSwatchList variants={variants} activeSlug={activeSlug} onSelect={onSelect} preloadReady={preloadReady} />;
+}
+
+function VariantSwatchList({
+  variants,
+  activeSlug,
+  onSelect,
+  preloadReady,
+}: {
+  variants: ProductVariant[];
+  activeSlug?: string;
+  onSelect: (variant: ProductVariant) => void;
+  preloadReady: boolean;
+}) {
+  const activeBtnRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    activeBtnRef.current?.scrollIntoView({ behavior: 'auto', inline: 'center', block: 'nearest' });
+  }, [activeSlug, variants]);
+
   return (
     <div className="min-w-0">
       <p className="mb-2 text-sm font-semibold">
@@ -98,6 +128,7 @@ export default function VariantSwatches({
           return (
             <button
               key={v.id}
+              ref={isActive ? activeBtnRef : undefined}
               type="button"
               onClick={() => onSelect(v)}
               title={v.color}

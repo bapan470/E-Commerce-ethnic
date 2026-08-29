@@ -1,15 +1,20 @@
-Changed file: components/header.tsx
+Changed file: components/product/variant-swatches.tsx
 
-Kya badla:
-- Mobile menu (hamburger drawer) me "Shop by Category" list ab sirf un
-  categories ko dikhati hai jinme kam se kam 1 product hai. Admin me
-  jo categories 0 products wali hain (Blouse, Blouse Pieces, Chanderi
-  Sarees, Dress, Dress Material, etc.) — ab menu me nahi dikhengi.
-- Design bhi naya hai: har category ek chota card hai — bold naam +
-  "X products" count, right side pe us category ke 3 products ki
-  stacked circular photos + arrow, alternate maroon/gold tint
-  background. Product data load hote waqt halka skeleton animation
-  dikhta hai.
+Bug kya tha:
+Product page pe "Colour" swatches ki row mobile pe horizontally
+scrollable hai (wrap nahi hoti). Jab aap kisi aise variant ka link
+seedha khol te the jo list me aage/last me tha (jaise "Navy Blue"),
+to page load hote hi wo highlighted swatch scroll-strip ke right
+side me (screen se bahar) hota tha — code me wo sahi se "selected"
+tha (upar "Colour — Navy Blue" bhi likha aata tha), bas dikh nahi
+raha tha kyunki row scroll hokar uss tak nahi pahunchti thi.
+
+Fix:
+Ab jab bhi active/selected variant badalta hai (page load pe bhi,
+aur switch karne pe bhi), uska swatch automatically horizontal
+scroll strip me center me la kar dikhaya jata hai — chahe wo list
+me pehla ho ya sabse last, hamesha visible + highlighted dikhega.
 
 Apply kaise karein:
-Apne project me components/header.tsx ko is file se replace kar dein.
+Apne project me components/product/variant-swatches.tsx ko is
+file se replace kar dein.
