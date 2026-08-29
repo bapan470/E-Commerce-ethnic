@@ -763,17 +763,26 @@ function ShopContentInner({
     return { ...category, count, thumbs };
   }, [showingSearchHeading, trimmedQuery, categoriesWithProducts, products, filtered.length]);
 
+  // Both the category-circle scroller and the "Shop by Price" chip bar
+  // stay pinned just under the site header while the shopper scrolls the
+  // grid, so switching category/price never requires scrolling back up.
+  // `top-16` matches the header's fixed h-16 height (the announcement bar
+  // above it isn't sticky, so once it scrolls away this sits flush under
+  // the nav); z-40 keeps it below the header's z-50 so nothing overlaps.
+  const hasCategoryRow = !showingSearchHeading && categoriesWithProducts.length > 0;
+
   return (
     <div className="container-boutique py-8 pb-24 md:pb-8">
-      {/* Shop by Category — horizontally scrollable circular thumbnails,
+      <div className="sticky top-16 z-40 -mx-4 border-b border-border/60 bg-background/95 px-4 pb-3 backdrop-blur-sm sm:mx-0 sm:px-0">
+        {/* Shop by Category — horizontally scrollable circular thumbnails,
           only on the plain browsing view (hidden on an active text search,
           where it would just add noise above the actual results). Tapping
           a circle filters the grid below via the same /shop?category=
           param every other "view category" link on the site already uses,
           so it also highlights the active category instead of navigating
           away to a separate page. */}
-      {!showingSearchHeading && categoriesWithProducts.length > 0 && (
-        <div className="no-scrollbar -mx-4 mb-7 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+        {hasCategoryRow && (
+          <div className="no-scrollbar overflow-x-auto pt-3">
           <div className="flex gap-4 sm:gap-5">
             {categoriesWithProducts.map((c) => {
               const isActive = selectedCats.includes(c.name);
@@ -821,10 +830,18 @@ function ShopContentInner({
               );
             })}
           </div>
-        </div>
-      )}
+          </div>
+        )}
 
-      <div className="mb-6">
+        <PriceRangeFilterBar
+          ranges={visiblePriceBuckets}
+          activeId={activePriceBucketId}
+          onSelect={handlePriceBucketSelect}
+          className={hasCategoryRow ? 'mt-4' : 'pt-3'}
+        />
+      </div>
+
+      <div className="mb-6 mt-6">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
           {showingSearchHeading ? 'Search Results' : 'The Collection'}
         </p>
@@ -927,13 +944,6 @@ function ShopContentInner({
             </button>
           ))}
         </div>
-
-        <PriceRangeFilterBar
-          ranges={visiblePriceBuckets}
-          activeId={activePriceBucketId}
-          onSelect={handlePriceBucketSelect}
-          className="mt-4"
-        />
       </div>
 
       <div className="flex gap-8">
