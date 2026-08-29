@@ -697,22 +697,35 @@ export default function Header() {
           </Link>
         </div>
 
-        <nav className="hidden items-center gap-6 md:flex">
-          {navLinks.map((l) => (
-            <Link
-              key={l.href}
-              href={l.href}
-              className="text-sm font-medium text-foreground/80 transition-colors hover:text-primary"
-            >
-              {l.label}
-            </Link>
-          ))}
+        <nav className="hidden items-center gap-7 md:flex">
+          {navLinks.map((l) =>
+            l.href === '/shop' ? (
+              <Link
+                key={l.href}
+                href={l.href}
+                className="rounded-full bg-primary px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary-foreground shadow-sm transition-transform hover:scale-[1.03] active:scale-[0.98]"
+              >
+                {l.label}
+              </Link>
+            ) : (
+              <Link
+                key={l.href}
+                href={l.href}
+                className="group relative py-1 text-sm font-medium tracking-wide text-foreground/75 transition-colors hover:text-primary"
+              >
+                {l.label}
+                <span className="absolute -bottom-0.5 left-0 h-0.5 w-0 rounded-full bg-primary transition-all duration-300 ease-out group-hover:w-full" />
+              </Link>
+            )
+          )}
         </nav>
 
-        <div ref={searchWrapRef} className="relative hidden flex-1 max-w-xs md:block">
+        <span className="hidden h-6 w-px shrink-0 bg-border/70 md:block" />
+
+        <div ref={searchWrapRef} className="relative hidden flex-1 max-w-sm md:block">
           <form onSubmit={onSearch} className="flex items-center">
             <div className="relative w-full">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search sarees, lehenga, kurti..."
                 value={query}
@@ -722,7 +735,7 @@ export default function Header() {
                   setSearchHistory(getSearchHistory());
                   ensureProductsLoaded();
                 }}
-                className="border-border/60 bg-muted/40 pl-9 pr-9"
+                className="rounded-full border-border/60 bg-muted/40 pl-10 pr-9 transition-colors focus-visible:bg-background"
               />
               <button
                 type="button"
@@ -821,7 +834,9 @@ export default function Header() {
           )}
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 md:gap-1.5">
+          <span className="hidden h-6 w-px shrink-0 bg-border/70 md:block md:mr-1" />
+
           <Button
             variant="ghost"
             size="icon"
@@ -835,13 +850,13 @@ export default function Header() {
             <Search className="h-5 w-5" />
           </Button>
 
-          <Button variant="ghost" size="icon" asChild aria-label="Wishlist">
+          <Button variant="ghost" size="icon" asChild aria-label="Wishlist" className="rounded-full transition-colors hover:bg-accent">
             <Link href="/account/wishlist">
               <Heart className="h-5 w-5" />
             </Link>
           </Button>
 
-          <Button variant="ghost" size="icon" asChild aria-label={user ? 'My account' : 'Login'}>
+          <Button variant="ghost" size="icon" asChild aria-label={user ? 'My account' : 'Login'} className="rounded-full transition-colors hover:bg-accent">
             <Link href={user ? '/account' : '/login'}>
               <User className="h-5 w-5" />
             </Link>
@@ -852,7 +867,7 @@ export default function Header() {
             size="icon"
             onClick={() => setCartOpen(true)}
             aria-label="Open cart"
-            className="relative"
+            className="relative rounded-full transition-colors hover:bg-accent"
           >
             <ShoppingBag className="h-5 w-5" />
             {count > 0 && (
