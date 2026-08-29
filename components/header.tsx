@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
 import { useState, useMemo, useRef, useEffect, useCallback, FormEvent } from 'react';
 import { Search, ShoppingBag, Menu, User, Heart, ArrowLeft, Camera, Loader2, Clock, Sparkles, ChevronRight, BookOpen, Info, Users, Phone } from 'lucide-react';
@@ -125,11 +126,40 @@ export default function Header() {
   // On these sub-pages, mobile shows a back arrow (left of the logo)
   // instead of the hamburger menu — matches how shopping apps let you
   // step back to the previous screen instead of opening the full nav.
-  // The drawer itself renders `categories` (every category that actually
-  // has at least one product) as its own "Shop by Category" section
-  // below, and MOBILE_UTILITY_LINKS as its own "More" section — kept as
-  // two separate groups (instead of one flat list) purely for the
-  // premium drawer's visual hierarchy.
+  // The drawer itself renders categories as its own "Shop by Category"
+  // section below, and MOBILE_UTILITY_LINKS as its own "More" section —
+  // kept as two separate groups (instead of one flat list) purely for
+  // the premium drawer's visual hierarchy.
+
+  // Per-category product count + up to 3 representative thumbnails, built
+  // from the lazily-loaded `products` list (see ensureProductsLoaded,
+  // triggered when the drawer opens). `useCategories()` returns every
+  // category row regardless of whether it currently has stock (that's
+  // the admin's full list — see Admin > Categories), so without this the
+  // drawer would list empty categories a shopper could tap into and find
+  // nothing. Filtering here, once, off real product data keeps the
+  // drawer's list honest without needing a separate counts API.
+  const categoryStats = useMemo(() => {
+    const stats = new Map<string, { count: number; thumbs: string[] }>();
+    for (const p of products) {
+      const entry = stats.get(p.category) ?? { count: 0, thumbs: [] as string[] };
+      entry.count += 1;
+      if (entry.thumbs.length < 3 && p.images?.[0]) entry.thumbs.push(p.images[0]);
+      stats.set(p.category, entry);
+    }
+    return stats;
+  }, [products]);
+
+  const categoriesWithProducts = useMemo(
+    () => categories.filter((c) => (categoryStats.get(c.name)?.count ?? 0) > 0),
+    [categories, categoryStats]
+  );
+
+  // Product data (and therefore real counts) only exists once
+  // ensureProductsLoaded has resolved. Until then the drawer shows a
+  // short skeleton instead of either an empty flash or every category
+  // (including ones with zero stock) while loading.
+  const categoriesLoading = !productsLoadedRef.current;
 
   const showBackButton =
     pathname === '/shop' ||
@@ -548,33 +578,73 @@ export default function Header() {
                   <ChevronRight className="h-4 w-4 opacity-70" />
                 </Link>
 
-                {/* Categories — every category that actually has at least
-                    one product (from useCategories()), grouped under its
-                    own labelled section instead of sitting in one long
-                    undifferentiated list. */}
-                {categories.length > 0 && (
+                {/* Categories — only ones that actually have stock right
+                    now (zero-product categories are filtered out, see
+                    categoriesWithProducts above), shown as a small card
+                    per category with its live product count and a stack
+                    of real product thumbnails, instead of a plain text
+                    row — easier to scan and immediately shows how much
+                    is actually in each category. */}
+                {categoriesLoading ? (
                   <div className="mb-5">
-                    <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-secondary">
+                    <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-secondary">
                       Shop by Category
                     </p>
-                    <nav className="flex flex-col divide-y divide-border/50">
-                      {categories.map((c) => (
-                        <Link
-                          key={c.slug}
-                          href={`/category/${c.slug}`}
-                          onClick={() => setMobileOpen(false)}
-                          className="group flex items-center justify-between rounded-lg px-2 py-3 text-sm text-foreground/80 transition-colors hover:bg-accent hover:text-primary"
-                        >
-                          <span className="flex items-center gap-2.5">
-                            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-secondary/70 transition-colors group-hover:bg-primary" />
-                            {c.name}
-                          </span>
-                          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-                        </Link>
+                    <div className="flex flex-col gap-2">
+                      {[0, 1, 2].map((i) => (
+                        <div key={i} className="h-14 animate-pulse rounded-2xl bg-muted/60" />
                       ))}
+                    </div>
+                  </div>
+                ) : categoriesWithProducts.length > 0 ? (
+                  <div className="mb-5">
+                    <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-secondary">
+                      Shop by Category
+                    </p>
+                    <nav className="flex flex-col gap-2">
+                      {categoriesWithProducts.map((c, idx) => {
+                        const stats = categoryStats.get(c.name);
+                        const count = stats?.count ?? 0;
+                        const thumbs = stats?.thumbs ?? [];
+                        return (
+                          <Link
+                            key={c.slug}
+                            href={`/category/${c.slug}`}
+                            onClick={() => setMobileOpen(false)}
+                            className={`group flex items-center justify-between gap-3 rounded-2xl px-3 py-2.5 transition-colors hover:bg-accent ${
+                              idx % 2 === 0 ? 'bg-primary/5' : 'bg-secondary/10'
+                            }`}
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-semibold text-foreground">
+                                {c.name}
+                              </span>
+                              <span className="block text-xs text-muted-foreground">
+                                {count} {count === 1 ? 'product' : 'products'}
+                              </span>
+                            </span>
+                            <span className="flex shrink-0 items-center gap-2">
+                              {thumbs.length > 0 && (
+                                <span className="flex items-center -space-x-2.5">
+                                  {thumbs.map((src, i) => (
+                                    <span
+                                      key={i}
+                                      className="relative h-8 w-8 overflow-hidden rounded-full border-2 border-background shadow-sm"
+                                      style={{ zIndex: thumbs.length - i }}
+                                    >
+                                      <Image src={src} alt="" fill sizes="32px" className="object-cover" />
+                                    </span>
+                                  ))}
+                                </span>
+                              )}
+                              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                            </span>
+                          </Link>
+                        );
+                      })}
                     </nav>
                   </div>
-                )}
+                ) : null}
 
                 {/* More — account/info links */}
                 <div>
