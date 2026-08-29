@@ -418,6 +418,44 @@ function Lightbox({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const mountedRef = useRef(false);
 
+  // --- Swipe-down-to-close ---------------------------------------------
+  // Only active while NOT zoomed in (scale === 1) — a vertical drag while
+  // zoomed already means "pan the photo" (dragRef above), and touch-action
+  // is pan-x at scale 1 so the browser leaves vertical drags to us instead
+  // of trying to scroll/zoom the page with them. A downward drag past the
+  // threshold slides the whole viewer down (revealing the product page
+  // underneath, since this overlay is the only thing moving) and closes;
+  // a short drag eases back into place. Same direct-DOM + rAF pattern as
+  // the pinch/pan transform above, for the same reason: a full React
+  // re-render per touchmove is what made gestures feel sluggish before.
+  const [pullY, setPullY] = useState(0);
+  const [pulling, setPulling] = useState(false);
+  const pullRef = useRef<{ startX: number; startY: number; locked: 'x' | 'y' | null } | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const pullRafRef = useRef<number | null>(null);
+  const pendingPullRef = useRef<number | null>(null);
+  const PULL_DISMISS_PX = 110;
+  const PULL_CLOSE_ANIM_MS = 220;
+
+  useEffect(
+    () => () => {
+      if (pullRafRef.current != null) cancelAnimationFrame(pullRafRef.current);
+    },
+    []
+  );
+
+  const applyPull = (y: number) => {
+    pendingPullRef.current = y;
+    if (rootRef.current) rootRef.current.style.transform = `translateY(${y}px)`;
+    if (pullRafRef.current == null) {
+      pullRafRef.current = requestAnimationFrame(() => {
+        pullRafRef.current = null;
+        if (pendingPullRef.current != null) setPullY(pendingPullRef.current);
+      });
+    }
+  };
+
+
   // --- Smooth transform pipeline -------------------------------------
   // Pinching/dragging fires touchmove far faster than React can usefully
   // re-render (a full re-render walks the whole lightbox tree: thumbnail
@@ -565,10 +603,15 @@ function Lightbox({
       if (scale > 1) {
         setIsGesturing(true);
         dragRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, offX: offset.x, offY: offset.y };
+      } else {
+        // Not zoomed — this finger-down might turn into a photo swipe
+        // (handled natively) or a downward pull-to-close (handled below);
+        // which one is decided once the finger has actually moved.
+        pullRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, locked: null };
       }
-      // At scale 1 a single finger is left alone entirely — the browser's
-      // native scroll (touch-action: pan-x below) handles it, same as the
-      // main gallery stage.
+      // At scale 1 a single finger is otherwise left alone — the browser's
+      // native scroll (touch-action: pan-x below) handles a horizontal
+      // swipe, same as the main gallery stage.
     }
   };
 
@@ -583,6 +626,18 @@ function Lightbox({
         x: dragRef.current.offX + (e.touches[0].clientX - dragRef.current.startX),
         y: dragRef.current.offY + (e.touches[0].clientY - dragRef.current.startY),
       });
+    } else if (e.touches.length === 1 && pullRef.current) {
+      const dx = e.touches[0].clientX - pullRef.current.startX;
+      const dy = e.touches[0].clientY - pullRef.current.startY;
+      if (pullRef.current.locked === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+        pullRef.current.locked = dy > Math.abs(dx) && dy > 0 ? 'y' : 'x';
+      }
+      if (pullRef.current.locked === 'y') {
+        setPulling(true);
+        applyPull(dy * 0.8); // slight resistance so it doesn't feel too twitchy
+      }
+      // locked === 'x': a genuine photo swipe — leave it to the browser's
+      // native horizontal pan, same as before.
     }
   };
 
@@ -594,7 +649,24 @@ function Lightbox({
       setIsGesturing(false);
       if (getCurrent().scale < 1.05) resetZoom();
     }
+    if (pullRef.current) {
+      const wasPulling = pullRef.current.locked === 'y';
+      pullRef.current = null;
+      if (wasPulling) {
+        const finalY = pendingPullRef.current ?? pullY;
+        setPulling(false);
+        if (finalY > PULL_DISMISS_PX) {
+          // Let it keep sliding off-screen (same easing as the snap-back,
+          // just further) instead of a hard cut, then actually close.
+          setPullY(typeof window !== 'undefined' ? window.innerHeight : 800);
+          window.setTimeout(onClose, PULL_CLOSE_ANIM_MS);
+        } else {
+          setPullY(0);
+        }
+      }
+    }
   };
+
 
   const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -632,7 +704,11 @@ function Lightbox({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-black/95">
+    <div
+      ref={rootRef}
+      className={cn('fixed inset-0 z-50 flex flex-col bg-black/95', !pulling && 'transition-transform ease-out')}
+      style={{ transform: `translateY(${pullY}px)`, transitionDuration: pullY > PULL_DISMISS_PX ? `${PULL_CLOSE_ANIM_MS}ms` : '200ms' }}
+    >
       <div className="flex items-center justify-between p-4 text-white">
         <span className="text-sm font-medium">
           {active + 1} / {images.length}
