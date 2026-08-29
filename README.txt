@@ -1,13 +1,17 @@
-Changed file: components/header.tsx
+Changed file: app/shop/shop-content.tsx
 
-Kya badla:
-- Mobile hamburger menu (Sheet drawer) ab premium look me hai:
-  - Maroon header band + brand tagline
-  - Rounded search bar
-  - "Shop All" alag highlighted CTA button
-  - Categories apna "SHOP BY CATEGORY" section me, dot + hover arrow
-  - "MORE" section me Blog/About/Account/Reseller/Contact icons ke saath
-  - Bottom "Free Shipping Above ₹999" strip
+Kya add kiya:
+- /shop page ke top pe ek horizontally-scrollable circular category strip
+  add ki gayi (screenshot jaisa) — har category ka thumbnail (us category
+  ke pehle product ki photo) + niche naam.
+- Tap karne pe wahi category /shop page pe hi filter ho jati hai
+  (?category=... param), current selected category ka circle maroon
+  border se highlight hota hai. Dubara tap karne se filter clear ho
+  jata hai.
+- Text search (/search) page par yeh strip nahi dikhti, sirf plain
+  /shop browsing par.
+- Sirf un categories ke circles dikhte hain jinme kam se kam 1 product
+  hai (khaali category kabhi nahi dikhegi).
 
 Apply kaise karein:
-Apne project me components/header.tsx ko is file se replace kar dein.
+Apne project me app/shop/shop-content.tsx ko is file se replace kar dein.

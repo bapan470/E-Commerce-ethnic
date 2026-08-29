@@ -260,6 +260,18 @@ function ShopContentInner({
     return categories.filter((c) => namesWithProducts.has(c.name));
   }, [categories, products]);
 
+  // One representative photo per category (first product's first image),
+  // used only for the circular "shop by category" scroller at the top of
+  // the page -- purely decorative, so a missing image just falls back to
+  // an initials avatar instead of breaking anything.
+  const categoryThumbs = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const p of products) {
+      if (!map[p.category] && p.images?.[0]) map[p.category] = p.images[0];
+    }
+    return map;
+  }, [products]);
+
   useEffect(() => {
     const c = params.get('category') || '';
     setSelectedCats(c ? [c] : []);
@@ -753,6 +765,65 @@ function ShopContentInner({
 
   return (
     <div className="container-boutique py-8 pb-24 md:pb-8">
+      {/* Shop by Category — horizontally scrollable circular thumbnails,
+          only on the plain browsing view (hidden on an active text search,
+          where it would just add noise above the actual results). Tapping
+          a circle filters the grid below via the same /shop?category=
+          param every other "view category" link on the site already uses,
+          so it also highlights the active category instead of navigating
+          away to a separate page. */}
+      {!showingSearchHeading && categoriesWithProducts.length > 0 && (
+        <div className="no-scrollbar -mx-4 mb-7 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+          <div className="flex gap-4 sm:gap-5">
+            {categoriesWithProducts.map((c) => {
+              const isActive = selectedCats.includes(c.name);
+              return (
+                <Link
+                  key={c.id}
+                  href={
+                    isActive
+                      ? '/shop'
+                      : `/shop?category=${encodeURIComponent(c.name)}`
+                  }
+                  className="flex w-16 shrink-0 flex-col items-center gap-1.5 text-center sm:w-20"
+                >
+                  <span
+                    className={`relative block h-16 w-16 shrink-0 overflow-hidden rounded-full border-2 shadow-sm transition-colors sm:h-20 sm:w-20 ${
+                      isActive
+                        ? 'border-primary'
+                        : 'border-background ring-1 ring-border'
+                    }`}
+                  >
+                    {categoryThumbs[c.name] ? (
+                      <Image
+                        src={categoryThumbs[c.name]}
+                        alt={c.name}
+                        fill
+                        sizes="80px"
+                        className="object-cover"
+                        placeholder="blur"
+                        blurDataURL={blurDataURL()}
+                      />
+                    ) : (
+                      <span className="flex h-full w-full items-center justify-center bg-muted text-xs font-semibold text-muted-foreground">
+                        {c.name.slice(0, 2).toUpperCase()}
+                      </span>
+                    )}
+                  </span>
+                  <span
+                    className={`line-clamp-2 text-[11px] font-medium leading-tight ${
+                      isActive ? 'text-primary' : 'text-foreground/75'
+                    }`}
+                  >
+                    {c.name}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="mb-6">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
           {showingSearchHeading ? 'Search Results' : 'The Collection'}
