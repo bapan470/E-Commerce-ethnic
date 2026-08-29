@@ -1,20 +1,20 @@
-Changed file: components/product/variant-swatches.tsx
+Changed file: components/header.tsx
 
-Bug kya tha:
-Product page pe "Colour" swatches ki row mobile pe horizontally
-scrollable hai (wrap nahi hoti). Jab aap kisi aise variant ka link
-seedha khol te the jo list me aage/last me tha (jaise "Navy Blue"),
-to page load hote hi wo highlighted swatch scroll-strip ke right
-side me (screen se bahar) hota tha — code me wo sahi se "selected"
-tha (upar "Colour — Navy Blue" bhi likha aata tha), bas dikh nahi
-raha tha kyunki row scroll hokar uss tak nahi pahunchti thi.
+Kya badla:
 
-Fix:
-Ab jab bhi active/selected variant badalta hai (page load pe bhi,
-aur switch karne pe bhi), uska swatch automatically horizontal
-scroll strip me center me la kar dikhaya jata hai — chahe wo list
-me pehla ho ya sabse last, hamesha visible + highlighted dikhega.
+1) Mobile menu drawer ab "Shop by Category" list ke baad seedha
+   sirf "✦ FREE SHIPPING ABOVE ₹999 ✦" footer pe khatam hoti hai.
+   Beech ka "More" section (Blog / About Us / My Account / Reseller /
+   Contact Us) hata diya gaya hai — ye sab pages waise bhi header ke
+   top icons (account/wishlist/cart) aur site footer se already
+   accessible hain, sirf drawer ko clean/minimal banaya.
+
+2) Har category ke saamne jo product count dikhta hai, ab usme
+   color variations bhi count hoti hain — jaise agar "Cotton Blend"
+   me 19 base products hain lekin unme se kuch ke 2-3 alag colours
+   bhi hain, to ab count utni hi dikhegi jitni actually category
+   page khol ke dekhne pe cards dikhte hain (pehle sirf base product
+   count dikhta tha, colours count nahi hote the).
 
 Apply kaise karein:
-Apne project me components/product/variant-swatches.tsx ko is
-file se replace kar dein.
+Apne project me components/header.tsx ko is file se replace kar dein.

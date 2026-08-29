@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
 import { useState, useMemo, useRef, useEffect, useCallback, FormEvent } from 'react';
-import { Search, ShoppingBag, Menu, User, Heart, ArrowLeft, Camera, Loader2, Clock, Sparkles, ChevronRight, BookOpen, Info, Users, Phone } from 'lucide-react';
+import { Search, ShoppingBag, Menu, User, Heart, ArrowLeft, Camera, Loader2, Clock, Sparkles, ChevronRight } from 'lucide-react';
 import { useCart, useCategories } from '@/lib/cart-context';
 import { useAuth } from '@/lib/auth-context';
 import { getCheckoutReturnPath, isCheckoutReturnFromBuyNow, clearCheckoutReturnBuyNowFlag } from '@/lib/checkout-return';
@@ -50,6 +50,7 @@ function bumpTokenPrefs(text: string) {
   } catch { /* localStorage unavailable — preference personalisation just no-ops */ }
 }
 import { fetchProducts } from '@/lib/products-api';
+import { expandProductVariants } from '@/lib/expand-product-variants';
 import { Product } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -69,16 +70,11 @@ const navLinks = [
   { href: '/about', label: 'About Us' },
 ];
 
-// Mobile drawer "More" section — account/info links that sit below the
-// category list, each with a small icon so the premium drawer doesn't
-// degrade back into an undifferentiated wall of plain text links.
-const MOBILE_UTILITY_LINKS = [
-  { href: '/blog', label: 'Blog', icon: BookOpen },
-  { href: '/about', label: 'About Us', icon: Info },
-  { href: '/account', label: 'My Account', icon: User },
-  { href: '/account/reseller', label: 'Become a Reseller', icon: Users },
-  { href: '/contact', label: 'Contact Us', icon: Phone },
-];
+// Mobile drawer no longer shows a separate "More" section (Blog/About/
+// Account/Reseller/Contact) below the category list — those stay
+// reachable via the header's own icons and the site-wide footer, so the
+// drawer itself ends cleanly right after "Shop by Category" + the free
+// shipping strip, per the boutique's preferred minimal drawer.
 
 export default function Header() {
   const { count, setCartOpen, addItem, buyNowItem, clearBuyNow } = useCart();
@@ -127,9 +123,8 @@ export default function Header() {
   // instead of the hamburger menu — matches how shopping apps let you
   // step back to the previous screen instead of opening the full nav.
   // The drawer itself renders categories as its own "Shop by Category"
-  // section below, and MOBILE_UTILITY_LINKS as its own "More" section —
-  // kept as two separate groups (instead of one flat list) purely for
-  // the premium drawer's visual hierarchy.
+  // section, ending in the free-shipping footer strip — kept minimal on
+  // purpose (see MOBILE_UTILITY_LINKS removal note above).
 
   // Per-category product count + up to 3 representative thumbnails, built
   // from the lazily-loaded `products` list (see ensureProductsLoaded,
@@ -139,9 +134,17 @@ export default function Header() {
   // drawer would list empty categories a shopper could tap into and find
   // nothing. Filtering here, once, off real product data keeps the
   // drawer's list honest without needing a separate counts API.
+  //
+  // Counts run over expandProductVariants(products) — the same "one card
+  // per colour" expansion the shop/category grids render — so a product
+  // with 4 colours counts as 4 here too, matching what the shopper
+  // actually sees once they tap into the category, instead of the base
+  // product-row count (which undercounts any category with multi-colour
+  // listings).
   const categoryStats = useMemo(() => {
     const stats = new Map<string, { count: number; thumbs: string[] }>();
-    for (const p of products) {
+    const expanded = expandProductVariants(products);
+    for (const p of expanded) {
       const entry = stats.get(p.category) ?? { count: 0, thumbs: [] as string[] };
       entry.count += 1;
       if (entry.thumbs.length < 3 && p.images?.[0]) entry.thumbs.push(p.images[0]);
@@ -645,29 +648,13 @@ export default function Header() {
                     </nav>
                   </div>
                 ) : null}
-
-                {/* More — account/info links */}
-                <div>
-                  <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-secondary">
-                    More
-                  </p>
-                  <nav className="flex flex-col">
-                    {MOBILE_UTILITY_LINKS.map((l) => (
-                      <Link
-                        key={l.href}
-                        href={l.href}
-                        onClick={() => setMobileOpen(false)}
-                        className="flex items-center gap-2.5 rounded-lg px-2 py-3 text-sm text-foreground/80 transition-colors hover:bg-accent hover:text-primary"
-                      >
-                        <l.icon className="h-4 w-4 text-muted-foreground" />
-                        {l.label}
-                      </Link>
-                    ))}
-                  </nav>
-                </div>
               </div>
 
-              {/* Footer strip */}
+              {/* Footer strip — only line at the very bottom of the drawer,
+                  intentionally kept to just this (no extra account/info
+                  links here — those live in the header icons and the
+                  site footer instead) so the drawer ends on a clean,
+                  uncluttered note. */}
               <div className="border-t border-border/60 px-4 py-3">
                 <p className="text-center text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
                   ✦ Free Shipping Above ₹999 ✦
