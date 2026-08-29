@@ -393,15 +393,83 @@ function Lightbox({
 }) {
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
+  // True only while a finger/mouse is actively pinching or dragging the
+  // photo. Drives whether the snap-back CSS transition is on: off during a
+  // live gesture (so the photo tracks the finger with zero added lag), on
+  // the instant the gesture ends (so letting go eases back/settles instead
+  // of a hard jump). This is purely visual — it doesn't gate any logic.
+  const [isGesturing, setIsGesturing] = useState(false);
   const dragRef = useRef<{ startX: number; startY: number; offX: number; offY: number } | null>(null);
   const pinchRef = useRef<{ startDist: number; startScale: number } | null>(null);
   const lastTapRef = useRef(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const mountedRef = useRef(false);
 
+  // --- Smooth transform pipeline -------------------------------------
+  // Pinching/dragging fires touchmove far faster than React can usefully
+  // re-render (a full re-render walks the whole lightbox tree: thumbnail
+  // strip, arrows, every slide). That mismatch is what made zoom feel
+  // laggy/stuttery on mobile. Instead, every move writes the transform
+  // straight onto the active slide's DOM node (zero-lag, exactly what the
+  // finger is doing right now), and only mirrors that into React state
+  // once per animation frame — capped at the screen's own refresh rate, so
+  // React work never falls behind the gesture or does redundant renders.
+  const activeImgRef = useRef<HTMLDivElement | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const pendingRef = useRef<{ scale: number; x: number; y: number } | null>(null);
+
+  useEffect(
+    () => () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    },
+    []
+  );
+
+  // Reads the most current transform even mid-gesture (pendingRef), falling
+  // back to committed React state between gestures — avoids ever computing
+  // the next frame from a value that's already one frame stale.
+  const getCurrent = useCallback(
+    () => pendingRef.current ?? { scale, x: offset.x, y: offset.y },
+    [scale, offset]
+  );
+
+  // Keeps a zoomed-in photo from being dragged completely off screen.
+  const clampOffset = useCallback((x: number, y: number, s: number) => {
+    const el = scrollRef.current;
+    if (!el || s <= 1) return { x: 0, y: 0 };
+    const maxX = (el.clientWidth * (s - 1)) / 2;
+    const maxY = (el.clientHeight * (s - 1)) / 2;
+    return { x: Math.min(maxX, Math.max(-maxX, x)), y: Math.min(maxY, Math.max(-maxY, y)) };
+  }, []);
+
+  const applyTransform = useCallback(
+    (next: { scale: number; x: number; y: number }) => {
+      const clamped = clampOffset(next.x, next.y, next.scale);
+      const final = { scale: next.scale, ...clamped };
+      pendingRef.current = final;
+      if (activeImgRef.current) {
+        activeImgRef.current.style.transform = `translate(${final.x}px, ${final.y}px) scale(${final.scale})`;
+      }
+      if (rafRef.current == null) {
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = null;
+          const p = pendingRef.current;
+          if (p) {
+            setScale(p.scale);
+            setOffset({ x: p.x, y: p.y });
+          }
+        });
+      }
+    },
+    [clampOffset]
+  );
+
   const resetZoom = () => {
+    setIsGesturing(false);
+    pendingRef.current = null;
     setScale(1);
     setOffset({ x: 0, y: 0 });
+    if (activeImgRef.current) activeImgRef.current.style.transform = '';
   };
 
   // Same fix as the main stage: preload the photo on either side so
@@ -450,8 +518,11 @@ function Lightbox({
       resetZoom();
       return;
     }
-    setScale(2.5);
-    setOffset({
+    // Not part of a live drag/pinch, so leave isGesturing false — the
+    // snap-to-2.5x below eases in via the CSS transition instead of
+    // popping straight to full zoom.
+    applyTransform({
+      scale: 2.5,
       x: (rect.width / 2 - (clientX - rect.left)) * 1.5,
       y: (rect.height / 2 - (clientY - rect.top)) * 1.5,
     });
@@ -462,6 +533,7 @@ function Lightbox({
 
   const onTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
     if (e.touches.length === 2) {
+      setIsGesturing(true);
       pinchRef.current = { startDist: distance(e.touches), startScale: scale };
     } else if (e.touches.length === 1) {
       const now = Date.now();
@@ -470,6 +542,7 @@ function Lightbox({
       }
       lastTapRef.current = now;
       if (scale > 1) {
+        setIsGesturing(true);
         dragRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, offX: offset.x, offY: offset.y };
       }
       // At scale 1 a single finger is left alone entirely — the browser's
@@ -480,10 +553,12 @@ function Lightbox({
 
   const onTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
     if (e.touches.length === 2 && pinchRef.current) {
-      const next = (distance(e.touches) / pinchRef.current.startDist) * pinchRef.current.startScale;
-      setScale(Math.min(4, Math.max(1, next)));
+      const cur = getCurrent();
+      const next = Math.min(4, Math.max(1, (distance(e.touches) / pinchRef.current.startDist) * pinchRef.current.startScale));
+      applyTransform({ scale: next, x: cur.x, y: cur.y });
     } else if (e.touches.length === 1 && dragRef.current) {
-      setOffset({
+      applyTransform({
+        scale: getCurrent().scale,
         x: dragRef.current.offX + (e.touches[0].clientX - dragRef.current.startX),
         y: dragRef.current.offY + (e.touches[0].clientY - dragRef.current.startY),
       });
@@ -491,31 +566,40 @@ function Lightbox({
   };
 
   const onTouchEnd = () => {
+    const wasGesture = pinchRef.current != null || dragRef.current != null;
     pinchRef.current = null;
-    if (dragRef.current) {
-      dragRef.current = null;
-      if (scale < 1.05) resetZoom();
+    dragRef.current = null;
+    if (wasGesture) {
+      setIsGesturing(false);
+      if (getCurrent().scale < 1.05) resetZoom();
     }
   };
 
   const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
-    setScale((s) => Math.min(4, Math.max(1, s - e.deltaY * 0.01)));
+    const cur = getCurrent();
+    const next = Math.min(4, Math.max(1, cur.scale - e.deltaY * 0.01));
+    applyTransform({ scale: next, x: cur.x, y: cur.y });
   };
 
   const onMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if (scale <= 1) return;
+    setIsGesturing(true);
     dragRef.current = { startX: e.clientX, startY: e.clientY, offX: offset.x, offY: offset.y };
   };
   const onMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!dragRef.current) return;
-    setOffset({
+    applyTransform({
+      scale: getCurrent().scale,
       x: dragRef.current.offX + (e.clientX - dragRef.current.startX),
       y: dragRef.current.offY + (e.clientY - dragRef.current.startY),
     });
   };
   const onMouseUp = () => {
-    dragRef.current = null;
+    if (dragRef.current) {
+      dragRef.current = null;
+      setIsGesturing(false);
+    }
   };
   const onDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     toggleZoom(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect());
@@ -559,10 +643,22 @@ function Lightbox({
             {images.map((img, idx) => (
               <div key={`${idx}-${img}`} className="relative h-full w-full shrink-0 snap-start snap-always overflow-hidden">
                 <div
-                  className="absolute inset-0"
+                  ref={idx === active ? activeImgRef : undefined}
+                  className={cn(
+                    'absolute inset-0',
+                    // No transition while actively pinching/dragging — the
+                    // photo must track the finger with zero added lag. The
+                    // moment the gesture ends (double-tap zoom-in, release,
+                    // snap-back-to-1x), this eases it instead of a hard cut.
+                    idx === active && !isGesturing && 'transition-transform duration-200 ease-out'
+                  )}
                   style={
                     idx === active
-                      ? { transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`, cursor: scale > 1 ? 'grab' : 'zoom-in' }
+                      ? {
+                          transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+                          cursor: scale > 1 ? 'grab' : 'zoom-in',
+                          willChange: 'transform',
+                        }
                       : undefined
                   }
                 >
