@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { useState, useMemo, useRef, useEffect, useCallback, FormEvent } from 'react';
-import { Search, ShoppingBag, Menu, User, Heart, ArrowLeft, Camera, Loader2, Clock } from 'lucide-react';
+import { Search, ShoppingBag, Menu, User, Heart, ArrowLeft, Camera, Loader2, Clock, Sparkles, ChevronRight, BookOpen, Info, Users, Phone } from 'lucide-react';
 import { useCart, useCategories } from '@/lib/cart-context';
 import { useAuth } from '@/lib/auth-context';
 import { getCheckoutReturnPath, isCheckoutReturnFromBuyNow, clearCheckoutReturnBuyNowFlag } from '@/lib/checkout-return';
@@ -68,6 +68,17 @@ const navLinks = [
   { href: '/about', label: 'About Us' },
 ];
 
+// Mobile drawer "More" section — account/info links that sit below the
+// category list, each with a small icon so the premium drawer doesn't
+// degrade back into an undifferentiated wall of plain text links.
+const MOBILE_UTILITY_LINKS = [
+  { href: '/blog', label: 'Blog', icon: BookOpen },
+  { href: '/about', label: 'About Us', icon: Info },
+  { href: '/account', label: 'My Account', icon: User },
+  { href: '/account/reseller', label: 'Become a Reseller', icon: Users },
+  { href: '/contact', label: 'Contact Us', icon: Phone },
+];
+
 export default function Header() {
   const { count, setCartOpen, addItem, buyNowItem, clearBuyNow } = useCart();
   const { categories } = useCategories();
@@ -114,26 +125,11 @@ export default function Header() {
   // On these sub-pages, mobile shows a back arrow (left of the logo)
   // instead of the hamburger menu — matches how shopping apps let you
   // step back to the previous screen instead of opening the full nav.
-  // Mobile menu shows every category that actually has at least one
-  // product (unlike the desktop nav, which keeps a fixed shortlist),
-  // plus links to account management, reseller sign-up, and contact us.
-  const mobileNavLinks = useMemo(() => {
-    const categoryLinks = categories
-      .map((c) => ({
-        href: `/category/${c.slug}`,
-        label: c.name,
-      }));
-
-    return [
-      { href: '/shop', label: 'Shop All' },
-      ...categoryLinks,
-      { href: '/blog', label: 'Blog' },
-      { href: '/about', label: 'About Us' },
-      { href: '/account', label: 'My Account' },
-      { href: '/account/reseller', label: 'Reseller' },
-      { href: '/contact', label: 'Contact Us' },
-    ];
-  }, [categories]);
+  // The drawer itself renders `categories` (every category that actually
+  // has at least one product) as its own "Shop by Category" section
+  // below, and MOBILE_UTILITY_LINKS as its own "More" section — kept as
+  // two separate groups (instead of one flat list) purely for the
+  // premium drawer's visual hierarchy.
 
   const showBackButton =
     pathname === '/shop' ||
@@ -487,30 +483,38 @@ export default function Header() {
             </SheetTrigger>
             <SheetContent
               side="left"
-              className="w-72 bg-background"
+              className="flex w-[300px] flex-col gap-0 bg-background p-0 sm:max-w-sm"
               onOpenAutoFocus={(e) => e.preventDefault()}
             >
-              <div className="flex h-full flex-col gap-6 pt-8">
+              {/* Drawer header — brand + tagline, on the maroon brand colour
+                  so the premium drawer reads as a boutique, not a generic
+                  admin-style side panel. */}
+              <div className="flex flex-col items-center gap-1 bg-primary px-5 pb-5 pt-8">
                 <Link
                   href="/"
                   onClick={() => setMobileOpen(false)}
                   className="flex items-center gap-0"
                 >
-                  <span className="font-serif text-2xl font-bold text-primary">Aruhi</span>
-                  <span className="font-serif text-2xl font-bold text-secondary">
-                    Handlooms
-                  </span>
+                  <span className="font-serif text-2xl font-bold text-primary-foreground">Aruhi</span>
+                  <span className="font-serif text-2xl font-bold text-secondary">Handlooms</span>
                 </Link>
+                <span className="text-[10px] font-medium uppercase tracking-[0.25em] text-primary-foreground/70">
+                  Where Craft Meets Culture
+                </span>
+              </div>
+
+              {/* Search */}
+              <div className="border-b border-border/60 px-4 py-4">
                 <form onSubmit={onSearch} className="flex gap-2">
-                  <Input
-                    placeholder="Search sarees..."
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    className="bg-muted"
-                  />
-                  <Button type="submit" size="icon" aria-label="Search">
-                    <Search className="h-4 w-4" />
-                  </Button>
+                  <div className="relative flex-1">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Search sarees..."
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      className="rounded-full border-border/60 bg-muted/50 pl-9"
+                    />
+                  </div>
                   <Button
                     type="button"
                     size="icon"
@@ -518,6 +522,7 @@ export default function Header() {
                     aria-label="Search by image"
                     onClick={triggerImageSearch}
                     disabled={imageSearching}
+                    className="shrink-0 rounded-full"
                   >
                     {imageSearching ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -526,18 +531,77 @@ export default function Header() {
                     )}
                   </Button>
                 </form>
-                <nav className="flex flex-col gap-1">
-                  {mobileNavLinks.map((l) => (
-                    <Link
-                      key={l.href}
-                      href={l.href}
-                      onClick={() => setMobileOpen(false)}
-                      className="rounded-md px-3 py-2 text-sm font-medium text-foreground/80 transition-colors hover:bg-accent hover:text-accent-foreground"
-                    >
-                      {l.label}
-                    </Link>
-                  ))}
-                </nav>
+              </div>
+
+              {/* Scrollable nav content */}
+              <div className="flex-1 overflow-y-auto px-4 py-4">
+                {/* Shop All — prominent CTA, not just another link in the list */}
+                <Link
+                  href="/shop"
+                  onClick={() => setMobileOpen(false)}
+                  className="mb-5 flex items-center justify-between rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition-transform active:scale-[0.98]"
+                >
+                  <span className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-secondary" />
+                    Shop All
+                  </span>
+                  <ChevronRight className="h-4 w-4 opacity-70" />
+                </Link>
+
+                {/* Categories — every category that actually has at least
+                    one product (from useCategories()), grouped under its
+                    own labelled section instead of sitting in one long
+                    undifferentiated list. */}
+                {categories.length > 0 && (
+                  <div className="mb-5">
+                    <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-secondary">
+                      Shop by Category
+                    </p>
+                    <nav className="flex flex-col divide-y divide-border/50">
+                      {categories.map((c) => (
+                        <Link
+                          key={c.slug}
+                          href={`/category/${c.slug}`}
+                          onClick={() => setMobileOpen(false)}
+                          className="group flex items-center justify-between rounded-lg px-2 py-3 text-sm text-foreground/80 transition-colors hover:bg-accent hover:text-primary"
+                        >
+                          <span className="flex items-center gap-2.5">
+                            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-secondary/70 transition-colors group-hover:bg-primary" />
+                            {c.name}
+                          </span>
+                          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                        </Link>
+                      ))}
+                    </nav>
+                  </div>
+                )}
+
+                {/* More — account/info links */}
+                <div>
+                  <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-[0.15em] text-secondary">
+                    More
+                  </p>
+                  <nav className="flex flex-col">
+                    {MOBILE_UTILITY_LINKS.map((l) => (
+                      <Link
+                        key={l.href}
+                        href={l.href}
+                        onClick={() => setMobileOpen(false)}
+                        className="flex items-center gap-2.5 rounded-lg px-2 py-3 text-sm text-foreground/80 transition-colors hover:bg-accent hover:text-primary"
+                      >
+                        <l.icon className="h-4 w-4 text-muted-foreground" />
+                        {l.label}
+                      </Link>
+                    ))}
+                  </nav>
+                </div>
+              </div>
+
+              {/* Footer strip */}
+              <div className="border-t border-border/60 px-4 py-3">
+                <p className="text-center text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
+                  ✦ Free Shipping Above ₹999 ✦
+                </p>
               </div>
             </SheetContent>
           </Sheet>

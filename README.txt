@@ -1,27 +1,13 @@
-IMPRESSIONS-FIRST SHOP SORT — v2 (ASAL FIX)
-=============================================
-Pehle wala zip sirf ranking priority (impressions-first) fix karta tha,
-lekin asli bug alag nikla:
+Changed file: components/header.tsx
 
-  activity_events table par Row Level Security (RLS) hai. Anon key
-  (getServerSupabase) se woh table read nahi ho pa rahi thi, isliye
-  fetchPopularityRankServer() hamesha khaali result de raha tha aur
-  shop page popularity ranking silently fail ho rahi thi (fallback
-  order = Bestseller/featured-first, jo tum dekh rahe the).
+Kya badla:
+- Mobile hamburger menu (Sheet drawer) ab premium look me hai:
+  - Maroon header band + brand tagline
+  - Rounded search bar
+  - "Shop All" alag highlighted CTA button
+  - Categories apna "SHOP BY CATEGORY" section me, dot + hover arrow
+  - "MORE" section me Blog/About/Account/Reseller/Contact icons ke saath
+  - Bottom "Free Shipping Above ₹999" strip
 
-  Fix: dono files ab getSupabaseAdmin() (service role key, RLS bypass)
-  use karte hain — same jaisa Admin > Analytics aur top-variant-server.ts
-  pehle se karte hain.
-
-Files (same path structure, project root me overwrite karke paste karo):
-
-  lib/popularity-rank-server.ts
-  app/api/products/popularity/route.ts
-
-Push karne ke baad 1-2 min wait karke /shop hard-refresh (incognito)
-karke check karo — sabse zyada impression wala product (abhi
-"Green Dhakai Jamdani Saree with Kardana Hand Ari Work", 1205
-impressions) sabse upar dikhna chahiye.
-
-changes-v2.diff me exact diff hai:
-  git apply changes-v2.diff
+Apply kaise karein:
+Apne project me components/header.tsx ko is file se replace kar dein.
