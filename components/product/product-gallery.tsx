@@ -266,6 +266,13 @@ export default function ProductGallery({
                   <div
                     key={`${idx}-${img}`}
                     className="relative h-full w-full shrink-0 snap-start snap-always"
+                    // Tapping/clicking the photo itself opens the full-screen
+                    // zoom — no need to hit the small "Click to zoom" button.
+                    // Safe inside a native scroll strip: browsers only fire
+                    // `click` for a genuine tap, not after the finger/mouse
+                    // has dragged past the scroll threshold, so a swipe
+                    // between photos never accidentally opens the lightbox.
+                    onClick={() => setLightboxOpen(true)}
                   >
                     <Image
                       src={img}
@@ -276,7 +283,7 @@ export default function ProductGallery({
                       sizes="(max-width: 1024px) 100vw, 50vw"
                       quality={80}
                       className={cn(
-                        'select-none object-contain transition-opacity duration-150',
+                        'select-none object-contain transition-opacity duration-150 cursor-zoom-in',
                         idx === active && zooming ? 'sm:opacity-0' : 'opacity-100'
                       )}
                     />
