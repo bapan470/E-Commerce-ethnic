@@ -61,6 +61,19 @@ export default function VariantSwatches({
       .catch(() => setFetchedVariants([]));
   }, [productId]);
 
+  // Prepend the base product's own colour, unless a real variant row
+  // already represents it (matched by slug or by colour name, case-
+  // insensitive) -- avoids showing the same colour twice.
+  const variants = useMemo(() => {
+    if (!baseVariant) return fetchedVariants;
+    const alreadyRepresented = fetchedVariants.some(
+      (v) =>
+        v.slug === baseVariant.slug ||
+        v.color.trim().toLowerCase() === baseVariant.color.trim().toLowerCase()
+    );
+    return alreadyRepresented ? fetchedVariants : [baseVariant, ...fetchedVariants];
+  }, [fetchedVariants, baseVariant]);
+
   // Same idea as the image preload above, taken one step further: once
   // we're idle on a fast-enough connection, walk every OTHER colour and
   // fetch its full row (sizes/stock included, not just photos) into the
@@ -98,19 +111,6 @@ export default function VariantSwatches({
       cancelled = true;
     };
   }, [preloadReady, variants, activeSlug]);
-
-  // Prepend the base product's own colour, unless a real variant row
-  // already represents it (matched by slug or by colour name, case-
-  // insensitive) -- avoids showing the same colour twice.
-  const variants = useMemo(() => {
-    if (!baseVariant) return fetchedVariants;
-    const alreadyRepresented = fetchedVariants.some(
-      (v) =>
-        v.slug === baseVariant.slug ||
-        v.color.trim().toLowerCase() === baseVariant.color.trim().toLowerCase()
-    );
-    return alreadyRepresented ? fetchedVariants : [baseVariant, ...fetchedVariants];
-  }, [fetchedVariants, baseVariant]);
 
   // Nothing to switch between if the vendor hasn't added any extra
   // colours yet -- same as before, only showing the base colour alone
