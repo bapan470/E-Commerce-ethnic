@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { fetchVariantBySlug, fetchVariantsForProduct, ProductVariant } from '@/lib/variants-api';
 import { getPrefetchedVariant, setPrefetchedVariant } from '@/lib/variant-prefetch-cache';
 import { toPublicMediaUrl } from '@/lib/media-url';
-import { THUMB_BLUR_DATA_URL, isBlurPlaceholderEnabled } from '@/lib/image-placeholder';
+import { THUMB_BLUR_DATA_URL, isShimmerEnabled } from '@/lib/image-placeholder';
 
 export default function VariantSwatches({
   productId,
@@ -142,10 +142,13 @@ function VariantSwatchList({
   preloadReady: boolean;
 }) {
   const activeBtnRef = useRef<HTMLButtonElement | null>(null);
-  // Same Admin > Settings > Blur Placeholder toggle the main gallery and
-  // full-screen zoom read (see lib/image-placeholder.ts). These small
-  // colour-swatch thumbnails previously had no placeholder at all.
-  const blurEnabled = isBlurPlaceholderEnabled();
+  // Same Admin > Settings > "Shimmer Placeholder" toggle the main gallery
+  // and full-screen zoom read (see lib/image-placeholder.ts). These small
+  // colour-swatch thumbnails have no real per-image preview to fall back
+  // to, so only the shimmer toggle applies here (not "Real Photo
+  // Previews", which has nothing to do). Previously these thumbnails had
+  // no placeholder at all.
+  const blurEnabled = isShimmerEnabled();
 
   useEffect(() => {
     activeBtnRef.current?.scrollIntoView({ behavior: 'auto', inline: 'center', block: 'nearest' });

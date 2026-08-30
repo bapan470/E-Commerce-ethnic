@@ -584,25 +584,51 @@ export default function SettingsPanel() {
   };
 
   // ---------------------------------------------------------------------
-  // Blur Placeholder toggle. ON (default) = every product-gallery photo
-  // shows a soft shimmer while loading, instead of a blank/white box.
-  // Generic placeholder (not per-photo), so it needs no backfill —
-  // flipping it applies to every image immediately, old or new.
+  // Blur Placeholder toggles — two independent switches:
+  //   shimmer_enabled: ON (default) = every product-gallery photo shows
+  //     a soft shimmer while loading (whenever no real preview is being
+  //     shown for it), instead of a blank/white box. Generic placeholder
+  //     (not per-photo), so it needs no backfill — flipping it applies to
+  //     every image immediately, old or new.
+  //   real_preview_enabled: ON (default) = wherever a real per-image
+  //     preview has already been generated (see the backfill below), the
+  //     storefront actually shows it instead of the shimmer. Turning this
+  //     off doesn't stop generation, only display.
   // ---------------------------------------------------------------------
-  const onToggleBlurPlaceholder = async (checked: boolean) => {
+  const onToggleBlurShimmer = async (checked: boolean) => {
     if (!blurPlaceholderForm) return;
-    const next = { ...blurPlaceholderForm, enabled: checked };
+    const next = { ...blurPlaceholderForm, shimmer_enabled: checked };
     setBlurPlaceholderForm(next); // update immediately so the switch feels responsive
     setSavingBlurPlaceholder(true);
     try {
       await saveBlurPlaceholderSettings(next);
       toast.success(
         checked
-          ? 'Blur placeholder ON — product photos show a soft shimmer while loading, on every image immediately (no backfill needed).'
-          : 'Blur placeholder OFF — product photos show no placeholder while loading, exactly as before.'
+          ? 'Shimmer placeholder ON — product photos with no real preview show a soft shimmer while loading, on every image immediately (no backfill needed).'
+          : 'Shimmer placeholder OFF — photos with no real preview show no placeholder while loading, exactly as before.'
       );
     } catch (err) {
       setBlurPlaceholderForm(blurPlaceholderForm); // revert the switch on failure
+      toast.error(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSavingBlurPlaceholder(false);
+    }
+  };
+
+  const onToggleBlurRealPreview = async (checked: boolean) => {
+    if (!blurPlaceholderForm) return;
+    const next = { ...blurPlaceholderForm, real_preview_enabled: checked };
+    setBlurPlaceholderForm(next);
+    setSavingBlurPlaceholder(true);
+    try {
+      await saveBlurPlaceholderSettings(next);
+      toast.success(
+        checked
+          ? 'Real photo previews ON — wherever a real preview has been generated, it\u2019s now shown instead of the generic shimmer.'
+          : 'Real photo previews OFF — generation keeps running, but the storefront no longer displays them (falls back to shimmer).'
+      );
+    } catch (err) {
+      setBlurPlaceholderForm(blurPlaceholderForm);
       toast.error(err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setSavingBlurPlaceholder(false);
@@ -1960,39 +1986,65 @@ export default function SettingsPanel() {
         </div>
       )}
 
-      {/* Blur Placeholder — shimmer while product photos load; uses a real
-          per-image preview automatically wherever one has been generated */}
+      {/* Blur Placeholder — two independent switches: a generic shimmer
+          while product photos load, and whether an already-generated
+          real per-image preview is actually shown when available. */}
       <div className="mt-8">
         <h2 className="font-serif text-2xl font-bold text-primary">Blur Placeholder</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Shows a placeholder on product-gallery photos while they load, instead of a blank/white
-          box. Wherever a real preview of that exact photo has been generated (see the backfill
-          below), it's shown automatically — otherwise a generic shimmer is used as a safe
-          fallback. No manual choice needed; this works for every product photo, old or newly
-          uploaded alike.
+          box. These two switches are independent: "Real Photo Previews" decides whether an
+          already-generated preview of that exact photo is shown when one exists (see the backfill
+          below); "Shimmer Placeholder" decides what's shown otherwise — a real photo without a
+          preview yet, or every photo if Real Photo Previews is off.
         </p>
       </div>
 
       {!blurPlaceholderForm ? (
         <p className="py-4 text-sm text-muted-foreground">Loading…</p>
       ) : (
-        <div className="mt-4 flex max-w-xl items-center justify-between gap-4 rounded-lg border border-border/60 bg-card p-5">
-          <div>
-            <Label htmlFor="blur-placeholder-enabled">
-              {blurPlaceholderForm.enabled ? 'On — shimmer shown while loading (default)' : 'Off — no placeholder'}
-            </Label>
-            <p className="text-xs text-muted-foreground">
-              {blurPlaceholderForm.enabled
-                ? 'Every product photo (main image, thumbnails, and full-screen zoom) shows a soft shimmer until it finishes loading.'
-                : 'Photos show no placeholder while loading — the space stays a plain background colour until the image arrives, exactly like before this feature existed.'}
-            </p>
+        <div className="mt-4 flex max-w-xl flex-col gap-4">
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-card p-5">
+            <div>
+              <Label htmlFor="blur-real-preview-enabled">
+                {blurPlaceholderForm.real_preview_enabled
+                  ? 'Real Photo Previews — On (default)'
+                  : 'Real Photo Previews — Off'}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {blurPlaceholderForm.real_preview_enabled
+                  ? "Wherever a real preview of that exact photo has been generated, it's shown while the photo loads instead of the generic shimmer."
+                  : "Real previews are still generated by the backfill below, but the storefront won't show them — every photo falls back to the shimmer setting below."}
+              </p>
+            </div>
+            <Switch
+              id="blur-real-preview-enabled"
+              checked={blurPlaceholderForm.real_preview_enabled}
+              disabled={savingBlurPlaceholder}
+              onCheckedChange={onToggleBlurRealPreview}
+            />
           </div>
-          <Switch
-            id="blur-placeholder-enabled"
-            checked={blurPlaceholderForm.enabled}
-            disabled={savingBlurPlaceholder}
-            onCheckedChange={onToggleBlurPlaceholder}
-          />
+
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-card p-5">
+            <div>
+              <Label htmlFor="blur-shimmer-enabled">
+                {blurPlaceholderForm.shimmer_enabled
+                  ? 'Shimmer Placeholder — On (default)'
+                  : 'Shimmer Placeholder — Off'}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {blurPlaceholderForm.shimmer_enabled
+                  ? 'Any photo without a real preview shown (not backfilled yet, or Real Photo Previews is off above) shows a soft animated shimmer while loading.'
+                  : "Photos with no real preview shown show no placeholder while loading — the space stays a plain background colour until the image arrives, exactly like before this feature existed."}
+              </p>
+            </div>
+            <Switch
+              id="blur-shimmer-enabled"
+              checked={blurPlaceholderForm.shimmer_enabled}
+              disabled={savingBlurPlaceholder}
+              onCheckedChange={onToggleBlurShimmer}
+            />
+          </div>
         </div>
       )}
 
@@ -2003,10 +2055,10 @@ export default function SettingsPanel() {
       <div className="mt-6 max-w-xl rounded-lg border border-border/60 bg-card p-5">
         <Label>Generate Real Photo Previews</Label>
         <p className="mt-1 text-xs text-muted-foreground">
-          Optional. The generic shimmer above already covers every product photo with no backfill
+          Optional. The shimmer above already covers every product photo with no backfill
           needed — this generates an actual tiny blurred preview of each specific photo instead,
           for images uploaded <em>before</em> this feature shipped. New uploads/imports already
-          get one automatically. Safe to run whether Blur Placeholder above is on or off, and safe
+          get one automatically. Safe to run regardless of either switch above, and safe
           to re-run any time.
         </p>
 

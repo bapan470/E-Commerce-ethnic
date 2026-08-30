@@ -4,11 +4,12 @@ import { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 
 /**
- * Keeps `window.__BLUR_PLACEHOLDER_ENABLED__` in sync across client-side
+ * Keeps `window.__BLUR_SHIMMER_ENABLED__` and
+ * `window.__BLUR_REAL_PREVIEW_ENABLED__` in sync across client-side
  * navigation.
  *
- * The root layout (app/layout.tsx) only ever sets that global ONCE, via a
- * `beforeInteractive` inline script, at the moment of a full page load.
+ * The root layout (app/layout.tsx) only ever sets those globals ONCE, via
+ * a `beforeInteractive` inline script, at the moment of a full page load.
  * The App Router keeps the root layout mounted for a shopper's entire
  * session — it never re-runs on client-side navigation between pages —
  * so without this, toggling Admin > Settings > Blur Placeholder while a
@@ -22,8 +23,8 @@ import { usePathname } from 'next/navigation';
  * Mounted once in the root layout's <body>. `usePathname()` only changes
  * on an actual navigation (not on every render), so this fires once per
  * page the shopper visits — not continuously — and just refreshes the
- * one global every component in the tree already reads via
- * `isBlurPlaceholderEnabled()` (lib/image-placeholder.ts).
+ * two globals every component in the tree already reads via
+ * `isShimmerEnabled()` / `isRealPreviewEnabled()` (lib/image-placeholder.ts).
  */
 export default function BlurPlaceholderSync() {
   const pathname = usePathname();
@@ -41,8 +42,10 @@ export default function BlurPlaceholderSync() {
     fetch('/api/settings/blur-placeholder', { cache: 'no-store' })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (cancelled || !data || typeof data.enabled !== 'boolean') return;
-        (window as unknown as Record<string, unknown>).__BLUR_PLACEHOLDER_ENABLED__ = data.enabled;
+        if (cancelled || !data) return;
+        const g = window as unknown as Record<string, unknown>;
+        if (typeof data.shimmer_enabled === 'boolean') g.__BLUR_SHIMMER_ENABLED__ = data.shimmer_enabled;
+        if (typeof data.real_preview_enabled === 'boolean') g.__BLUR_REAL_PREVIEW_ENABLED__ = data.real_preview_enabled;
       })
       .catch(() => {
         // Best-effort — a failed sync just means this page keeps using

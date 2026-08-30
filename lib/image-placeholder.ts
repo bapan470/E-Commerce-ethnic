@@ -47,23 +47,71 @@ export const GALLERY_BLUR_DATA_URL = `data:image/svg+xml;base64,${toBase64(shimm
 export const THUMB_BLUR_DATA_URL = `data:image/svg+xml;base64,${toBase64(shimmer(96, 96))}`;
 
 /**
- * Reads the Admin > Settings > "Blur Placeholder" toggle. Set once per
+ * Reads the Admin > Settings > "Shimmer Placeholder" toggle. Set once per
  * request by app/layout.tsx (server global) or by the inline
  * `beforeInteractive` script in <head> (browser global) — see
  * lib/blur-placeholder-flag.ts. Fails open to `true` (shimmer shown) if
  * the flag hasn't been set yet for any reason, since a shimmer can never
  * break a page the way a bad image URL could.
+ *
+ * Controls the GENERIC fallback shimmer only. Independent from
+ * isRealPreviewEnabled() below — see resolveBlurDataUrl() for how the two
+ * combine.
  */
-export function isBlurPlaceholderEnabled(): boolean {
+export function isShimmerEnabled(): boolean {
   try {
     if (typeof window !== 'undefined') {
-      return (window as unknown as Record<string, unknown>).__BLUR_PLACEHOLDER_ENABLED__ !== false;
+      return (window as unknown as Record<string, unknown>).__BLUR_SHIMMER_ENABLED__ !== false;
     }
     if (typeof globalThis !== 'undefined') {
-      return (globalThis as unknown as Record<string, unknown>).__BLUR_PLACEHOLDER_ENABLED__ !== false;
+      return (globalThis as unknown as Record<string, unknown>).__BLUR_SHIMMER_ENABLED__ !== false;
     }
   } catch {
     // Fall through to the safe default below.
   }
   return true;
+}
+
+/**
+ * Reads the Admin > Settings > "Real Photo Previews" toggle — whether an
+ * already-generated real per-image preview (lib/blur-preview.ts) should
+ * actually be used at display time. Independent from isShimmerEnabled():
+ * turning this off does NOT delete or stop generating real previews (the
+ * backfill button still works), it just means the storefront won't show
+ * them, falling back to the generic shimmer (if that's on) or nothing.
+ * Same fail-open-to-true default and same global-sync pattern as
+ * isShimmerEnabled().
+ */
+export function isRealPreviewEnabled(): boolean {
+  try {
+    if (typeof window !== 'undefined') {
+      return (window as unknown as Record<string, unknown>).__BLUR_REAL_PREVIEW_ENABLED__ !== false;
+    }
+    if (typeof globalThis !== 'undefined') {
+      return (globalThis as unknown as Record<string, unknown>).__BLUR_REAL_PREVIEW_ENABLED__ !== false;
+    }
+  } catch {
+    // Fall through to the safe default below.
+  }
+  return true;
+}
+
+/**
+ * Single place every call site uses to pick a `blurDataURL` (or decide to
+ * skip the placeholder altogether). Combines both independent toggles:
+ *   - real preview available AND isRealPreviewEnabled() -> use it
+ *   - otherwise, isShimmerEnabled() -> use the generic shimmer fallback
+ *   - otherwise -> undefined (no placeholder — plain background colour
+ *     until the photo arrives, same as before this feature existed)
+ * Returns undefined rather than a fallback so callers can drive both
+ * `blurDataURL` and `placeholder` off one value:
+ *   const dataUrl = resolveBlurDataUrl(realPreview, GENERIC_FALLBACK);
+ *   <Image placeholder={dataUrl ? 'blur' : undefined} blurDataURL={dataUrl} />
+ */
+export function resolveBlurDataUrl(
+  realPreview: string | undefined,
+  genericFallback: string
+): string | undefined {
+  if (realPreview && isRealPreviewEnabled()) return realPreview;
+  return isShimmerEnabled() ? genericFallback : undefined;
 }

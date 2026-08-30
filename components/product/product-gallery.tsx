@@ -6,7 +6,7 @@ import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X, ZoomIn } from 'lu
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { preloadImages } from '@/lib/preload-image';
-import { GALLERY_BLUR_DATA_URL, THUMB_BLUR_DATA_URL, isBlurPlaceholderEnabled } from '@/lib/image-placeholder';
+import { GALLERY_BLUR_DATA_URL, THUMB_BLUR_DATA_URL, resolveBlurDataUrl } from '@/lib/image-placeholder';
 import ProductVideoPeek from './product-video-peek';
 
 interface ProductGalleryProps {
@@ -39,16 +39,19 @@ interface ProductGalleryProps {
 
 /**
  * Picks the best available blurDataURL for one image: a real per-image
- * preview if we have one for this exact URL, otherwise the generic
- * shimmer passed in as `genericFallback`. Pure — kept outside the
+ * preview if we have one for this exact URL AND the "Real Photo
+ * Previews" toggle is on, otherwise the generic shimmer passed in as
+ * `genericFallback` (if "Shimmer Placeholder" is on), otherwise
+ * undefined (no placeholder). Thin wrapper around
+ * lib/image-placeholder.ts's resolveBlurDataUrl() — kept outside the
  * component so it doesn't need to be re-created every render.
  */
 function blurDataUrlFor(
   img: string,
   blurPreviews: Record<string, string> | undefined,
   genericFallback: string
-): string {
-  return blurPreviews?.[img] ?? genericFallback;
+): string | undefined {
+  return resolveBlurDataUrl(blurPreviews?.[img], genericFallback);
 }
 
 const PLACEHOLDER = 'https://placehold.co/800x1000?text=No+Image';
@@ -144,11 +147,6 @@ export default function ProductGallery({
   }, [images]);
 
   const clamp = useCallback((idx: number) => (idx + valid.length) % valid.length, [valid.length]);
-
-  // Admin > Settings > "Blur Placeholder" toggle — read once, synchronously
-  // (no network call, no flicker): true unless an admin has explicitly
-  // switched it off. See lib/image-placeholder.ts / lib/blur-placeholder-flag.ts.
-  const blurEnabled = isBlurPlaceholderEnabled();
 
   // Fixes the "blank/white frame while swiping" issue: every image except
   // the very first one was purely lazy-loaded, so the browser only started
@@ -250,8 +248,8 @@ export default function ProductGallery({
                     draggable={false}
                     sizes="72px"
                     quality={50}
-                    placeholder={blurEnabled ? 'blur' : undefined}
-                    blurDataURL={blurEnabled ? blurDataUrlFor(img, blurPreviews, THUMB_BLUR_DATA_URL) : undefined}
+                    placeholder={blurDataUrlFor(img, blurPreviews, THUMB_BLUR_DATA_URL) ? 'blur' : undefined}
+                    blurDataURL={blurDataUrlFor(img, blurPreviews, THUMB_BLUR_DATA_URL)}
                     className="select-none object-cover"
                   />
                 </button>
@@ -331,8 +329,8 @@ export default function ProductGallery({
                       draggable={false}
                       sizes="(max-width: 1024px) 100vw, 50vw"
                       quality={80}
-                      placeholder={blurEnabled ? 'blur' : undefined}
-                      blurDataURL={blurEnabled ? blurDataUrlFor(img, blurPreviews, GALLERY_BLUR_DATA_URL) : undefined}
+                      placeholder={blurDataUrlFor(img, blurPreviews, GALLERY_BLUR_DATA_URL) ? 'blur' : undefined}
+                      blurDataURL={blurDataUrlFor(img, blurPreviews, GALLERY_BLUR_DATA_URL)}
                       className={cn(
                         'select-none object-contain transition-opacity duration-150 cursor-zoom-in',
                         idx === active && zooming ? 'sm:opacity-0' : 'opacity-100'
@@ -455,10 +453,6 @@ function Lightbox({
 }) {
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
-  // Same admin toggle read as the main gallery above — a separate call
-  // since Lightbox is its own component, but the same synchronous,
-  // no-network-call value. See lib/image-placeholder.ts.
-  const blurEnabled = isBlurPlaceholderEnabled();
   // True only while a finger/mouse is actively pinching or dragging the
   // photo. Drives whether the snap-back CSS transition is on: off during a
   // live gesture (so the photo tracks the finger with zero added lag), on
@@ -842,8 +836,8 @@ function Lightbox({
                     quality={90}
                     priority={Math.abs(idx - active) <= 1}
                     fetchPriority={idx === active ? 'high' : 'auto'}
-                    placeholder={blurEnabled ? 'blur' : undefined}
-                    blurDataURL={blurEnabled ? blurDataUrlFor(img, blurPreviews, GALLERY_BLUR_DATA_URL) : undefined}
+                    placeholder={blurDataUrlFor(img, blurPreviews, GALLERY_BLUR_DATA_URL) ? 'blur' : undefined}
+                    blurDataURL={blurDataUrlFor(img, blurPreviews, GALLERY_BLUR_DATA_URL)}
                     className="select-none object-contain"
                   />
                 </div>
@@ -893,8 +887,8 @@ function Lightbox({
                 draggable={false}
                 sizes="56px"
                 quality={50}
-                placeholder={blurEnabled ? 'blur' : undefined}
-                blurDataURL={blurEnabled ? blurDataUrlFor(img, blurPreviews, THUMB_BLUR_DATA_URL) : undefined}
+                placeholder={blurDataUrlFor(img, blurPreviews, THUMB_BLUR_DATA_URL) ? 'blur' : undefined}
+                blurDataURL={blurDataUrlFor(img, blurPreviews, THUMB_BLUR_DATA_URL)}
                 className="select-none object-cover"
               />
             </button>

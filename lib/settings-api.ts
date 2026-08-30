@@ -504,33 +504,39 @@ export async function saveResponsiveImagesSettings(settings: ResponsiveImagesSet
 }
 
 // ---------------------------------------------------------------------
-// Blur Placeholder — Admin > Settings toggle.
+// Blur Placeholder — Admin > Settings. Two independent toggles.
 //
-// ON (default): product gallery photos show a soft animated shimmer
-//   while loading instead of a blank/white box. Generic placeholder
-//   (not a per-photo preview), so it needs no backfill — flipping this
-//   on applies to every existing image immediately, old or new.
-// OFF: no placeholder — exactly like before this feature existed.
+// shimmer_enabled (default true): product gallery photos show a soft
+//   animated shimmer while loading instead of a blank/white box, used
+//   whenever no real per-image preview is shown for that photo. Generic
+//   placeholder (not a per-photo preview), so it needs no backfill —
+//   flipping this on applies to every existing image immediately, old
+//   or new.
+// real_preview_enabled (default true): whenever a real per-image blur
+//   preview has been generated (see "Generate Real Photo Previews"
+//   backfill), show that instead of the shimmer. Turning this off
+//   doesn't stop generation, only display — every photo then falls back
+//   to whatever shimmer_enabled decides.
+// Both off: no placeholder — exactly like before this feature existed.
 //
 // Goes through /api/admin/blur-placeholder (server-side, requires
 // admin), same reasoning as every other admin-gated setting here.
 // ---------------------------------------------------------------------
 export interface BlurPlaceholderSettings {
-  enabled: boolean;
+  shimmer_enabled: boolean;
+  real_preview_enabled: boolean;
 }
 
 export const DEFAULT_BLUR_PLACEHOLDER_SETTINGS: BlurPlaceholderSettings = {
-  enabled: true,
+  shimmer_enabled: true,
+  real_preview_enabled: true,
 };
 
 export async function fetchBlurPlaceholderSettings(): Promise<BlurPlaceholderSettings> {
-  const { data, error } = await supabase
-    .from('settings')
-    .select('value')
-    .eq('key', 'blur_placeholder')
-    .maybeSingle();
-  if (error || !data) return DEFAULT_BLUR_PLACEHOLDER_SETTINGS;
-  return { ...DEFAULT_BLUR_PLACEHOLDER_SETTINGS, ...(data.value as Partial<BlurPlaceholderSettings>) };
+  const res = await fetch('/api/admin/blur-placeholder', { cache: 'no-store' });
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json) return DEFAULT_BLUR_PLACEHOLDER_SETTINGS;
+  return { ...DEFAULT_BLUR_PLACEHOLDER_SETTINGS, ...(json as Partial<BlurPlaceholderSettings>) };
 }
 
 export async function saveBlurPlaceholderSettings(settings: BlurPlaceholderSettings) {
@@ -543,7 +549,7 @@ export async function saveBlurPlaceholderSettings(settings: BlurPlaceholderSetti
   if (!res.ok) {
     throw new Error(json?.error || 'Failed to save blur placeholder setting');
   }
-  return json as { saved: true; enabled: boolean };
+  return json as { saved: true; shimmer_enabled: boolean; real_preview_enabled: boolean };
 }
 
 // ---------------------------------------------------------------------

@@ -6,7 +6,7 @@ import { ChevronRight, ImageOff } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useProducts, ProductsProvider } from '@/lib/cart-context';
 import { Skeleton } from '@/components/ui/skeleton';
-import { THUMB_BLUR_DATA_URL, isBlurPlaceholderEnabled } from '@/lib/image-placeholder';
+import { THUMB_BLUR_DATA_URL, isShimmerEnabled } from '@/lib/image-placeholder';
 
 // Alternating soft tints (built from the site's own primary/secondary
 // theme tokens, not hardcoded hex) so each row reads as a distinct card
@@ -199,8 +199,8 @@ function CategoriesPageContent() {
                           sizes="64px"
                           quality={70}
                           loading="lazy"
-                          placeholder={isBlurPlaceholderEnabled() ? 'blur' : undefined}
-                          blurDataURL={isBlurPlaceholderEnabled() ? THUMB_BLUR_DATA_URL : undefined}
+                          placeholder={isShimmerEnabled() ? 'blur' : undefined}
+                          blurDataURL={isShimmerEnabled() ? THUMB_BLUR_DATA_URL : undefined}
                           className="object-cover"
                         />
                       </div>

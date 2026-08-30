@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { guessVideoMime } from '@/lib/video-mime';
-import { THUMB_BLUR_DATA_URL, isBlurPlaceholderEnabled } from '@/lib/image-placeholder';
+import { THUMB_BLUR_DATA_URL, resolveBlurDataUrl } from '@/lib/image-placeholder';
 
 /**
  * Thumbnail area for a catalog/shop grid product card.
@@ -47,13 +47,15 @@ export default function CatalogCardMedia({
   hoverBlurDataUrl?: string;
 }) {
   const useVideo = !!(autoplayVideo && videoUrl);
-  // Respects Admin > Settings > Blur Placeholder (same flag + same
-  // generic shimmer as the product-detail gallery — see
-  // lib/image-placeholder.ts / lib/blur-placeholder-flag.ts). Previously
-  // this component had its own hardcoded shimmer (lib/utils.ts) that
-  // never checked the toggle at all, so switching it on/off in Admin had
-  // no effect on the shop/category grid — only on the product page.
-  const blurEnabled = isBlurPlaceholderEnabled();
+  // Respects Admin > Settings > Blur Placeholder's two independent
+  // toggles (same helper + same generic shimmer as the product-detail
+  // gallery — see lib/image-placeholder.ts / lib/blur-placeholder-flag.ts).
+  // Previously this component had its own hardcoded shimmer
+  // (lib/utils.ts) that never checked either toggle at all, so switching
+  // them in Admin had no effect on the shop/category grid — only on the
+  // product page.
+  const resolvedBlurDataUrl = resolveBlurDataUrl(blurDataUrl, THUMB_BLUR_DATA_URL);
+  const resolvedHoverBlurDataUrl = resolveBlurDataUrl(hoverBlurDataUrl, THUMB_BLUR_DATA_URL);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -121,8 +123,8 @@ export default function CatalogCardMedia({
             quality={78}
             priority={priority}
             loading={priority ? undefined : 'lazy'}
-            placeholder={blurEnabled ? 'blur' : undefined}
-            blurDataURL={blurEnabled ? (blurDataUrl || THUMB_BLUR_DATA_URL) : undefined}
+            placeholder={resolvedBlurDataUrl ? 'blur' : undefined}
+            blurDataURL={resolvedBlurDataUrl}
             className={`object-cover transition-opacity duration-300 ease-out ${
               hoverImg ? 'group-hover:opacity-0' : 'group-hover:scale-105 transition-transform duration-500'
             }`}
@@ -139,8 +141,8 @@ export default function CatalogCardMedia({
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
               quality={70}
               loading="lazy"
-              placeholder={blurEnabled ? 'blur' : undefined}
-              blurDataURL={blurEnabled ? (hoverBlurDataUrl || THUMB_BLUR_DATA_URL) : undefined}
+              placeholder={resolvedHoverBlurDataUrl ? 'blur' : undefined}
+              blurDataURL={resolvedHoverBlurDataUrl}
               className="absolute inset-0 object-cover opacity-0 transition-opacity duration-300 ease-out group-hover:opacity-100"
             />
           )}
