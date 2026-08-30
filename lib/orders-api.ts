@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from './supabase-admin';
 import { sendEmail } from './email';
 import { orderStatusUpdateEmail } from './email-templates';
 import { isInPaymentRequestFlow } from './order-payment-events';
+import { refundRazorpayPayment } from './razorpay-refund';
 
 // SECURITY NOTE: this now uses the service-role client instead of the
 // anon-key client. Both callers of this file (app/api/admin/orders and
@@ -126,6 +127,14 @@ export async function fetchOrders() {
 // never blocks the status update itself). The order_status_history table
 // is populated separately by a DB trigger, so this function doesn't need
 // to touch that.
+//
+// REFUND: moving a *paid online* order to 'cancelled' from here used to be
+// a silent no-op on the money side -- only the customer-facing self-cancel
+// route (app/api/orders/[id]/cancel) actually called Razorpay. The email
+// copy for 'cancelled' has always promised "any eligible refund will be
+// processed", so that promise needs to hold true here too. This mirrors
+// that route's logic (same auto_refund_enabled setting, same refund_status
+// values) so admin-initiated cancellations refund automatically as well.
 export async function updateOrderStatus(id: string, status: string) {
   const supabase = getSupabaseAdmin();
 
@@ -134,13 +143,66 @@ export async function updateOrderStatus(id: string, status: string) {
   // (e.g. the admin re-selects the same value).
   const { data: existing, error: fetchError } = await supabase
     .from('orders')
-    .select('id, status, customer_email, customer_name, tracking_number, courier_name, items, total_amount')
+    .select(
+      'id, status, customer_email, customer_name, tracking_number, courier_name, items, total_amount, payment_method, razorpay_payment_id'
+    )
     .eq('id', id)
     .maybeSingle();
   if (fetchError) throw fetchError;
 
   const { data, error } = await supabase.from('orders').update({ status }).eq('id', id);
   if (error) throw error;
+
+  // Only orders that actually had money captured need a refund -- same
+  // gating as the customer self-cancel route. Checked against `existing`
+  // (the pre-update row), so this only fires on the paid -> cancelled
+  // transition, not e.g. pending -> cancelled or a re-cancel of an
+  // already-cancelled order.
+  const needsRefund =
+    status === 'cancelled' &&
+    existing?.status === 'paid' &&
+    existing.payment_method === 'online' &&
+    !!existing.razorpay_payment_id;
+
+  let refundOutcome: {
+    status: 'not_applicable' | 'refunded' | 'pending_manual' | 'failed';
+    amount?: number;
+    razorpay_refund_id?: string | null;
+  } = { status: 'not_applicable' };
+
+  if (needsRefund) {
+    const { data: refundSettingRow } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'refund_automation')
+      .maybeSingle();
+    const autoRefundEnabled =
+      (refundSettingRow?.value as { auto_refund_enabled?: boolean } | null)?.auto_refund_enabled ?? true;
+
+    if (!autoRefundEnabled) {
+      await supabase.from('orders').update({ refund_status: 'pending_manual' }).eq('id', id);
+      refundOutcome = { status: 'pending_manual', amount: existing!.total_amount };
+    } else {
+      const refundResult = await refundRazorpayPayment(existing!.razorpay_payment_id as string, existing!.total_amount);
+      if (refundResult.success) {
+        await supabase
+          .from('orders')
+          .update({ refund_status: 'refunded', razorpay_refund_id: refundResult.refundId })
+          .eq('id', id);
+        refundOutcome = {
+          status: 'refunded',
+          amount: existing!.total_amount,
+          razorpay_refund_id: refundResult.refundId,
+        };
+      } else {
+        // Order stays cancelled even if the refund call failed -- we just
+        // flag it so the admin can see it needs a manual refund instead of
+        // it silently getting missed.
+        await supabase.from('orders').update({ refund_status: 'failed' }).eq('id', id);
+        refundOutcome = { status: 'failed', amount: existing!.total_amount };
+      }
+    }
+  }
 
   if (existing && existing.status !== status && existing.customer_email) {
     // Same gating as verify-payment: only orders from Admin > "Request
@@ -157,6 +219,7 @@ export async function updateOrderStatus(id: string, status: string) {
       items: existing.items,
       total_amount: existing.total_amount,
       isPaymentRequestFlow,
+      refund: needsRefund ? refundOutcome : undefined,
     });
     // Best-effort -- never let a slow/broken email provider fail the
     // admin's status update.

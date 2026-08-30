@@ -496,9 +496,30 @@ export function orderStatusUpdateEmail(order: {
   // in" apology -- that line doesn't apply to them and was previously
   // being sent to every "paid" order regardless of flow.
   isPaymentRequestFlow?: boolean;
+  // Only set when this status change is a 'cancelled' transition that was
+  // actually checked for a refund (i.e. it was a paid online order). Lets
+  // the 'cancelled' copy below state the real outcome instead of the old
+  // generic "any eligible refund will be processed" line, which used to be
+  // shown even when no refund had actually been attempted.
+  refund?: {
+    status: 'not_applicable' | 'refunded' | 'pending_manual' | 'failed';
+    amount?: number;
+    razorpay_refund_id?: string | null;
+  };
 }) {
   const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
   const name = order.customer_name || 'there';
+
+  let cancelledRefundLine = `If you've already paid online, any eligible refund will be processed to your original payment method.`;
+  if (order.refund) {
+    if (order.refund.status === 'refunded') {
+      cancelledRefundLine = `<strong>Refund of ${formatINR(order.refund.amount ?? order.total_amount ?? 0)} initiated</strong> to your original payment method. It usually reflects within 5–7 business days.${order.refund.razorpay_refund_id ? ` (Refund reference: ${order.refund.razorpay_refund_id})` : ''}`;
+    } else if (order.refund.status === 'pending_manual' || order.refund.status === 'failed') {
+      cancelledRefundLine = `<strong>Refund of ${formatINR(order.refund.amount ?? order.total_amount ?? 0)} is being arranged</strong> and will be processed to your original payment method within 1–2 business days. You don't need to do anything.`;
+    } else if (order.refund.status === 'not_applicable') {
+      cancelledRefundLine = '';
+    }
+  }
 
   const copy: Record<string, { subject: string; heading: string; body: string }> = {
     pending: {
@@ -532,7 +553,7 @@ export function orderStatusUpdateEmail(order: {
     cancelled: {
       subject: `Order cancelled — ${shortId}`,
       heading: `Your order has been cancelled`,
-      body: `Your order <strong>${shortId}</strong> has been <strong>cancelled</strong>. If you've already paid online, any eligible refund will be processed to your original payment method. If you didn't request this, please reply to this email or contact support.`,
+      body: `Your order <strong>${shortId}</strong> has been <strong>cancelled</strong>. ${cancelledRefundLine} If you didn't request this, please reply to this email or contact support.`,
     },
     failed: {
       subject: `Payment issue with order ${shortId}`,
