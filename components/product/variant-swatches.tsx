@@ -29,10 +29,6 @@ export default function VariantSwatches({
   baseVariant: ProductVariant | null;
 }) {
   const [fetchedVariants, setFetchedVariants] = useState<ProductVariant[]>([]);
-  // Same Admin > Settings > Blur Placeholder toggle the main gallery and
-  // full-screen zoom read (see lib/image-placeholder.ts). These small
-  // colour-swatch thumbnails previously had no placeholder at all.
-  const blurEnabled = isBlurPlaceholderEnabled();
 
   // Background-preload the OTHER colours' photos the moment this page is
   // viewed, so the very first colour switch is instant instead of showing
@@ -107,6 +103,10 @@ function VariantSwatchList({
   preloadReady: boolean;
 }) {
   const activeBtnRef = useRef<HTMLButtonElement | null>(null);
+  // Same Admin > Settings > Blur Placeholder toggle the main gallery and
+  // full-screen zoom read (see lib/image-placeholder.ts). These small
+  // colour-swatch thumbnails previously had no placeholder at all.
+  const blurEnabled = isBlurPlaceholderEnabled();
 
   useEffect(() => {
     activeBtnRef.current?.scrollIntoView({ behavior: 'auto', inline: 'center', block: 'nearest' });
