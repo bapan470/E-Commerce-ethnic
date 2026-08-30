@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { fetchVariantsForProduct, ProductVariant } from '@/lib/variants-api';
 import { toPublicMediaUrl } from '@/lib/media-url';
+import { THUMB_BLUR_DATA_URL, isBlurPlaceholderEnabled } from '@/lib/image-placeholder';
 
 export default function VariantSwatches({
   productId,
@@ -28,6 +29,10 @@ export default function VariantSwatches({
   baseVariant: ProductVariant | null;
 }) {
   const [fetchedVariants, setFetchedVariants] = useState<ProductVariant[]>([]);
+  // Same Admin > Settings > Blur Placeholder toggle the main gallery and
+  // full-screen zoom read (see lib/image-placeholder.ts). These small
+  // colour-swatch thumbnails previously had no placeholder at all.
+  const blurEnabled = isBlurPlaceholderEnabled();
 
   // Background-preload the OTHER colours' photos the moment this page is
   // viewed, so the very first colour switch is instant instead of showing
@@ -151,6 +156,8 @@ function VariantSwatchList({
                     onDragStart={(e) => e.preventDefault()}
                     sizes="56px"
                     quality={60}
+                    placeholder={blurEnabled ? 'blur' : undefined}
+                    blurDataURL={blurEnabled ? THUMB_BLUR_DATA_URL : undefined}
                     className="select-none object-cover"
                   />
                 ) : v.color_hex ? (

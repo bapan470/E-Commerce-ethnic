@@ -35,7 +35,7 @@ import { productMatchesQuery, expandHindiQuery, fuzzyMatch } from '@/lib/search-
 import { getColorSwatchHex } from '@/lib/color-swatch';
 import { trackEvent } from '@/lib/track-api';
 import { fireGtagEvent } from '@/lib/gtag-track';
-import { blurDataURL } from '@/lib/utils';
+import { THUMB_BLUR_DATA_URL, isBlurPlaceholderEnabled } from '@/lib/image-placeholder';
 import QuickNavIcons from '@/components/quick-nav-icons';
 import PriceRangeFilterBar from '@/components/shop/price-range-filter-bar';
 import {
@@ -811,8 +811,8 @@ function ShopContentInner({
                         fill
                         sizes="80px"
                         className="object-cover"
-                        placeholder="blur"
-                        blurDataURL={blurDataURL()}
+                        placeholder={isBlurPlaceholderEnabled() ? 'blur' : undefined}
+                        blurDataURL={isBlurPlaceholderEnabled() ? THUMB_BLUR_DATA_URL : undefined}
                       />
                     ) : (
                       <span className="flex h-full w-full items-center justify-center bg-muted text-xs font-semibold text-muted-foreground">
@@ -883,8 +883,8 @@ function ShopContentInner({
                         sizes="56px"
                         quality={70}
                         loading="lazy"
-                        placeholder="blur"
-                        blurDataURL={blurDataURL(32, 32)}
+                        placeholder={isBlurPlaceholderEnabled() ? 'blur' : undefined}
+                        blurDataURL={isBlurPlaceholderEnabled() ? THUMB_BLUR_DATA_URL : undefined}
                         className="object-cover"
                       />
                     </div>
