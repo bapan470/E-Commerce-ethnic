@@ -4,6 +4,7 @@ import { Inter, Playfair_Display } from 'next/font/google';
 import Script from 'next/script';
 import Providers from '@/components/providers';
 import AnalyticsScripts from '@/components/analytics-scripts';
+import BlurPlaceholderSync from '@/components/blur-placeholder-sync';
 import { getServerSupabase } from '@/lib/supabase-server';
 import { SeoSettings, AnalyticsSettings } from '@/lib/marketing-api';
 import { PaymentDiscountSettings, DEFAULT_PAYMENT_DISCOUNT_SETTINGS } from '@/lib/settings-api';
@@ -244,6 +245,11 @@ export default async function RootLayout({
         <AnalyticsScripts gaId={gaId} gtmId={gtmId} googleAdsId={googleAdsId} pixelId={pixelId} />
       </head>
       <body className="font-sans antialiased">
+        {/* Keeps window.__BLUR_PLACEHOLDER_ENABLED__ fresh across
+           client-side navigation — see components/blur-placeholder-sync.tsx
+           for why the beforeInteractive script above isn't enough on its
+           own. Renders nothing. */}
+        <BlurPlaceholderSync />
         <Providers initialPaymentDiscount={initialPaymentDiscount}>{children}</Providers>
       </body>
     </html>
