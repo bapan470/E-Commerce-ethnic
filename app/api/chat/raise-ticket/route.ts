@@ -17,6 +17,13 @@ export async function POST(req: Request) {
   const message = typeof body?.message === 'string' ? body.message.trim().slice(0, MAX_LEN) : '';
   let email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
   let name = typeof body?.name === 'string' ? body.name.trim().slice(0, 120) : '';
+  // Set by the widget after a successful /api/chat/upload-attachment call
+  // — just a URL we already trust (we minted it), so a light sanity check
+  // is enough rather than re-validating the whole upload here.
+  const attachmentUrl =
+    typeof body?.attachmentUrl === 'string' && body.attachmentUrl.startsWith('http')
+      ? body.attachmentUrl.slice(0, 500)
+      : null;
 
   if (!message) {
     return NextResponse.json({ ok: false, error: 'Please describe the issue before raising a ticket.' }, { status: 200 });
@@ -47,6 +54,7 @@ export async function POST(req: Request) {
         customer_email: email,
         subject,
         message,
+        attachment_url: attachmentUrl,
         source: 'chat',
         status: 'open',
       })

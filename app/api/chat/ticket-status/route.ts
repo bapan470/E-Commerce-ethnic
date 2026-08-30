@@ -29,6 +29,9 @@ function present(t: any) {
     replyMessage: t.reply_message || null,
     repliedAt: t.replied_at || null,
     createdAt: t.created_at,
+    attachmentUrl: t.attachment_url || null,
+    replyAttachmentUrl: t.reply_attachment_url || null,
+    suggestedProduct: t.suggested_product || null,
   };
 }
 

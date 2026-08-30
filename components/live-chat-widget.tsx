@@ -12,6 +12,8 @@ import {
   Mail,
   LifeBuoy,
   ClipboardCheck,
+  Paperclip,
+  Loader2,
 } from 'lucide-react';
 import WhatsAppIcon from '@/components/icons/whatsapp-icon';
 import {
@@ -61,6 +63,17 @@ import {
 
 type Sender = 'bot' | 'user';
 
+// A product the admin suggested in a ticket reply, or that we're about to
+// show back to the shopper — snapshot shape, mirrors
+// support_tickets.suggested_product in the DB.
+interface ProductCard {
+  id: string;
+  name: string;
+  slug?: string | null;
+  image?: string | null;
+  price?: number | null;
+}
+
 interface ChatMessage {
   id: string;
   sender: Sender;
@@ -69,6 +82,11 @@ interface ChatMessage {
   // Attached to the "you also have N more orders" message so the shopper
   // can tap an order instead of having to type its ID.
   orderChips?: { id: string; shortId: string }[];
+  // A photo the shopper attached (their own message) or the admin
+  // attached to a reply (surfaced via "Check my ticket").
+  imageUrl?: string | null;
+  // A product the admin recommended in their reply.
+  productCard?: ProductCard | null;
 }
 
 interface Topic {
@@ -187,6 +205,9 @@ interface LookedUpTicket {
   replyMessage?: string | null;
   repliedAt?: string | null;
   createdAt: string;
+  attachmentUrl?: string | null;
+  replyAttachmentUrl?: string | null;
+  suggestedProduct?: ProductCard | null;
 }
 
 const TICKET_STATUS_LABEL: Record<string, string> = {
@@ -201,6 +222,9 @@ function ticketToChatText(ticket: LookedUpTicket): string {
   lines.push(`Ticket ${ticket.shortId} — ${TICKET_STATUS_LABEL[ticket.status] || ticket.status}`);
   lines.push(`"${ticket.subject}"`);
   lines.push(`Raised on ${new Date(ticket.createdAt).toLocaleDateString('en-IN')}`);
+  if (ticket.attachmentUrl) {
+    lines.push('📎 You attached a photo with this ticket.');
+  }
   if (ticket.replyMessage) {
     lines.push('');
     lines.push(`Our reply${ticket.repliedAt ? ` (${new Date(ticket.repliedAt).toLocaleDateString('en-IN')})` : ''}:`);
@@ -254,6 +278,12 @@ export default function LiveChatWidget() {
   const [ticketMessage, setTicketMessage] = useState('');
   const [ticketEmail, setTicketEmail] = useState('');
   const [ticketSending, setTicketSending] = useState(false);
+  // Optional photo attached to the ticket being raised — uploaded as soon
+  // as it's picked (via /api/chat/upload-attachment) so submitting the
+  // ticket itself stays a single fast round-trip.
+  const [ticketAttachment, setTicketAttachment] = useState<{ url: string; name: string } | null>(null);
+  const [ticketAttaching, setTicketAttaching] = useState(false);
+  const ticketFileInputRef = useRef<HTMLInputElement>(null);
 
   // "Check my ticket" mini flow — separate from the raise-a-ticket flow
   // above (that one creates a new ticket; this one looks up existing
@@ -305,12 +335,20 @@ export default function LiveChatWidget() {
     setHasOpenedOnce(true);
   }
 
-  function addBot(text: string, isError = false, orderChips?: { id: string; shortId: string }[]) {
-    setMessages((prev) => [...prev, { id: uid(), sender: 'bot', text, isError, orderChips }]);
+  function addBot(
+    text: string,
+    isError = false,
+    orderChips?: { id: string; shortId: string }[],
+    extra?: { imageUrl?: string | null; productCard?: ProductCard | null }
+  ) {
+    setMessages((prev) => [
+      ...prev,
+      { id: uid(), sender: 'bot', text, isError, orderChips, imageUrl: extra?.imageUrl, productCard: extra?.productCard },
+    ]);
   }
 
-  function addUser(text: string) {
-    setMessages((prev) => [...prev, { id: uid(), sender: 'user', text }]);
+  function addUser(text: string, imageUrl?: string | null) {
+    setMessages((prev) => [...prev, { id: uid(), sender: 'user', text, imageUrl }]);
   }
 
   // Tapping one of the "you also have N more orders" chips — shows that
@@ -437,13 +475,14 @@ export default function LiveChatWidget() {
   function handleStartTicket() {
     addUser('Raise a support ticket');
     addBot("Sure — in a line or two, what's the issue?");
+    setTicketAttachment(null);
     setTicketStep('message');
   }
 
   function submitTicketMessage() {
     const val = ticketMessage.trim();
     if (!val) return;
-    addUser(val);
+    addUser(val, ticketAttachment?.url);
     if (activeOrder?.guestEmail) {
       raiseTicket(val, activeOrder.guestEmail);
     } else {
@@ -459,6 +498,32 @@ export default function LiveChatWidget() {
     raiseTicket(ticketMessage.trim(), val);
   }
 
+  // Picks + immediately uploads a photo for the ticket currently being
+  // raised. Uploading right away (instead of waiting for ticket submit)
+  // keeps the final "raise ticket" round-trip fast and lets the shopper
+  // see the file attached before they hit send.
+  async function handleTicketAttachmentPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setTicketAttaching(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch('/api/chat/upload-attachment', { method: 'POST', body: form });
+      const data = await res.json().catch(() => ({ ok: false }));
+      if (data?.ok && data.url) {
+        setTicketAttachment({ url: data.url, name: data.name || file.name });
+      } else {
+        addBot(data?.error || "Couldn't attach that photo — please try again.", true);
+      }
+    } catch {
+      addBot("Couldn't attach that photo — please try again.", true);
+    } finally {
+      setTicketAttaching(false);
+    }
+  }
+
   async function raiseTicket(message: string, email: string) {
     setTicketSending(true);
     try {
@@ -470,6 +535,7 @@ export default function LiveChatWidget() {
           email,
           subject: activeOrder ? `Order ${activeOrder.shortId} — support request` : 'Support request from chat',
           message,
+          attachmentUrl: ticketAttachment?.url || null,
         }),
       });
       const data = await res.json().catch(() => ({ ok: false }));
@@ -490,6 +556,7 @@ export default function LiveChatWidget() {
       setTicketMessage('');
       setTicketEmail('');
       setTicketSending(false);
+      setTicketAttachment(null);
     }
   }
 
@@ -531,7 +598,10 @@ export default function LiveChatWidget() {
       if (rest.length > 0) {
         text += `\n\nYou also have ${rest.length} more ticket${rest.length > 1 ? 's' : ''} — the most recent one is shown above.`;
       }
-      addBot(text);
+      addBot(text, false, undefined, {
+        imageUrl: top.replyAttachmentUrl || top.attachmentUrl,
+        productCard: top.suggestedProduct,
+      });
       setTicketLookupStep(null);
     } catch {
       addBot("Couldn't reach our support system right now — please try again shortly, or use WhatsApp above.", true);
@@ -640,7 +710,7 @@ export default function LiveChatWidget() {
   const inGuestFlow = guestStep !== null;
   const inTicketFlow = ticketStep !== null;
   const inTicketLookupFlow = ticketLookupStep !== null;
-  const busy = aiLoading || orderLookupLoading || emailSending || ticketSending || ticketLookupLoading;
+  const busy = aiLoading || orderLookupLoading || emailSending || ticketSending || ticketLookupLoading || ticketAttaching;
 
   return (
     <>
@@ -693,7 +763,43 @@ export default function LiveChatWidget() {
                     }`}
                   >
                     {m.text}
+                    {m.imageUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={m.imageUrl}
+                        alt="Attachment"
+                        className="mt-2 max-h-40 w-full rounded-lg border border-border/40 object-cover"
+                      />
+                    )}
                   </div>
+                  {m.productCard && (
+                    <a
+                      href={m.productCard.slug ? `/product/${m.productCard.slug}` : '#'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex w-full items-center gap-2.5 rounded-xl border border-border bg-card p-2 shadow-sm transition-colors hover:border-primary"
+                    >
+                      {m.productCard.image ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={m.productCard.image}
+                          alt=""
+                          className="h-12 w-12 shrink-0 rounded-lg object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-muted">
+                          <PackageSearch className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-medium text-foreground">{m.productCard.name}</p>
+                        {typeof m.productCard.price === 'number' && (
+                          <p className="text-xs font-semibold text-primary">₹{m.productCard.price.toLocaleString('en-IN')}</p>
+                        )}
+                        <p className="text-[10px] text-muted-foreground">We recommend this — tap to view</p>
+                      </div>
+                    </a>
+                  )}
                   {m.orderChips && m.orderChips.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 pl-1">
                       {m.orderChips.map((chip) => (
@@ -775,36 +881,83 @@ export default function LiveChatWidget() {
                 </button>
               </form>
             ) : inTicketFlow ? (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (ticketStep === 'message') submitTicketMessage();
-                  else submitTicketEmail();
-                }}
-                className="mb-3 flex items-center gap-2"
-              >
-                <LifeBuoy className="h-4 w-4 shrink-0 text-muted-foreground" />
-                <input
-                  autoFocus
-                  value={ticketStep === 'message' ? ticketMessage : ticketEmail}
-                  onChange={(e) =>
-                    ticketStep === 'message' ? setTicketMessage(e.target.value) : setTicketEmail(e.target.value)
-                  }
-                  placeholder={ticketStep === 'message' ? 'Describe the issue briefly' : 'Email for follow-up'}
-                  type={ticketStep === 'email' ? 'email' : 'text'}
-                  maxLength={ticketStep === 'message' ? 300 : undefined}
-                  disabled={busy}
-                  className="w-full rounded-full border border-border bg-background py-2 px-3 text-base outline-none transition-colors focus:border-primary disabled:opacity-60 sm:text-sm"
-                />
-                <button
-                  type="submit"
-                  disabled={busy}
-                  aria-label="Submit"
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity disabled:opacity-40"
+              <div className="mb-3">
+                {ticketStep === 'message' && (ticketAttachment || ticketAttaching) && (
+                  <div className="mb-2 flex items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs">
+                    {ticketAttaching ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
+                        <span className="text-muted-foreground">Uploading photo...</span>
+                      </>
+                    ) : (
+                      <>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={ticketAttachment!.url} alt="" className="h-8 w-8 shrink-0 rounded object-cover" />
+                        <span className="flex-1 truncate text-foreground">{ticketAttachment!.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => setTicketAttachment(null)}
+                          aria-label="Remove attachment"
+                          className="shrink-0 text-muted-foreground hover:text-destructive"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (ticketStep === 'message') submitTicketMessage();
+                    else submitTicketEmail();
+                  }}
+                  className="flex items-center gap-2"
                 >
-                  <Send className="h-4 w-4" />
-                </button>
-              </form>
+                  <LifeBuoy className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <input
+                    autoFocus
+                    value={ticketStep === 'message' ? ticketMessage : ticketEmail}
+                    onChange={(e) =>
+                      ticketStep === 'message' ? setTicketMessage(e.target.value) : setTicketEmail(e.target.value)
+                    }
+                    placeholder={ticketStep === 'message' ? 'Describe the issue briefly' : 'Email for follow-up'}
+                    type={ticketStep === 'email' ? 'email' : 'text'}
+                    maxLength={ticketStep === 'message' ? 300 : undefined}
+                    disabled={busy}
+                    className="w-full rounded-full border border-border bg-background py-2 px-3 text-base outline-none transition-colors focus:border-primary disabled:opacity-60 sm:text-sm"
+                  />
+                  {ticketStep === 'message' && (
+                    <>
+                      <input
+                        ref={ticketFileInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleTicketAttachmentPick}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => ticketFileInputRef.current?.click()}
+                        disabled={busy || ticketAttaching}
+                        aria-label="Attach a photo"
+                        title="Attach a photo"
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-background text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:opacity-40"
+                      >
+                        <Paperclip className="h-4 w-4" />
+                      </button>
+                    </>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    aria-label="Submit"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity disabled:opacity-40"
+                  >
+                    <Send className="h-4 w-4" />
+                  </button>
+                </form>
+              </div>
             ) : inTicketLookupFlow ? (
               <form
                 onSubmit={(e) => {

@@ -33,7 +33,7 @@ import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
-export type StorageBucket = 'product-images' | 'product-videos' | 'review-images';
+export type StorageBucket = 'product-images' | 'product-videos' | 'review-images' | 'support-attachments';
 
 // Canonical public base — the only host that should ever appear in the DB
 // or be returned to callers. Never expose supabase.co or cdn.* directly.

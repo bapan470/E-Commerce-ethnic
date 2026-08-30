@@ -348,12 +348,32 @@ export function supportTicketReplyEmail(ticket: {
   subject: string;
   message: string;
   reply_message: string;
+  reply_attachment_url?: string | null;
+  suggested_product?: { id: string; name: string; slug?: string | null; image?: string | null; price?: number | null } | null;
 }) {
   const shortId = `#${ticket.id.slice(0, 8).toUpperCase()}`;
   const subject = `Re: ${ticket.subject} (${shortId}) — ${SITE_NAME}`;
+  const sp = ticket.suggested_product;
+  const productBlock = sp
+    ? `
+    <div style="margin:16px 0 0; padding:14px; background:#fff; border:1px solid #ecdfd2; border-radius:8px; display:flex; gap:12px; align-items:center;">
+      ${sp.image ? `<img src="${sp.image}" alt="" width="64" height="64" style="width:64px; height:64px; object-fit:cover; border-radius:6px; display:block;" />` : ''}
+      <div>
+        <p style="margin:0 0 2px; font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:#a89a8f;">We recommend</p>
+        <p style="margin:0; font-weight:bold; color:${BRAND_COLOR};">${sp.name}</p>
+        ${typeof sp.price === 'number' ? `<p style="margin:2px 0 0; font-size:13px; color:#6b5f57;">${formatINR(sp.price)}</p>` : ''}
+        ${sp.slug ? `<a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/product/${sp.slug}" style="display:inline-block; margin-top:6px; font-size:12px; color:${BRAND_COLOR}; text-decoration:underline;">View product</a>` : ''}
+      </div>
+    </div>`
+    : '';
+  const attachmentBlock = ticket.reply_attachment_url
+    ? `<p style="margin:14px 0 0; font-size:13px;"><a href="${ticket.reply_attachment_url}" style="color:${BRAND_COLOR}; text-decoration:underline;">📎 View attachment</a></p>`
+    : '';
   const html = wrapper(`
     <h2 style="margin-top:0; color:${BRAND_COLOR};">Hi${ticket.customer_name ? ` ${ticket.customer_name}` : ''},</h2>
     <p style="white-space:pre-wrap;">${ticket.reply_message}</p>
+    ${attachmentBlock}
+    ${productBlock}
     <div style="margin:20px 0 0; padding:14px 16px; background:#fbf6f0; border-left:3px solid #ecdfd2; border-radius:4px;">
       <p style="margin:0 0 4px; font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:#a89a8f;">Your original message (${shortId})</p>
       <p style="margin:0; color:#6b5f57; font-size:13px; white-space:pre-wrap;">${ticket.message}</p>
