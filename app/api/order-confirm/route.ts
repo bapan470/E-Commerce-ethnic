@@ -1,162 +1,339 @@
-import { createClient } from "@supabase/supabase-js";
-import { NextRequest, NextResponse } from "next/server";
-import { sendEmail } from "@/lib/email";
-import { orderConfirmationEmail, newOrderAdminNotification } from "@/lib/email-templates";
+import { NextResponse } from 'next/server';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { sendEmail } from '@/lib/email';
+import { orderConfirmationEmail, newOrderAdminNotification } from '@/lib/email-templates';
+import { DEFAULT_LOYALTY_SETTINGS, type LoyaltySettings } from '@/lib/loyalty-api';
+import { DEFAULT_REFERRAL_SETTINGS, type ReferralSettings } from '@/lib/referrals-api';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-// Fired (best-effort, fire-and-forget from app/checkout/page.tsx -- its
-// result is never read) right after an order is placed, for both COD and
-// online payment. Its two jobs:
-//   1. Send the customer's "order confirmed" email + the admin's "new
-//      order" notification email (orderConfirmationEmail() /
-//      newOrderAdminNotification() in lib/email-templates.ts). These
-//      templates existed but were never actually called from anywhere in
-//      the codebase, so no new-order email ever went out to either side --
-//      only later status-change emails (from updateOrderStatus() in
-//      lib/orders-api.ts) did, which is why "pending"/"payment
-//      confirmed"/"delivered" emails worked but the very first "thank you
-//      for your order" one never arrived. Guarded by
-//      confirmation_email_sent_at so a retried fire-and-forget call never
-//      double-sends.
-//   2. Mark this customer's abandoned_carts row as recovered, so the
-//      abandoned-cart recovery cron (runAbandonedCartsJob in
-//      lib/cron-jobs.ts) stops emailing "you left something behind" for a
-//      cart that was already turned into an order.
+// Called from the checkout page (app/checkout/page.tsx) right after an
+// order is created/confirmed -- both COD and post-payment. Fire-and-forget
+// from the client (`fetch(...).catch(() => {})`), so this must never throw
+// in a way that leaves things half-done, and must be safe to call more
+// than once for the same order (retries on a flaky connection, etc).
 //
-// FIX: this previously expected a totally different webhook payload shape
-// (`{ data: { custom: { order_id }}}`, from some earlier, non-Razorpay
-// payment-gateway integration) and wrote to columns (`order_id`,
-// `order_status`) that don't exist on `orders` (see
-// supabase/migrations/20260716132537_boutique_schema.sql -- the real
-// columns are `id` and `status`). Every call from checkout/page.tsx sends
-// `{ orderId }`, which didn't match that shape at all, so this route
-// always returned 400 and silently did nothing -- the abandoned-cart row
-// never got marked recovered, and the "you left something behind" email
-// could still go out for a cart the customer already checked out (and even
-// cancelled/refunded). It also POSTed to /api/admin/notify-new-order,
-// which doesn't exist in this codebase (the admin notification bell now
-// reads pending orders directly in app/api/admin/notifications/route.ts),
-// so that call has been removed.
-export async function POST(req: NextRequest) {
+// Five jobs, each independently best-effort:
+//   1. Customer "order confirmed" email + admin "new order" email.
+//   2. Clear this customer's abandoned-cart row, if any.
+//   3. Gift card redemption (guest-checkout safe -- not tied to a login).
+//   4. Loyalty points (redeem + earn) -- logged-in customers only.
+//   5. Referral reward, on the referred customer's first completed order.
+//
+// REGRESSION HISTORY (see git log on this file): jobs 1, 3, 4, and 5 all
+// existed and worked as of 4 Aug, and were further improved on 19 Aug
+// (non-blocking email, this comment block). Later the same day the file
+// was accidentally overwritten with a completely different, much older
+// draft (a Razorpay-shaped webhook handler expecting `{ data: { custom:
+// { order_id }}}` and writing to an `order_status` column that doesn't
+// exist on `orders`) that had none of this -- wiping out the customer/
+// admin emails, gift card redemption, loyalty points, and referral
+// rewards in one shot. Two follow-up commits patched the abandoned-cart
+// piece back to the new`{ orderId }` shape but never restored the rest.
+//
+// Also fixed while restoring: the pre-regression "19 Aug" version called
+// `supabase.raw('loyalty_balance - ?', [...])` to update the balance
+// after each ledger insert -- `.raw()` is a Knex/ActiveRecord-style
+// method that does not exist on the `@supabase/supabase-js` client, so
+// every one of those calls threw a TypeError at runtime for any
+// logged-in customer earning/redeeming points, which aborted the rest
+// of this route (referral rewards included) with an uncaught exception.
+// It also turned out to be unnecessary: `loyalty_points_ledger` already
+// has an AFTER INSERT trigger (`apply_loyalty_ledger_entry`, see
+// supabase/migrations/20260722000000_phase10a_loyalty.sql) that keeps
+// `profiles.loyalty_balance` in sync automatically. Same story for gift
+// cards (`apply_gift_card_transaction` trigger). So this version simply
+// inserts the ledger/transaction rows and lets those triggers do the
+// balance math -- no manual balance update needed or attempted.
+export async function POST(req: Request) {
+  const body = await req.json().catch(() => ({}));
+  const orderId = body?.orderId;
+  if (!orderId) {
+    return NextResponse.json({ error: 'Missing orderId' }, { status: 400 });
+  }
+
+  const supabase = getSupabaseAdmin();
+
   try {
-    const body = await req.json().catch(() => ({}));
-    const orderId = body?.orderId as string | undefined;
-
-    if (!orderId) {
-      return NextResponse.json({ error: "orderId is required" }, { status: 400 });
-    }
-
     const { data: order, error } = await supabase
-      .from("orders")
-      .select(
-        "id, customer_email, customer_name, customer_phone, items, total_amount, payment_method, confirmation_email_sent_at"
-      )
-      .eq("id", orderId)
-      .maybeSingle();
+      .from('orders')
+      .select('*')
+      .eq('id', orderId)
+      .single();
 
-    if (error) {
-      console.error("[order-confirm] order lookup error:", error);
-      return NextResponse.json({ error: "Failed to look up order" }, { status: 500 });
+    if (error || !order) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 
-    if (!order) {
-      return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    // 1a. Customer "order confirmed" email -- fire-and-forget so a slow/
+    // down email provider never delays order confirmation. Guarded by
+    // confirmation_email_sent_at so a retried call from the client never
+    // double-sends.
+    if (order.customer_email && !order.confirmation_email_sent_at) {
+      const { subject, html } = orderConfirmationEmail({
+        id: order.id,
+        customer_name: order.customer_name,
+        items: Array.isArray(order.items) ? order.items : [],
+        total_amount: order.total_amount,
+        payment_method: order.payment_method,
+      });
+
+      sendEmail({ to: order.customer_email, subject, html })
+        .then(() =>
+          supabase
+            .from('orders')
+            .update({ confirmation_email_sent_at: new Date().toISOString() })
+            .eq('id', order.id)
+        )
+        .catch((err) => {
+          console.error('[order-confirm] Customer email send failed:', err);
+        });
     }
 
-    // Customer "thank you for your order" email + admin "you've got a new
-    // order" email. Guarded by confirmation_email_sent_at so a retried
-    // fire-and-forget call from checkout/page.tsx (see comment above)
-    // never double-sends. Best-effort -- never blocks order confirmation,
-    // same as the abandoned-cart update below.
-    if (!order.confirmation_email_sent_at) {
+    // 1b. Clear this customer's abandoned cart, if any -- they just
+    // checked out, so it's no longer "abandoned". Also attributes the
+    // conversion to whichever recovery emails went out for that cart (see
+    // abandoned_cart_emails, added in 20260928010000_cart_recovery_sequence.sql).
+    if (order.customer_email) {
       try {
-        if (order.customer_email) {
-          const { subject, html } = orderConfirmationEmail({
-            id: order.id,
-            customer_name: order.customer_name,
-            items: order.items,
-            total_amount: order.total_amount,
-            payment_method: order.payment_method,
-          });
-          await sendEmail({ to: order.customer_email, subject, html });
+        const { data: recoveredCarts } = await supabase
+          .from('abandoned_carts')
+          .update({ recovered: true })
+          .eq('email', order.customer_email)
+          .eq('recovered', false)
+          .select('id');
+
+        const cartIds = (recoveredCarts || []).map((c: { id: string }) => c.id);
+        if (cartIds.length > 0) {
+          await supabase
+            .from('abandoned_cart_emails')
+            .update({ converted: true, converted_at: new Date().toISOString() })
+            .in('cart_id', cartIds)
+            .eq('converted', false);
+        }
+      } catch (err) {
+        console.log('Abandoned cart update error (non-critical):', err);
+      }
+    }
+
+    // 1c. Admin "you've got a new order" email. Controlled from Admin ->
+    // Settings -> Order Notifications (on/off + optional dedicated email;
+    // falls back to the public support_email if left blank). Never blocks
+    // order confirmation.
+    try {
+      const { data: orderNotifRow } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'order_notifications')
+        .maybeSingle();
+      const orderNotif = orderNotifRow?.value as { enabled?: boolean; email?: string } | null;
+      const notifEnabled = orderNotif?.enabled !== false; // default ON if never configured
+
+      if (notifEnabled) {
+        let adminEmail = orderNotif?.email?.trim();
+        if (!adminEmail) {
+          const { data: storeInfoRow } = await supabase
+            .from('settings')
+            .select('value')
+            .eq('key', 'store_info')
+            .maybeSingle();
+          adminEmail = (storeInfoRow?.value as { support_email?: string } | null)?.support_email;
         }
 
-        const { data: storeInfoRow } = await supabase
-          .from("settings")
-          .select("value")
-          .eq("key", "store_info")
-          .maybeSingle();
-        const supportEmail = (storeInfoRow?.value as { support_email?: string } | null)?.support_email;
-
-        if (supportEmail) {
+        if (adminEmail) {
           const notice = newOrderAdminNotification({
             id: order.id,
             customer_name: order.customer_name,
             customer_email: order.customer_email,
             customer_phone: order.customer_phone,
-            items: order.items,
+            items: Array.isArray(order.items) ? order.items : [],
             total_amount: order.total_amount,
             payment_method: order.payment_method,
           });
-          await sendEmail({ to: supportEmail, subject: notice.subject, html: notice.html });
+
+          sendEmail({ to: adminEmail, subject: notice.subject, html: notice.html }).catch((err) => {
+            console.error('[order-confirm] Admin notification email failed:', err);
+          });
         } else {
           console.warn(
-            "[order-confirm] No store support_email set in Admin -> Settings -- skipping new-order admin notification."
+            '[order-confirm] No admin/support email configured (Admin -> Settings) -- skipping new-order notification.'
           );
         }
-
-        await supabase
-          .from("orders")
-          .update({ confirmation_email_sent_at: new Date().toISOString() })
-          .eq("id", orderId);
-      } catch (emailErr) {
-        console.error("[order-confirm] confirmation/admin-notification email failed:", emailErr);
       }
+    } catch (adminEmailErr) {
+      console.error('[order-confirm] Admin notification setup failed:', adminEmailErr);
     }
 
-    // Clear this customer's abandoned cart, if any -- best-effort, never
-    // blocks order confirmation.
-    if (order.customer_email) {
-      try {
-        const { data: recoveredCarts } = await supabase
-          .from("abandoned_carts")
-          .update({ recovered: true })
-          .eq("email", order.customer_email)
-          .eq("recovered", false)
-          .select("id");
+    // 2. Gift card redemption -- works for guest checkouts too (unlike
+    // loyalty), since a gift card code isn't tied to a login. Runs once:
+    // if a redeem entry already exists for this order, skip (order-confirm
+    // can be called more than once for the same order).
+    if (order.gift_card_code && order.gift_card_discount > 0) {
+      const { data: card } = await supabase
+        .from('gift_cards')
+        .select('id')
+        .eq('code', order.gift_card_code)
+        .maybeSingle();
 
-        // Attribute the conversion to every recovery email that went
-        // out for this cart (see abandoned_cart_emails, added in
-        // 20260928010000_cart_recovery_sequence.sql) -- lets Admin ->
-        // Abandoned Carts show "recovered after N emails" instead of
-        // just a plain recovered/not-recovered flag.
-        const cartIds = (recoveredCarts || []).map((c: { id: string }) => c.id);
-        if (cartIds.length > 0) {
-          await supabase
-            .from("abandoned_cart_emails")
-            .update({ converted: true, converted_at: new Date().toISOString() })
-            .in("cart_id", cartIds)
-            .eq("converted", false);
+      if (card) {
+        const { data: existingRedeem } = await supabase
+          .from('gift_card_transactions')
+          .select('id')
+          .eq('gift_card_id', card.id)
+          .eq('order_id', order.id)
+          .limit(1);
+
+        if (!existingRedeem || existingRedeem.length === 0) {
+          // Trigger (apply_gift_card_transaction) deducts this from the
+          // card's balance and flips status to 'redeemed' if it hits 0.
+          await supabase.from('gift_card_transactions').insert({
+            gift_card_id: card.id,
+            order_id: order.id,
+            amount: -order.gift_card_discount,
+            type: 'redeem',
+            reason: `Redeemed on order #${order.id.slice(0, 8)}`,
+          });
         }
-      } catch (err) {
-        console.log("Abandoned cart update error (non-critical):", err);
       }
     }
 
-    return NextResponse.json({
-      success: true,
-      order_id: order.id,
-      message: "Order confirmed successfully",
-    });
+    // 3. Loyalty points -- logged-in customers only (guest checkouts have
+    // no profile to credit). Runs once: if points were already recorded
+    // for this order, skip. Balance itself is kept in sync automatically
+    // by the trg_loyalty_ledger_apply DB trigger on insert below -- no
+    // manual balance update here (see file header comment for why).
+    if (order.user_id) {
+      const { data: existingEntries } = await supabase
+        .from('loyalty_points_ledger')
+        .select('id')
+        .eq('order_id', order.id)
+        .limit(1);
+
+      if (!existingEntries || existingEntries.length === 0) {
+        const { data: settingsRow } = await supabase
+          .from('settings')
+          .select('value')
+          .eq('key', 'loyalty_program')
+          .maybeSingle();
+        const loyaltySettings: LoyaltySettings = {
+          ...DEFAULT_LOYALTY_SETTINGS,
+          ...((settingsRow?.value as Partial<LoyaltySettings>) ?? {}),
+        };
+
+        if (loyaltySettings.enabled) {
+          // 3a. Redeem -- the checkout page already computed the discount;
+          // just record the ledger entry, the trigger deducts the balance.
+          if (order.loyalty_points_redeemed > 0) {
+            const { error: ledgerError } = await supabase.from('loyalty_points_ledger').insert({
+              user_id: order.user_id,
+              order_id: order.id,
+              points: -order.loyalty_points_redeemed,
+              type: 'redeem',
+              reason: `Redeemed on order #${order.id.slice(0, 8)}`,
+            });
+            if (ledgerError) {
+              console.error('[loyalty-redeem] Ledger insert failed:', ledgerError);
+            }
+          }
+
+          // 3b. Earn -- points on what the customer actually paid.
+          // `total_amount` is already net of the loyalty discount (the
+          // checkout page subtracts it before creating the order), so no
+          // further adjustment is needed here.
+          const pointsEarned = Math.floor(
+            (order.total_amount * loyaltySettings.points_per_100_rupees) / 100
+          );
+
+          if (pointsEarned > 0) {
+            const { error: earnError } = await supabase.from('loyalty_points_ledger').insert({
+              user_id: order.user_id,
+              order_id: order.id,
+              points: pointsEarned,
+              type: 'earn',
+              reason: `Order #${order.id.slice(0, 8)}`,
+            });
+
+            if (!earnError) {
+              await supabase
+                .from('orders')
+                .update({ loyalty_points_earned: pointsEarned })
+                .eq('id', order.id)
+                .catch(() => {});
+            } else {
+              console.error('[loyalty-earn] Ledger insert failed:', earnError);
+            }
+          }
+        }
+      }
+
+      // 4. Referral reward -- only fires on the referred customer's FIRST
+      // completed order, and reuses loyalty_points_ledger for both
+      // credits (no separate coupon/discount logic). Balance updates
+      // again ride on the same DB trigger, not a manual update here.
+      const { data: referral } = await supabase
+        .from('referrals')
+        .select('*')
+        .eq('referred_user_id', order.user_id)
+        .eq('status', 'pending')
+        .maybeSingle();
+
+      if (referral) {
+        const { count: priorOrderCount } = await supabase
+          .from('orders')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', order.user_id)
+          .neq('id', order.id);
+
+        // This is their first order (no other orders exist for this user).
+        if (!priorOrderCount) {
+          const { data: referralSettingsRow } = await supabase
+            .from('settings')
+            .select('value')
+            .eq('key', 'referral_program')
+            .maybeSingle();
+          const referralSettings: ReferralSettings = {
+            ...DEFAULT_REFERRAL_SETTINGS,
+            ...((referralSettingsRow?.value as Partial<ReferralSettings>) ?? {}),
+          };
+
+          if (referralSettings.enabled) {
+            if (referralSettings.referrer_reward_points > 0) {
+              await supabase.from('loyalty_points_ledger').insert({
+                user_id: referral.referrer_user_id,
+                order_id: order.id,
+                points: referralSettings.referrer_reward_points,
+                type: 'earn',
+                reason: `Referral bonus — friend's first order #${order.id.slice(0, 8)}`,
+              });
+            }
+
+            if (referralSettings.referred_reward_points > 0) {
+              await supabase.from('loyalty_points_ledger').insert({
+                user_id: order.user_id,
+                order_id: order.id,
+                points: referralSettings.referred_reward_points,
+                type: 'earn',
+                reason: `Welcome bonus — signed up with a referral code`,
+              });
+            }
+
+            await supabase
+              .from('referrals')
+              .update({
+                status: 'completed',
+                first_order_id: order.id,
+                referrer_reward_points: referralSettings.referrer_reward_points,
+                referred_reward_points: referralSettings.referred_reward_points,
+                completed_at: new Date().toISOString(),
+              })
+              .eq('id', referral.id);
+          }
+        }
+      }
+    }
+
+    return NextResponse.json({ success: true, order_id: order.id, message: 'Order confirmed successfully' });
   } catch (err) {
-    console.error("order-confirm error:", err);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    const message = err instanceof Error ? err.message : 'Failed to confirm order';
+    console.error('[order-confirm] Unexpected error:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
