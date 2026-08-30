@@ -74,6 +74,13 @@ type Order = {
   // checked so nothing is missed either way.
   refund_status?: string | null;
   razorpay_refund_id?: string | null;
+  // Set once, permanently, the moment Razorpay actually confirms payment
+  // (app/api/razorpay/verify-payment) -- never cleared afterwards, even if
+  // the order later moves to cancelled/shipped/delivered/returned. This is
+  // the one reliable "money actually changed hands" signal; order.status
+  // alone isn't, since it keeps moving past 'paid' for every order that
+  // progresses normally.
+  razorpay_payment_id?: string | null;
   _return_status?: string | null;
   _return_refund_status?: string | null;
   shipping_address?: any;
@@ -579,12 +586,24 @@ function OrderRow({
   const hasFullBreakdown = order.subtotal != null;
   const isCod = order.payment_method === 'cod';
   // payment_method flips to 'online' the moment "Request Online Payment" is
-  // clicked, well before the customer actually pays -- order.status is the
-  // only field that reflects whether money has actually changed hands.
-  // Without this, the banner below claimed "already paid" while the row's
-  // own Payment Pending tag (line ~735) said the opposite, which is exactly
-  // what confused the admin in this order.
-  const isAwaitingOnlinePayment = !isCod && order.status !== 'paid';
+  // clicked, well before the customer actually pays, so payment_method
+  // alone can't tell us whether money has actually changed hands.
+  //
+  // order.status ALSO isn't reliable for that on its own: it correctly
+  // reads 'paid' right after checkout, but then keeps moving forward for
+  // every order that progresses normally (paid -> shipped -> delivered) or
+  // gets cancelled/returned afterwards (paid -> cancelled). Checking
+  // `status !== 'paid'` alone made a cancelled-after-being-paid order (or
+  // any shipped/delivered online order) wrongly show "Awaiting payment --
+  // not paid yet", even though the customer's money was already captured.
+  //
+  // razorpay_payment_id is written once by verify-payment the moment
+  // Razorpay actually confirms the charge, and is never cleared again
+  // afterwards -- so it's the one signal that reliably answers "did this
+  // order ever actually get paid", independent of where its status has
+  // moved on to since.
+  const wasEverPaidOnline = !!order.razorpay_payment_id || order.status === 'paid';
+  const isAwaitingOnlinePayment = !isCod && !wasEverPaidOnline;
   // Reseller orders: total_amount is always the STORE'S cost price (what
   // place_order_with_items() computes from subtotal/discounts -- see
   // reseller_base_cost: isResale ? total : null in app/checkout/page.tsx).
