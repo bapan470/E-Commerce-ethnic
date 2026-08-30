@@ -1,5 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { sendEmail } from "@/lib/email";
+import { orderConfirmationEmail, newOrderAdminNotification } from "@/lib/email-templates";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -8,10 +10,22 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Fired (best-effort, fire-and-forget from app/checkout/page.tsx -- its
 // result is never read) right after an order is placed, for both COD and
-// online payment. Its only real job today is to mark this customer's
-// abandoned_carts row as recovered, so the abandoned-cart recovery cron
-// (runAbandonedCartsJob in lib/cron-jobs.ts) stops emailing "you left
-// something behind" for a cart that was already turned into an order.
+// online payment. Its two jobs:
+//   1. Send the customer's "order confirmed" email + the admin's "new
+//      order" notification email (orderConfirmationEmail() /
+//      newOrderAdminNotification() in lib/email-templates.ts). These
+//      templates existed but were never actually called from anywhere in
+//      the codebase, so no new-order email ever went out to either side --
+//      only later status-change emails (from updateOrderStatus() in
+//      lib/orders-api.ts) did, which is why "pending"/"payment
+//      confirmed"/"delivered" emails worked but the very first "thank you
+//      for your order" one never arrived. Guarded by
+//      confirmation_email_sent_at so a retried fire-and-forget call never
+//      double-sends.
+//   2. Mark this customer's abandoned_carts row as recovered, so the
+//      abandoned-cart recovery cron (runAbandonedCartsJob in
+//      lib/cron-jobs.ts) stops emailing "you left something behind" for a
+//      cart that was already turned into an order.
 //
 // FIX: this previously expected a totally different webhook payload shape
 // (`{ data: { custom: { order_id }}}`, from some earlier, non-Razorpay
@@ -38,7 +52,9 @@ export async function POST(req: NextRequest) {
 
     const { data: order, error } = await supabase
       .from("orders")
-      .select("id, customer_email")
+      .select(
+        "id, customer_email, customer_name, customer_phone, items, total_amount, payment_method, confirmation_email_sent_at"
+      )
       .eq("id", orderId)
       .maybeSingle();
 
@@ -49,6 +65,57 @@ export async function POST(req: NextRequest) {
 
     if (!order) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    }
+
+    // Customer "thank you for your order" email + admin "you've got a new
+    // order" email. Guarded by confirmation_email_sent_at so a retried
+    // fire-and-forget call from checkout/page.tsx (see comment above)
+    // never double-sends. Best-effort -- never blocks order confirmation,
+    // same as the abandoned-cart update below.
+    if (!order.confirmation_email_sent_at) {
+      try {
+        if (order.customer_email) {
+          const { subject, html } = orderConfirmationEmail({
+            id: order.id,
+            customer_name: order.customer_name,
+            items: order.items,
+            total_amount: order.total_amount,
+            payment_method: order.payment_method,
+          });
+          await sendEmail({ to: order.customer_email, subject, html });
+        }
+
+        const { data: storeInfoRow } = await supabase
+          .from("settings")
+          .select("value")
+          .eq("key", "store_info")
+          .maybeSingle();
+        const supportEmail = (storeInfoRow?.value as { support_email?: string } | null)?.support_email;
+
+        if (supportEmail) {
+          const notice = newOrderAdminNotification({
+            id: order.id,
+            customer_name: order.customer_name,
+            customer_email: order.customer_email,
+            customer_phone: order.customer_phone,
+            items: order.items,
+            total_amount: order.total_amount,
+            payment_method: order.payment_method,
+          });
+          await sendEmail({ to: supportEmail, subject: notice.subject, html: notice.html });
+        } else {
+          console.warn(
+            "[order-confirm] No store support_email set in Admin -> Settings -- skipping new-order admin notification."
+          );
+        }
+
+        await supabase
+          .from("orders")
+          .update({ confirmation_email_sent_at: new Date().toISOString() })
+          .eq("id", orderId);
+      } catch (emailErr) {
+        console.error("[order-confirm] confirmation/admin-notification email failed:", emailErr);
+      }
     }
 
     // Clear this customer's abandoned cart, if any -- best-effort, never
