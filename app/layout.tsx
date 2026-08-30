@@ -109,6 +109,19 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     description: seo.meta_description,
     keywords,
+    // Powers "Install app" on the admin panel (app/manifest.ts, scoped to
+    // /admin) -- standalone display, no browser address bar, instead of
+    // the plain "Add to Home Screen" bookmark shortcut.
+    manifest: '/manifest.webmanifest',
+    themeColor: '#721D32',
+    appleWebApp: {
+      // iOS ignores the web manifest for "Add to Home Screen" and needs
+      // these meta tags instead to get the same standalone (no Safari
+      // chrome) behaviour there.
+      capable: true,
+      statusBarStyle: 'default',
+      title: 'Aruhi Admin',
+    },
     alternates: {
       canonical: '/',
     },
