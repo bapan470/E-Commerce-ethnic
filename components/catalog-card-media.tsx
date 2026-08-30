@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
-import { blurDataURL } from '@/lib/utils';
 import { guessVideoMime } from '@/lib/video-mime';
+import { THUMB_BLUR_DATA_URL, isBlurPlaceholderEnabled } from '@/lib/image-placeholder';
 
 /**
  * Thumbnail area for a catalog/shop grid product card.
@@ -39,6 +39,13 @@ export default function CatalogCardMedia({
   compact?: boolean;
 }) {
   const useVideo = !!(autoplayVideo && videoUrl);
+  // Respects Admin > Settings > Blur Placeholder (same flag + same
+  // generic shimmer as the product-detail gallery — see
+  // lib/image-placeholder.ts / lib/blur-placeholder-flag.ts). Previously
+  // this component had its own hardcoded shimmer (lib/utils.ts) that
+  // never checked the toggle at all, so switching it on/off in Admin had
+  // no effect on the shop/category grid — only on the product page.
+  const blurEnabled = isBlurPlaceholderEnabled();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -106,8 +113,8 @@ export default function CatalogCardMedia({
             quality={78}
             priority={priority}
             loading={priority ? undefined : 'lazy'}
-            placeholder="blur"
-            blurDataURL={blurDataURL(32, 40)}
+            placeholder={blurEnabled ? 'blur' : undefined}
+            blurDataURL={blurEnabled ? THUMB_BLUR_DATA_URL : undefined}
             className={`object-cover transition-opacity duration-300 ease-out ${
               hoverImg ? 'group-hover:opacity-0' : 'group-hover:scale-105 transition-transform duration-500'
             }`}
