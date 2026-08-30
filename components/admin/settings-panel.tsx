@@ -58,6 +58,7 @@ import {
 } from '@/lib/settings-api';
 import type { BackfillProgress } from '@/lib/media-backfill';
 import type { ResizeBackfillProgress } from '@/lib/image-resize-backfill';
+import type { BlurBackfillProgress } from '@/lib/blur-preview-backfill';
 import { uploadProductImage } from '@/lib/products-api';
 import {
   ShippingSettings,
@@ -144,6 +145,8 @@ export default function SettingsPanel() {
   const [savingBlurPlaceholder, setSavingBlurPlaceholder] = useState(false);
   const [resizeBackfillProgress, setResizeBackfillProgress] = useState<ResizeBackfillProgress | null>(null);
   const [resizeBackfillStarting, setResizeBackfillStarting] = useState(false);
+  const [blurBackfillProgress, setBlurBackfillProgress] = useState<BlurBackfillProgress | null>(null);
+  const [blurBackfillStarting, setBlurBackfillStarting] = useState(false);
   const [orderNotifForm, setOrderNotifForm] = useState<OrderNotificationSettings | null>(null);
   const [savingOrderNotif, setSavingOrderNotif] = useState(false);
   const [handlingFeeForm, setHandlingFeeForm] = useState<HandlingFeeSettings | null>(null);
@@ -241,6 +244,11 @@ export default function SettingsPanel() {
     fetch('/api/admin/image-resize-backfill')
       .then((r) => r.json())
       .then((j) => setResizeBackfillProgress(j?.progress ?? null))
+      .catch(() => {}); // non-critical — panel just shows "Loading…" until retried
+
+    fetch('/api/admin/blur-preview-backfill')
+      .then((r) => r.json())
+      .then((j) => setBlurBackfillProgress(j?.progress ?? null))
       .catch(() => {}); // non-critical — panel just shows "Loading…" until retried
 
     fetchOrderNotificationSettings()
@@ -668,6 +676,79 @@ export default function SettingsPanel() {
       toast.error(err instanceof Error ? err.message : 'Could not reset resize backfill status');
     }
   };
+
+  // ---------------------------------------------------------------------
+  // Generate Real Photo Previews — backfill real per-image LQIP blur
+  // previews for pre-existing product/variant images (Part 1 of the
+  // real-blur feature: lib/blur-preview-backfill.ts). Optional — the
+  // generic shimmer above already covers every image with no backfill
+  // needed; this only upgrades old photos to their own sharper-looking
+  // preview. Only ever adds rows to the independent image_blur_previews
+  // table, idempotent, safe to re-run.
+  // ---------------------------------------------------------------------
+  useEffect(() => {
+    if (blurBackfillProgress?.status !== 'running') return;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/admin/blur-preview-backfill', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'run-batch' }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json?.error || 'Blur preview backfill batch failed');
+        setBlurBackfillProgress(json.progress);
+        if (json.progress?.status === 'done') {
+          toast.success(
+            `Real photo preview backfill complete — ${json.progress.generated} preview(s) generated, ${json.progress.failed} failed.`
+          );
+        }
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Blur preview backfill batch failed — will retry');
+      }
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [blurBackfillProgress]);
+
+  const onStartBlurBackfill = async () => {
+    setBlurBackfillStarting(true);
+    try {
+      const res = await fetch('/api/admin/blur-preview-backfill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'start' }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Could not start blur preview backfill');
+      setBlurBackfillProgress(json.progress);
+      if (json.progress?.total === 0) {
+        toast.success('Nothing to do — every existing image already has a real preview.');
+      } else {
+        toast.success(`Started — generating real previews for ${json.progress.total} existing image(s) in the background.`);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not start blur preview backfill');
+    } finally {
+      setBlurBackfillStarting(false);
+    }
+  };
+
+  const onResetBlurBackfill = async () => {
+    try {
+      const res = await fetch('/api/admin/blur-preview-backfill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reset' }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Could not reset blur preview backfill status');
+      setBlurBackfillProgress(json.progress);
+      toast.success('Real photo preview backfill status reset. No previews were deleted — this only clears the progress counter.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not reset blur preview backfill status');
+    }
+  };
+
 
   const onToggleOrderNotif = async (checked: boolean) => {
     if (!orderNotifForm) return;
@@ -1879,14 +1960,16 @@ export default function SettingsPanel() {
         </div>
       )}
 
-      {/* Blur Placeholder — shimmer while product photos load, no backfill needed */}
+      {/* Blur Placeholder — shimmer while product photos load; uses a real
+          per-image preview automatically wherever one has been generated */}
       <div className="mt-8">
         <h2 className="font-serif text-2xl font-bold text-primary">Blur Placeholder</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Shows a soft animated shimmer on product-gallery photos while they load, instead of a
-          blank/white box. This is a generic placeholder, not a preview of the actual photo, so —
-          unlike Responsive Images above — it needs no backfill: turning it on applies to every
-          product photo immediately, old or newly uploaded alike.
+          Shows a placeholder on product-gallery photos while they load, instead of a blank/white
+          box. Wherever a real preview of that exact photo has been generated (see the backfill
+          below), it's shown automatically — otherwise a generic shimmer is used as a safe
+          fallback. No manual choice needed; this works for every product photo, old or newly
+          uploaded alike.
         </p>
       </div>
 
@@ -1912,6 +1995,92 @@ export default function SettingsPanel() {
           />
         </div>
       )}
+
+      {/* Generate Real Photo Previews — optional backfill for real per-image
+          blur previews (Part 1: lib/blur-preview-backfill.ts). The generic
+          shimmer above already covers every image with no backfill needed;
+          this only upgrades old photos to their own sharper-looking preview. */}
+      <div className="mt-6 max-w-xl rounded-lg border border-border/60 bg-card p-5">
+        <Label>Generate Real Photo Previews</Label>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Optional. The generic shimmer above already covers every product photo with no backfill
+          needed — this generates an actual tiny blurred preview of each specific photo instead,
+          for images uploaded <em>before</em> this feature shipped. New uploads/imports already
+          get one automatically. Safe to run whether Blur Placeholder above is on or off, and safe
+          to re-run any time.
+        </p>
+
+        {!blurBackfillProgress ? (
+          <p className="mt-3 text-sm text-muted-foreground">Loading status…</p>
+        ) : (
+          <div className="mt-3 space-y-3">
+            {blurBackfillProgress.total > 0 && (
+              <div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full rounded-full bg-primary transition-all"
+                    style={{
+                      width: `${Math.min(100, Math.round((blurBackfillProgress.processed / blurBackfillProgress.total) * 100))}%`,
+                    }}
+                  />
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {blurBackfillProgress.processed} / {blurBackfillProgress.total} processed —{' '}
+                  {blurBackfillProgress.generated} preview(s) generated
+                  {blurBackfillProgress.alreadyDone > 0
+                    ? `, ${blurBackfillProgress.alreadyDone} image(s) already had a preview`
+                    : ''}
+                  {blurBackfillProgress.failed > 0 ? `, ${blurBackfillProgress.failed} failed` : ''}.
+                </p>
+              </div>
+            )}
+
+            <p className="text-xs">
+              Status:{' '}
+              <span className="font-medium">
+                {blurBackfillProgress.status === 'idle' && 'Not started'}
+                {blurBackfillProgress.status === 'running' && 'Running — generating previews live…'}
+                {blurBackfillProgress.status === 'done' && 'Complete'}
+                {blurBackfillProgress.status === 'error' && 'Error'}
+              </span>
+            </p>
+
+            {blurBackfillProgress.recentErrors.length > 0 && (
+              <details className="text-xs text-muted-foreground">
+                <summary className="cursor-pointer text-yellow-800">
+                  {blurBackfillProgress.recentErrors.length} recent error(s) — click to view
+                </summary>
+                <ul className="mt-1 list-disc pl-4">
+                  {blurBackfillProgress.recentErrors.map((e, i) => (
+                    <li key={i}>
+                      {e.url}: {e.error}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                disabled={blurBackfillStarting || blurBackfillProgress.status === 'running'}
+                onClick={onStartBlurBackfill}
+              >
+                {blurBackfillStarting || blurBackfillProgress.status === 'running' ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : null}
+                {blurBackfillProgress.status === 'done' ? 'Re-run Backfill' : 'Start Backfill'}
+              </Button>
+              {blurBackfillProgress.status !== 'idle' && blurBackfillProgress.status !== 'running' && (
+                <Button type="button" size="sm" variant="outline" onClick={onResetBlurBackfill}>
+                  Reset Status
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Generate Responsive Image Sizes — backfill for pre-existing images */}
       <div className="mt-6 max-w-xl rounded-lg border border-border/60 bg-card p-5">

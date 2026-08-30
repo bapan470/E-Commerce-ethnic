@@ -86,9 +86,15 @@ export default function ProductDetail({
   // to the original client-fetch behaviour below in that case.
   initialProduct = null,
   initialVariant = null,
+  blurPreviews,
 }: {
   initialProduct?: Product | null;
   initialVariant?: VariantWithSizes | null;
+  /** Real per-image LQIP blur previews (image URL -> base64 data URL),
+   *  fetched server-side in app/product/[slug]/page.tsx via
+   *  lib/blur-preview.ts. Optional -- ProductGallery falls back to the
+   *  generic shimmer for any image not present here. */
+  blurPreviews?: Record<string, string>;
 } = {}) {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
@@ -742,6 +748,7 @@ export default function ProductDetail({
           <div className="-mx-4 sm:mx-0">
             <ProductGallery
               images={toPublicMediaUrls(product.images)}
+              blurPreviews={blurPreviews}
               alt={seoAltText}
               discount={discount}
               videoUrl={toPublicMediaUrl(product.video_url)}

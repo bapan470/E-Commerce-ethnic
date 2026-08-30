@@ -29,6 +29,26 @@ interface ProductGalleryProps {
   productName?: string;
   productPrice?: number;
   productMrp?: number | null;
+  /** Real per-image LQIP blur previews (image URL -> base64 data URL),
+   *  fetched server-side via lib/blur-preview.ts. Falls back to the
+   *  generic shimmer (GALLERY_BLUR_DATA_URL/THUMB_BLUR_DATA_URL) for any
+   *  image not present in this map — never a blank/broken state either
+   *  way. Optional so existing callers without it are unaffected. */
+  blurPreviews?: Record<string, string>;
+}
+
+/**
+ * Picks the best available blurDataURL for one image: a real per-image
+ * preview if we have one for this exact URL, otherwise the generic
+ * shimmer passed in as `genericFallback`. Pure — kept outside the
+ * component so it doesn't need to be re-created every render.
+ */
+function blurDataUrlFor(
+  img: string,
+  blurPreviews: Record<string, string> | undefined,
+  genericFallback: string
+): string {
+  return blurPreviews?.[img] ?? genericFallback;
 }
 
 const PLACEHOLDER = 'https://placehold.co/800x1000?text=No+Image';
@@ -83,6 +103,7 @@ export default function ProductGallery({
   productName,
   productPrice,
   productMrp,
+  blurPreviews,
 }: ProductGalleryProps) {
   // Memoized so this array is referentially stable across renders (it's a
   // dependency of the preload effect below) -- without this, a brand new
@@ -221,7 +242,7 @@ export default function ProductGallery({
                     sizes="72px"
                     quality={50}
                     placeholder={blurEnabled ? 'blur' : undefined}
-                    blurDataURL={blurEnabled ? THUMB_BLUR_DATA_URL : undefined}
+                    blurDataURL={blurEnabled ? blurDataUrlFor(img, blurPreviews, THUMB_BLUR_DATA_URL) : undefined}
                     className="select-none object-cover"
                   />
                 </button>
@@ -302,7 +323,7 @@ export default function ProductGallery({
                       sizes="(max-width: 1024px) 100vw, 50vw"
                       quality={80}
                       placeholder={blurEnabled ? 'blur' : undefined}
-                      blurDataURL={blurEnabled ? GALLERY_BLUR_DATA_URL : undefined}
+                      blurDataURL={blurEnabled ? blurDataUrlFor(img, blurPreviews, GALLERY_BLUR_DATA_URL) : undefined}
                       className={cn(
                         'select-none object-contain transition-opacity duration-150 cursor-zoom-in',
                         idx === active && zooming ? 'sm:opacity-0' : 'opacity-100'
@@ -391,6 +412,7 @@ export default function ProductGallery({
           active={active}
           onActiveChange={setActive}
           onClose={() => setLightboxOpen(false)}
+          blurPreviews={blurPreviews}
         />
       )}
     </div>
@@ -412,12 +434,15 @@ function Lightbox({
   active,
   onActiveChange,
   onClose,
+  blurPreviews,
 }: {
   images: string[];
   alt: string;
   active: number;
   onActiveChange: (idx: number) => void;
   onClose: () => void;
+  /** See ProductGalleryProps.blurPreviews — passed straight through. */
+  blurPreviews?: Record<string, string>;
 }) {
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -809,7 +834,7 @@ function Lightbox({
                     priority={Math.abs(idx - active) <= 1}
                     fetchPriority={idx === active ? 'high' : 'auto'}
                     placeholder={blurEnabled ? 'blur' : undefined}
-                    blurDataURL={blurEnabled ? GALLERY_BLUR_DATA_URL : undefined}
+                    blurDataURL={blurEnabled ? blurDataUrlFor(img, blurPreviews, GALLERY_BLUR_DATA_URL) : undefined}
                     className="select-none object-contain"
                   />
                 </div>
@@ -860,7 +885,7 @@ function Lightbox({
                 sizes="56px"
                 quality={50}
                 placeholder={blurEnabled ? 'blur' : undefined}
-                blurDataURL={blurEnabled ? THUMB_BLUR_DATA_URL : undefined}
+                blurDataURL={blurEnabled ? blurDataUrlFor(img, blurPreviews, THUMB_BLUR_DATA_URL) : undefined}
                 className="select-none object-cover"
               />
             </button>

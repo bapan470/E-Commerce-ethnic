@@ -8,6 +8,7 @@ import { fetchShippingSettings } from '@/lib/pincode-api';
 import { generateVariantSeoContent } from '@/lib/variant-seo-content';
 import { getVariantDisplayName } from '@/lib/variant-display-name';
 import { toPublicMediaUrl, toPublicMediaUrls } from '@/lib/media-url';
+import { getBlurPreviews } from '@/lib/blur-preview';
 import ProductDetail from './product-detail';
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
@@ -184,6 +185,15 @@ export default async function ProductPage({ params, searchParams }: Params) {
   const videoUrl = toPublicMediaUrl(variant?.video || product?.video_url || null);
   const videoThumbnails = toPublicMediaUrls((variant?.images.length ? variant.images : product?.images) || []);
 
+  // Real per-image blur previews (LQIP) for the main gallery, fetched
+  // server-side and passed down as a plain object (a Map doesn't survive
+  // the server->client boundary). Any image not present in this object
+  // simply has no real preview yet -- ProductGallery falls back to the
+  // generic shimmer for those, so this can never produce a blank/broken
+  // state. See lib/blur-preview.ts (Part 1) and components/product/
+  // product-gallery.tsx (Part 2).
+  const blurPreviews = Object.fromEntries(await getBlurPreviews(videoThumbnails));
+
   const jsonLd = product
     ? {
         '@context': 'https://schema.org',
@@ -302,7 +312,7 @@ export default async function ProductPage({ params, searchParams }: Params) {
             into a <link rel="preload">) is present in the very first HTML
             response, so the browser can start fetching the photo
             immediately in parallel with hydration. */}
-        <ProductDetail initialProduct={product} initialVariant={variant} />
+        <ProductDetail initialProduct={product} initialVariant={variant} blurPreviews={blurPreviews} />
       </ProductsProvider>
     </>
   );
