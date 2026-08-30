@@ -75,6 +75,12 @@ interface ShopContentProps {
    *  checkouts/purchases -- same "jiska jada click/purchase hua wahi pehle
    *  dikhe" idea as the popularity sort, but at the colour level. */
   initialTopVariants?: Record<string, { color: string; image: string | null; slug: string | null }>;
+  /** Real per-image blur previews (LQIP), canonical-URL -> data URL, from
+   *  the same store the product-detail gallery reads (lib/blur-preview.ts).
+   *  Only covers each card's main + hover photo (see page.tsx). Any photo
+   *  missing here just falls back to the generic shimmer inside
+   *  CatalogCardMedia -- never a blank/broken state. */
+  blurPreviews?: Record<string, string>;
 }
 
 function ShopContentInner({
@@ -82,6 +88,7 @@ function ShopContentInner({
   categories,
   initialPopularityRank = new Map(),
   initialTopVariants = {},
+  blurPreviews = {},
 }: ShopContentProps) {
   const params = useSearchParams();
   const router = useRouter();
@@ -1065,7 +1072,7 @@ function ShopContentInner({
                   <p className="mb-3 text-sm font-semibold text-muted-foreground uppercase tracking-wider">You might like</p>
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                     {products.filter((p) => p.featured).slice(0, 3).map((p, idx) => (
-                      <ProductCard key={p.id} product={p} priority={idx === 0} disableAutoplayVideo={isSearchPage || !videoEnabled} />
+                      <ProductCard key={p.id} product={p} priority={idx === 0} disableAutoplayVideo={isSearchPage || !videoEnabled} blurPreviews={blurPreviews} />
                     ))}
                   </div>
                 </div>
@@ -1111,6 +1118,7 @@ function ShopContentInner({
                       // doesn't end up with the same video playing 4-5
                       // times in a row for one product's colours.
                       disableAutoplayVideo={isSearchPage || !videoEnabled || !!p.isVariantCard}
+                      blurPreviews={blurPreviews}
                     />
                   );
                 })}

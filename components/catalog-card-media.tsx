@@ -29,6 +29,8 @@ export default function CatalogCardMedia({
   autoplayVideo,
   priority,
   compact,
+  blurDataUrl,
+  hoverBlurDataUrl,
 }: {
   img: string;
   hoverImg?: string;
@@ -37,6 +39,12 @@ export default function CatalogCardMedia({
   autoplayVideo?: boolean;
   priority?: boolean;
   compact?: boolean;
+  /** Real per-image blur preview (LQIP) for `img`, if one exists yet —
+   *  see the matching prop on ProductCardProps. Falls back to the
+   *  generic shimmer (THUMB_BLUR_DATA_URL) when undefined. */
+  blurDataUrl?: string;
+  /** Same, for `hoverImg`. */
+  hoverBlurDataUrl?: string;
 }) {
   const useVideo = !!(autoplayVideo && videoUrl);
   // Respects Admin > Settings > Blur Placeholder (same flag + same
@@ -114,7 +122,7 @@ export default function CatalogCardMedia({
             priority={priority}
             loading={priority ? undefined : 'lazy'}
             placeholder={blurEnabled ? 'blur' : undefined}
-            blurDataURL={blurEnabled ? THUMB_BLUR_DATA_URL : undefined}
+            blurDataURL={blurEnabled ? (blurDataUrl || THUMB_BLUR_DATA_URL) : undefined}
             className={`object-cover transition-opacity duration-300 ease-out ${
               hoverImg ? 'group-hover:opacity-0' : 'group-hover:scale-105 transition-transform duration-500'
             }`}
@@ -131,6 +139,8 @@ export default function CatalogCardMedia({
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
               quality={70}
               loading="lazy"
+              placeholder={blurEnabled ? 'blur' : undefined}
+              blurDataURL={blurEnabled ? (hoverBlurDataUrl || THUMB_BLUR_DATA_URL) : undefined}
               className="absolute inset-0 object-cover opacity-0 transition-opacity duration-300 ease-out group-hover:opacity-100"
             />
           )}

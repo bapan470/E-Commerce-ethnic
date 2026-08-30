@@ -23,6 +23,7 @@ export default function ProductCard({
   imageOverride,
   slugOverride,
   disableAutoplayVideo = false,
+  blurPreviews,
 }: {
   product: Product;
   /** Set true for cards in the first visible row so their image gets
@@ -52,6 +53,11 @@ export default function ProductCard({
    * the autoplay video untouched.
    */
   disableAutoplayVideo?: boolean;
+  /** Real per-image blur previews (LQIP), canonical-URL -> data URL, fetched
+   *  server-side by the /shop and /category pages (see their page.tsx).
+   *  CatalogCardMedia falls back to the generic shimmer for any photo not
+   *  present here. */
+  blurPreviews?: Record<string, string>;
 }) {
   const { addItem, activePromotions } = useCart();
   const router = useRouter();
@@ -138,6 +144,13 @@ export default function ProductCard({
     previewVariant?.image || imageOverride || product.default_variant_image || product.images[0]
   ) || 'https://placehold.co/800x1000?text=No+Image';
   const hoverImg = toPublicMediaUrl(product.images[1]) || undefined;
+  // Real per-image blur preview for this exact card's photo(s), if the
+  // server-side backfill has generated one yet (see blurPreviews prop doc
+  // above). CatalogCardMedia falls back to the generic shimmer when this
+  // is undefined -- e.g. previewVariant/imageOverride swaps the photo to
+  // one that wasn't in the batch /shop or /category prefetched.
+  const blurDataUrl = blurPreviews?.[img];
+  const hoverBlurDataUrl = hoverImg ? blurPreviews?.[hoverImg] : undefined;
   // The card's photo (`img` above) can be the default variant's photo,
   // which may be a different colour than the base product's own name/first
   // photo (e.g. base "Maroon Handloom Kurti" with a "Blue" default variant).
@@ -183,6 +196,8 @@ export default function ProductCard({
           autoplayVideo={!disableAutoplayVideo && !!product.autoplay_video_in_catalog}
           priority={priority}
           compact={compact}
+          blurDataUrl={blurDataUrl}
+          hoverBlurDataUrl={hoverBlurDataUrl}
         />
         <div className="absolute left-3 top-3 flex flex-col items-start gap-1.5">
           {/* Admin toggles "Featured" per product in the dashboard — shown

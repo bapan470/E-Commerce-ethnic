@@ -4,6 +4,8 @@ import { fetchProductsServer } from '@/lib/products-api-server';
 import { fetchCategoriesServer } from '@/lib/products-api-server';
 import { fetchPopularityRankServer } from '@/lib/popularity-rank-server';
 import { fetchTopVariantMapServer, toJSON, TopVariantMapJSON } from '@/lib/top-variant-server';
+import { getBlurPreviews } from '@/lib/blur-preview';
+import { toPublicMediaUrl } from '@/lib/media-url';
 import ShopContent from './shop-content';
 
 // Same reasoning as app/category/[slug]/page.tsx: this page has no
@@ -49,6 +51,7 @@ export default async function ShopPage({
   let categories: Awaited<ReturnType<typeof fetchCategoriesServer>> = [];
   let initialPopularityRank: Map<string, number> = new Map();
   let initialTopVariants: TopVariantMapJSON = {};
+  let blurPreviews: Record<string, string> = {};
   try {
     const [productsRes, categoriesRes, popularityRes, topVariantsRes] = await Promise.all([
       fetchProductsServer(),
@@ -60,6 +63,23 @@ export default async function ShopPage({
     categories = categoriesRes;
     initialPopularityRank = popularityRes;
     initialTopVariants = toJSON(topVariantsRes);
+
+    // Real per-image blur previews (LQIP) for every product card on this
+    // grid — the same "real photo" blur the product-detail gallery uses,
+    // instead of the generic shimmer. Only the two photos each card can
+    // actually show (its main photo + the hover-swap photo) are looked
+    // up, keyed by the same canonical URL ProductCard itself computes via
+    // toPublicMediaUrl -- any photo without a real preview yet (still
+    // mid-backfill, or generation failed) simply falls back to the
+    // generic shimmer, never a blank/broken state. See lib/blur-preview.ts.
+    const cardImageUrls = new Set<string>();
+    for (const p of products) {
+      const main = toPublicMediaUrl(p.default_variant_image || p.images[0]);
+      const hover = toPublicMediaUrl(p.images[1]);
+      if (main) cardImageUrls.add(main);
+      if (hover) cardImageUrls.add(hover);
+    }
+    blurPreviews = Object.fromEntries(await getBlurPreviews(Array.from(cardImageUrls)));
   } catch (err) {
     console.error('Failed to load /shop data:', err);
   }
@@ -70,6 +90,7 @@ export default async function ShopPage({
       categories={categories}
       initialPopularityRank={initialPopularityRank}
       initialTopVariants={initialTopVariants}
+      blurPreviews={blurPreviews}
     />
   );
 }

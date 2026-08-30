@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { fetchCategoriesServer, fetchProductsServer } from '@/lib/products-api-server';
 import { fetchPopularityRankServer } from '@/lib/popularity-rank-server';
 import { fetchTopVariantMapServer, toJSON } from '@/lib/top-variant-server';
+import { getBlurPreviews } from '@/lib/blur-preview';
+import { toPublicMediaUrl } from '@/lib/media-url';
 import ViewItemListTracker from '@/components/analytics/view-item-list-tracker';
 import CategoryToolbarGrid from '@/components/category/category-toolbar-grid';
 import { safeJsonLd } from '@/lib/json-ld';
@@ -112,6 +114,16 @@ export default async function CategoryPage({ params }: Params) {
   if (!category) notFound();
 
   const categoryProducts = products.filter((p) => p.category === category.name);
+  // Same real per-image blur preview lookup as /shop (see app/shop/page.tsx
+  // for the full explanation) — scoped to just this category's products.
+  const cardImageUrls = new Set<string>();
+  for (const p of categoryProducts) {
+    const main = toPublicMediaUrl(p.default_variant_image || p.images[0]);
+    const hover = toPublicMediaUrl(p.images[1]);
+    if (main) cardImageUrls.add(main);
+    if (hover) cardImageUrls.add(hover);
+  }
+  const blurPreviews = Object.fromEntries(await getBlurPreviews(Array.from(cardImageUrls)));
   // Counts every colour card the grid below actually renders (base colour
   // + each distinct `product_variants` colour), not just the number of
   // underlying product rows -- otherwise a single product with 10 colours
@@ -203,6 +215,7 @@ export default async function CategoryPage({ params }: Params) {
           categoryName={category.name}
           initialPopularityRank={initialPopularityRank}
           initialTopVariants={initialTopVariants}
+          blurPreviews={blurPreviews}
         />
       )}
       <ViewItemListTracker

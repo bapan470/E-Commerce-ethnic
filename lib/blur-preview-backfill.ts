@@ -21,6 +21,7 @@
 
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { generateBlurDataUrl } from '@/lib/blur-preview';
+import { toPublicMediaUrl } from '@/lib/media-url';
 
 const BATCH_SIZE = 8; // sharp resizing is CPU-heavy — keep batches small, same as image-resize-backfill
 
@@ -105,18 +106,34 @@ export async function startBlurBackfill(): Promise<BlurBackfillProgress> {
   const admin = getSupabaseAdmin();
   const allUrls = await listAllReferencedImageUrls();
 
+  // IMPORTANT: `image_blur_previews.image_url` is always keyed by the
+  // CANONICAL (toPublicMediaUrl-transformed) URL — the same one every
+  // read-side lookup uses (see getBlurPreviews callers). Legacy rows in
+  // `products`/`product_variants` often store the raw pre-migration
+  // Supabase/R2 URL though, so we dedupe/check "already done" by the
+  // canonical form here, while still keeping the original raw URL around
+  // to actually fetch the bytes from in runBlurBackfillBatch (both work
+  // as a fetchable source, but the raw one is the one guaranteed to have
+  // existed before the /media proxy did).
+  const canonicalToRaw = new Map<string, string>();
+  for (const raw of allUrls) {
+    const canonical = toPublicMediaUrl(raw) || raw;
+    if (!canonicalToRaw.has(canonical)) canonicalToRaw.set(canonical, raw);
+  }
+  const canonicalUrls = Array.from(canonicalToRaw.keys());
+
   const existing = new Set<string>();
   // Chunk the "already have a preview" lookup so a single .in() call
   // never gets an unbounded URL list.
   const CHUNK = 200;
-  for (let i = 0; i < allUrls.length; i += CHUNK) {
-    const chunk = allUrls.slice(i, i + CHUNK);
+  for (let i = 0; i < canonicalUrls.length; i += CHUNK) {
+    const chunk = canonicalUrls.slice(i, i + CHUNK);
     const { data } = await admin.from('image_blur_previews').select('image_url').in('image_url', chunk);
     for (const row of data ?? []) existing.add(row.image_url as string);
   }
 
-  const queue = allUrls.filter((url) => !existing.has(url));
-  const alreadyDone = allUrls.length - queue.length;
+  const queue = canonicalUrls.filter((c) => !existing.has(c)).map((c) => canonicalToRaw.get(c)!);
+  const alreadyDone = canonicalUrls.length - queue.length;
 
   const progress: BlurBackfillProgress = {
     ...DEFAULT_PROGRESS,
@@ -156,9 +173,13 @@ export async function runBlurBackfillBatch(): Promise<BlurBackfillProgress> {
       const buffer = Buffer.from(arrayBuffer);
 
       const blurDataUrl = await generateBlurDataUrl(buffer);
+      // Store under the CANONICAL URL (see startBlurBackfill's comment) so
+      // this row is actually found by every real read-side lookup, which
+      // always looks up by the canonical, toPublicMediaUrl-transformed URL.
+      const canonicalUrl = toPublicMediaUrl(url) || url;
       await admin
         .from('image_blur_previews')
-        .upsert({ image_url: url, blur_data_url: blurDataUrl }, { onConflict: 'image_url' });
+        .upsert({ image_url: canonicalUrl, blur_data_url: blurDataUrl }, { onConflict: 'image_url' });
       progress.generated += 1;
     } catch (err) {
       progress.failed += 1;

@@ -45,6 +45,9 @@ interface CategoryToolbarGridProps {
   /** productId -> best-performing colour variation (image/slug). See
    *  lib/top-variant-server.ts and the matching prop on ShopContent. */
   initialTopVariants?: Record<string, { color: string; image: string | null; slug: string | null }>;
+  /** Real per-image blur previews (LQIP) for this category's products —
+   *  see the matching prop on ShopContentProps for the full explanation. */
+  blurPreviews?: Record<string, string>;
 }
 
 /**
@@ -62,6 +65,7 @@ export default function CategoryToolbarGrid({
   categoryName,
   initialPopularityRank = new Map(),
   initialTopVariants = {},
+  blurPreviews = {},
 }: CategoryToolbarGridProps) {
   const [sort, setSort] = useState<SortKey>('popularity');
 
@@ -309,6 +313,7 @@ export default function CategoryToolbarGrid({
               imageOverride={topVariant?.image || undefined}
               slugOverride={topVariant?.slug || undefined}
               disableAutoplayVideo={!videoEnabled || !!p.isVariantCard}
+              blurPreviews={blurPreviews}
             />
           );
         })}
