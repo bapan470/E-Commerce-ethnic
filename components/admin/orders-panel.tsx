@@ -26,6 +26,17 @@ import {
 import { toast } from 'sonner';
 import OrderTracking from '@/components/order/order-tracking';
 import OrderStatusHistory from '@/components/admin/order-status-history';
+
+// Per-status left-border accent so an order's state is readable at a glance
+// while scanning the table, without having to read the dropdown text.
+const STATUS_BORDER_COLOR: Record<string, string> = {
+  pending: 'border-l-amber-400',
+  paid: 'border-l-emerald-500',
+  shipped: 'border-l-sky-500',
+  delivered: 'border-l-green-600',
+  cancelled: 'border-l-red-500',
+  failed: 'border-l-neutral-500',
+};
 import DeliveryNotificationTester from '@/components/admin/delivery-notification-tester';
 import CreateShipmentModal, {
   type CreateShipmentPayload,
@@ -626,7 +637,11 @@ function OrderRow({
 
   return (
     <>
-      <tr className={`border-t ${selected ? 'bg-destructive/5' : ''}`}>
+      <tr
+        className={`border-t border-l-4 ${STATUS_BORDER_COLOR[order.status] || 'border-l-transparent'} ${
+          selected ? 'bg-destructive/5' : order.status === 'cancelled' ? 'bg-red-50/50' : ''
+        }`}
+      >
         <td className="px-4 py-3 align-top">
           <Checkbox
             checked={selected}
@@ -805,7 +820,9 @@ function OrderRow({
           <select
             value={order.status}
             onChange={(e) => onChangeStatus(order.id, e.target.value)}
-            className="rounded border px-2 py-1 text-sm"
+            className={`rounded border-2 px-2 py-1 text-sm ${
+              STATUS_BORDER_COLOR[order.status]?.replace('border-l-', 'border-') || 'border-input'
+            }`}
           >
             {['pending','paid','shipped','delivered','cancelled','failed'].map((s) => (
               <option key={s} value={s}>{s}</option>
@@ -823,6 +840,10 @@ function OrderRow({
               <Truck className="h-3.5 w-3.5 text-secondary" />
               <span className="font-medium">{order.tracking_number}</span>
             </div>
+          ) : order.status === 'cancelled' ? (
+            // Cancelled orders never ship -- showing "Create Shipment" here
+            // was misleading, so replace it with a plain status note.
+            <span className="text-xs font-medium text-red-600">Order cancelled</span>
           ) : (
             <Button
               size="sm"

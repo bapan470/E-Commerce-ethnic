@@ -92,6 +92,10 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       },
     });
   } catch (err) {
+    // Logged server-side so a bad invoice (e.g. a legacy/cancelled order with
+    // a malformed item) can actually be diagnosed instead of just showing up
+    // as a failed download with no trace.
+    console.error('[invoice] generation failed for order', params.id, err);
     const message = err instanceof Error ? err.message : 'Failed to generate invoice';
     return NextResponse.json({ error: message }, { status: 500 });
   }

@@ -332,8 +332,17 @@ export async function generateInvoicePdf(
   for (const item of order.items) {
     if (y < 210) break; // guard against absurdly long carts overflowing the page
 
-    const amount = item.price * item.quantity;
-    const nameLines = wrapText(item.product_name, bold, 9.5, nameColWidth, 2);
+    // Defensive fallbacks: an order placed against a product that was later
+    // deleted/edited, or an older/legacy order row, can have an item with a
+    // missing product_name, price, or quantity. Without these fallbacks a
+    // single bad item (e.g. on a cancelled order) throws mid-PDF and the
+    // whole invoice download fails with a generic error.
+    const productName = (item.product_name && String(item.product_name).trim()) || 'Item';
+    const price = Number.isFinite(item.price) ? item.price : 0;
+    const quantity = Number.isFinite(item.quantity) ? item.quantity : 0;
+
+    const amount = price * quantity;
+    const nameLines = wrapText(productName, bold, 9.5, nameColWidth, 2);
     const variantBits = [item.color ? `Color: ${item.color}` : null, item.size ? `Size: ${item.size}` : null].filter(
       Boolean
     );
@@ -345,7 +354,7 @@ export async function generateInvoicePdf(
 
     // eslint-disable-next-line no-await-in-loop -- sequential is fine for a handful of order items
     const image = await tryEmbedRemoteImage(doc, item.image_url);
-    drawImageBox(page, image, item.product_name.charAt(0).toUpperCase() || '?', colImage, y - imgSize - 4, imgSize);
+    drawImageBox(page, image, productName.charAt(0).toUpperCase() || '?', colImage, y - imgSize - 4, imgSize);
 
     let ny = y - 12;
     for (const line of nameLines) {
@@ -357,8 +366,8 @@ export async function generateInvoicePdf(
     }
 
     const numY = y - 12;
-    draw(String(item.quantity), colQty, numY, { size: 9 });
-    draw(rupee(item.price), colPrice, numY, { size: 9 });
+    draw(String(quantity), colQty, numY, { size: 9 });
+    draw(rupee(price), colPrice, numY, { size: 9 });
     draw(rupee(amount), colAmount, numY, { size: 9, f: bold });
 
     y -= rowHeight;
@@ -372,7 +381,9 @@ export async function generateInvoicePdf(
   // ---- Totals card ----
   const totalsW = 210;
   const totalsX = pageWidth - margin - totalsW;
-  const subtotal = order.subtotal ?? order.items.reduce((s, i) => s + i.price * i.quantity, 0);
+  const subtotal =
+    order.subtotal ??
+    order.items.reduce((s, i) => s + (Number.isFinite(i.price) ? i.price : 0) * (Number.isFinite(i.quantity) ? i.quantity : 0), 0);
 
   const rows: Array<[string, string, boolean?]> = [['Subtotal', rupee(subtotal)]];
   if (order.coupon_discount && order.coupon_discount > 0) {
