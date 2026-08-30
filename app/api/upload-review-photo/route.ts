@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase-server-auth';
 import { uploadToStorage } from '@/lib/storage';
+import { storeBlurPreview } from '@/lib/blur-preview';
 
 // ---------------------------------------------------------------------
 // POST /api/upload-review-photo
@@ -56,6 +57,12 @@ export async function POST(req: Request) {
       buffer,
       contentType: file.type || 'image/jpeg',
     });
+
+    // Real per-image blur preview (LQIP), keyed by the same canonical
+    // URL just stored. storeBlurPreview never throws, so this can never
+    // fail or block the upload response.
+    if (url) await storeBlurPreview(url, buffer);
+
     return NextResponse.json({ url });
   } catch (err) {
     console.error('[upload-review-photo] error:', err);

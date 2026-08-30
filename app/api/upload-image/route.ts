@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import sharp from 'sharp';
 import { uploadToStorage } from '@/lib/storage';
 import { generateResponsiveSizes } from '@/lib/image-sizes';
+import { storeBlurPreview } from '@/lib/blur-preview';
 
 const MAX_BYTES = 15 * 1024 * 1024;
 const WEBP_QUALITY = 82;
@@ -79,6 +80,13 @@ export async function POST(req: Request) {
         if (suffix === '') mainUrl = url;
       })
     );
+
+    // Real per-image blur preview (LQIP), keyed by the same canonical
+    // URL just stored. storeBlurPreview never throws (it swallows its
+    // own errors), so this can never fail or block the upload response
+    // — it's awaited only so the work reliably finishes before this
+    // serverless invocation ends, not to gate success on it.
+    if (mainUrl) await storeBlurPreview(mainUrl, sourceBuffer);
 
     return NextResponse.json({ url: mainUrl });
   } catch (err) {

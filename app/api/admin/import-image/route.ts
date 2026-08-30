@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import sharp from 'sharp';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { uploadToStorage } from '@/lib/storage';
+import { storeBlurPreview } from '@/lib/blur-preview';
 
 const MAX_BYTES = 15 * 1024 * 1024; // 15MB safety cap on the source image
 
@@ -206,6 +207,12 @@ export async function POST(req: Request) {
       });
       mainUrl = u;
     }
+
+    // Real per-image blur preview (LQIP), keyed by the same canonical
+    // URL just stored. storeBlurPreview never throws, so this can never
+    // fail or block the import response.
+    if (mainUrl) await storeBlurPreview(mainUrl, uploadBuffer);
+
     return NextResponse.json({ url: mainUrl });
   } catch (err) {
     console.error('[import-image] error:', err);
