@@ -11,6 +11,7 @@ import {
   PackageSearch,
   Mail,
   LifeBuoy,
+  ClipboardCheck,
 } from 'lucide-react';
 import WhatsAppIcon from '@/components/icons/whatsapp-icon';
 import {
@@ -42,6 +43,11 @@ import {
 //    found, the shopper can email themselves the details or raise a
 //    support ticket straight from the chat — both hit real backend
 //    routes and show up in Admin > Support Tickets.
+// 2b. "Check my ticket" — a matching lookup (app/api/chat/ticket-status)
+//     for tickets already raised (via this widget or otherwise), so a
+//     shopper can come back and read the admin's reply right here
+//     instead of only getting it by email (see Admin > Support Tickets
+//     > "Reply to customer").
 // 3. Free-text box — routes to a live AI model (app/api/chat/ai/route.ts,
 //    NVIDIA's free NIM API, model configurable from Admin > Settings >
 //    AI Chat Assistant). For logged-in shoppers it's quietly primed with
@@ -172,8 +178,43 @@ interface ActiveOrderContext {
   guestEmail?: string; // only set for guests who verified via order-lookup
 }
 
+interface LookedUpTicket {
+  id: string;
+  shortId: string;
+  subject: string;
+  message: string;
+  status: string;
+  replyMessage?: string | null;
+  repliedAt?: string | null;
+  createdAt: string;
+}
+
+const TICKET_STATUS_LABEL: Record<string, string> = {
+  open: 'Open — waiting on our team',
+  in_progress: "In progress — we're on it",
+  resolved: 'Resolved',
+  closed: 'Closed',
+};
+
+function ticketToChatText(ticket: LookedUpTicket): string {
+  const lines: string[] = [];
+  lines.push(`Ticket ${ticket.shortId} — ${TICKET_STATUS_LABEL[ticket.status] || ticket.status}`);
+  lines.push(`"${ticket.subject}"`);
+  lines.push(`Raised on ${new Date(ticket.createdAt).toLocaleDateString('en-IN')}`);
+  if (ticket.replyMessage) {
+    lines.push('');
+    lines.push(`Our reply${ticket.repliedAt ? ` (${new Date(ticket.repliedAt).toLocaleDateString('en-IN')})` : ''}:`);
+    lines.push(ticket.replyMessage);
+  } else {
+    lines.push('');
+    lines.push('No reply yet — our team will follow up on the email you raised this with.');
+  }
+  return lines.join('\n');
+}
+
 type GuestStep = null | 'orderId' | 'email';
 type TicketStep = null | 'message' | 'email';
+type TicketLookupStep = null | 'email';
 
 export default function LiveChatWidget() {
   const pathname = usePathname();
@@ -214,6 +255,13 @@ export default function LiveChatWidget() {
   const [ticketEmail, setTicketEmail] = useState('');
   const [ticketSending, setTicketSending] = useState(false);
 
+  // "Check my ticket" mini flow — separate from the raise-a-ticket flow
+  // above (that one creates a new ticket; this one looks up existing
+  // ones and shows the admin's reply, if any).
+  const [ticketLookupStep, setTicketLookupStep] = useState<TicketLookupStep>(null);
+  const [ticketLookupEmail, setTicketLookupEmail] = useState('');
+  const [ticketLookupLoading, setTicketLookupLoading] = useState(false);
+
   useEffect(() => {
     let cancelled = false;
     Promise.all([fetchMarketingSettings(), fetchLegalPagesResolved(), fetchFulfillmentSettings()])
@@ -239,7 +287,7 @@ export default function LiveChatWidget() {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, open, guestStep, ticketStep]);
+  }, [messages, open, guestStep, ticketStep, ticketLookupStep]);
 
   if (pathname?.startsWith('/admin')) return null;
 
@@ -446,6 +494,66 @@ export default function LiveChatWidget() {
   }
 
   // -------------------------------------------------------------------
+  // Check my ticket — looks up existing ticket(s) and shows the reply,
+  // if the admin has sent one, instead of only relying on email.
+  // -------------------------------------------------------------------
+
+  async function runTicketLookup(params: { email?: string; ticketId?: string }) {
+    setTicketLookupLoading(true);
+    try {
+      const res = await fetch('/api/chat/ticket-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+      const data = await res.json().catch(() => ({ ok: false }));
+
+      if (!data?.ok) {
+        addBot(data?.error || "Couldn't fetch your ticket right now — please try again shortly, or use WhatsApp above.", true);
+        return;
+      }
+
+      if (data.needsDetails) {
+        addBot(data.message || 'Please share the email you used when raising the ticket.');
+        setTicketLookupStep('email');
+        return;
+      }
+
+      const tickets = (data.tickets || []) as LookedUpTicket[];
+      if (tickets.length === 0) {
+        addBot(data.message || "I don't see any support tickets on that email yet.");
+        setTicketLookupStep(null);
+        return;
+      }
+
+      const [top, ...rest] = tickets;
+      let text = ticketToChatText(top);
+      if (rest.length > 0) {
+        text += `\n\nYou also have ${rest.length} more ticket${rest.length > 1 ? 's' : ''} — the most recent one is shown above.`;
+      }
+      addBot(text);
+      setTicketLookupStep(null);
+    } catch {
+      addBot("Couldn't reach our support system right now — please try again shortly, or use WhatsApp above.", true);
+    } finally {
+      setTicketLookupLoading(false);
+    }
+  }
+
+  function handleCheckTicket() {
+    addUser('Check my ticket status');
+    runTicketLookup({});
+  }
+
+  function submitTicketLookupEmail() {
+    const val = ticketLookupEmail.trim();
+    if (!val) return;
+    addUser(val);
+    runTicketLookup({ email: val });
+    setTicketLookupEmail('');
+  }
+
+  // -------------------------------------------------------------------
   // Free-text AI box
   // -------------------------------------------------------------------
 
@@ -531,7 +639,8 @@ export default function LiveChatWidget() {
 
   const inGuestFlow = guestStep !== null;
   const inTicketFlow = ticketStep !== null;
-  const busy = aiLoading || orderLookupLoading || emailSending || ticketSending;
+  const inTicketLookupFlow = ticketLookupStep !== null;
+  const busy = aiLoading || orderLookupLoading || emailSending || ticketSending || ticketLookupLoading;
 
   return (
     <>
@@ -604,7 +713,7 @@ export default function LiveChatWidget() {
             ))}
 
             {/* Action chips for the order currently on screen. */}
-            {activeOrder && !inGuestFlow && !inTicketFlow && (
+            {activeOrder && !inGuestFlow && !inTicketFlow && !inTicketLookupFlow && (
               <div className="flex flex-wrap justify-start gap-1.5 pl-1">
                 <button
                   onClick={handleEmailOrder}
@@ -696,6 +805,33 @@ export default function LiveChatWidget() {
                   <Send className="h-4 w-4" />
                 </button>
               </form>
+            ) : inTicketLookupFlow ? (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  submitTicketLookupEmail();
+                }}
+                className="mb-3 flex items-center gap-2"
+              >
+                <ClipboardCheck className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <input
+                  autoFocus
+                  value={ticketLookupEmail}
+                  onChange={(e) => setTicketLookupEmail(e.target.value)}
+                  placeholder="Email used when raising the ticket"
+                  type="email"
+                  disabled={busy}
+                  className="w-full rounded-full border border-border bg-background py-2 px-3 text-base outline-none transition-colors focus:border-primary disabled:opacity-60 sm:text-sm"
+                />
+                <button
+                  type="submit"
+                  disabled={busy}
+                  aria-label="Submit"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-opacity disabled:opacity-40"
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+              </form>
             ) : (
               <form
                 onSubmit={(e) => {
@@ -726,7 +862,7 @@ export default function LiveChatWidget() {
               </form>
             )}
 
-            {!inGuestFlow && !inTicketFlow && (
+            {!inGuestFlow && !inTicketFlow && !inTicketLookupFlow && (
               <>
                 <p className="mb-2 flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   <ArrowLeft className="h-3 w-3" /> Or pick a quick question
@@ -738,6 +874,13 @@ export default function LiveChatWidget() {
                     className="flex items-center gap-1 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary hover:text-primary disabled:opacity-50"
                   >
                     <PackageSearch className="h-3 w-3" /> Track my order
+                  </button>
+                  <button
+                    onClick={handleCheckTicket}
+                    disabled={busy}
+                    className="flex items-center gap-1 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:border-primary hover:text-primary disabled:opacity-50"
+                  >
+                    <ClipboardCheck className="h-3 w-3" /> Check my ticket
                   </button>
                   {SCRIPTED_TOPICS.map((topic) => (
                     <button
