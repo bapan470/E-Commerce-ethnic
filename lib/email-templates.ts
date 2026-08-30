@@ -338,6 +338,31 @@ export function contactMessageReplyEmail(reply: { customer_name?: string; origin
   return { subject, html };
 }
 
+// Reply to a support ticket raised from the AI chat widget (or manually).
+// Same shell/pattern as contactMessageReplyEmail above, but quotes the
+// ticket's own subject/id and original message for context, since a
+// customer replying days later may not remember exactly what they asked.
+export function supportTicketReplyEmail(ticket: {
+  id: string;
+  customer_name?: string | null;
+  subject: string;
+  message: string;
+  reply_message: string;
+}) {
+  const shortId = `#${ticket.id.slice(0, 8).toUpperCase()}`;
+  const subject = `Re: ${ticket.subject} (${shortId}) — ${SITE_NAME}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Hi${ticket.customer_name ? ` ${ticket.customer_name}` : ''},</h2>
+    <p style="white-space:pre-wrap;">${ticket.reply_message}</p>
+    <div style="margin:20px 0 0; padding:14px 16px; background:#fbf6f0; border-left:3px solid #ecdfd2; border-radius:4px;">
+      <p style="margin:0 0 4px; font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:#a89a8f;">Your original message (${shortId})</p>
+      <p style="margin:0; color:#6b5f57; font-size:13px; white-space:pre-wrap;">${ticket.message}</p>
+    </div>
+    <p style="font-size:13px; color:#6b5f57; margin-top:20px;">— Team ${SITE_NAME}</p>
+  `);
+  return { subject, html };
+}
+
 export function giftCardEmail(card: {
   code: string;
   amount: number;

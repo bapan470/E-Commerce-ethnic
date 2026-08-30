@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2, LifeBuoy, Bot } from 'lucide-react';
+import { Loader2, LifeBuoy, Bot, Send, Mail } from 'lucide-react';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,6 +17,8 @@ type TicketRow = {
   source: 'chat' | 'admin' | 'email' | 'other';
   status: string;
   admin_notes?: string | null;
+  reply_message?: string | null;
+  replied_at?: string | null;
   created_at: string;
   order?: {
     customer_name?: string;
@@ -106,6 +108,8 @@ function TicketCard({ t, onUpdated }: { t: TicketRow; onUpdated: () => void }) {
   const [status, setStatus] = useState(t.status);
   const [notes, setNotes] = useState(t.admin_notes || '');
   const [saving, setSaving] = useState(false);
+  const [replyText, setReplyText] = useState('');
+  const [sendingReply, setSendingReply] = useState(false);
 
   const dirty = status !== t.status || notes !== (t.admin_notes || '');
 
@@ -131,6 +135,30 @@ function TicketCard({ t, onUpdated }: { t: TicketRow; onUpdated: () => void }) {
     }
   };
 
+  const sendReply = async () => {
+    if (!replyText.trim()) return;
+    setSendingReply(true);
+    try {
+      const res = await fetch(`/api/admin/support-tickets/${t.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reply_message: replyText }),
+      });
+      if (res.ok) {
+        toast.success(`Reply emailed to ${t.customer_email}`);
+        setReplyText('');
+        onUpdated();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        toast.error(body.error || 'Failed to send reply');
+      }
+    } catch {
+      toast.error('Failed to send reply');
+    } finally {
+      setSendingReply(false);
+    }
+  };
+
   return (
     <div className="rounded-lg border border-border/60 bg-card p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -143,6 +171,11 @@ function TicketCard({ t, onUpdated }: { t: TicketRow; onUpdated: () => void }) {
             {t.source === 'chat' && (
               <span className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
                 <Bot className="h-3 w-3" /> AI chat
+              </span>
+            )}
+            {t.replied_at && (
+              <span className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                <Mail className="h-3 w-3" /> Replied
               </span>
             )}
           </p>
@@ -163,6 +196,35 @@ function TicketCard({ t, onUpdated }: { t: TicketRow; onUpdated: () => void }) {
         <span className="font-medium">Message: </span>
         {t.message}
       </p>
+
+      {t.reply_message && (
+        <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50/60 px-3 py-2.5 text-sm">
+          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-emerald-700">
+            Your reply {t.replied_at ? `· ${new Date(t.replied_at).toLocaleString('en-IN')}` : ''}
+          </p>
+          <p className="whitespace-pre-wrap text-emerald-900">{t.reply_message}</p>
+        </div>
+      )}
+
+      {/* Emails the customer directly (via the configured Resend/ZeptoMail
+          provider) -- separate from "Internal note" below, which the
+          customer never sees. */}
+      <div className="mt-4 grid gap-1.5">
+        <label className="text-xs font-medium text-muted-foreground">Reply to customer (sent by email)</label>
+        <textarea
+          value={replyText}
+          onChange={(e) => setReplyText(e.target.value)}
+          placeholder={`Type your reply to ${t.customer_email}...`}
+          rows={3}
+          className="w-full rounded border px-3 py-2 text-sm"
+        />
+        <div className="flex justify-end">
+          <Button size="sm" onClick={sendReply} disabled={!replyText.trim() || sendingReply} className="gap-1.5">
+            {sendingReply ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+            Send reply
+          </Button>
+        </div>
+      </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <div className="grid gap-1.5">
