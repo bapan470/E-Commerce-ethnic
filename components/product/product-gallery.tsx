@@ -118,9 +118,29 @@ export default function ProductGallery({
   const thumbColRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
 
-  // Reset to the first image whenever the image set changes (e.g. colour swap).
+  // Reset to the first image whenever the image set changes (e.g. colour
+  // swap) — BOTH the React `active` state AND the native scroll position
+  // have to reset together in the same effect, or they desync:
+  //
+  // These used to be two separate `useEffect(..., [images])` calls (one
+  // `setActive(0)`, one `el.scrollTo({ left: active * el.clientWidth })`
+  // further down). Both fire in the same commit when `images` changes,
+  // in declaration order — but `setActive(0)` only SCHEDULES a re-render,
+  // it doesn't synchronously update the `active` closure the second
+  // effect reads in that same pass. So the second effect was still
+  // scrolling to `active * el.clientWidth` using the OLD colour's active
+  // index (e.g. 3) against the NEW colour's photos — showing that new
+  // colour's 4th photo while the "1 / N" badge (driven by the `active`
+  // state, which *did* reset) already said "1". However far along the
+  // shopper had scrolled the previous colour's gallery is exactly how
+  // far into the new colour's gallery this landed them.
+  //
+  // One effect, one hardcoded reset to 0/left:0, fixes both in lockstep.
   useEffect(() => {
     setActive(0);
+    const el = stageRef.current;
+    if (!el) return;
+    el.scrollTo({ left: 0, behavior: 'instant' as ScrollBehavior });
   }, [images]);
 
   const clamp = useCallback((idx: number) => (idx + valid.length) % valid.length, [valid.length]);
@@ -167,17 +187,6 @@ export default function ProductGallery({
     const idx = Math.round(el.scrollLeft / el.clientWidth);
     setActive((prev) => (prev === idx ? prev : clamp(idx)));
   };
-
-  // Whenever the active image changes from outside a hand-scroll (e.g. a
-  // thumbnail click already calls goTo(), which scrolls directly — this
-  // effect only matters for the very first mount / image-set changes so
-  // the strip starts lined up with `active`).
-  useEffect(() => {
-    const el = stageRef.current;
-    if (!el) return;
-    el.scrollTo({ left: active * el.clientWidth, behavior: 'instant' as ScrollBehavior });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [images]);
 
   const scrollThumbCol = (dir: 1 | -1) => {
     thumbColRef.current?.scrollBy({ top: dir * 96, behavior: 'smooth' });
