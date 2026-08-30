@@ -252,11 +252,22 @@ export async function POST(req: Request) {
             });
 
             if (!earnError) {
-              await supabase
+              // Supabase's query builder is thenable but isn't typed with a
+              // `.catch()` method (it's not a plain Promise until you
+              // `await`/`.then()` it) -- chaining `.catch()` directly on it
+              // compiles fine in JS but fails `tsc` type-checking. Supabase
+              // never throws on a failed update anyway (it resolves with
+              // `{ error }` instead), so just await and check that.
+              const { error: earnedUpdateError } = await supabase
                 .from('orders')
                 .update({ loyalty_points_earned: pointsEarned })
-                .eq('id', order.id)
-                .catch(() => {});
+                .eq('id', order.id);
+              if (earnedUpdateError) {
+                console.error(
+                  '[loyalty-earn] Failed to record loyalty_points_earned on order:',
+                  earnedUpdateError
+                );
+              }
             } else {
               console.error('[loyalty-earn] Ledger insert failed:', earnError);
             }
