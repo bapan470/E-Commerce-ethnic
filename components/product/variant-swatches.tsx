@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
-import { fetchVariantsForProduct, ProductVariant } from '@/lib/variants-api';
+import { fetchVariantBySlug, fetchVariantsForProduct, ProductVariant } from '@/lib/variants-api';
+import { getPrefetchedVariant, setPrefetchedVariant } from '@/lib/variant-prefetch-cache';
 import { toPublicMediaUrl } from '@/lib/media-url';
 import { THUMB_BLUR_DATA_URL, isBlurPlaceholderEnabled } from '@/lib/image-placeholder';
 
@@ -59,6 +60,44 @@ export default function VariantSwatches({
       .then(setFetchedVariants)
       .catch(() => setFetchedVariants([]));
   }, [productId]);
+
+  // Same idea as the image preload above, taken one step further: once
+  // we're idle on a fast-enough connection, walk every OTHER colour and
+  // fetch its full row (sizes/stock included, not just photos) into the
+  // shared module-level cache in lib/variant-prefetch-cache.ts. That's the
+  // one piece handleSelectVariant in product-detail.tsx still had to hit
+  // the network for on every switch — with this warmed, a colour switch
+  // resolves entirely from memory (images already preloaded above, sizes
+  // now cached here), so the shopper never sees the "sizes fill in a
+  // moment later" gap, no matter which colour they pick first.
+  //
+  // Sequential, not Promise.all — this is background, best-effort work
+  // competing with nothing the shopper is waiting on, so there's no reason
+  // to burst every colour's request at once; one at a time is kinder to
+  // the connection this was already gated to (see preloadReady above) and
+  // to Supabase.
+  useEffect(() => {
+    if (!preloadReady) return;
+    let cancelled = false;
+    (async () => {
+      for (const v of variants) {
+        if (cancelled) return;
+        if (v.id === '__base__' || v.slug === activeSlug) continue;
+        if (getPrefetchedVariant(v.slug)) continue;
+        try {
+          const res = await fetchVariantBySlug(v.slug);
+          if (res && !cancelled) setPrefetchedVariant(v.slug, res.variant);
+        } catch {
+          // Best-effort — a failed prefetch just means that one colour
+          // falls back to the normal on-click fetch, same as before this
+          // cache existed.
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [preloadReady, variants, activeSlug]);
 
   // Prepend the base product's own colour, unless a real variant row
   // already represents it (matched by slug or by colour name, case-

@@ -20,6 +20,7 @@ import {
 import { useProducts, usePaymentDiscount, useCart, getVisibleBogoPromotion, formatBogoLabel } from '@/lib/cart-context';
 import { fetchProductBySlug } from '@/lib/products-api';
 import { fetchVariantBySlug, fetchVariantsForProduct, ProductVariant, VariantWithSizes } from '@/lib/variants-api';
+import { getPrefetchedVariant, setPrefetchedVariant } from '@/lib/variant-prefetch-cache';
 import { Product } from '@/lib/types';
 import { formatINR, discountPct } from '@/lib/format';
 import { fireGtagEvent, feedMatchedItemId } from '@/lib/gtag-track';
@@ -341,7 +342,19 @@ export default function ProductDetail({
       window.history.replaceState(window.history.state, '', `/product/${v.slug}`);
       return;
     }
-    setVariant((prev) => ({ ...v, sizes: prev?.slug === v.slug ? prev.sizes : [] }));
+    // If VariantSwatches already warmed this colour's full row (sizes/stock
+    // included) in the background — see the prefetch effect in
+    // components/product/variant-swatches.tsx — use it straight away
+    // instead of showing an empty `sizes: []` and waiting on a fresh
+    // network round-trip. This is the common case: by the time a shopper
+    // actually taps a swatch, idle-time prefetching has usually already
+    // finished for it.
+    const cached = getPrefetchedVariant(v.slug);
+    if (cached) {
+      setVariant(cached);
+    } else {
+      setVariant((prev) => ({ ...v, sizes: prev?.slug === v.slug ? prev.sizes : [] }));
+    }
     // Pass the EXISTING history.state through instead of null. Next.js's App
     // Router attaches its own internal navigation data to each history
     // entry's state object; wiping it with null here desyncs the router
@@ -352,9 +365,13 @@ export default function ProductDetail({
     // notice and re-render. Keeping the state object intact and only
     // swapping the URL avoids that entirely.
     window.history.replaceState(window.history.state, '', `/product/${v.slug}`);
+    if (cached) return;
     fetchVariantBySlug(v.slug)
       .then((res) => {
-        if (res) setVariant(res.variant);
+        if (res) {
+          setVariant(res.variant);
+          setPrefetchedVariant(v.slug, res.variant);
+        }
       })
       .catch(() => {});
   };
