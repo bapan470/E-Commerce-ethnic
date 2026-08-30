@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, X, ZoomIn } from 'lu
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { preloadImages } from '@/lib/preload-image';
+import { GALLERY_BLUR_DATA_URL, THUMB_BLUR_DATA_URL, isBlurPlaceholderEnabled } from '@/lib/image-placeholder';
 import ProductVideoPeek from './product-video-peek';
 
 interface ProductGalleryProps {
@@ -102,6 +103,11 @@ export default function ProductGallery({
   }, [images]);
 
   const clamp = useCallback((idx: number) => (idx + valid.length) % valid.length, [valid.length]);
+
+  // Admin > Settings > "Blur Placeholder" toggle — read once, synchronously
+  // (no network call, no flicker): true unless an admin has explicitly
+  // switched it off. See lib/image-placeholder.ts / lib/blur-placeholder-flag.ts.
+  const blurEnabled = isBlurPlaceholderEnabled();
 
   // Fixes the "blank/white frame while swiping" issue: every image except
   // the very first one was purely lazy-loaded, so the browser only started
@@ -214,6 +220,8 @@ export default function ProductGallery({
                     draggable={false}
                     sizes="72px"
                     quality={50}
+                    placeholder={blurEnabled ? 'blur' : undefined}
+                    blurDataURL={blurEnabled ? THUMB_BLUR_DATA_URL : undefined}
                     className="select-none object-cover"
                   />
                 </button>
@@ -279,9 +287,22 @@ export default function ProductGallery({
                       alt={`${alt} - ${angleLabel(idx)}`}
                       fill
                       priority={Math.abs(idx - active) <= 1}
+                      // The image actually on screen is this page's LCP
+                      // (Largest Contentful Paint) element — fetchPriority
+                      // "high" tells the browser to fetch THIS byte stream
+                      // ahead of every other resource competing for the
+                      // connection (fonts, analytics scripts, the next/prev
+                      // preloaded photo, etc.), rather than merely queuing
+                      // it early via <link rel="preload"> (what `priority`
+                      // alone produces). The neighbours keep normal
+                      // priority so they don't steal bandwidth from the
+                      // one photo the shopper is actually looking at.
+                      fetchPriority={idx === active ? 'high' : 'auto'}
                       draggable={false}
                       sizes="(max-width: 1024px) 100vw, 50vw"
                       quality={80}
+                      placeholder={blurEnabled ? 'blur' : undefined}
+                      blurDataURL={blurEnabled ? GALLERY_BLUR_DATA_URL : undefined}
                       className={cn(
                         'select-none object-contain transition-opacity duration-150 cursor-zoom-in',
                         idx === active && zooming ? 'sm:opacity-0' : 'opacity-100'
@@ -400,6 +421,10 @@ function Lightbox({
 }) {
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
+  // Same admin toggle read as the main gallery above — a separate call
+  // since Lightbox is its own component, but the same synchronous,
+  // no-network-call value. See lib/image-placeholder.ts.
+  const blurEnabled = isBlurPlaceholderEnabled();
   // True only while a finger/mouse is actively pinching or dragging the
   // photo. Drives whether the snap-back CSS transition is on: off during a
   // live gesture (so the photo tracks the finger with zero added lag), on
@@ -782,6 +807,9 @@ function Lightbox({
                     sizes="100vw"
                     quality={90}
                     priority={Math.abs(idx - active) <= 1}
+                    fetchPriority={idx === active ? 'high' : 'auto'}
+                    placeholder={blurEnabled ? 'blur' : undefined}
+                    blurDataURL={blurEnabled ? GALLERY_BLUR_DATA_URL : undefined}
                     className="select-none object-contain"
                   />
                 </div>
@@ -831,6 +859,8 @@ function Lightbox({
                 draggable={false}
                 sizes="56px"
                 quality={50}
+                placeholder={blurEnabled ? 'blur' : undefined}
+                blurDataURL={blurEnabled ? THUMB_BLUR_DATA_URL : undefined}
                 className="select-none object-cover"
               />
             </button>

@@ -52,6 +52,9 @@ import {
   ResponsiveImagesSettings,
   fetchResponsiveImagesSettings,
   saveResponsiveImagesSettings,
+  BlurPlaceholderSettings,
+  fetchBlurPlaceholderSettings,
+  saveBlurPlaceholderSettings,
 } from '@/lib/settings-api';
 import type { BackfillProgress } from '@/lib/media-backfill';
 import type { ResizeBackfillProgress } from '@/lib/image-resize-backfill';
@@ -137,6 +140,8 @@ export default function SettingsPanel() {
   const [backfillStarting, setBackfillStarting] = useState(false);
   const [responsiveImagesForm, setResponsiveImagesForm] = useState<ResponsiveImagesSettings | null>(null);
   const [savingResponsiveImages, setSavingResponsiveImages] = useState(false);
+  const [blurPlaceholderForm, setBlurPlaceholderForm] = useState<BlurPlaceholderSettings | null>(null);
+  const [savingBlurPlaceholder, setSavingBlurPlaceholder] = useState(false);
   const [resizeBackfillProgress, setResizeBackfillProgress] = useState<ResizeBackfillProgress | null>(null);
   const [resizeBackfillStarting, setResizeBackfillStarting] = useState(false);
   const [orderNotifForm, setOrderNotifForm] = useState<OrderNotificationSettings | null>(null);
@@ -228,6 +233,10 @@ export default function SettingsPanel() {
     fetchResponsiveImagesSettings()
       .then(setResponsiveImagesForm)
       .catch(() => toast.error('Failed to load responsive images setting'));
+
+    fetchBlurPlaceholderSettings()
+      .then(setBlurPlaceholderForm)
+      .catch(() => toast.error('Failed to load blur placeholder setting'));
 
     fetch('/api/admin/image-resize-backfill')
       .then((r) => r.json())
@@ -563,6 +572,32 @@ export default function SettingsPanel() {
       toast.error(err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setSavingResponsiveImages(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------
+  // Blur Placeholder toggle. ON (default) = every product-gallery photo
+  // shows a soft shimmer while loading, instead of a blank/white box.
+  // Generic placeholder (not per-photo), so it needs no backfill —
+  // flipping it applies to every image immediately, old or new.
+  // ---------------------------------------------------------------------
+  const onToggleBlurPlaceholder = async (checked: boolean) => {
+    if (!blurPlaceholderForm) return;
+    const next = { ...blurPlaceholderForm, enabled: checked };
+    setBlurPlaceholderForm(next); // update immediately so the switch feels responsive
+    setSavingBlurPlaceholder(true);
+    try {
+      await saveBlurPlaceholderSettings(next);
+      toast.success(
+        checked
+          ? 'Blur placeholder ON — product photos show a soft shimmer while loading, on every image immediately (no backfill needed).'
+          : 'Blur placeholder OFF — product photos show no placeholder while loading, exactly as before.'
+      );
+    } catch (err) {
+      setBlurPlaceholderForm(blurPlaceholderForm); // revert the switch on failure
+      toast.error(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSavingBlurPlaceholder(false);
     }
   };
 
@@ -1840,6 +1875,40 @@ export default function SettingsPanel() {
             checked={responsiveImagesForm.enabled}
             disabled={savingResponsiveImages}
             onCheckedChange={onToggleResponsiveImages}
+          />
+        </div>
+      )}
+
+      {/* Blur Placeholder — shimmer while product photos load, no backfill needed */}
+      <div className="mt-8">
+        <h2 className="font-serif text-2xl font-bold text-primary">Blur Placeholder</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Shows a soft animated shimmer on product-gallery photos while they load, instead of a
+          blank/white box. This is a generic placeholder, not a preview of the actual photo, so —
+          unlike Responsive Images above — it needs no backfill: turning it on applies to every
+          product photo immediately, old or newly uploaded alike.
+        </p>
+      </div>
+
+      {!blurPlaceholderForm ? (
+        <p className="py-4 text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <div className="mt-4 flex max-w-xl items-center justify-between gap-4 rounded-lg border border-border/60 bg-card p-5">
+          <div>
+            <Label htmlFor="blur-placeholder-enabled">
+              {blurPlaceholderForm.enabled ? 'On — shimmer shown while loading (default)' : 'Off — no placeholder'}
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              {blurPlaceholderForm.enabled
+                ? 'Every product photo (main image, thumbnails, and full-screen zoom) shows a soft shimmer until it finishes loading.'
+                : 'Photos show no placeholder while loading — the space stays a plain background colour until the image arrives, exactly like before this feature existed.'}
+            </p>
+          </div>
+          <Switch
+            id="blur-placeholder-enabled"
+            checked={blurPlaceholderForm.enabled}
+            disabled={savingBlurPlaceholder}
+            onCheckedChange={onToggleBlurPlaceholder}
           />
         </div>
       )}

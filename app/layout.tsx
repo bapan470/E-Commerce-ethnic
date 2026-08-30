@@ -8,6 +8,7 @@ import { getServerSupabase } from '@/lib/supabase-server';
 import { SeoSettings, AnalyticsSettings } from '@/lib/marketing-api';
 import { PaymentDiscountSettings, DEFAULT_PAYMENT_DISCOUNT_SETTINGS } from '@/lib/settings-api';
 import { getResponsiveImagesEnabledServer, syncResponsiveImagesServerGlobal } from '@/lib/responsive-images-flag';
+import { getBlurPlaceholderEnabledServer, syncBlurPlaceholderServerGlobal } from '@/lib/blur-placeholder-flag';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -189,6 +190,14 @@ export default async function RootLayout({
   // Fails safe to `false` (= original URL, unchanged) on any error.
   const responsiveImagesEnabled = await getResponsiveImagesEnabledServer();
   syncResponsiveImagesServerGlobal(responsiveImagesEnabled);
+  // Blur Placeholder admin toggle (Admin > Settings) — same pattern as
+  // Responsive Images above: read once per request, then made available
+  // to lib/image-placeholder.ts both on the server (Node global, set
+  // here before children render) and in the browser (inline script in
+  // <head> below, executed before hydration). Fails safe to `true`
+  // (shimmer shown) on any error — see lib/blur-placeholder-flag.ts.
+  const blurPlaceholderEnabled = await getBlurPlaceholderEnabledServer();
+  syncBlurPlaceholderServerGlobal(blurPlaceholderEnabled);
   const gaId = analytics.ga_enabled ? analytics.ga_measurement_id.trim() : '';
   const gtmId = analytics.gtm_enabled ? analytics.gtm_container_id.trim() : '';
   const googleAdsId = analytics.google_ads_id.trim();
@@ -205,6 +214,14 @@ export default async function RootLayout({
            couldn't be read. */}
         <Script id="responsive-images-flag" strategy="beforeInteractive">
           {`window.__RESPONSIVE_IMAGES_ENABLED__ = ${responsiveImagesEnabled};`}
+        </Script>
+
+        {/* Blur Placeholder feature flag — must run before any <Image>
+           hydrates on the client, so lib/image-placeholder.ts sees the
+           same value the server just rendered with. Defaults to `true`
+           (shimmer shown) if the setting couldn't be read. */}
+        <Script id="blur-placeholder-flag" strategy="beforeInteractive">
+          {`window.__BLUR_PLACEHOLDER_ENABLED__ = ${blurPlaceholderEnabled};`}
         </Script>
 
         {/* Trustpilot base script — registers window.tp() so

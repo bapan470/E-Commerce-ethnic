@@ -504,6 +504,49 @@ export async function saveResponsiveImagesSettings(settings: ResponsiveImagesSet
 }
 
 // ---------------------------------------------------------------------
+// Blur Placeholder — Admin > Settings toggle.
+//
+// ON (default): product gallery photos show a soft animated shimmer
+//   while loading instead of a blank/white box. Generic placeholder
+//   (not a per-photo preview), so it needs no backfill — flipping this
+//   on applies to every existing image immediately, old or new.
+// OFF: no placeholder — exactly like before this feature existed.
+//
+// Goes through /api/admin/blur-placeholder (server-side, requires
+// admin), same reasoning as every other admin-gated setting here.
+// ---------------------------------------------------------------------
+export interface BlurPlaceholderSettings {
+  enabled: boolean;
+}
+
+export const DEFAULT_BLUR_PLACEHOLDER_SETTINGS: BlurPlaceholderSettings = {
+  enabled: true,
+};
+
+export async function fetchBlurPlaceholderSettings(): Promise<BlurPlaceholderSettings> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'blur_placeholder')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_BLUR_PLACEHOLDER_SETTINGS;
+  return { ...DEFAULT_BLUR_PLACEHOLDER_SETTINGS, ...(data.value as Partial<BlurPlaceholderSettings>) };
+}
+
+export async function saveBlurPlaceholderSettings(settings: BlurPlaceholderSettings) {
+  const res = await fetch('/api/admin/blur-placeholder', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(json?.error || 'Failed to save blur placeholder setting');
+  }
+  return json as { saved: true; enabled: boolean };
+}
+
+// ---------------------------------------------------------------------
 // Order notifications — alerts YOU (the store owner), not the customer,
 // the moment a new order comes in. Independent of `support_email` in
 // StoreInfo because that address is shown publicly (footer/contact/about
