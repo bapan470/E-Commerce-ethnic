@@ -1,4 +1,4 @@
-import { Truck, Clock, CheckCircle2 } from 'lucide-react';
+import { Truck, Clock } from 'lucide-react';
 
 // Static delivery info card — replaces the old pincode-checker widget.
 // No pincode input, no serviceability lookup: just the same delivery
@@ -16,7 +16,6 @@ import { Truck, Clock, CheckCircle2 } from 'lucide-react';
 const ORDER_CUTOFF_LABEL = '2:00 PM';
 const HANDLING_LABEL = '2–3 business days';
 const TRANSIT_LABEL = '3–12 business days';
-const TOTAL_DELIVERY_LABEL = '5–15 business days';
 
 export default function DeliveryInfo() {
   return (
@@ -27,12 +26,6 @@ export default function DeliveryInfo() {
       </div>
 
       <div className="flex flex-col gap-2 rounded-md bg-secondary/10 p-3">
-        <div className="flex items-start gap-2">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-secondary" />
-          <p className="text-sm font-semibold">
-            Estimated delivery: {TOTAL_DELIVERY_LABEL} across India
-          </p>
-        </div>
         <div className="flex items-start gap-2 text-xs text-muted-foreground">
           <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <p>
