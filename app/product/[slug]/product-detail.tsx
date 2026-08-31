@@ -39,7 +39,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Skeleton } from '@/components/ui/skeleton';
 import ReviewsSection from '@/components/product/reviews-section';
 import { fetchApprovedReviews, summarizeReviews, RatingSummary } from '@/lib/reviews-api';
-import PincodeChecker from '@/components/product/pincode-checker';
+import DeliveryInfo from '@/components/product/delivery-info';
 import VariantSwatches from '@/components/product/variant-swatches';
 import ProductHighlights from '@/components/product/product-highlights';
 import PriceQuickBrowseBar from '@/components/product/price-quick-browse-bar';
@@ -1283,7 +1283,7 @@ function ProductInfo({
 
       {!product.inStock && <NotifyMeForm productId={product.id} />}
 
-      <PincodeChecker />
+      <DeliveryInfo />
 
       <div className="rounded-lg border border-border/60 bg-card p-4">
         <div className="grid grid-cols-3 gap-3 text-center">

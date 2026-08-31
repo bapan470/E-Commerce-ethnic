@@ -1,0 +1,46 @@
+import { Truck, Clock, CheckCircle2 } from 'lucide-react';
+
+// Static delivery info card — replaces the old pincode-checker widget.
+// No pincode input, no serviceability lookup: just the same delivery
+// promise already declared in Google Merchant Center > Shipping > Delivery
+// times, shown as plain text for every visitor/every product.
+//
+// IMPORTANT: keep these four numbers in sync with Merchant Center
+// (merchants.google.com > Shipping > Delivery times) whenever that's
+// changed there, so the on-site promise never mismatches what's declared
+// to Google (shipping/misrepresentation policy):
+//   - Order cut off:      2:00 PM IST
+//   - Handling time:      2–3 business days
+//   - Transit time:       3–12 business days (all destinations)
+//   - Total delivery:     5–15 business days (all destinations)
+const ORDER_CUTOFF_LABEL = '2:00 PM';
+const HANDLING_LABEL = '2–3 business days';
+const TRANSIT_LABEL = '3–12 business days';
+const TOTAL_DELIVERY_LABEL = '5–15 business days';
+
+export default function DeliveryInfo() {
+  return (
+    <div className="rounded-lg border border-border/60 bg-card p-4">
+      <div className="mb-2.5 flex items-center gap-2 text-sm font-semibold">
+        <Truck className="h-4 w-4 text-secondary" />
+        Delivery details
+      </div>
+
+      <div className="flex flex-col gap-2 rounded-md bg-secondary/10 p-3">
+        <div className="flex items-start gap-2">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-secondary" />
+          <p className="text-sm font-semibold">
+            Estimated delivery: {TOTAL_DELIVERY_LABEL} across India
+          </p>
+        </div>
+        <div className="flex items-start gap-2 text-xs text-muted-foreground">
+          <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <p>
+            Dispatched in {HANDLING_LABEL} for orders placed before {ORDER_CUTOFF_LABEL}, then{' '}
+            {TRANSIT_LABEL} in transit depending on your location.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
