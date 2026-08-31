@@ -504,6 +504,66 @@ export async function saveResponsiveImagesSettings(settings: ResponsiveImagesSet
 }
 
 // ---------------------------------------------------------------------
+// AVIF Format Negotiation — Admin > Settings kill-switch.
+//
+// ON (default once this feature ships): app/media/[...path]/route.ts
+//   serves a smaller AVIF version of a .webp image to browsers whose
+//   Accept header advertises AVIF support (~20-30% smaller than the
+//   WebP sibling at equal visual quality). Bots/feed-fetchers (Googlebot,
+//   Google Merchant Center, Pinterest, etc.) are ALWAYS excluded from
+//   negotiation regardless of this toggle -- they only ever see WebP.
+// OFF: negotiation is skipped entirely for every request, human or bot
+//   -- every image resolves to plain WebP, byte-for-byte identical to
+//   how the site behaved before AVIF negotiation existed. Nothing about
+//   the DB/canonical URLs, already-generated AVIF files, or the
+//   responsive-size backfill changes when this is off; it only stops
+//   this one route from ever picking the AVIF file. This is the switch
+//   to flip immediately if a product image gets flagged/disapproved
+//   anywhere (Google Merchant Center, Pinterest, etc.) that might be
+//   AVIF-related -- flipping it off reverts serving behavior instantly.
+//
+// Goes through /api/admin/avif-negotiation (server-side) and purges
+// Cloudflare's edge cache on save, same reasoning as Media Delivery --
+// this route's responses are cached for a year, so the toggle needs an
+// explicit purge to take effect immediately instead of only for
+// not-yet-cached images.
+// ---------------------------------------------------------------------
+export interface AvifNegotiationSettings {
+  enabled: boolean;
+}
+
+export const DEFAULT_AVIF_NEGOTIATION_SETTINGS: AvifNegotiationSettings = {
+  enabled: true,
+};
+
+export async function fetchAvifNegotiationSettings(): Promise<AvifNegotiationSettings> {
+  const { data, error } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'avif_negotiation')
+    .maybeSingle();
+  if (error || !data) return DEFAULT_AVIF_NEGOTIATION_SETTINGS;
+  return { ...DEFAULT_AVIF_NEGOTIATION_SETTINGS, ...(data.value as Partial<AvifNegotiationSettings>) };
+}
+
+export async function saveAvifNegotiationSettings(settings: AvifNegotiationSettings) {
+  const res = await fetch('/api/admin/avif-negotiation', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  });
+  const json = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error(json?.error || 'Failed to save AVIF negotiation setting');
+  }
+  return json as {
+    saved: true;
+    enabled: boolean;
+    cloudflare_purge: { attempted: boolean; ok: boolean; error?: string };
+  };
+}
+
+// ---------------------------------------------------------------------
 // Blur Placeholder — Admin > Settings. Two independent toggles.
 //
 // shimmer_enabled (default true): product gallery photos show a soft

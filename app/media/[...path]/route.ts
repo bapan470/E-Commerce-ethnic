@@ -52,6 +52,36 @@ const EXTENSION_MIME: Record<string, string> = {
 
 const GENERIC_CONTENT_TYPES = new Set(['application/octet-stream', 'binary/octet-stream', '']);
 
+// -----------------------------------------------------------------------
+// AVIF content negotiation — bot/crawler exclusion
+//
+// Google Merchant Center's image_link requirements do NOT include AVIF
+// (only JPEG/PNG/WebP/GIF/BMP/TIFF) — if a feed-fetcher happened to
+// advertise `Accept: image/avif` and got served AVIF bytes for a
+// `.webp`-extensioned image_link URL, that product image could be
+// disapproved as "unsupported image format" even though the URL itself
+// never changed. Several social/link-preview crawlers (Pinterest,
+// WhatsApp, etc.) have similarly inconsistent AVIF support. Since AVIF
+// negotiation exists purely as a bandwidth optimization for real human
+// visitors, the safe/conservative choice is to skip negotiation entirely
+// for anything that looks like a bot/crawler/feed-fetcher — those always
+// get the canonical WebP response, exactly as before this feature
+// shipped, regardless of what their Accept header claims. This has no
+// downside: Google Search/Google Images already indexes WebP fine, and
+// Merchant Center/Pinterest/etc. only ever see the one format they
+// already expect.
+// -----------------------------------------------------------------------
+const BOT_USER_AGENT_RE =
+  /bot|crawl|spider|slurp|facebookexternalhit|pinterest|whatsapp|telegrambot|discordbot|linkedinbot|embedly|quora link preview|outbrain|skypeuripreview|w3c_validator|adsbot|mediapartners|feedfetcher|googleweblight|storebot|google-shopping/i;
+
+function isBotOrFeedFetcher(userAgent: string | null): boolean {
+  // No User-Agent at all (many server-side feed fetchers, some link
+  // preview bots) — treat conservatively as non-browser, so it never
+  // gets AVIF negotiation either. Real browsers always send a UA.
+  if (!userAgent) return true;
+  return BOT_USER_AGENT_RE.test(userAgent);
+}
+
 function resolveContentType(upstreamContentType: string | null, pathSegments: string[]): string {
   const ext = (pathSegments[pathSegments.length - 1] ?? '').split('.').pop()?.toLowerCase() ?? '';
   const guessed = EXTENSION_MIME[ext];
@@ -79,9 +109,12 @@ function resolveContentType(upstreamContentType: string | null, pathSegments: st
 // -----------------------------------------------------------------------
 
 const SETTINGS_CACHE_TTL_MS = 45_000;
-let settingsCache: { value: { proxyEnabled: boolean; preferredBackend: 'supabase' | 'r2' }; expiresAt: number } | null = null;
+let settingsCache: {
+  value: { proxyEnabled: boolean; preferredBackend: 'supabase' | 'r2'; avifEnabled: boolean };
+  expiresAt: number;
+} | null = null;
 
-async function getSettings(): Promise<{ proxyEnabled: boolean; preferredBackend: 'supabase' | 'r2' }> {
+async function getSettings(): Promise<{ proxyEnabled: boolean; preferredBackend: 'supabase' | 'r2'; avifEnabled: boolean }> {
   const now = Date.now();
   if (settingsCache && settingsCache.expiresAt > now) {
     return settingsCache.value;
@@ -89,12 +122,19 @@ async function getSettings(): Promise<{ proxyEnabled: boolean; preferredBackend:
 
   let proxyEnabled = true;
   let preferredBackend: 'supabase' | 'r2' = 'supabase';
+  // Kill-switch for AVIF content negotiation — see
+  // lib/settings-api.ts (AvifNegotiationSettings) / Admin > Settings.
+  // Defaults ON; flipping it OFF reverts every image to plain WebP for
+  // every requester, immediately (this route's settings read shares the
+  // same short TTL cache as the other two toggles below, and the admin
+  // save route purges Cloudflare on top of that).
+  let avifEnabled = true;
   try {
     const supabase = getServerSupabase();
     const { data: rows } = await supabase
       .from('settings')
       .select('key, value')
-      .in('key', ['media_delivery', 'media_storage_backend']);
+      .in('key', ['media_delivery', 'media_storage_backend', 'avif_negotiation']);
 
     for (const row of rows ?? []) {
       if (row.key === 'media_delivery') {
@@ -105,14 +145,18 @@ async function getSettings(): Promise<{ proxyEnabled: boolean; preferredBackend:
         const v = row.value as { backend?: string } | undefined;
         if (v?.backend === 'r2' && R2_CDN_BASE) preferredBackend = 'r2';
       }
+      if (row.key === 'avif_negotiation') {
+        const v = row.value as { enabled?: boolean } | undefined;
+        if (typeof v?.enabled === 'boolean') avifEnabled = v.enabled;
+      }
     }
   } catch {
     // Supabase unreachable — use fail-open defaults (and don't cache a
     // failure, so the next request retries instead of being stuck for 45s)
-    return { proxyEnabled, preferredBackend };
+    return { proxyEnabled, preferredBackend, avifEnabled };
   }
 
-  const value = { proxyEnabled, preferredBackend };
+  const value = { proxyEnabled, preferredBackend, avifEnabled };
   settingsCache = { value, expiresAt: now + SETTINGS_CACHE_TTL_MS };
   return value;
 }
@@ -214,6 +258,18 @@ function markSuffixMissing(pathSegments: string[]): void {
 // Upstream fetch with auto-fallback
 // -----------------------------------------------------------------------
 
+// Swaps a trailing `.webp` extension for `.avif`, keeping everything else
+// (folder path, -sm/-md suffix) identical — this is the sibling AVIF file
+// that lib/image-sizes.ts / lib/image-resize-backfill.ts upload right next
+// to every WebP file it generates.
+function toAvifPathSegments(pathSegments: string[]): string[] | null {
+  if (pathSegments.length === 0) return null;
+  const last = pathSegments[pathSegments.length - 1];
+  if (!last.toLowerCase().endsWith('.webp')) return null;
+  const swapped = last.slice(0, -'.webp'.length) + '.avif';
+  return [...pathSegments.slice(0, -1), swapped];
+}
+
 function buildUpstreamUrl(backend: 'supabase' | 'r2', pathSegments: string[]): string | null {
   const encoded = pathSegments.map(encodeURIComponent).join('/');
   if (backend === 'r2') {
@@ -258,7 +314,7 @@ export async function GET(req: NextRequest, { params }: { params: { path: string
     return new NextResponse('Not found', { status: 404 });
   }
 
-  const { proxyEnabled, preferredBackend } = await getSettings();
+  const { proxyEnabled, preferredBackend, avifEnabled } = await getSettings();
 
   // Quota-saving redirect mode: hand browser/crawler off to the preferred
   // backend directly (R2's cdn.aruhihandlooms.com if that's selected in
@@ -266,6 +322,13 @@ export async function GET(req: NextRequest, { params }: { params: { path: string
   // the other backend if the preferred one has no URL configured (e.g. R2
   // env vars missing), so this never redirects to a broken/empty URL.
   if (!proxyEnabled) {
+    // NOTE: AVIF content negotiation (below) only applies in proxy mode.
+    // In redirect mode the browser is handed off with a 307 straight to
+    // the backend's own URL, which always serves whatever file exists at
+    // that exact path (the WebP one) — there's no request left for this
+    // route to inspect the Accept header on. This is a pre-existing
+    // trade-off of quota-saving redirect mode, not a bug introduced here.
+    //
     // Quota-saving redirect mode: hand off with a 307, never downloading
     // the bytes ourselves (that's the whole point of this mode).
     //
@@ -333,12 +396,54 @@ export async function GET(req: NextRequest, { params }: { params: { path: string
   }
 
   const range = req.headers.get('range');
-  let result = await fetchFromUpstream(params.path, preferredBackend, range);
+
+  // -----------------------------------------------------------------
+  // AVIF content negotiation
+  //
+  // Gated by THREE independent things, all of which must hold:
+  //   1. avifEnabled — the Admin > Settings kill-switch (see getSettings
+  //      above / lib/settings-api.ts AvifNegotiationSettings). Flip this
+  //      off any time to revert to plain WebP for everyone, immediately
+  //      — e.g. if a Merchant Center/Pinterest image gets disapproved
+  //      for a reason that might be AVIF-related.
+  //   2. The requester's Accept header explicitly advertises
+  //      `image/avif` support.
+  //   3. The requester isn't a bot/feed-fetcher (see isBotOrFeedFetcher
+  //      above — this is what keeps Merchant Center / Pinterest /
+  //      sitemap-driven crawlers always getting the plain WebP they
+  //      expect, independently of the kill-switch above).
+  // If the AVIF sibling doesn't exist yet on either backend (not
+  // backfilled, generation failed, or this is a legacy pre-AVIF upload),
+  // this falls straight through to the normal WebP flow below — same
+  // fail-safe philosophy as the rest of this route, never a broken/blank
+  // image.
+  // -----------------------------------------------------------------
+  const acceptHeader = req.headers.get('accept') || '';
+  const userAgent = req.headers.get('user-agent');
+  const isNegotiable = avifEnabled && acceptHeader.includes('image/avif') && !isBotOrFeedFetcher(userAgent);
+
+  let result: { response: Response; backend: string } | null = null;
+  let servedAvif = false;
+
+  if (isNegotiable) {
+    const avifPath = toAvifPathSegments(params.path);
+    if (avifPath) {
+      const avifResult = await fetchFromUpstream(avifPath, preferredBackend, range);
+      if (avifResult && avifResult.response.body) {
+        result = avifResult;
+        servedAvif = true;
+      }
+    }
+  }
 
   if (!result) {
-    const fallbackPath = stripSizeSuffix(params.path);
-    if (fallbackPath) {
-      result = await fetchFromUpstream(fallbackPath, preferredBackend, range);
+    result = await fetchFromUpstream(params.path, preferredBackend, range);
+
+    if (!result) {
+      const fallbackPath = stripSizeSuffix(params.path);
+      if (fallbackPath) {
+        result = await fetchFromUpstream(fallbackPath, preferredBackend, range);
+      }
     }
   }
 
@@ -347,10 +452,13 @@ export async function GET(req: NextRequest, { params }: { params: { path: string
   }
 
   const { response: upstream } = result;
-  const contentType = resolveContentType(upstream.headers.get('content-type'), params.path);
+  const contentType = servedAvif
+    ? 'image/avif'
+    : resolveContentType(upstream.headers.get('content-type'), params.path);
   const contentLength = upstream.headers.get('content-length');
   const contentRange = upstream.headers.get('content-range');
   const isPartial = upstream.status === 206;
+  const isImageResponse = contentType.startsWith('image/');
 
   return new NextResponse(upstream.body, {
     status: isPartial ? 206 : 200,
@@ -363,6 +471,16 @@ export async function GET(req: NextRequest, { params }: { params: { path: string
       // filename), so it's safe for browsers/CDNs/crawlers to cache these
       // indefinitely.
       'Cache-Control': 'public, max-age=31536000, immutable',
+      // Every image response this route serves — negotiated or not —
+      // must declare Vary: Accept, since its bytes could differ based on
+      // that header. Without this, a CDN/browser cache sitting in front
+      // of this route could serve an AVIF response to a browser that
+      // doesn't support AVIF, or vice versa, from a shared cache key.
+      // NOTE: verify Cloudflare (sitting in front of this app — see the
+      // purge_cache comments below) actually respects Vary on cached
+      // responses; if not, its cache config needs an explicit "Cache by
+      // Accept header" / Vary-aware caching rule for this route.
+      ...(isImageResponse ? { Vary: 'Accept' } : {}),
     },
   });
 }

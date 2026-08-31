@@ -52,6 +52,9 @@ import {
   ResponsiveImagesSettings,
   fetchResponsiveImagesSettings,
   saveResponsiveImagesSettings,
+  AvifNegotiationSettings,
+  fetchAvifNegotiationSettings,
+  saveAvifNegotiationSettings,
   BlurPlaceholderSettings,
   fetchBlurPlaceholderSettings,
   saveBlurPlaceholderSettings,
@@ -141,6 +144,8 @@ export default function SettingsPanel() {
   const [backfillStarting, setBackfillStarting] = useState(false);
   const [responsiveImagesForm, setResponsiveImagesForm] = useState<ResponsiveImagesSettings | null>(null);
   const [savingResponsiveImages, setSavingResponsiveImages] = useState(false);
+  const [avifNegotiationForm, setAvifNegotiationForm] = useState<AvifNegotiationSettings | null>(null);
+  const [savingAvifNegotiation, setSavingAvifNegotiation] = useState(false);
   const [blurPlaceholderForm, setBlurPlaceholderForm] = useState<BlurPlaceholderSettings | null>(null);
   const [savingBlurPlaceholder, setSavingBlurPlaceholder] = useState(false);
   const [resizeBackfillProgress, setResizeBackfillProgress] = useState<ResizeBackfillProgress | null>(null);
@@ -236,6 +241,10 @@ export default function SettingsPanel() {
     fetchResponsiveImagesSettings()
       .then(setResponsiveImagesForm)
       .catch(() => toast.error('Failed to load responsive images setting'));
+
+    fetchAvifNegotiationSettings()
+      .then(setAvifNegotiationForm)
+      .catch(() => toast.error('Failed to load AVIF negotiation setting'));
 
     fetchBlurPlaceholderSettings()
       .then(setBlurPlaceholderForm)
@@ -580,6 +589,44 @@ export default function SettingsPanel() {
       toast.error(err instanceof Error ? err.message : 'Failed to save');
     } finally {
       setSavingResponsiveImages(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------
+  // AVIF Format Negotiation kill-switch. ON (default) = smaller AVIF
+  // files get served instead of WebP to browsers that support it (bots
+  // and feed-fetchers like Google Merchant Center / Pinterest are always
+  // excluded, on or off — they only ever see WebP). OFF = every image
+  // reverts to plain WebP for everyone, immediately (Cloudflare cache is
+  // purged on save) — this is the emergency switch if a product image
+  // ever gets flagged/disapproved somewhere for a possibly-AVIF-related
+  // reason.
+  // ---------------------------------------------------------------------
+  const onToggleAvifNegotiation = async (checked: boolean) => {
+    if (!avifNegotiationForm) return;
+    const next = { ...avifNegotiationForm, enabled: checked };
+    setAvifNegotiationForm(next); // update immediately so the switch feels responsive
+    setSavingAvifNegotiation(true);
+    try {
+      const result = await saveAvifNegotiationSettings(next);
+      if (result.cloudflare_purge.attempted && result.cloudflare_purge.ok) {
+        toast.success(
+          checked
+            ? 'AVIF ON — smaller AVIF images will be served to supporting browsers. Cloudflare cache cleared, takes effect immediately.'
+            : 'AVIF OFF — every image reverts to plain WebP for everyone. Cloudflare cache cleared, takes effect immediately.'
+        );
+      } else {
+        toast.success(
+          checked
+            ? 'AVIF ON — smaller AVIF images will be served to supporting browsers (new/uncached images right away; Cloudflare purge not configured, so already-cached images catch up as their cache expires).'
+            : 'AVIF OFF — every image reverts to plain WebP for everyone (new/uncached images right away; Cloudflare purge not configured, so already-cached images catch up as their cache expires).'
+        );
+      }
+    } catch (err) {
+      setAvifNegotiationForm(avifNegotiationForm); // revert the switch on failure
+      toast.error(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSavingAvifNegotiation(false);
     }
   };
 
@@ -1986,6 +2033,50 @@ export default function SettingsPanel() {
         </div>
       )}
 
+      {/* AVIF Format Negotiation — kill-switch. Serves a smaller AVIF
+          version of .webp images to browsers that support it, via the
+          Accept header. Bots/feed-fetchers (Google Merchant Center,
+          Pinterest, etc.) always get plain WebP regardless of this
+          toggle — see app/media/[...path]/route.ts. Turning this OFF is
+          the fastest way to fully revert to pre-AVIF behavior for
+          everyone if a product image is ever flagged/disapproved
+          anywhere for a possibly-AVIF-related reason. */}
+      <div className="mt-8">
+        <h2 className="font-serif text-2xl font-bold text-primary">AVIF Format</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Serves an even smaller AVIF version of product images (~20-30% smaller than WebP at the
+          same visual quality) to browsers that support it — real browsers only. Google Merchant
+          Center, Pinterest, Googlebot, and other feed/crawler traffic always receive the plain
+          WebP file, on or off, since Merchant Center doesn&apos;t accept AVIF as an image format.
+          If a product image is ever flagged or disapproved anywhere and you suspect this feature,
+          switch it off below — every image reverts to plain WebP for everyone immediately, with
+          nothing else about your image URLs or files changing.
+        </p>
+      </div>
+
+      {!avifNegotiationForm ? (
+        <p className="py-4 text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <div className="mt-4 flex max-w-xl items-center justify-between gap-4 rounded-lg border border-border/60 bg-card p-5">
+          <div>
+            <Label htmlFor="avif-negotiation-enabled">
+              {avifNegotiationForm.enabled ? 'On — serving AVIF to supporting browsers' : 'Off — serving WebP only (reverted)'}
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              {avifNegotiationForm.enabled
+                ? 'Real browsers that support AVIF get the smaller file automatically. Bots/feed-fetchers (Merchant Center, Pinterest, etc.) always get WebP. Safe to leave on.'
+                : 'Every image serves as plain WebP for every visitor and every bot — identical to how the site behaved before this feature existed. Use this as an emergency revert.'}
+            </p>
+          </div>
+          <Switch
+            id="avif-negotiation-enabled"
+            checked={avifNegotiationForm.enabled}
+            disabled={savingAvifNegotiation}
+            onCheckedChange={onToggleAvifNegotiation}
+          />
+        </div>
+      )}
+
       {/* Blur Placeholder — two independent switches: a generic shimmer
           while product photos load, and whether an already-generated
           real per-image preview is actually shown when available. */}
@@ -2142,7 +2233,9 @@ export default function SettingsPanel() {
           smaller sizes for images uploaded <em>before</em> that shipped, so they benefit too.
           <strong> Original images are never modified or deleted</strong> — this only adds new,
           smaller files alongside them. Safe to run whether Responsive Images above is on or off,
-          and safe to re-run any time.
+          and safe to re-run any time. Also generates a smaller AVIF version of each size for
+          browsers that support it — safe to re-run for existing images even if you&apos;ve run it
+          before; only missing sizes/formats are generated, nothing is regenerated or overwritten.
         </p>
 
         {!resizeBackfillProgress ? (

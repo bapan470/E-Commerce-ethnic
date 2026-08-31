@@ -193,7 +193,10 @@ export async function POST(req: Request) {
             buffer,
             contentType: ct,
           });
-          if (suffix === '') mainUrl = u;
+          // Same fix as app/api/upload-image/route.ts — generateResponsiveSizes()
+          // now returns both a WebP and an AVIF entry for suffix === '', so
+          // pick the WebP one specifically as the canonical DB URL.
+          if (suffix === '' && ct === 'image/webp') mainUrl = u;
         })
       );
     } else {

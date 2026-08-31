@@ -143,11 +143,22 @@ export async function startResizeBackfill(): Promise<ResizeBackfillProgress> {
       const parts = splitExt(path);
       if (!parts || !IMAGE_EXT.has(parts.ext)) continue; // skip non-images / no extension
 
-      const smPath = `${parts.base}-sm.${parts.ext}`;
-      const mdPath = `${parts.base}-md.${parts.ext}`;
-      if (existing.has(smPath) && existing.has(mdPath)) {
+      // generateResponsiveSizes() always produces WebP AND AVIF now, so
+      // "fully backfilled" means all 4 files exist — not just the 2 WebP
+      // ones. This is deliberately hardcoded to .webp/.avif (not
+      // parts.ext) because those are the two formats the size generator
+      // always emits regardless of the original file's own extension —
+      // matching what runResizeBackfillBatch() below actually writes.
+      // Images that were already backfilled for WebP under the old
+      // 2-file check will now be missing their AVIF pair and get
+      // correctly re-queued for just that.
+      const smWebpPath = `${parts.base}-sm.webp`;
+      const smAvifPath = `${parts.base}-sm.avif`;
+      const mdWebpPath = `${parts.base}-md.webp`;
+      const mdAvifPath = `${parts.base}-md.avif`;
+      if (existing.has(smWebpPath) && existing.has(smAvifPath) && existing.has(mdWebpPath) && existing.has(mdAvifPath)) {
         alreadyDone += 1;
-        continue; // already backfilled
+        continue; // already backfilled (both formats, both sizes)
       }
 
       queue.push({ bucket, path });
@@ -200,7 +211,12 @@ export async function runResizeBackfillBatch(): Promise<ResizeBackfillProgress> 
       const smAndMd = sizes.filter((s) => s.suffix === '-sm' || s.suffix === '-md');
 
       for (const size of smAndMd) {
-        const variantPath = `${parts.base}${size.suffix}.${parts.ext}`;
+        // Use the size's OWN ext (webp/avif), not the original file's
+        // ext — generateResponsiveSizes() now returns both formats for
+        // every suffix, and they must land at distinct paths
+        // (name-sm.webp AND name-sm.avif), not both collapse onto the
+        // original file's extension.
+        const variantPath = `${parts.base}${size.suffix}.${size.ext}`;
         try {
           await uploadToStorage({
             bucket: item.bucket,

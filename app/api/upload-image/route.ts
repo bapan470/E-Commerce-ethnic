@@ -76,8 +76,14 @@ export async function POST(req: Request) {
           buffer,
           contentType,
         });
-        // Return the original (no suffix) URL — this is what gets stored in DB
-        if (suffix === '') mainUrl = url;
+        // generateResponsiveSizes() now returns BOTH a WebP and an AVIF
+        // entry for suffix === '' (the "original" size) — the WebP one
+        // stays the canonical URL stored in the DB/products.images[],
+        // exactly as before this AVIF change. The AVIF file still gets
+        // uploaded above; it just isn't the URL we hand back here. AVIF
+        // is served transparently later via content negotiation in
+        // app/media/[...path]/route.ts, never referenced directly.
+        if (suffix === '' && contentType === 'image/webp') mainUrl = url;
       })
     );
 
