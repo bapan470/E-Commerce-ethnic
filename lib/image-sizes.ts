@@ -13,7 +13,7 @@
  * to original URL for them.
  */
 
-import sharp from 'sharp';
+import sharp, { type Sharp } from 'sharp';
 
 const WEBP_QUALITY = 82;
 // AVIF's quality scale runs lower than WebP's for an equivalent visual
@@ -49,7 +49,7 @@ export async function generateResponsiveSizes(sourceBuffer: Buffer): Promise<
   const results: Array<{ suffix: string; buffer: Buffer; contentType: string; ext: string }> = [];
 
   for (const { suffix, width } of RESPONSIVE_SIZES) {
-    let resized: sharp.Sharp;
+    let resized: Sharp;
     try {
       resized = sharp(sourceBuffer, { failOn: 'none' })
         .rotate()
