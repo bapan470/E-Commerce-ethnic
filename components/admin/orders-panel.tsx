@@ -182,13 +182,15 @@ export default function OrdersPanel() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderId: id, ...(packageDetails || {}) }),
       });
-      const body = await res.json().catch(() => ({}));
-      if (res.ok) {
+      const body = await res.json().catch(() => null);
+      if (res.ok && body?.success) {
         toast.success(`Shipment created — waybill ${body.waybill}`);
         await load();
         return true;
       }
-      toast.error(body.error || 'Failed to create Delhivery shipment');
+      // body may be null if a proxy replaced the response with a non-JSON
+      // error page (e.g. a real 5xx from the platform, not from our API).
+      toast.error(body?.error || `Failed to create Delhivery shipment (HTTP ${res.status})`);
       return false;
     } catch (err) {
       toast.error('Failed to create Delhivery shipment');

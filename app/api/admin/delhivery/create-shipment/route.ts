@@ -64,10 +64,16 @@ export async function POST(req: Request) {
     );
 
     if (!result.success || !result.waybill) {
-      return NextResponse.json(
-        { error: result.remark || 'Delhivery did not return a waybill' },
-        { status: 502 }
-      );
+      const reason = result.remark || 'Delhivery did not return a waybill';
+      // Log the real reason server-side so it shows up in Vercel's Logs tab
+      // even if a proxy in front of the app (e.g. Cloudflare) ever rewrites
+      // a non-2xx response body before it reaches the browser.
+      console.error(`[delhivery/create-shipment] rejected for order ${orderId}: ${reason}`, result.raw);
+      // Deliberately 200 (not 502/4xx): some CDNs/proxies replace 5xx response
+      // bodies with their own generic error page, which would hide this
+      // message from the admin. A 200 status is never intercepted, and the
+      // frontend checks `success` in the body instead of the HTTP status.
+      return NextResponse.json({ success: false, error: reason }, { status: 200 });
     }
 
     // Bump status forward to 'shipped' unless it's already further along
@@ -99,6 +105,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, waybill: result.waybill, status: nextStatus });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to create shipment';
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error(`[delhivery/create-shipment] threw for order ${orderId}:`, err);
+    // Same reasoning as above — 200 status so proxies never swallow the body.
+    return NextResponse.json({ success: false, error: message }, { status: 200 });
   }
 }
