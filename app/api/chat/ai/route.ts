@@ -30,8 +30,27 @@ import { fetchAiChatSettingsServer } from '@/lib/settings-api';
 // recommendations instead of talking to a stranger.
 // ---------------------------------------------------------------------
 
-const DEFAULT_PRIMARY_MODEL = 'meta/llama-3.3-70b-instruct';
-const DEFAULT_FALLBACK_MODEL = 'meta/llama-3.2-90b-vision-instruct';
+// meta/llama-3.3-70b-instruct reached end-of-life on NVIDIA NIM on
+// 2026-08-26 (now returns HTTP 410 Gone) -- these defaults were updated
+// to models still live on the platform as of this fix. If NVIDIA
+// retires another model in the future, the SAFETY_NET_MODELS list below
+// is tried automatically so the widget doesn't need a code change every
+// time -- only an admin settings update (or nothing, if the safety net
+// covers it) is needed.
+const DEFAULT_PRIMARY_MODEL = 'meta/llama-3.1-70b-instruct';
+const DEFAULT_FALLBACK_MODEL = 'meta/llama-3.1-8b-instruct';
+
+// Tried, in order, if BOTH the admin-configured primary and fallback
+// models fail (e.g. because one or both got retired by NVIDIA and the
+// admin settings haven't been updated yet). Skips any model already
+// attempted above. This is what keeps the widget working even when
+// Admin > Settings has a stale/EOL model saved.
+const SAFETY_NET_MODELS = [
+  'meta/llama-3.1-70b-instruct',
+  'meta/llama-3.1-8b-instruct',
+  'meta/llama-3.2-90b-vision-instruct',
+];
+
 const NIM_ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions';
 
 // A stuck/slow upstream call is the #1 cause of "quick reply isn't
@@ -212,28 +231,37 @@ Store policy context (for grounding shipping/returns answers — paraphrase in y
 ${policyContext}
 ${page ? `\nShopper is currently on: ${page}` : ''}`;
 
-  try {
-    let result = await callNim(apiKey, primaryModel, systemPrompt, history);
+  // Try the admin-configured primary, then fallback, then -- only if
+  // both of those failed -- the hardcoded safety-net models, skipping
+  // anything already attempted. This means a retired/EOL model in
+  // Admin > Settings doesn't take the whole widget down; it just falls
+  // through to a model that's actually still live on NVIDIA NIM.
+  const modelsToTry = Array.from(new Set([primaryModel, fallbackModel, ...SAFETY_NET_MODELS]));
 
-    if (!result.ok) {
-      console.error('[chat/ai] primary model failed:', primaryModel, result.status, result.errText);
-      // Automatic fallback to the model this project already has
-      // confirmed working with this NVIDIA_API_KEY, in case the
-      // primary model isn't enabled on the account or is momentarily
-      // unavailable. Admin can change either model in
-      // Admin > Settings > AI Chat Assistant without a redeploy.
-      result = await callNim(apiKey, fallbackModel, systemPrompt, history);
+  try {
+    let result: Awaited<ReturnType<typeof callNim>> | null = null;
+    let lastAttempted = '';
+
+    for (const model of modelsToTry) {
+      result = await callNim(apiKey, model, systemPrompt, history);
+      lastAttempted = model;
+      if (result.ok) break;
+      console.error('[chat/ai] model failed:', model, result.status, result.errText);
+      // 410 = model retired/EOL on NVIDIA's side; other errors (401/403,
+      // network) will fail identically for every model too, so don't
+      // burn the full list on those -- just try one more before giving up.
+      if (result.status === 401 || result.status === 403) break;
     }
 
-    if (!result.ok) {
-      console.error('[chat/ai] fallback model also failed:', fallbackModel, result.status, result.errText);
+    if (!result || !result.ok) {
+      console.error('[chat/ai] all models failed, last attempted:', lastAttempted);
       return NextResponse.json(
         {
           ok: false,
           error:
-            result.status === 429
+            result?.status === 429
               ? 'AI is rate-limited right now (free tier). Please try again shortly.'
-              : result.status === 401 || result.status === 403
+              : result?.status === 401 || result?.status === 403
                 ? 'AI key was rejected — check NVIDIA_API_KEY is correct and active.'
                 : 'AI chat failed.',
         },
