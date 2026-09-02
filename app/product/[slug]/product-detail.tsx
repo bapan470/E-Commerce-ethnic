@@ -802,6 +802,7 @@ export default function ProductDetail({
           onAdd={handleAddToCart}
           onBuyNow={handleBuyNow}
           onReviewsClick={goToReviews}
+          variant={variant}
           appliedCoupon={appliedCoupon}
           couponDiscount={couponDiscount}
           fulfillment={fulfillment}
@@ -946,6 +947,7 @@ function ProductInfo({
   onAdd,
   onBuyNow,
   onReviewsClick,
+  variant,
   appliedCoupon,
   couponDiscount,
   onCouponApply,
@@ -971,6 +973,7 @@ function ProductInfo({
   onAdd: () => void;
   onBuyNow: () => void;
   onReviewsClick: () => void;
+  variant: VariantWithSizes | null;
   appliedCoupon: Coupon | null;
   couponDiscount: number;
   onCouponApply: (coupon: Coupon, discount: number) => void;
