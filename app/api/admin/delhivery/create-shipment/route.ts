@@ -99,7 +99,20 @@ export async function POST(req: Request) {
         courier_name: 'Delhivery',
       });
       // Best-effort — a failed email shouldn't undo the shipment creation.
-      sendEmail({ to: order.customer_email, subject, html }).catch(() => {});
+      // The sent_at write is separate from (and doesn't block) the send
+      // itself -- if it fails, worst case the Email Log just shows this
+      // send as missing even though it went out, same tradeoff every other
+      // *_email_sent_at column in this codebase already makes.
+      sendEmail({ to: order.customer_email, subject, html })
+        .then((result) => {
+          if (result.success) {
+            return supabase
+              .from('orders')
+              .update({ shipped_email_sent_at: new Date().toISOString() })
+              .eq('id', orderId);
+          }
+        })
+        .catch(() => {});
     }
 
     return NextResponse.json({ success: true, waybill: result.waybill, status: nextStatus });

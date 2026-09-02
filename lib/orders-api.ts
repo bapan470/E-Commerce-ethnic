@@ -223,9 +223,24 @@ export async function updateOrderStatus(id: string, status: string) {
     });
     // Best-effort -- never let a slow/broken email provider fail the
     // admin's status update.
-    sendEmail({ to: existing.customer_email, subject, html }).catch((err) => {
-      console.error('[updateOrderStatus] status-change email failed:', err);
-    });
+    sendEmail({ to: existing.customer_email, subject, html })
+      .then((result) => {
+        // Fills in the Email Log's "Delivered" row for the real path (admin
+        // dropdown or the auto-detect cron, both funnel through here).
+        // Other status transitions (paid/cancelled/etc) also send this same
+        // template but don't have their own dedicated *_sent_at column --
+        // out of scope for the Email Log, which only tracks the fixed
+        // lifecycle (Confirmed/Shipped/Arriving/Out for Delivery/Delivered).
+        if (result.success && status === 'delivered') {
+          return supabase
+            .from('orders')
+            .update({ delivered_email_sent_at: new Date().toISOString() })
+            .eq('id', id);
+        }
+      })
+      .catch((err) => {
+        console.error('[updateOrderStatus] status-change email failed:', err);
+      });
   }
 
   return data;

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, Truck, Search, X, Copy, Check, Trash2, ExternalLink, Wallet, Download } from 'lucide-react';
+import { Loader2, Truck, Search, X, Copy, Check, Trash2, ExternalLink, Wallet, Download, CheckCircle2, XCircle } from 'lucide-react';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -106,6 +106,15 @@ type Order = {
   // Admin-only hidden sourcing info, attached server-side in lib/orders-api.ts
   // (fetchOrders -> attachItemSources). Keyed by product_id.
   _item_sources?: Record<string, { source_name: string | null; whatsapp_name: string | null; whatsapp_number: string | null; buy_price: number | null }>;
+  // Email Log -- when each lifecycle email actually sent (or null if it
+  // never has). See supabase/migrations/20260930010000_order_confirmation_email_sent_at.sql,
+  // 20260817000000_delivery_lifecycle_emails.sql, and
+  // 20260902000000_order_email_log_columns.sql (the last two columns).
+  confirmation_email_sent_at?: string | null;
+  shipped_email_sent_at?: string | null;
+  arriving_email_sent_at?: string | null;
+  out_for_delivery_email_sent_at?: string | null;
+  delivered_email_sent_at?: string | null;
 };
 
 export default function OrdersPanel() {
@@ -1273,6 +1282,10 @@ function OrderRow({
               </div>
             </div>
             <div className="mt-4">
+              <h4 className="mb-2 text-sm font-semibold">Email Log</h4>
+              <EmailLog order={order} />
+            </div>
+            <div className="mt-4">
               <h4 className="mb-2 text-sm font-semibold">Live Tracking</h4>
               <OrderTracking
                 orderId={order.id}
@@ -1291,5 +1304,59 @@ function OrderRow({
         </tr>
       )}
     </>
+  );
+}
+
+// Shows, at a glance, which of the five lifecycle emails have actually gone
+// out to the customer for THIS order and when — answers "did the customer
+// get an email about X". Purely a display of the *_sent_at columns already
+// written by order-confirm, delhivery/create-shipment, updateOrderStatus,
+// and delivery-notifications.ts; never sends anything itself (see the
+// "Test Notifications" panel below for that).
+function EmailLog({ order }: { order: Order }) {
+  const rows: { label: string; sentAt?: string | null; note?: string }[] = [
+    { label: 'Order Confirmed', sentAt: order.confirmation_email_sent_at },
+    { label: 'Shipped', sentAt: order.shipped_email_sent_at },
+    {
+      label: 'Arriving Soon',
+      sentAt: order.arriving_email_sent_at,
+      note: order.expected_delivery_date
+        ? `Expected: ${new Date(order.expected_delivery_date).toLocaleDateString('en-IN')}`
+        : undefined,
+    },
+    { label: 'Out for Delivery', sentAt: order.out_for_delivery_email_sent_at },
+    { label: 'Delivered', sentAt: order.delivered_email_sent_at },
+  ];
+
+  if (!order.customer_email) {
+    return <p className="text-sm text-muted-foreground">No customer email on this order — nothing has been sent.</p>;
+  }
+
+  return (
+    <div className="rounded-md border border-border/60 p-3">
+      <p className="mb-2 text-xs text-muted-foreground">
+        Sent to: <span className="font-medium text-foreground">{order.customer_email}</span>
+      </p>
+      <div className="space-y-1.5">
+        {rows.map((row) => (
+          <div key={row.label} className="flex items-center justify-between gap-3 text-sm">
+            <div className="flex items-center gap-2">
+              {row.sentAt ? (
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+              ) : (
+                <XCircle className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+              )}
+              <span className={row.sentAt ? 'text-foreground' : 'text-muted-foreground'}>{row.label}</span>
+              {row.note && <span className="text-xs text-muted-foreground">({row.note})</span>}
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {row.sentAt
+                ? new Date(row.sentAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
+                : 'Not sent yet'}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

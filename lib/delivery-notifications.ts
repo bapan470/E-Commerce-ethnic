@@ -144,6 +144,12 @@ export async function sendDeliveredNotification(
     items: order.items,
     total_amount: order.total_amount,
   });
-  await sendEmail({ to: order.customer_email, subject, html });
+  const result = await sendEmail({ to: order.customer_email, subject, html });
+  if (result.success) {
+    await supabase
+      .from('orders')
+      .update({ delivered_email_sent_at: new Date().toISOString() })
+      .eq('id', orderId);
+  }
   return { sent: true };
 }
