@@ -34,6 +34,9 @@ export default function DeliveryInfo() {
         <span className="flex items-center gap-2">
           <Truck className="h-4 w-4 text-secondary" />
           Delivery details
+          <span className="font-normal text-muted-foreground">
+            ({TRANSIT_LABEL})
+          </span>
         </span>
         <ChevronDown
           className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${
