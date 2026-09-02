@@ -33,8 +33,10 @@ import { fetchShippingSettings, ShippingSettings, DEFAULT_SHIPPING_SETTINGS } fr
 import { PaymentDiscountSettings } from '@/lib/settings-api';
 import {
   ProductSource,
+  ProductSourceMapEntry,
   fetchProductSources,
   fetchProductSourcing,
+  fetchProductSourcingMap,
   saveProductSourcing,
 } from '@/lib/product-sources-api';
 import { Button } from '@/components/ui/button';
@@ -610,6 +612,13 @@ export default function ProductsPanel() {
   useEffect(() => {
     fetchProductSources().then(setSourceOptions).catch(() => {});
   }, []);
+  // product_id -> source name/whatsapp number, so each row in the list
+  // below can show where a product was sourced from without opening the
+  // edit dialog. Admin-only, same as sourceOptions above.
+  const [sourcingByProduct, setSourcingByProduct] = useState<Record<string, ProductSourceMapEntry>>({});
+  useEffect(() => {
+    fetchProductSourcingMap().then(setSourcingByProduct).catch(() => {});
+  }, []);
   // Settlement preview (Price field) — pulled from Admin > Settings >
   // GST & Shipping, so the fee % and other charges stay editable in one
   // place instead of being hardcoded here.
@@ -829,6 +838,7 @@ export default function ProductsPanel() {
     const q = searchQuery.trim().toLowerCase();
     return products.filter((p) => {
       const vendorName = vendorNameById[p.id];
+      const sourcing = sourcingByProduct[p.id];
 
       const matchesQuery =
         !q ||
@@ -837,7 +847,9 @@ export default function ProductsPanel() {
         (p.fabric ?? '').toLowerCase().includes(q) ||
         (p.origin ?? '').toLowerCase().includes(q) ||
         p.category.toLowerCase().includes(q) ||
-        (vendorName ?? '').toLowerCase().includes(q);
+        (vendorName ?? '').toLowerCase().includes(q) ||
+        (sourcing?.source_name ?? '').toLowerCase().includes(q) ||
+        (sourcing?.whatsapp_number ?? '').toLowerCase().includes(q);
 
       const matchesCategory =
         categoryFilter === 'all' || p.category === categoryFilter;
@@ -1395,7 +1407,7 @@ export default function ProductsPanel() {
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by name, SKU, fabric…"
+              placeholder="Search by name, SKU, fabric, source…"
               className="pl-9 pr-8"
             />
             {searchQuery && (
@@ -1519,6 +1531,14 @@ export default function ProductsPanel() {
                     <p className="text-xs text-muted-foreground">
                       {p.fabric || '—'} · {p.origin || '—'} {p.sku ? `· SKU ${p.sku}` : ''}
                     </p>
+                    {sourcingByProduct[p.id] && (
+                      <p className="text-xs text-muted-foreground" title="Admin-only — never shown on the storefront">
+                        Source: {sourcingByProduct[p.id].source_name}
+                        {sourcingByProduct[p.id].whatsapp_number
+                          ? ` · ${sourcingByProduct[p.id].whatsapp_number}`
+                          : ''}
+                      </p>
+                    )}
                     {(variantCountById[p.id] ?? 0) > 0 && (
                       <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
                         {(variantColorsById[p.id] ?? []).map((v, i) => (

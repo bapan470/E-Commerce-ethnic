@@ -108,3 +108,17 @@ export async function saveProductSourcing(productId: string, input: ProductSourc
     body: JSON.stringify(input),
   });
 }
+
+export interface ProductSourceMapEntry {
+  source_id: string;
+  source_name: string;
+  whatsapp_name: string | null;
+  whatsapp_number: string | null;
+}
+
+// Bulk product_id -> source map, for the admin Products list rows (avoids
+// an N+1 fetchProductSourcing call per product just to render the list).
+export async function fetchProductSourcingMap(): Promise<Record<string, ProductSourceMapEntry>> {
+  const body = await adminRequest('/api/admin/product-sources/product-map');
+  return (body.map ?? {}) as Record<string, ProductSourceMapEntry>;
+}
