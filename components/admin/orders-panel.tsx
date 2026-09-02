@@ -239,6 +239,44 @@ export default function OrdersPanel() {
     }
   };
 
+  // Lets the admin fix a customer's email / phone / shipping address on an
+  // order before it ships -- e.g. the customer messaged asking for a
+  // corrected pincode or a typo'd phone number. Only meant to be used while
+  // the order hasn't been handed to Delhivery yet (see the `tracking_number`
+  // gate in the row UI below), so shipments always go out to the address the
+  // admin most recently confirmed.
+  const [savingDetailsFor, setSavingDetailsFor] = useState<string | null>(null);
+  const updateOrderDetails = async (
+    id: string,
+    details: {
+      customer_email?: string;
+      customer_phone?: string;
+      shipping_address?: Record<string, any>;
+    }
+  ) => {
+    setSavingDetailsFor(id);
+    try {
+      const res = await fetch(`/api/admin/orders/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(details),
+      });
+      if (res.ok) {
+        toast.success('Order details updated');
+        await load();
+        return true;
+      }
+      const body = await res.json().catch(() => ({}));
+      toast.error(body.error || 'Failed to update order details');
+      return false;
+    } catch (err) {
+      toast.error('Failed to update order details');
+      return false;
+    } finally {
+      setSavingDetailsFor(null);
+    }
+  };
+
   // Converts a COD order (item not kept ready-made -> needs prep time) to
   // "pay online first": flips payment_method, emails the customer an
   // apology + a link to pay. See app/api/admin/orders/[id]/request-online-payment.
@@ -474,6 +512,8 @@ export default function OrdersPanel() {
                   creatingShipment={creatingShipmentFor === o.id}
                   onRequestOnlinePayment={requestOnlinePayment}
                   requestingOnlinePayment={requestingOnlinePaymentFor === o.id}
+                  onUpdateDetails={updateOrderDetails}
+                  savingDetails={savingDetailsFor === o.id}
                 />
               ))
             )}
@@ -559,6 +599,8 @@ function OrderRow({
   creatingShipment,
   onRequestOnlinePayment,
   requestingOnlinePayment,
+  onUpdateDetails,
+  savingDetails,
 }: {
   order: Order;
   selected: boolean;
@@ -568,9 +610,63 @@ function OrderRow({
   creatingShipment: boolean;
   onRequestOnlinePayment: (id: string) => void;
   requestingOnlinePayment: boolean;
+  onUpdateDetails: (
+    id: string,
+    details: { customer_email?: string; customer_phone?: string; shipping_address?: Record<string, any> }
+  ) => Promise<boolean>;
+  savingDetails: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Contact/address edit mode -- only offered while the order hasn't shipped
+  // yet (see `canEditDetails` below), so admins can't quietly change the
+  // destination on a package that's already with the courier.
+  const [editingDetails, setEditingDetails] = useState(false);
+  const [detailsDraft, setDetailsDraft] = useState({
+    customer_email: order.customer_email || '',
+    customer_phone: order.customer_phone || '',
+    address: order.shipping_address?.address || '',
+    address2: order.shipping_address?.address2 || '',
+    landmark: order.shipping_address?.landmark || '',
+    city: order.shipping_address?.city || '',
+    state: order.shipping_address?.state || '',
+    pincode: order.shipping_address?.pincode || '',
+    country: order.shipping_address?.country || '',
+  });
+  const canEditDetails = !order.tracking_number && order.status !== 'shipped' && order.status !== 'delivered';
+
+  const startEditingDetails = () => {
+    setDetailsDraft({
+      customer_email: order.customer_email || '',
+      customer_phone: order.customer_phone || '',
+      address: order.shipping_address?.address || '',
+      address2: order.shipping_address?.address2 || '',
+      landmark: order.shipping_address?.landmark || '',
+      city: order.shipping_address?.city || '',
+      state: order.shipping_address?.state || '',
+      pincode: order.shipping_address?.pincode || '',
+      country: order.shipping_address?.country || '',
+    });
+    setEditingDetails(true);
+  };
+
+  const saveDetails = async () => {
+    const ok = await onUpdateDetails(order.id, {
+      customer_email: detailsDraft.customer_email.trim(),
+      customer_phone: detailsDraft.customer_phone.trim(),
+      shipping_address: {
+        ...(order.shipping_address || {}),
+        address: detailsDraft.address.trim(),
+        address2: detailsDraft.address2.trim(),
+        landmark: detailsDraft.landmark.trim(),
+        city: detailsDraft.city.trim(),
+        state: detailsDraft.state.trim(),
+        pincode: detailsDraft.pincode.trim(),
+        country: detailsDraft.country.trim(),
+      },
+    });
+    if (ok) setEditingDetails(false);
+  };
   const shortId = order.id.slice(0, 8).toUpperCase();
   const refundBadge = getRefundBadge(order);
 
@@ -1050,14 +1146,125 @@ function OrderRow({
                   </ul>
                 </div>
                 <div>
-                  <h4 className="mb-2 text-sm font-semibold">Shipping</h4>
-                  <div className="text-sm text-muted-foreground">
-                    {order.shipping_address ? (
-                      <pre className="whitespace-pre-wrap break-words">{JSON.stringify(order.shipping_address, null, 2)}</pre>
-                    ) : (
-                      '—'
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <h4 className="text-sm font-semibold">Contact &amp; Shipping</h4>
+                    {!editingDetails && canEditDetails && (
+                      <Button type="button" variant="outline" size="sm" onClick={startEditingDetails}>
+                        Edit
+                      </Button>
+                    )}
+                    {!editingDetails && !canEditDetails && (
+                      <span
+                        className="text-[11px] text-muted-foreground"
+                        title="Locked once a shipment has been created for this order"
+                      >
+                        Locked (already shipped)
+                      </span>
                     )}
                   </div>
+
+                  {editingDetails ? (
+                    <div className="space-y-2 rounded-md border border-border/60 p-3">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <div>
+                          <label className="mb-1 block text-xs text-muted-foreground">Email</label>
+                          <Input
+                            value={detailsDraft.customer_email}
+                            onChange={(e) => setDetailsDraft((d) => ({ ...d, customer_email: e.target.value }))}
+                            placeholder="customer@example.com"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-muted-foreground">Phone</label>
+                          <Input
+                            value={detailsDraft.customer_phone}
+                            onChange={(e) => setDetailsDraft((d) => ({ ...d, customer_phone: e.target.value }))}
+                            placeholder="+91..."
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-muted-foreground">Address</label>
+                        <Input
+                          value={detailsDraft.address}
+                          onChange={(e) => setDetailsDraft((d) => ({ ...d, address: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-muted-foreground">Address line 2</label>
+                        <Input
+                          value={detailsDraft.address2}
+                          onChange={(e) => setDetailsDraft((d) => ({ ...d, address2: e.target.value }))}
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <div>
+                          <label className="mb-1 block text-xs text-muted-foreground">Landmark</label>
+                          <Input
+                            value={detailsDraft.landmark}
+                            onChange={(e) => setDetailsDraft((d) => ({ ...d, landmark: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-muted-foreground">City</label>
+                          <Input
+                            value={detailsDraft.city}
+                            onChange={(e) => setDetailsDraft((d) => ({ ...d, city: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        <div>
+                          <label className="mb-1 block text-xs text-muted-foreground">State</label>
+                          <Input
+                            value={detailsDraft.state}
+                            onChange={(e) => setDetailsDraft((d) => ({ ...d, state: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-muted-foreground">Pincode</label>
+                          <Input
+                            value={detailsDraft.pincode}
+                            onChange={(e) => setDetailsDraft((d) => ({ ...d, pincode: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-muted-foreground">Country</label>
+                          <Input
+                            value={detailsDraft.country}
+                            onChange={(e) => setDetailsDraft((d) => ({ ...d, country: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-2 pt-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditingDetails(false)}
+                          disabled={savingDetails}
+                        >
+                          Cancel
+                        </Button>
+                        <Button type="button" size="sm" onClick={saveDetails} disabled={savingDetails}>
+                          {savingDetails ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : null}
+                          Save changes
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground">
+                      <div className="mb-1 space-y-0.5">
+                        {order.customer_email && <div>Email: {order.customer_email}</div>}
+                        {order.customer_phone && <div>Phone: {order.customer_phone}</div>}
+                      </div>
+                      {order.shipping_address ? (
+                        <pre className="whitespace-pre-wrap break-words">{JSON.stringify(order.shipping_address, null, 2)}</pre>
+                      ) : (
+                        '—'
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
               <div>

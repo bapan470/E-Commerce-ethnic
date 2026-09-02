@@ -231,6 +231,49 @@ export async function updateOrderStatus(id: string, status: string) {
   return data;
 }
 
+// Lets Admin > Orders fix a customer's email / phone / shipping address on
+// an order that hasn't shipped yet -- e.g. the customer messaged asking for
+// a corrected pincode after checkout. Deliberately separate from
+// updateOrderStatus() (different concern, no status-change email to send)
+// and server-side-gated against edits after a shipment already exists, so
+// this can't be used to quietly change the destination on a package that's
+// already with the courier -- even if a stale admin UI somehow still shows
+// the Edit button.
+export async function updateOrderContactDetails(
+  id: string,
+  updates: {
+    customer_email?: string;
+    customer_phone?: string;
+    shipping_address?: Record<string, any>;
+  }
+) {
+  const supabase = getSupabaseAdmin();
+
+  const { data: existing, error: fetchError } = await supabase
+    .from('orders')
+    .select('id, tracking_number, status')
+    .eq('id', id)
+    .maybeSingle();
+  if (fetchError) throw fetchError;
+
+  const alreadyShipped =
+    !!existing?.tracking_number || existing?.status === 'shipped' || existing?.status === 'delivered';
+  if (alreadyShipped) {
+    const err: any = new Error('Order already has a shipment -- contact/address can no longer be edited');
+    err.code = 'ORDER_ALREADY_SHIPPED';
+    throw err;
+  }
+
+  const patch: Record<string, any> = {};
+  if (updates.customer_email !== undefined) patch.customer_email = updates.customer_email;
+  if (updates.customer_phone !== undefined) patch.customer_phone = updates.customer_phone;
+  if (updates.shipping_address !== undefined) patch.shipping_address = updates.shipping_address;
+
+  const { data, error } = await supabase.from('orders').update(patch).eq('id', id).select().maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 // Bulk delete -- used by the admin "select rows -> Delete Selected" action.
 // Related rows (returns, tracking events, etc.) are cleaned up automatically
 // by the ON DELETE CASCADE / SET NULL constraints already defined on the
