@@ -1018,33 +1018,6 @@ function ProductInfo({
                 <Link href={`/shop?category=${encodeURIComponent(product.category)}`} className="hover:underline">
                   {product.category}
                 </Link>
-                {/* Source: the approved vendor's public storefront name when
-                   this product belongs to one (product.collection is already
-                   a public-safe, non-admin field -- see lib/products-api.ts),
-                   falling back to "In-house" for the store's own catalog
-                   items -- mirrors the Vendor column shown in the admin
-                   Products list. Never the hidden WhatsApp supplier info
-                   from product_sources/product_sourcing, which stays
-                   admin-only by design (see README-PRODUCT-SOURCES.md). */}
-                <span className="text-secondary/40">·</span>
-                {product.collection ? (
-                  <Link
-                    href={`/collection/${product.collection.slug}`}
-                    className="text-foreground/60 hover:underline"
-                  >
-                    {product.collection.name}
-                  </Link>
-                ) : (
-                  <span className="text-foreground/60">In-house</span>
-                )}
-                {(variant?.sku || product.sku) && (
-                  <>
-                    <span className="text-secondary/40">·</span>
-                    <span className="text-foreground/60 normal-case tracking-normal">
-                      SKU {variant?.sku || product.sku}
-                    </span>
-                  </>
-                )}
               </p>
               {/* Matches the "Free Shipping" trust badge shown lower on
                   this same page (unconditional, price-independent) --
