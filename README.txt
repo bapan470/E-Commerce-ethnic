@@ -1,20 +1,27 @@
-Changed file: components/header.tsx
+Changed file: app/product/[slug]/product-detail.tsx
 
-Kya badla:
+What changed:
+- Product page ke title ke upar wali line (Category · ...) me ab "Source"
+  aur "SKU number" bhi dikhta hai:
+    Category · Vendor Name (ya "In-house" agar apna hi product hai) · SKU XXXX
+- Agar product ek approved external vendor ka hai, uska public storefront
+  naam clickable link ki tarah dikhta hai (jaisa pehle se collection ke
+  liye tha). Apne in-house products ke liye "In-house" dikhega.
+- SKU number bhi wahi se aata hai jo already Details accordion me tha
+  (variant SKU pehle, warna product SKU) -- koi naya data source nahi.
 
-1) Mobile menu drawer ab "Shop by Category" list ke baad seedha
-   sirf "✦ FREE SHIPPING ABOVE ₹999 ✦" footer pe khatam hoti hai.
-   Beech ka "More" section (Blog / About Us / My Account / Reseller /
-   Contact Us) hata diya gaya hai — ye sab pages waise bhi header ke
-   top icons (account/wishlist/cart) aur site footer se already
-   accessible hain, sirf drawer ko clean/minimal banaya.
+Jaanbujh kar NAHI kiya:
+- WhatsApp supplier ka naam/number (product_sources / product_sourcing
+  tables) public product page pe NAHI daala. Ye tables migration
+  20260910000000_hidden_product_sources.sql me deliberately RLS-locked
+  hain -- sirf admin/service-role access kar sakta hai, taaki apke
+  supplier ka number aur buy price kabhi customer, competitor, ya
+  Google/bot ko na dikhe. Isko public karna is security design ko
+  reverse karega aur apke supplier ki privacy + apka margin dono risk
+  me daalega.
 
-2) Har category ke saamne jo product count dikhta hai, ab usme
-   color variations bhi count hoti hain — jaise agar "Cotton Blend"
-   me 19 base products hain lekin unme se kuch ke 2-3 alag colours
-   bhi hain, to ab count utni hi dikhegi jitni actually category
-   page khol ke dekhne pe cards dikhte hain (pehle sirf base product
-   count dikhta tha, colours count nahi hote the).
-
-Apply kaise karein:
-Apne project me components/header.tsx ko is file se replace kar dein.
+Apply karne ke steps:
+1. Is zip ki file ko apne repo me same path pe replace karo:
+   app/product/[slug]/product-detail.tsx
+   (ya CHANGES.diff ko `git apply CHANGES.diff` se apply kar sakte ho)
+2. `git add -A && git commit -m "Show vendor/source name + SKU on product page" && git push`
