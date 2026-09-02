@@ -12,6 +12,7 @@ import { toPublicMediaUrl } from '@/lib/media-url';
 import TrustpilotInvitation from '@/components/analytics/trustpilot-invitation';
 import CancelOrHelp from '@/components/order/cancel-or-help';
 import PaymentPendingBanner from '@/components/order/payment-pending-banner';
+import EditAddressButton from '@/components/order/edit-address-button';
 import { fetchFulfillmentSettings } from '@/lib/marketing-api';
 import { DEFAULT_LOYALTY_SETTINGS, type LoyaltySettings } from '@/lib/loyalty-api';
 import { DEFAULT_REFERRAL_SETTINGS, type ReferralSettings } from '@/lib/referrals-api';
@@ -121,6 +122,14 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
     state?: string;
     pincode?: string;
   } | null;
+
+  // Same gate the address API route enforces server-side -- kept in sync so
+  // the Edit Address button simply doesn't render once it would fail anyway.
+  const canEditAddress =
+    !order.tracking_number &&
+    order.status !== 'shipped' &&
+    order.status !== 'delivered' &&
+    order.status !== 'cancelled';
 
   if (isExpired) {
     return (
@@ -320,7 +329,10 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
         <Separator className="my-4" />
 
         <div>
-          <h3 className="text-sm font-semibold">Shipping Address</h3>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">Shipping Address</h3>
+            <EditAddressButton orderId={order.id} currentAddress={addr} canEdit={canEditAddress} />
+          </div>
           {addr && (
             <p className="mt-1.5 text-sm text-muted-foreground">
               {order.customer_name}

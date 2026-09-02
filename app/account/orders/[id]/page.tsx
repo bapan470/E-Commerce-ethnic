@@ -12,6 +12,7 @@ import { toPublicMediaUrl } from '@/lib/media-url';
 import CancelOrHelp from '@/components/order/cancel-or-help';
 import OrderTracking from '@/components/order/order-tracking';
 import DeliveredItemReview from '@/components/account/delivered-item-review';
+import EditAddressButton from '@/components/order/edit-address-button';
 import { fetchFulfillmentSettings } from '@/lib/marketing-api';
 
 export default async function OrderDetailPage({ params }: { params: { id: string } }) {
@@ -43,6 +44,14 @@ export default async function OrderDetailPage({ params }: { params: { id: string
     order.status === 'delivered' && daysSinceOrder <= RETURN_WINDOW_DAYS && !returns?.length;
 
   const hoursSinceOrder = (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60);
+
+  // Same gate the address API route enforces server-side -- kept in sync so
+  // the Edit Address button simply doesn't render once it would fail anyway.
+  const canEditAddress =
+    !order.tracking_number &&
+    order.status !== 'shipped' &&
+    order.status !== 'delivered' &&
+    order.status !== 'cancelled';
 
   return (
     <div>
@@ -197,7 +206,14 @@ export default async function OrderDetailPage({ params }: { params: { id: string
 
       <div className="grid gap-6 sm:grid-cols-2">
         <div>
-          <h2 className="font-serif text-lg font-semibold">Shipping Address</h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="font-serif text-lg font-semibold">Shipping Address</h2>
+            <EditAddressButton
+              orderId={order.id}
+              currentAddress={order.shipping_address}
+              canEdit={canEditAddress}
+            />
+          </div>
           {order.shipping_address && (
             <p className="mt-2 text-sm text-muted-foreground">
               {order.customer_name}
