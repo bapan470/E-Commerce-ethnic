@@ -802,16 +802,19 @@ export interface AiChatSettings {
   fallback_model: string;
 }
 
-// NOTE: as of 2026-09-03, NVIDIA has retired the entire free-tier Llama
-// 3.x lineup (3.3-70b, 3.1-70b, 3.1-8b) and Mixtral-8x7b on NIM -- all
-// now return HTTP 410 Gone. Updated to mistralai/mistral-small-3.1-24b,
-// confirmed live under "Free Endpoint" on build.nvidia.com/nim, so any
-// store that never saved a custom Admin > Settings > AI Chat Assistant
-// value stops hitting dead models on every request.
+// NOTE: as of 2026-09-03, NVIDIA is retiring free-tier NIM models fast
+// enough that pinning specific model names here just goes stale again
+// within days (confirmed dead in one week: the entire Llama 3.x lineup,
+// Llama 4 Maverick, Nemotron-Super-49B, Mixtral-8x7b). app/api/chat/ai/
+// route.ts now asks NVIDIA's live /v1/models endpoint at request time
+// instead of relying on a hardcoded name. Left blank here so a store
+// that never customized Admin > Settings > AI Chat Assistant doesn't
+// accidentally pin a model that's already dead -- admins can still type
+// a specific model in that panel to force it, but it's optional.
 export const DEFAULT_AI_CHAT_SETTINGS: AiChatSettings = {
   enabled: true,
-  primary_model: 'mistralai/mistral-small-3.1-24b-instruct-2503',
-  fallback_model: 'mistralai/mistral-nemotron',
+  primary_model: '',
+  fallback_model: '',
 };
 
 export async function fetchAiChatSettings(): Promise<AiChatSettings> {

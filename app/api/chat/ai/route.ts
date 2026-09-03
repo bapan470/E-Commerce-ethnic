@@ -30,37 +30,106 @@ import { fetchAiChatSettingsServer, DEFAULT_AI_CHAT_SETTINGS } from '@/lib/setti
 // recommendations instead of talking to a stranger.
 // ---------------------------------------------------------------------
 
-// meta/llama-3.3-70b-instruct reached end-of-life on NVIDIA NIM on
-// 2026-08-26 (now returns HTTP 410 Gone). As of 2026-09-03, NVIDIA has
-// retired the ENTIRE free-tier Llama 3.x lineup (3.3-70b, 3.1-70b,
-// 3.1-8b all confirmed 410) plus Mixtral-8x7b (410, EOL 2026-07-27).
-// Switched to models confirmed live under "Free Endpoint" on
-// build.nvidia.com/nim as of this fix. If NVIDIA retires another model
-// in the future, the SAFETY_NET_MODELS list below is tried automatically
-// so the widget doesn't need a code change every time -- only an admin
-// settings update (or nothing, if the safety net covers it) is needed.
-const DEFAULT_PRIMARY_MODEL = 'mistralai/mistral-small-3.1-24b-instruct-2503';
-const DEFAULT_FALLBACK_MODEL = 'mistralai/mistral-nemotron';
+// ---------------------------------------------------------------------
+// MODEL SELECTION -- rewritten 2026-09-03 after discovering NVIDIA is
+// retiring free-tier NIM models faster than any hardcoded list can keep
+// up (confirmed dead within the same week: llama-3.3-70b, llama-3.1-70b,
+// llama-3.1-8b, llama-4-maverick-17b-128e, nvidia/llama-3.3-nemotron-
+// super-49b-v1, mixtral-8x7b -- all HTTP 410; mistral-small-3.1-24b was
+// simply the wrong slug, 404). Hardcoding model names here means this
+// route breaks again the next time NVIDIA prunes the catalog.
+//
+// Instead: ask NVIDIA's own `GET /v1/models` (same auth, OpenAI-
+// compatible) which models actually exist RIGHT NOW, keep a short-lived
+// in-memory cache of that answer, and try candidates from it in order.
+// Admin > Settings > AI Chat Assistant can still pin a specific model
+// (tried first, if set) but is no longer required for the widget to work.
+// ---------------------------------------------------------------------
+const DEFAULT_PRIMARY_MODEL = '';
+const DEFAULT_FALLBACK_MODEL = '';
 
-// Tried, in order, if BOTH the admin-configured primary and fallback
-// models fail (e.g. because one or both got retired by NVIDIA and the
-// admin settings haven't been updated yet). Skips any model already
-// attempted above. This is what keeps the widget working even when
-// Admin > Settings has a stale/EOL model saved.
-const SAFETY_NET_MODELS = [
-  'mistralai/mistral-small-3.1-24b-instruct-2503',
-  'mistralai/mistral-nemotron',
-  'meta/llama-4-maverick-17b-128e-instruct',
-  'nvidia/llama-3.3-nemotron-super-49b-v1',
+// Only used if the live /v1/models lookup itself fails (e.g. NVIDIA's
+// catalog endpoint is down, not just individual chat models) -- a last
+// resort so the loop still has something to try instead of giving up
+// with zero attempts.
+const HARDCODED_LAST_RESORT_MODELS = [
+  'nvidia/nemotron-3-nano-30b-a3b',
+  'meta/llama-3.3-70b-instruct',
 ];
 
 const NIM_ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions';
+const NIM_MODELS_ENDPOINT = 'https://integrate.api.nvidia.com/v1/models';
+
+// Name fragments that mean "not a general text chat model" -- embedding,
+// reranking, moderation/guardrail, speech, and image-generation models
+// all show up in the same /v1/models list but will error or return
+// nonsense if sent a chat-completions request.
+const NON_CHAT_MODEL_HINTS = [
+  'embed', 'rerank', 'guard', 'moderat', 'safety', 'nemoguard',
+  'asr', 'tts', 'riva', 'parakeet', 'canary', 'ocr', 'nemoretriever',
+  'colpali', 'clip', 'diffusion', 'imagen', 'sdxl', 'edify', 'nvcf',
+];
+
+let modelCatalogCache: { ids: string[]; fetchedAt: number } | null = null;
+const MODEL_CATALOG_TTL_MS = 15 * 60 * 1000; // 15 min
+
+async function fetchLiveChatModelIds(apiKey: string): Promise<string[]> {
+  const now = Date.now();
+  if (modelCatalogCache && now - modelCatalogCache.fetchedAt < MODEL_CATALOG_TTL_MS) {
+    return modelCatalogCache.ids;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 6000);
+  try {
+    const res = await fetch(NIM_MODELS_ENDPOINT, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`models list failed: ${res.status}`);
+    const data = await res.json();
+    const allIds: string[] = Array.isArray(data?.data)
+      ? data.data.map((m: any) => m?.id).filter((id: any) => typeof id === 'string')
+      : [];
+
+    // Prefer general-purpose instruct/chat text models, in a rough
+    // quality/speed order; push anything vision-only or unrecognized to
+    // the back rather than dropping it, so we still have candidates if
+    // the "nice" ones are also down.
+    const chatIds = allIds.filter(
+      (id) => !NON_CHAT_MODEL_HINTS.some((hint) => id.toLowerCase().includes(hint))
+    );
+    const preferredOrder = chatIds.sort((a, b) => {
+      const score = (id: string) => {
+        const lower = id.toLowerCase();
+        let s = 0;
+        if (lower.includes('instruct') || lower.includes('chat')) s += 2;
+        if (lower.includes('vision')) s -= 1; // works, but deprioritized for a text widget
+        if (lower.includes('nano') || lower.includes('mini') || lower.includes('8b') || lower.includes('nemotron')) s += 1; // faster, less likely to time out
+        return s;
+      };
+      return score(b) - score(a);
+    });
+
+    modelCatalogCache = { ids: preferredOrder, fetchedAt: now };
+    return preferredOrder;
+  } catch (err) {
+    console.error('[chat/ai] live model catalog lookup failed:', err);
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // A stuck/slow upstream call is the #1 cause of "quick reply isn't
 // working" — the widget just sits there spinning forever. Cap every
 // NIM call so the widget always gets a definitive answer (success or a
-// clear error to fall back on) within a few seconds.
-const NIM_TIMEOUT_MS = 12000;
+// clear error to fall back on) within a few seconds. Kept a bit tighter
+// than before now that up to 6 candidate models may be tried in one
+// request (worst case ~48s total, still well inside Vercel's function
+// timeout, but the widget should get an answer from an earlier, faster
+// candidate long before that in practice).
+const NIM_TIMEOUT_MS = 8000;
 
 const MAX_HISTORY = 8;
 const MAX_MESSAGE_LEN = 600;
@@ -201,8 +270,8 @@ export async function POST(req: Request) {
       { status: 200 }
     );
   }
-  const primaryModel = aiSettings.primary_model || DEFAULT_PRIMARY_MODEL;
-  const fallbackModel = aiSettings.fallback_model || DEFAULT_FALLBACK_MODEL;
+  const pinnedPrimary = aiSettings.primary_model || DEFAULT_PRIMARY_MODEL;
+  const pinnedFallback = aiSettings.fallback_model || DEFAULT_FALLBACK_MODEL;
 
   const body = await req.json().catch(() => ({}));
   const rawMessages = Array.isArray(body?.messages) ? (body.messages as IncomingMessage[]) : [];
@@ -242,12 +311,17 @@ Store policy context (for grounding shipping/returns answers — paraphrase in y
 ${policyContext}
 ${page ? `\nShopper is currently on: ${page}` : ''}`;
 
-  // Try the admin-configured primary, then fallback, then -- only if
-  // both of those failed -- the hardcoded safety-net models, skipping
-  // anything already attempted. This means a retired/EOL model in
-  // Admin > Settings doesn't take the whole widget down; it just falls
-  // through to a model that's actually still live on NVIDIA NIM.
-  const modelsToTry = Array.from(new Set([primaryModel, fallbackModel, ...SAFETY_NET_MODELS]));
+  // Model list: any admin-pinned choices first (so Admin > Settings can
+  // still force a specific model), then whatever NVIDIA's own /v1/models
+  // says is actually live right now, then a tiny hardcoded last resort
+  // in case the catalog lookup itself is unreachable. Capped so a bad
+  // run doesn't chain through a dozen 12s timeouts.
+  const liveModels = await fetchLiveChatModelIds(apiKey);
+  const modelsToTry = Array.from(
+    new Set(
+      [pinnedPrimary, pinnedFallback, ...liveModels, ...HARDCODED_LAST_RESORT_MODELS].filter(Boolean)
+    )
+  ).slice(0, 6);
 
   try {
     let result: Awaited<ReturnType<typeof callNim>> | null = null;
@@ -258,9 +332,8 @@ ${page ? `\nShopper is currently on: ${page}` : ''}`;
       lastAttempted = model;
       if (result.ok) break;
       console.error('[chat/ai] model failed:', model, result.status, result.errText);
-      // 410 = model retired/EOL on NVIDIA's side; other errors (401/403,
-      // network) will fail identically for every model too, so don't
-      // burn the full list on those -- just try one more before giving up.
+      // 401/403 = key rejected -- will fail identically for every model,
+      // so don't burn the whole list on it, just try one more.
       if (result.status === 401 || result.status === 403) break;
     }
 
