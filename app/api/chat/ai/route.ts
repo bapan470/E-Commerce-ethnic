@@ -332,18 +332,23 @@ ${page ? `\nShopper is currently on: ${page}` : ''}`;
   const liveModels = await fetchLiveChatModelIds(apiKey);
   const modelsToTry = Array.from(
     new Set(
-      [pinnedPrimary, pinnedFallback, ...liveModels, ...HARDCODED_LAST_RESORT_MODELS].filter(Boolean)
+      // Confirmed Free Endpoints go FIRST so they're tried before any
+      // live-catalog models that may be expired/removed on this account.
+      // liveModels fills in after, in case NVIDIA adds newer ones.
+      [pinnedPrimary, pinnedFallback, ...HARDCODED_LAST_RESORT_MODELS, ...liveModels].filter(Boolean)
     )
-  ).slice(0, 6);
+  ).slice(0, 8);
 
   try {
     let result: Awaited<ReturnType<typeof callNim>> | null = null;
     let lastAttempted = '';
 
+    console.log('[chat/ai] will try models in order:', modelsToTry);
+
     for (const model of modelsToTry) {
       result = await callNim(apiKey, model, systemPrompt, history);
       lastAttempted = model;
-      if (result.ok) break;
+      if (result.ok) { console.log('[chat/ai] success with model:', model); break; }
       console.error('[chat/ai] model failed:', model, result.status, result.errText);
       // 401/403 = key rejected -- will fail identically for every model,
       // so don't burn the whole list on it, just try one more.
