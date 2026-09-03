@@ -1,27 +1,44 @@
-Changed file: app/product/[slug]/product-detail.tsx
+AI CHATBOT FIX — replace these 2 files in your repo, then commit & push
+=========================================================================
 
-What changed:
-- Product page ke title ke upar wali line (Category · ...) me ab "Source"
-  aur "SKU number" bhi dikhta hai:
-    Category · Vendor Name (ya "In-house" agar apna hi product hai) · SKU XXXX
-- Agar product ek approved external vendor ka hai, uska public storefront
-  naam clickable link ki tarah dikhta hai (jaisa pehle se collection ke
-  liye tha). Apne in-house products ke liye "In-house" dikhega.
-- SKU number bhi wahi se aata hai jo already Details accordion me tha
-  (variant SKU pehle, warna product SKU) -- koi naya data source nahi.
+Files in this zip (same folder structure as your repo root):
+  app/api/chat/ai/route.ts
+  lib/settings-api.ts
 
-Jaanbujh kar NAHI kiya:
-- WhatsApp supplier ka naam/number (product_sources / product_sourcing
-  tables) public product page pe NAHI daala. Ye tables migration
-  20260910000000_hidden_product_sources.sql me deliberately RLS-locked
-  hain -- sirf admin/service-role access kar sakta hai, taaki apke
-  supplier ka number aur buy price kabhi customer, competitor, ya
-  Google/bot ko na dikhe. Isko public karna is security design ko
-  reverse karega aur apke supplier ki privacy + apka margin dono risk
-  me daalega.
+WHAT WAS WRONG
+--------------
+1. lib/settings-api.ts had a DEFAULT_AI_CHAT_SETTINGS constant still
+   pointing at "meta/llama-3.3-70b-instruct" — a model NVIDIA retired
+   on 2026-08-26 (HTTP 410 Gone). Your route.ts defaults were already
+   fixed for this on 2026-09-02, but this second constant was missed.
+   Since your store has no custom value saved in Admin > Settings >
+   AI Chat Assistant, every chat request was still hitting the dead
+   model first.
+2. Added 2 extra safety-net models (Mistral, Gemma) so the widget
+   survives even if NVIDIA retires the whole Llama family again.
+3. The settings lookup in route.ts wasn't wrapped in try/catch, so if
+   it ever threw, the API returned an HTML error page instead of JSON
+   -- which the widget silently turns into the same generic
+   "having trouble" message. Now wrapped with a safe fallback.
 
-Apply karne ke steps:
-1. Is zip ki file ko apne repo me same path pe replace karo:
-   app/product/[slug]/product-detail.tsx
-   (ya CHANGES.diff ko `git apply CHANGES.diff` se apply kar sakte ho)
-2. `git add -A && git commit -m "Show vendor/source name + SKU on product page" && git push`
+HOW TO APPLY
+------------
+Option A (simplest): just copy these 2 files into your repo, overwriting
+the existing ones at the same paths, then:
+    git add app/api/chat/ai/route.ts lib/settings-api.ts
+    git commit -m "fix: AI chat widget still using retired NVIDIA model"
+    git push
+
+Option B: apply CHANGES.diff instead:
+    git apply CHANGES.diff
+
+AFTER DEPLOYING
+---------------
+Test the chat widget on the live site. If it STILL shows the generic
+error, the cause is something I can't see from a code-only clone --
+most likely one of:
+  - NVIDIA_API_KEY missing or expired in Netlify env vars
+  - NVIDIA free-tier rate limit hit for the day
+In that case, check your Netlify function logs for "[chat/ai]" lines --
+they log the exact model tried and the exact HTTP status/error text
+NVIDIA returned, which will tell you precisely what's wrong.

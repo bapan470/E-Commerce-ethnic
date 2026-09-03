@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getCurrentUser, getSupabaseServer } from '@/lib/supabase-server-auth';
 import { fetchLegalPagesResolved } from '@/lib/marketing-api';
-import { fetchAiChatSettingsServer } from '@/lib/settings-api';
+import { fetchAiChatSettingsServer, DEFAULT_AI_CHAT_SETTINGS } from '@/lib/settings-api';
 
 // ---------------------------------------------------------------------
 // Live AI shopping assistant for the on-site chat widget.
@@ -49,6 +49,11 @@ const SAFETY_NET_MODELS = [
   'meta/llama-3.1-70b-instruct',
   'meta/llama-3.1-8b-instruct',
   'meta/llama-3.2-90b-vision-instruct',
+  // Different vendor family on purpose: if NVIDIA retires every Llama
+  // model on the free tier at once (as happened on 2026-08-26), these
+  // keep the widget alive instead of failing end-to-end again.
+  'mistralai/mixtral-8x7b-instruct-v0.1',
+  'google/gemma-2-9b-it',
 ];
 
 const NIM_ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions';
@@ -183,7 +188,15 @@ export async function POST(req: Request) {
     );
   }
 
-  const aiSettings = await fetchAiChatSettingsServer();
+  // Was previously unguarded — any throw here (e.g. a transient Supabase
+  // hiccup) produced an HTML 500 page instead of JSON, which the widget's
+  // res.json().catch() swallows into the same generic "having trouble"
+  // message. Falling back to defaults keeps the widget answering even if
+  // the settings lookup itself fails.
+  const aiSettings = await fetchAiChatSettingsServer().catch((err) => {
+    console.error('[chat/ai] settings lookup failed, using defaults:', err);
+    return DEFAULT_AI_CHAT_SETTINGS;
+  });
   if (!aiSettings.enabled) {
     return NextResponse.json(
       { ok: false, error: 'AI chat is currently turned off by the store admin.' },

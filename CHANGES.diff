@@ -1,43 +1,66 @@
-diff --git a/app/product/[slug]/product-detail.tsx b/app/product/[slug]/product-detail.tsx
-index f69c561..c03226c 100644
---- a/app/product/[slug]/product-detail.tsx
-+++ b/app/product/[slug]/product-detail.tsx
-@@ -1015,15 +1015,31 @@ function ProductInfo({
-                 <Link href={`/shop?category=${encodeURIComponent(product.category)}`} className="hover:underline">
-                   {product.category}
-                 </Link>
--                {product.collection && (
-+                {/* Source: the approved vendor's public storefront name when
-+                   this product belongs to one (product.collection is already
-+                   a public-safe, non-admin field -- see lib/products-api.ts),
-+                   falling back to "In-house" for the store's own catalog
-+                   items -- mirrors the Vendor column shown in the admin
-+                   Products list. Never the hidden WhatsApp supplier info
-+                   from product_sources/product_sourcing, which stays
-+                   admin-only by design (see README-PRODUCT-SOURCES.md). */}
-+                <span className="text-secondary/40">·</span>
-+                {product.collection ? (
-+                  <Link
-+                    href={`/collection/${product.collection.slug}`}
-+                    className="text-foreground/60 hover:underline"
-+                  >
-+                    {product.collection.name}
-+                  </Link>
-+                ) : (
-+                  <span className="text-foreground/60">In-house</span>
-+                )}
-+                {(variant?.sku || product.sku) && (
-                   <>
-                     <span className="text-secondary/40">·</span>
--                    <Link
--                      href={`/collection/${product.collection.slug}`}
--                      className="text-foreground/60 hover:underline"
--                    >
--                      {product.collection.name}
--                    </Link>
-+                    <span className="text-foreground/60 normal-case tracking-normal">
-+                      SKU {variant?.sku || product.sku}
-+                    </span>
-                   </>
-                 )}
-               </p>
+diff --git a/app/api/chat/ai/route.ts b/app/api/chat/ai/route.ts
+index 47221a7..c9be4a9 100644
+--- a/app/api/chat/ai/route.ts
++++ b/app/api/chat/ai/route.ts
+@@ -1,7 +1,7 @@
+ import { NextResponse } from 'next/server';
+ import { getCurrentUser, getSupabaseServer } from '@/lib/supabase-server-auth';
+ import { fetchLegalPagesResolved } from '@/lib/marketing-api';
+-import { fetchAiChatSettingsServer } from '@/lib/settings-api';
++import { fetchAiChatSettingsServer, DEFAULT_AI_CHAT_SETTINGS } from '@/lib/settings-api';
+ 
+ // ---------------------------------------------------------------------
+ // Live AI shopping assistant for the on-site chat widget.
+@@ -49,6 +49,11 @@ const SAFETY_NET_MODELS = [
+   'meta/llama-3.1-70b-instruct',
+   'meta/llama-3.1-8b-instruct',
+   'meta/llama-3.2-90b-vision-instruct',
++  // Different vendor family on purpose: if NVIDIA retires every Llama
++  // model on the free tier at once (as happened on 2026-08-26), these
++  // keep the widget alive instead of failing end-to-end again.
++  'mistralai/mixtral-8x7b-instruct-v0.1',
++  'google/gemma-2-9b-it',
+ ];
+ 
+ const NIM_ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions';
+@@ -183,7 +188,15 @@ export async function POST(req: Request) {
+     );
+   }
+ 
+-  const aiSettings = await fetchAiChatSettingsServer();
++  // Was previously unguarded — any throw here (e.g. a transient Supabase
++  // hiccup) produced an HTML 500 page instead of JSON, which the widget's
++  // res.json().catch() swallows into the same generic "having trouble"
++  // message. Falling back to defaults keeps the widget answering even if
++  // the settings lookup itself fails.
++  const aiSettings = await fetchAiChatSettingsServer().catch((err) => {
++    console.error('[chat/ai] settings lookup failed, using defaults:', err);
++    return DEFAULT_AI_CHAT_SETTINGS;
++  });
+   if (!aiSettings.enabled) {
+     return NextResponse.json(
+       { ok: false, error: 'AI chat is currently turned off by the store admin.' },
+diff --git a/lib/settings-api.ts b/lib/settings-api.ts
+index 568adb7..7a1f7df 100644
+--- a/lib/settings-api.ts
++++ b/lib/settings-api.ts
+@@ -802,10 +802,17 @@ export interface AiChatSettings {
+   fallback_model: string;
+ }
+ 
++// NOTE: meta/llama-3.3-70b-instruct reached end-of-life on NVIDIA NIM on
++// 2026-08-26 (now returns HTTP 410 Gone). These were left pointing at the
++// retired model even after app/api/chat/ai/route.ts's own hardcoded
++// defaults were fixed for it on 2026-09-02 -- since any store that never
++// saved a custom Admin > Settings > AI Chat Assistant value falls back to
++// THIS constant (not the one in route.ts), the chat widget kept trying
++// the dead model first on every request. Updated to match.
+ export const DEFAULT_AI_CHAT_SETTINGS: AiChatSettings = {
+   enabled: true,
+-  primary_model: 'meta/llama-3.3-70b-instruct',
+-  fallback_model: 'meta/llama-3.2-90b-vision-instruct',
++  primary_model: 'meta/llama-3.1-70b-instruct',
++  fallback_model: 'meta/llama-3.1-8b-instruct',
+ };
+ 
+ export async function fetchAiChatSettings(): Promise<AiChatSettings> {

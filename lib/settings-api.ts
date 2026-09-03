@@ -802,10 +802,17 @@ export interface AiChatSettings {
   fallback_model: string;
 }
 
+// NOTE: meta/llama-3.3-70b-instruct reached end-of-life on NVIDIA NIM on
+// 2026-08-26 (now returns HTTP 410 Gone). These were left pointing at the
+// retired model even after app/api/chat/ai/route.ts's own hardcoded
+// defaults were fixed for it on 2026-09-02 -- since any store that never
+// saved a custom Admin > Settings > AI Chat Assistant value falls back to
+// THIS constant (not the one in route.ts), the chat widget kept trying
+// the dead model first on every request. Updated to match.
 export const DEFAULT_AI_CHAT_SETTINGS: AiChatSettings = {
   enabled: true,
-  primary_model: 'meta/llama-3.3-70b-instruct',
-  fallback_model: 'meta/llama-3.2-90b-vision-instruct',
+  primary_model: 'meta/llama-3.1-70b-instruct',
+  fallback_model: 'meta/llama-3.1-8b-instruct',
 };
 
 export async function fetchAiChatSettings(): Promise<AiChatSettings> {
