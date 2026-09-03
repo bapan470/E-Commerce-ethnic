@@ -126,6 +126,11 @@ export default function ExitIntentModal() {
         </button>
 
         <h2 className="font-serif text-xl font-bold text-primary">{settings.exit_intent_headline}</h2>
+        <p className="mt-2 inline-block rounded-full bg-primary px-4 py-1 text-sm font-bold tracking-wide text-primary-foreground">
+          {settings.exit_intent_discount_type === 'percentage'
+            ? `${settings.exit_intent_discount_value}% OFF`
+            : `₹${settings.exit_intent_discount_value} OFF`}
+        </p>
         <p className="mt-2 text-sm text-muted-foreground">{settings.exit_intent_message}</p>
 
         <button

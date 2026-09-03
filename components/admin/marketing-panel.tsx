@@ -1298,6 +1298,43 @@ function GrowthTab() {
             />
           </div>
         </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="exit-intent-discount-type">Discount type shown on popup</Label>
+            <Select
+              value={settings.exit_intent_discount_type}
+              onValueChange={(v) =>
+                setSettings({ ...settings, exit_intent_discount_type: v as 'percentage' | 'flat' })
+              }
+            >
+              <SelectTrigger id="exit-intent-discount-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="percentage">Percentage (%)</SelectItem>
+                <SelectItem value="flat">Flat amount (₹)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>{settings.exit_intent_discount_type === 'percentage' ? 'Percent off' : 'Amount off (₹)'}</Label>
+            <Input
+              type="number"
+              min={1}
+              value={settings.exit_intent_discount_value}
+              onChange={(e) =>
+                setSettings({ ...settings, exit_intent_discount_value: Number(e.target.value) })
+              }
+            />
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          This just controls the "{settings.exit_intent_discount_type === 'percentage'
+            ? `${settings.exit_intent_discount_value || 0}% OFF`
+            : `₹${settings.exit_intent_discount_value || 0} OFF`}" badge shown on the popup —
+          it doesn't create the discount by itself. Create a coupon with the same code and value
+          under Admin &gt; Coupons so it actually applies at checkout.
+        </p>
         <div>
           <Label>Message</Label>
           <Textarea
@@ -1306,9 +1343,6 @@ function GrowthTab() {
             onChange={(e) => setSettings({ ...settings, exit_intent_message: e.target.value })}
           />
         </div>
-        <p className="text-xs text-muted-foreground">
-          Create this coupon code under Admin &gt; Coupons so it actually works at checkout.
-        </p>
       </section>
 
       <section className="space-y-3 border-t border-border pt-6">

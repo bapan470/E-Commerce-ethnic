@@ -20,6 +20,13 @@ export interface GrowthSettings {
   exit_intent_headline: string;
   exit_intent_message: string;
   exit_intent_coupon_code: string;
+  // Drives the auto-shown "10% OFF" / "₹200 OFF" badge on the popup, kept
+  // separate from the freeform headline/message so the number displayed
+  // is never accidentally out of sync with what the admin actually typed.
+  // Still has to match a real coupon created under Admin > Coupons for the
+  // code to work at checkout — this only controls what the popup shows.
+  exit_intent_discount_type: 'percentage' | 'flat';
+  exit_intent_discount_value: number;
 
   social_proof_enabled: boolean;
 
@@ -61,6 +68,8 @@ export const DEFAULT_GROWTH_SETTINGS: GrowthSettings = {
   exit_intent_headline: "Wait! Don't leave empty-handed",
   exit_intent_message: "Here's 10% off your first order, just for you.",
   exit_intent_coupon_code: 'WELCOME10',
+  exit_intent_discount_type: 'percentage',
+  exit_intent_discount_value: 10,
   social_proof_enabled: false,
   live_viewers_enabled: false,
   live_viewers_window_minutes: 15,
