@@ -31,14 +31,16 @@ import { fetchAiChatSettingsServer, DEFAULT_AI_CHAT_SETTINGS } from '@/lib/setti
 // ---------------------------------------------------------------------
 
 // meta/llama-3.3-70b-instruct reached end-of-life on NVIDIA NIM on
-// 2026-08-26 (now returns HTTP 410 Gone) -- these defaults were updated
-// to models still live on the platform as of this fix. If NVIDIA
-// retires another model in the future, the SAFETY_NET_MODELS list below
-// is tried automatically so the widget doesn't need a code change every
-// time -- only an admin settings update (or nothing, if the safety net
-// covers it) is needed.
-const DEFAULT_PRIMARY_MODEL = 'meta/llama-3.1-70b-instruct';
-const DEFAULT_FALLBACK_MODEL = 'meta/llama-3.1-8b-instruct';
+// 2026-08-26 (now returns HTTP 410 Gone). As of 2026-09-03, NVIDIA has
+// retired the ENTIRE free-tier Llama 3.x lineup (3.3-70b, 3.1-70b,
+// 3.1-8b all confirmed 410) plus Mixtral-8x7b (410, EOL 2026-07-27).
+// Switched to models confirmed live under "Free Endpoint" on
+// build.nvidia.com/nim as of this fix. If NVIDIA retires another model
+// in the future, the SAFETY_NET_MODELS list below is tried automatically
+// so the widget doesn't need a code change every time -- only an admin
+// settings update (or nothing, if the safety net covers it) is needed.
+const DEFAULT_PRIMARY_MODEL = 'mistralai/mistral-small-3.1-24b-instruct-2503';
+const DEFAULT_FALLBACK_MODEL = 'mistralai/mistral-nemotron';
 
 // Tried, in order, if BOTH the admin-configured primary and fallback
 // models fail (e.g. because one or both got retired by NVIDIA and the
@@ -46,14 +48,10 @@ const DEFAULT_FALLBACK_MODEL = 'meta/llama-3.1-8b-instruct';
 // attempted above. This is what keeps the widget working even when
 // Admin > Settings has a stale/EOL model saved.
 const SAFETY_NET_MODELS = [
-  'meta/llama-3.1-70b-instruct',
-  'meta/llama-3.1-8b-instruct',
-  'meta/llama-3.2-90b-vision-instruct',
-  // Different vendor family on purpose: if NVIDIA retires every Llama
-  // model on the free tier at once (as happened on 2026-08-26), these
-  // keep the widget alive instead of failing end-to-end again.
-  'mistralai/mixtral-8x7b-instruct-v0.1',
-  'google/gemma-2-9b-it',
+  'mistralai/mistral-small-3.1-24b-instruct-2503',
+  'mistralai/mistral-nemotron',
+  'meta/llama-4-maverick-17b-128e-instruct',
+  'nvidia/llama-3.3-nemotron-super-49b-v1',
 ];
 
 const NIM_ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions';

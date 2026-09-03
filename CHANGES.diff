@@ -1,5 +1,5 @@
 diff --git a/app/api/chat/ai/route.ts b/app/api/chat/ai/route.ts
-index 47221a7..c9be4a9 100644
+index 47221a7..f10eee0 100644
 --- a/app/api/chat/ai/route.ts
 +++ b/app/api/chat/ai/route.ts
 @@ -1,7 +1,7 @@
@@ -11,19 +11,46 @@ index 47221a7..c9be4a9 100644
  
  // ---------------------------------------------------------------------
  // Live AI shopping assistant for the on-site chat widget.
-@@ -49,6 +49,11 @@ const SAFETY_NET_MODELS = [
-   'meta/llama-3.1-70b-instruct',
-   'meta/llama-3.1-8b-instruct',
-   'meta/llama-3.2-90b-vision-instruct',
-+  // Different vendor family on purpose: if NVIDIA retires every Llama
-+  // model on the free tier at once (as happened on 2026-08-26), these
-+  // keep the widget alive instead of failing end-to-end again.
-+  'mistralai/mixtral-8x7b-instruct-v0.1',
-+  'google/gemma-2-9b-it',
+@@ -31,14 +31,16 @@ import { fetchAiChatSettingsServer } from '@/lib/settings-api';
+ // ---------------------------------------------------------------------
+ 
+ // meta/llama-3.3-70b-instruct reached end-of-life on NVIDIA NIM on
+-// 2026-08-26 (now returns HTTP 410 Gone) -- these defaults were updated
+-// to models still live on the platform as of this fix. If NVIDIA
+-// retires another model in the future, the SAFETY_NET_MODELS list below
+-// is tried automatically so the widget doesn't need a code change every
+-// time -- only an admin settings update (or nothing, if the safety net
+-// covers it) is needed.
+-const DEFAULT_PRIMARY_MODEL = 'meta/llama-3.1-70b-instruct';
+-const DEFAULT_FALLBACK_MODEL = 'meta/llama-3.1-8b-instruct';
++// 2026-08-26 (now returns HTTP 410 Gone). As of 2026-09-03, NVIDIA has
++// retired the ENTIRE free-tier Llama 3.x lineup (3.3-70b, 3.1-70b,
++// 3.1-8b all confirmed 410) plus Mixtral-8x7b (410, EOL 2026-07-27).
++// Switched to models confirmed live under "Free Endpoint" on
++// build.nvidia.com/nim as of this fix. If NVIDIA retires another model
++// in the future, the SAFETY_NET_MODELS list below is tried automatically
++// so the widget doesn't need a code change every time -- only an admin
++// settings update (or nothing, if the safety net covers it) is needed.
++const DEFAULT_PRIMARY_MODEL = 'mistralai/mistral-small-3.1-24b-instruct-2503';
++const DEFAULT_FALLBACK_MODEL = 'mistralai/mistral-nemotron';
+ 
+ // Tried, in order, if BOTH the admin-configured primary and fallback
+ // models fail (e.g. because one or both got retired by NVIDIA and the
+@@ -46,9 +48,10 @@ const DEFAULT_FALLBACK_MODEL = 'meta/llama-3.1-8b-instruct';
+ // attempted above. This is what keeps the widget working even when
+ // Admin > Settings has a stale/EOL model saved.
+ const SAFETY_NET_MODELS = [
+-  'meta/llama-3.1-70b-instruct',
+-  'meta/llama-3.1-8b-instruct',
+-  'meta/llama-3.2-90b-vision-instruct',
++  'mistralai/mistral-small-3.1-24b-instruct-2503',
++  'mistralai/mistral-nemotron',
++  'meta/llama-4-maverick-17b-128e-instruct',
++  'nvidia/llama-3.3-nemotron-super-49b-v1',
  ];
  
  const NIM_ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions';
-@@ -183,7 +188,15 @@ export async function POST(req: Request) {
+@@ -183,7 +186,15 @@ export async function POST(req: Request) {
      );
    }
  
@@ -41,26 +68,25 @@ index 47221a7..c9be4a9 100644
      return NextResponse.json(
        { ok: false, error: 'AI chat is currently turned off by the store admin.' },
 diff --git a/lib/settings-api.ts b/lib/settings-api.ts
-index 568adb7..7a1f7df 100644
+index 568adb7..1d0d512 100644
 --- a/lib/settings-api.ts
 +++ b/lib/settings-api.ts
-@@ -802,10 +802,17 @@ export interface AiChatSettings {
+@@ -802,10 +802,16 @@ export interface AiChatSettings {
    fallback_model: string;
  }
  
-+// NOTE: meta/llama-3.3-70b-instruct reached end-of-life on NVIDIA NIM on
-+// 2026-08-26 (now returns HTTP 410 Gone). These were left pointing at the
-+// retired model even after app/api/chat/ai/route.ts's own hardcoded
-+// defaults were fixed for it on 2026-09-02 -- since any store that never
-+// saved a custom Admin > Settings > AI Chat Assistant value falls back to
-+// THIS constant (not the one in route.ts), the chat widget kept trying
-+// the dead model first on every request. Updated to match.
++// NOTE: as of 2026-09-03, NVIDIA has retired the entire free-tier Llama
++// 3.x lineup (3.3-70b, 3.1-70b, 3.1-8b) and Mixtral-8x7b on NIM -- all
++// now return HTTP 410 Gone. Updated to mistralai/mistral-small-3.1-24b,
++// confirmed live under "Free Endpoint" on build.nvidia.com/nim, so any
++// store that never saved a custom Admin > Settings > AI Chat Assistant
++// value stops hitting dead models on every request.
  export const DEFAULT_AI_CHAT_SETTINGS: AiChatSettings = {
    enabled: true,
 -  primary_model: 'meta/llama-3.3-70b-instruct',
 -  fallback_model: 'meta/llama-3.2-90b-vision-instruct',
-+  primary_model: 'meta/llama-3.1-70b-instruct',
-+  fallback_model: 'meta/llama-3.1-8b-instruct',
++  primary_model: 'mistralai/mistral-small-3.1-24b-instruct-2503',
++  fallback_model: 'mistralai/mistral-nemotron',
  };
  
  export async function fetchAiChatSettings(): Promise<AiChatSettings> {
