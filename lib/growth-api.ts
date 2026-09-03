@@ -23,6 +23,15 @@ export interface GrowthSettings {
 
   social_proof_enabled: boolean;
 
+  // "X people are viewing this right now" badge on the product page.
+  // Real count — distinct sessions that fired a product_view event for
+  // this exact product within live_viewers_window_minutes. Never
+  // fabricated. Hidden below live_viewers_min_to_show so a lone visitor
+  // never sees "1 person viewing this", which looks worse than nothing.
+  live_viewers_enabled: boolean;
+  live_viewers_window_minutes: number;
+  live_viewers_min_to_show: number;
+
   bundles_enabled: boolean;
 
   sale_countdown_enabled: boolean;
@@ -53,6 +62,9 @@ export const DEFAULT_GROWTH_SETTINGS: GrowthSettings = {
   exit_intent_message: "Here's 10% off your first order, just for you.",
   exit_intent_coupon_code: 'WELCOME10',
   social_proof_enabled: false,
+  live_viewers_enabled: false,
+  live_viewers_window_minutes: 15,
+  live_viewers_min_to_show: 2,
   bundles_enabled: true,
   sale_countdown_enabled: false,
   sale_countdown_text: 'Festive Sale ends in',
@@ -100,4 +112,21 @@ export async function fetchSocialProofFeed(): Promise<SocialProofEvent[]> {
   if (!res.ok) return [];
   const body = await res.json().catch(() => ({ events: [] }));
   return (body.events ?? []) as SocialProofEvent[];
+}
+
+// ---------------------------------------------------------------------
+// Live viewers — "12 people are viewing this right now" on the product
+// page. Real count only: distinct sessions with a product_view event for
+// this product in the last N minutes (see app/api/live-viewers/route.ts).
+// ---------------------------------------------------------------------
+
+export async function fetchLiveViewerCount(productId: string): Promise<number> {
+  try {
+    const res = await fetch(`/api/live-viewers?product_id=${encodeURIComponent(productId)}`);
+    if (!res.ok) return 0;
+    const body = await res.json().catch(() => ({ count: 0 }));
+    return typeof body.count === 'number' ? body.count : 0;
+  } catch {
+    return 0;
+  }
 }

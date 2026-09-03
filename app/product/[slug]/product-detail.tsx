@@ -54,6 +54,7 @@ import RecentlyViewedSection from '@/components/product/recently-viewed';
 import PromoSlider from '@/components/home/promo-slider';
 import NotifyMeForm from '@/components/product/notify-me-form';
 import LowStockBadge from '@/components/growth/low-stock-badge';
+import LiveViewersBadge from '@/components/growth/live-viewers-badge';
 import CouponList from '@/components/product/coupon-list';
 import WishlistButton from '@/components/wishlist-button';
 import ShareButton from '@/components/share-button';
@@ -1205,7 +1206,10 @@ function ProductInfo({
         onRemove={onCouponRemove}
       />
 
-      <LowStockBadge stockQuantity={selectedSizeStock} />
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <LowStockBadge stockQuantity={selectedSizeStock} />
+        <LiveViewersBadge productId={baseProduct?.id} />
+      </div>
 
       <div className="flex flex-col gap-3">
         {quantity >= selectedSizeStock && selectedSizeStock > 0 && (

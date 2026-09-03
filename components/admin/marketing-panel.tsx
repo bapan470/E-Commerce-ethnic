@@ -1329,6 +1329,52 @@ function GrowthTab() {
       <section className="space-y-3 border-t border-border pt-6">
         <div className="flex items-center justify-between">
           <div>
+            <p className="font-medium">Live viewers</p>
+            <p className="text-sm text-muted-foreground">
+              "12 people are viewing this right now" on the product page — a real count of
+              distinct visitors currently browsing that product, not a fake number.
+            </p>
+          </div>
+          <Switch
+            checked={settings.live_viewers_enabled}
+            onCheckedChange={(v) => setSettings({ ...settings, live_viewers_enabled: v })}
+          />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <Label>Count window (minutes)</Label>
+            <Input
+              type="number"
+              min={1}
+              value={settings.live_viewers_window_minutes}
+              onChange={(e) =>
+                setSettings({ ...settings, live_viewers_window_minutes: Number(e.target.value) })
+              }
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Counts visitors who viewed this product in the last X minutes.
+            </p>
+          </div>
+          <div>
+            <Label>Only show badge when count is at least</Label>
+            <Input
+              type="number"
+              min={1}
+              value={settings.live_viewers_min_to_show}
+              onChange={(e) =>
+                setSettings({ ...settings, live_viewers_min_to_show: Number(e.target.value) })
+              }
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Keeps the badge hidden instead of showing an unconvincing "1 person viewing".
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="space-y-3 border-t border-border pt-6">
+        <div className="flex items-center justify-between">
+          <div>
             <p className="font-medium">Frequently Bought Together</p>
             <p className="text-sm text-muted-foreground">
               Shows bundle suggestions on product pages. Pairs are curated under Admin &gt;
