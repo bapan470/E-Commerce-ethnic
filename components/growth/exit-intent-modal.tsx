@@ -47,18 +47,14 @@ export default function ExitIntentModal() {
     const isTouchDevice =
       typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
 
-    // Mobile signal #1 (primary): intercept the back button. We push one
-    // extra history entry for this tab; the visitor's first back press then
-    // "spends" that entry instead of actually leaving the page, which is
-    // our one chance to show the offer. Only armed once per tab (via
-    // TRAP_KEY) so it doesn't add a phantom back-press on every page they
-    // browse — one dummy entry for the whole session is enough.
-    let trapArmed = false;
-    const onPopState = () => {
-      if (!trapArmed) return;
-      trapArmed = false;
-      maybeShow();
-    };
+    // Mobile signal #1 (primary): listen for the back button/gesture. This
+    // fires naturally once a visitor has real internal history to go back
+    // through — e.g. cart -> checkout, so pressing back on checkout already
+    // triggers a popstate event without us doing anything special. We
+    // re-attach this listener on every single page (not just once per
+    // session) so it's live wherever the visitor happens to hit back,
+    // checkout included.
+    const onPopState = () => maybeShow(); // maybeShow() itself re-checks cooldown
 
     // Mobile signal #2 (fallback): a fast upward scroll flick while already
     // near the top of the page. That's the same "heading back to the
@@ -80,12 +76,21 @@ export default function ExitIntentModal() {
     const timer = setTimeout(() => {
       document.addEventListener('mouseleave', onMouseLeave);
 
-      if (isTouchDevice && !inCooldown && !sessionStorage.getItem(TRAP_KEY)) {
-        sessionStorage.setItem(TRAP_KEY, '1');
-        trapArmed = true;
-        window.history.pushState({ exitIntentTrap: true }, '');
+      if (isTouchDevice && !inCooldown) {
         window.addEventListener('popstate', onPopState);
         window.addEventListener('scroll', onScroll, { passive: true });
+
+        // Also plant ONE guard history entry, but only once per tab
+        // (TRAP_KEY). This only matters for a visitor's very FIRST
+        // back-press before they've navigated anywhere else on the site —
+        // without it, that first press would leave the site entirely
+        // before the popstate listener above ever gets a chance to fire.
+        // Once real internal navigation exists (any second page visited),
+        // the listener above catches back-presses on its own.
+        if (!sessionStorage.getItem(TRAP_KEY)) {
+          sessionStorage.setItem(TRAP_KEY, '1');
+          window.history.pushState({ exitIntentTrap: true }, '');
+        }
       }
     }, 4000);
 
