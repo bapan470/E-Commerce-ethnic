@@ -52,9 +52,18 @@ const DEFAULT_FALLBACK_MODEL = '';
 // catalog endpoint is down, not just individual chat models) -- a last
 // resort so the loop still has something to try instead of giving up
 // with zero attempts.
+//
+// Updated 2026-09-03: Previous models (meta/llama-3.3-70b-instruct,
+// ibm/granite-*, nvidia/llama-3.1-nemotron-*) all reached end-of-life
+// or were removed from this account (410/404 errors). Replaced with
+// currently confirmed Free Endpoint Mistral models from build.nvidia.com.
+// Dynamic /v1/models lookup above is the primary mechanism; these are
+// only the fallback if that catalog call itself fails.
 const HARDCODED_LAST_RESORT_MODELS = [
-  'nvidia/nemotron-3-nano-30b-a3b',
-  'meta/llama-3.3-70b-instruct',
+  'mistralai/mistral-small-3.1-24b-instruct-2503',
+  'mistralai/mistral-medium-3-instruct',
+  'mistralai/mistral-nemotron',
+  'mistralai/mistral-large-3-675b-instruct-2512',
 ];
 
 const NIM_ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions';
@@ -104,8 +113,12 @@ async function fetchLiveChatModelIds(apiKey: string): Promise<string[]> {
         const lower = id.toLowerCase();
         let s = 0;
         if (lower.includes('instruct') || lower.includes('chat')) s += 2;
+        // Mistral models are currently confirmed Free Endpoints on NVIDIA NIM
+        if (lower.includes('mistral')) s += 3;
         if (lower.includes('vision')) s -= 1; // works, but deprioritized for a text widget
-        if (lower.includes('nano') || lower.includes('mini') || lower.includes('8b') || lower.includes('nemotron')) s += 1; // faster, less likely to time out
+        if (lower.includes('nano') || lower.includes('mini') || lower.includes('8b')) s += 1; // faster
+        // Avoid models known to expire/404 on free accounts
+        if (lower.includes('nemotron-51b') || lower.includes('nemotron-70b')) s -= 5;
         return s;
       };
       return score(b) - score(a);
