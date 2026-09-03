@@ -25,10 +25,12 @@ import { fetchAiChatSettingsServer, DEFAULT_AI_CHAT_SETTINGS } from '@/lib/setti
 
 const GROQ_ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
 
+// Updated 2026-09-03: current confirmed free-tier Groq models
 const GROQ_MODELS = [
   'llama-3.1-8b-instant',
-  'llama3-8b-8192',
-  'gemma2-9b-it',
+  'llama-3.3-70b-versatile',
+  'meta-llama/llama-4-scout-17b-16e-instruct',
+  'openai/gpt-oss-20b',
 ];
 
 const GROQ_TIMEOUT_MS = 8000;
