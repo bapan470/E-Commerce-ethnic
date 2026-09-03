@@ -57,13 +57,15 @@ export default function PaymentPendingBanner({
             {wasConvertedFromCod ? (
               <div className="mt-2 space-y-2 text-sm text-amber-800">
                 <p>
-                  This particular piece is handcrafted to order and cannot be sent Cash on
-                  Delivery. Please complete the online payment so we can begin weaving it for
-                  you. We&apos;re sorry for the extra step — and truly grateful for your
-                  patience.
+                  Due to high demand on this order, we&apos;re currently shipping it on a prepaid
+                  basis only — we&apos;ll begin preparing and shipping it as soon as payment is
+                  received. Thank you so much for your patience and understanding.
                 </p>
                 <p>
-                  Your payment is fully protected under our{' '}
+                  Your payment is fully protected — if anything about this order doesn&apos;t work
+                  out, you&apos;ll receive a full refund of{' '}
+                  <span className="font-semibold">{formatINR(totalAmount)}</span>, covered under
+                  our{' '}
                   <Link
                     href="/legal/refund-policy"
                     className="font-semibold text-amber-900 underline underline-offset-2 hover:text-amber-700"

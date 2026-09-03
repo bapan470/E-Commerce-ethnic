@@ -1016,11 +1016,11 @@ export function paymentReminderEmail(order: {
 
 // Sent when the admin converts a COD order to "needs online payment first"
 // (see app/api/admin/orders/[id]/request-online-payment/route.ts) --
-// typically because the exact item isn't kept ready-made and needs to be
-// prepared before it can ship, so we ask for payment upfront instead of
-// collecting it at the door. Links to the same /checkout/resume/[id] page
-// used for abandoned-online-payment reminders, since paying here is the
-// same Razorpay flow -- just entered from a different reason.
+// framed to the customer as "high demand, prepaid-only for this order" so
+// we ask for payment upfront instead of collecting it at the door. Links to
+// the same /checkout/resume/[id] page used for abandoned-online-payment
+// reminders, since paying here is the same Razorpay flow -- just entered
+// from a different reason.
 export function codToPrepaidRequestEmail(order: {
   id: string;
   items: any[];
@@ -1067,16 +1067,16 @@ export function codToPrepaidRequestEmail(order: {
     <table role="presentation" style="width:100%; border-collapse:collapse; margin: 0 0 20px; background:#fbf1e7; border:1px solid #ecdfd2; border-left: 4px solid ${GOLD_ACCENT}; border-radius: 6px;">
       <tr>
         <td style="padding: 14px 16px; font-size: 14px; color:#4a3d34; line-height:1.55;">
-          This particular piece isn't kept ready-made at all times — it's specially prepared once an
-          order comes in. Because of that, we're not able to offer Cash on Delivery on this order, and
-          kindly request the payment be made online before we begin preparing it. We're sorry for the
-          extra step, and truly appreciate your patience here.
+          Due to high demand on this order, we're currently shipping it on a prepaid basis only —
+          we'll begin preparing and shipping it as soon as payment is received. Thank you so much for
+          your patience and understanding.
         </td>
       </tr>
     </table>
 
     <p style="margin: 0 0 20px; font-size: 13px; color:#6b5f57; line-height:1.55;">
-      Your payment is fully protected — if anything about this order doesn't work out, it's covered
+      Your payment is fully protected — if anything about this order doesn't work out, you'll receive
+      a full refund of <strong style="color:#2b2320;">${formatINR(order.total_amount)}</strong>, covered
       under our <a href="${siteUrl}/legal/refund-policy" style="color:${BRAND_COLOR}; font-weight:bold;">Refund &amp; Cancellation Policy</a>, and we're always just a message away if you have questions.
     </p>
 
