@@ -6,6 +6,7 @@ import { X, Copy, Check } from 'lucide-react';
 import { fetchGrowthSettings, GrowthSettings } from '@/lib/growth-api';
 
 const SHOWN_KEY = 'exit_intent_shown_at';
+const TRAP_KEY = 'exit_intent_trap_armed';
 const COOLDOWN_HOURS = 24;
 
 export default function ExitIntentModal() {
@@ -32,20 +33,67 @@ export default function ExitIntentModal() {
   useEffect(() => {
     if (!settings?.exit_intent_enabled || pathname?.startsWith('/admin')) return;
 
+    // Desktop signal: cursor exits toward the top of the viewport (heading
+    // for the tab bar / address bar) — unchanged from before.
     const onMouseLeave = (e: MouseEvent) => {
-      // Only trigger when the cursor exits toward the top of the viewport
-      // (heading for the tab bar / address bar), the classic exit-intent signal.
       if (e.clientY <= 0) maybeShow();
     };
 
-    // Small delay so it can't fire the instant the page loads.
+    // Mobile has no cursor, so it needs its own signals. Skip installing
+    // them if we're already in cooldown (see maybeShow) — no point arming
+    // a history trap that would just be wasted.
+    const shownAt = Number(sessionStorage.getItem(SHOWN_KEY) || 0);
+    const inCooldown = shownAt && (Date.now() - shownAt) / 3_600_000 < COOLDOWN_HOURS;
+    const isTouchDevice =
+      typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
+
+    // Mobile signal #1 (primary): intercept the back button. We push one
+    // extra history entry for this tab; the visitor's first back press then
+    // "spends" that entry instead of actually leaving the page, which is
+    // our one chance to show the offer. Only armed once per tab (via
+    // TRAP_KEY) so it doesn't add a phantom back-press on every page they
+    // browse — one dummy entry for the whole session is enough.
+    let trapArmed = false;
+    const onPopState = () => {
+      if (!trapArmed) return;
+      trapArmed = false;
+      maybeShow();
+    };
+
+    // Mobile signal #2 (fallback): a fast upward scroll flick while already
+    // near the top of the page. That's the same "heading back to the
+    // address bar" gesture as a mouse leaving toward the tab bar, just
+    // expressed as a swipe instead of a cursor move.
+    let lastScrollY = typeof window !== 'undefined' ? window.scrollY : 0;
+    let lastScrollT = Date.now();
+    const onScroll = () => {
+      const now = Date.now();
+      const y = window.scrollY;
+      const dt = now - lastScrollT;
+      const dy = lastScrollY - y; // positive = scrolled upward
+      if (dt > 0 && dt < 200 && dy > 120 && y < 250) maybeShow();
+      lastScrollY = y;
+      lastScrollT = now;
+    };
+
+    // Small delay so none of this can fire the instant the page loads.
     const timer = setTimeout(() => {
       document.addEventListener('mouseleave', onMouseLeave);
+
+      if (isTouchDevice && !inCooldown && !sessionStorage.getItem(TRAP_KEY)) {
+        sessionStorage.setItem(TRAP_KEY, '1');
+        trapArmed = true;
+        window.history.pushState({ exitIntentTrap: true }, '');
+        window.addEventListener('popstate', onPopState);
+        window.addEventListener('scroll', onScroll, { passive: true });
+      }
     }, 4000);
 
     return () => {
       clearTimeout(timer);
       document.removeEventListener('mouseleave', onMouseLeave);
+      window.removeEventListener('popstate', onPopState);
+      window.removeEventListener('scroll', onScroll);
     };
   }, [settings, pathname, maybeShow]);
 
