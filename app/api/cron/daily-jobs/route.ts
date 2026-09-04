@@ -11,6 +11,7 @@ import {
   runForwardShipmentTrackingJob,
   runResellerPayoutWindowJob,
   runAffiliatePayoutWindowJob,
+  runWooCommerceEnqueueJob,
 } from '@/lib/cron-jobs';
 
 export const dynamic = 'force-dynamic';
@@ -28,11 +29,19 @@ export const maxDuration = 60;
 // (all except vendor-order-timeout, which has its own daily cron) are
 // combined here and run one after another.
 //
-// NOTE: WooCommerce Drip (welcome + follow-up emails) is intentionally
-// NOT included here. It is triggered separately every 15 min by
-// cron-job.org hitting /api/cron/woocommerce-drip. Keeping it out of
-// this route prevents the combined 10-job execution from timing out
+// NOTE: WooCommerce Drip's SENDING half (welcome + follow-up emails)
+// is intentionally NOT included here. It is triggered separately every
+// 15 min by cron-job.org hitting /api/cron/woocommerce-drip. Keeping it
+// out of this route prevents the combined job execution from timing out
 // cron-job.org's 30s hard limit.
+//
+// Its ENQUEUE half (scanning the customer list + queueing welcome/
+// follow-up rows) IS included below, once/day, since that part is heavy
+// (up to 5000+ customer rows read per run) and gains nothing from
+// running any more often than daily -- see the comment on
+// runWooCommerceEnqueueJob in lib/woocommerce-automation.ts. Running it
+// here instead of on every 15-min tick is what stopped this feature
+// from burning through the Supabase free-tier egress quota.
 //
 // Each job is wrapped in try/catch so one failing job doesn't stop the
 // others from running. See vercel.json for the schedule and
@@ -67,6 +76,12 @@ export async function GET(req: Request) {
     results.emailAutomation = await runEmailAutomationJob();
   } catch (err: any) {
     results.emailAutomation = { error: err?.message || 'Failed' };
+  }
+
+  try {
+    results.wooCommerceEnqueue = await runWooCommerceEnqueueJob();
+  } catch (err: any) {
+    results.wooCommerceEnqueue = { error: err?.message || 'Failed' };
   }
 
   try {

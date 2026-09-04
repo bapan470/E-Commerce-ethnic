@@ -1,17 +1,17 @@
 import { NextResponse } from 'next/server';
-import { runWooCommerceDripJob } from '@/lib/cron-jobs';
+import { runWooCommerceSendJob } from '@/lib/cron-jobs';
 
 export const dynamic = 'force-dynamic';
-// Vercel Hobby budget: 60s. Enqueue step (DB reads/writes for 27k+ customers)
-// alone can take 5-15s, leaving ~45s for the actual send loop (12 emails * ~3s
-// each = ~36s). Keep MAX_SEND_PER_RUN at 12 so this comfortably fits under 60s
-// even with Vercel cold-start overhead.
+// Send-only now (see comment below) -- 8 emails * ~1.5s each is well under
+// 30s, this budget is just headroom for cold starts / a slow ZeptoMail call.
 export const maxDuration = 60;
 
-// Also run automatically as part of /api/cron/daily-jobs (once/day, see
-// vercel.json). This route is kept so the admin/dev can trigger the
-// welcome/follow-up drip manually — useful right after turning the
-// automation toggle on, instead of waiting for the next scheduled tick.
+// SEND-ONLY. The heavy enqueue step (scanning the 27k+ customer table)
+// now runs once/day from /api/cron/daily-jobs -> runWooCommerceEnqueueJob
+// instead of here. This route only works the already-built queue (a
+// handful of rows), which is cheap enough to hit every 15 min without
+// burning through Supabase's free-tier egress quota the way the old
+// combined enqueue+send job did.
 //
 // Cron-job.org triggers this every 15 min (during the 1hr send window)
 // with a Bearer token. Max timeout on cron-job.org is 30s — the function
@@ -28,10 +28,10 @@ export async function GET(req: Request) {
   }
 
   try {
-    const result = await runWooCommerceDripJob();
+    const result = await runWooCommerceSendJob();
     return NextResponse.json({ success: true, ...result });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to run WooCommerce drip job';
+    const message = err instanceof Error ? err.message : 'Failed to run WooCommerce send job';
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -1,230 +1,233 @@
-diff --git a/app/api/chat/ai/route.ts b/app/api/chat/ai/route.ts
-index 47221a7..0cf60df 100644
---- a/app/api/chat/ai/route.ts
-+++ b/app/api/chat/ai/route.ts
-@@ -1,7 +1,7 @@
- import { NextResponse } from 'next/server';
- import { getCurrentUser, getSupabaseServer } from '@/lib/supabase-server-auth';
- import { fetchLegalPagesResolved } from '@/lib/marketing-api';
--import { fetchAiChatSettingsServer } from '@/lib/settings-api';
-+import { fetchAiChatSettingsServer, DEFAULT_AI_CHAT_SETTINGS } from '@/lib/settings-api';
+diff --git a/app/api/cron/daily-jobs/route.ts b/app/api/cron/daily-jobs/route.ts
+index c5b474b..8d65376 100644
+--- a/app/api/cron/daily-jobs/route.ts
++++ b/app/api/cron/daily-jobs/route.ts
+@@ -11,6 +11,7 @@ import {
+   runForwardShipmentTrackingJob,
+   runResellerPayoutWindowJob,
+   runAffiliatePayoutWindowJob,
++  runWooCommerceEnqueueJob,
+ } from '@/lib/cron-jobs';
  
- // ---------------------------------------------------------------------
- // Live AI shopping assistant for the on-site chat widget.
-@@ -30,34 +30,106 @@ import { fetchAiChatSettingsServer } from '@/lib/settings-api';
- // recommendations instead of talking to a stranger.
- // ---------------------------------------------------------------------
- 
--// meta/llama-3.3-70b-instruct reached end-of-life on NVIDIA NIM on
--// 2026-08-26 (now returns HTTP 410 Gone) -- these defaults were updated
--// to models still live on the platform as of this fix. If NVIDIA
--// retires another model in the future, the SAFETY_NET_MODELS list below
--// is tried automatically so the widget doesn't need a code change every
--// time -- only an admin settings update (or nothing, if the safety net
--// covers it) is needed.
--const DEFAULT_PRIMARY_MODEL = 'meta/llama-3.1-70b-instruct';
--const DEFAULT_FALLBACK_MODEL = 'meta/llama-3.1-8b-instruct';
--
--// Tried, in order, if BOTH the admin-configured primary and fallback
--// models fail (e.g. because one or both got retired by NVIDIA and the
--// admin settings haven't been updated yet). Skips any model already
--// attempted above. This is what keeps the widget working even when
--// Admin > Settings has a stale/EOL model saved.
--const SAFETY_NET_MODELS = [
--  'meta/llama-3.1-70b-instruct',
--  'meta/llama-3.1-8b-instruct',
--  'meta/llama-3.2-90b-vision-instruct',
-+// ---------------------------------------------------------------------
-+// MODEL SELECTION -- rewritten 2026-09-03 after discovering NVIDIA is
-+// retiring free-tier NIM models faster than any hardcoded list can keep
-+// up (confirmed dead within the same week: llama-3.3-70b, llama-3.1-70b,
-+// llama-3.1-8b, llama-4-maverick-17b-128e, nvidia/llama-3.3-nemotron-
-+// super-49b-v1, mixtral-8x7b -- all HTTP 410; mistral-small-3.1-24b was
-+// simply the wrong slug, 404). Hardcoding model names here means this
-+// route breaks again the next time NVIDIA prunes the catalog.
+ export const dynamic = 'force-dynamic';
+@@ -28,12 +29,20 @@ export const maxDuration = 60;
+ // (all except vendor-order-timeout, which has its own daily cron) are
+ // combined here and run one after another.
+ //
+-// NOTE: WooCommerce Drip (welcome + follow-up emails) is intentionally
+-// NOT included here. It is triggered separately every 15 min by
+-// cron-job.org hitting /api/cron/woocommerce-drip. Keeping it out of
+-// this route prevents the combined 10-job execution from timing out
++// NOTE: WooCommerce Drip's SENDING half (welcome + follow-up emails)
++// is intentionally NOT included here. It is triggered separately every
++// 15 min by cron-job.org hitting /api/cron/woocommerce-drip. Keeping it
++// out of this route prevents the combined job execution from timing out
+ // cron-job.org's 30s hard limit.
+ //
++// Its ENQUEUE half (scanning the customer list + queueing welcome/
++// follow-up rows) IS included below, once/day, since that part is heavy
++// (up to 5000+ customer rows read per run) and gains nothing from
++// running any more often than daily -- see the comment on
++// runWooCommerceEnqueueJob in lib/woocommerce-automation.ts. Running it
++// here instead of on every 15-min tick is what stopped this feature
++// from burning through the Supabase free-tier egress quota.
 +//
-+// Instead: ask NVIDIA's own `GET /v1/models` (same auth, OpenAI-
-+// compatible) which models actually exist RIGHT NOW, keep a short-lived
-+// in-memory cache of that answer, and try candidates from it in order.
-+// Admin > Settings > AI Chat Assistant can still pin a specific model
-+// (tried first, if set) but is no longer required for the widget to work.
-+// ---------------------------------------------------------------------
-+const DEFAULT_PRIMARY_MODEL = '';
-+const DEFAULT_FALLBACK_MODEL = '';
-+
-+// Only used if the live /v1/models lookup itself fails (e.g. NVIDIA's
-+// catalog endpoint is down, not just individual chat models) -- a last
-+// resort so the loop still has something to try instead of giving up
-+// with zero attempts.
-+const HARDCODED_LAST_RESORT_MODELS = [
-+  'nvidia/nemotron-3-nano-30b-a3b',
-+  'meta/llama-3.3-70b-instruct',
- ];
+ // Each job is wrapped in try/catch so one failing job doesn't stop the
+ // others from running. See vercel.json for the schedule and
+ // lib/cron-jobs.ts for the actual job logic (unchanged from before).
+@@ -69,6 +78,12 @@ export async function GET(req: Request) {
+     results.emailAutomation = { error: err?.message || 'Failed' };
+   }
  
- const NIM_ENDPOINT = 'https://integrate.api.nvidia.com/v1/chat/completions';
-+const NIM_MODELS_ENDPOINT = 'https://integrate.api.nvidia.com/v1/models';
-+
-+// Name fragments that mean "not a general text chat model" -- embedding,
-+// reranking, moderation/guardrail, speech, and image-generation models
-+// all show up in the same /v1/models list but will error or return
-+// nonsense if sent a chat-completions request.
-+const NON_CHAT_MODEL_HINTS = [
-+  'embed', 'rerank', 'guard', 'moderat', 'safety', 'nemoguard',
-+  'asr', 'tts', 'riva', 'parakeet', 'canary', 'ocr', 'nemoretriever',
-+  'colpali', 'clip', 'diffusion', 'imagen', 'sdxl', 'edify', 'nvcf',
-+];
-+
-+let modelCatalogCache: { ids: string[]; fetchedAt: number } | null = null;
-+const MODEL_CATALOG_TTL_MS = 15 * 60 * 1000; // 15 min
-+
-+async function fetchLiveChatModelIds(apiKey: string): Promise<string[]> {
-+  const now = Date.now();
-+  if (modelCatalogCache && now - modelCatalogCache.fetchedAt < MODEL_CATALOG_TTL_MS) {
-+    return modelCatalogCache.ids;
-+  }
-+
-+  const controller = new AbortController();
-+  const timer = setTimeout(() => controller.abort(), 6000);
 +  try {
-+    const res = await fetch(NIM_MODELS_ENDPOINT, {
-+      headers: { Authorization: `Bearer ${apiKey}` },
-+      signal: controller.signal,
-+    });
-+    if (!res.ok) throw new Error(`models list failed: ${res.status}`);
-+    const data = await res.json();
-+    const allIds: string[] = Array.isArray(data?.data)
-+      ? data.data.map((m: any) => m?.id).filter((id: any) => typeof id === 'string')
-+      : [];
-+
-+    // Prefer general-purpose instruct/chat text models, in a rough
-+    // quality/speed order; push anything vision-only or unrecognized to
-+    // the back rather than dropping it, so we still have candidates if
-+    // the "nice" ones are also down.
-+    const chatIds = allIds.filter(
-+      (id) => !NON_CHAT_MODEL_HINTS.some((hint) => id.toLowerCase().includes(hint))
-+    );
-+    const preferredOrder = chatIds.sort((a, b) => {
-+      const score = (id: string) => {
-+        const lower = id.toLowerCase();
-+        let s = 0;
-+        if (lower.includes('instruct') || lower.includes('chat')) s += 2;
-+        if (lower.includes('vision')) s -= 1; // works, but deprioritized for a text widget
-+        if (lower.includes('nano') || lower.includes('mini') || lower.includes('8b') || lower.includes('nemotron')) s += 1; // faster, less likely to time out
-+        return s;
-+      };
-+      return score(b) - score(a);
-+    });
-+
-+    modelCatalogCache = { ids: preferredOrder, fetchedAt: now };
-+    return preferredOrder;
-+  } catch (err) {
-+    console.error('[chat/ai] live model catalog lookup failed:', err);
-+    return [];
-+  } finally {
-+    clearTimeout(timer);
++    results.wooCommerceEnqueue = await runWooCommerceEnqueueJob();
++  } catch (err: any) {
++    results.wooCommerceEnqueue = { error: err?.message || 'Failed' };
 +  }
-+}
++
+   try {
+     results.vendorReturnTimers = await runVendorReturnTimersJob();
+   } catch (err: any) {
+diff --git a/app/api/cron/woocommerce-drip/route.ts b/app/api/cron/woocommerce-drip/route.ts
+index 8253174..aa16b07 100644
+--- a/app/api/cron/woocommerce-drip/route.ts
++++ b/app/api/cron/woocommerce-drip/route.ts
+@@ -1,17 +1,17 @@
+ import { NextResponse } from 'next/server';
+-import { runWooCommerceDripJob } from '@/lib/cron-jobs';
++import { runWooCommerceSendJob } from '@/lib/cron-jobs';
  
- // A stuck/slow upstream call is the #1 cause of "quick reply isn't
- // working" — the widget just sits there spinning forever. Cap every
- // NIM call so the widget always gets a definitive answer (success or a
--// clear error to fall back on) within a few seconds.
--const NIM_TIMEOUT_MS = 12000;
-+// clear error to fall back on) within a few seconds. Kept a bit tighter
-+// than before now that up to 6 candidate models may be tried in one
-+// request (worst case ~48s total, still well inside Vercel's function
-+// timeout, but the widget should get an answer from an earlier, faster
-+// candidate long before that in practice).
-+const NIM_TIMEOUT_MS = 8000;
+ export const dynamic = 'force-dynamic';
+-// Vercel Hobby budget: 60s. Enqueue step (DB reads/writes for 27k+ customers)
+-// alone can take 5-15s, leaving ~45s for the actual send loop (12 emails * ~3s
+-// each = ~36s). Keep MAX_SEND_PER_RUN at 12 so this comfortably fits under 60s
+-// even with Vercel cold-start overhead.
++// Send-only now (see comment below) -- 8 emails * ~1.5s each is well under
++// 30s, this budget is just headroom for cold starts / a slow ZeptoMail call.
+ export const maxDuration = 60;
  
- const MAX_HISTORY = 8;
- const MAX_MESSAGE_LEN = 600;
-@@ -183,15 +255,23 @@ export async function POST(req: Request) {
-     );
+-// Also run automatically as part of /api/cron/daily-jobs (once/day, see
+-// vercel.json). This route is kept so the admin/dev can trigger the
+-// welcome/follow-up drip manually — useful right after turning the
+-// automation toggle on, instead of waiting for the next scheduled tick.
++// SEND-ONLY. The heavy enqueue step (scanning the 27k+ customer table)
++// now runs once/day from /api/cron/daily-jobs -> runWooCommerceEnqueueJob
++// instead of here. This route only works the already-built queue (a
++// handful of rows), which is cheap enough to hit every 15 min without
++// burning through Supabase's free-tier egress quota the way the old
++// combined enqueue+send job did.
+ //
+ // Cron-job.org triggers this every 15 min (during the 1hr send window)
+ // with a Bearer token. Max timeout on cron-job.org is 30s — the function
+@@ -28,10 +28,10 @@ export async function GET(req: Request) {
    }
- 
--  const aiSettings = await fetchAiChatSettingsServer();
-+  // Was previously unguarded — any throw here (e.g. a transient Supabase
-+  // hiccup) produced an HTML 500 page instead of JSON, which the widget's
-+  // res.json().catch() swallows into the same generic "having trouble"
-+  // message. Falling back to defaults keeps the widget answering even if
-+  // the settings lookup itself fails.
-+  const aiSettings = await fetchAiChatSettingsServer().catch((err) => {
-+    console.error('[chat/ai] settings lookup failed, using defaults:', err);
-+    return DEFAULT_AI_CHAT_SETTINGS;
-+  });
-   if (!aiSettings.enabled) {
-     return NextResponse.json(
-       { ok: false, error: 'AI chat is currently turned off by the store admin.' },
-       { status: 200 }
-     );
-   }
--  const primaryModel = aiSettings.primary_model || DEFAULT_PRIMARY_MODEL;
--  const fallbackModel = aiSettings.fallback_model || DEFAULT_FALLBACK_MODEL;
-+  const pinnedPrimary = aiSettings.primary_model || DEFAULT_PRIMARY_MODEL;
-+  const pinnedFallback = aiSettings.fallback_model || DEFAULT_FALLBACK_MODEL;
- 
-   const body = await req.json().catch(() => ({}));
-   const rawMessages = Array.isArray(body?.messages) ? (body.messages as IncomingMessage[]) : [];
-@@ -231,12 +311,17 @@ Store policy context (for grounding shipping/returns answers — paraphrase in y
- ${policyContext}
- ${page ? `\nShopper is currently on: ${page}` : ''}`;
- 
--  // Try the admin-configured primary, then fallback, then -- only if
--  // both of those failed -- the hardcoded safety-net models, skipping
--  // anything already attempted. This means a retired/EOL model in
--  // Admin > Settings doesn't take the whole widget down; it just falls
--  // through to a model that's actually still live on NVIDIA NIM.
--  const modelsToTry = Array.from(new Set([primaryModel, fallbackModel, ...SAFETY_NET_MODELS]));
-+  // Model list: any admin-pinned choices first (so Admin > Settings can
-+  // still force a specific model), then whatever NVIDIA's own /v1/models
-+  // says is actually live right now, then a tiny hardcoded last resort
-+  // in case the catalog lookup itself is unreachable. Capped so a bad
-+  // run doesn't chain through a dozen 12s timeouts.
-+  const liveModels = await fetchLiveChatModelIds(apiKey);
-+  const modelsToTry = Array.from(
-+    new Set(
-+      [pinnedPrimary, pinnedFallback, ...liveModels, ...HARDCODED_LAST_RESORT_MODELS].filter(Boolean)
-+    )
-+  ).slice(0, 6);
  
    try {
-     let result: Awaited<ReturnType<typeof callNim>> | null = null;
-@@ -247,9 +332,8 @@ ${page ? `\nShopper is currently on: ${page}` : ''}`;
-       lastAttempted = model;
-       if (result.ok) break;
-       console.error('[chat/ai] model failed:', model, result.status, result.errText);
--      // 410 = model retired/EOL on NVIDIA's side; other errors (401/403,
--      // network) will fail identically for every model too, so don't
--      // burn the full list on those -- just try one more before giving up.
-+      // 401/403 = key rejected -- will fail identically for every model,
-+      // so don't burn the whole list on it, just try one more.
-       if (result.status === 401 || result.status === 403) break;
-     }
- 
-diff --git a/lib/settings-api.ts b/lib/settings-api.ts
-index 568adb7..22e5bdd 100644
---- a/lib/settings-api.ts
-+++ b/lib/settings-api.ts
-@@ -802,10 +802,19 @@ export interface AiChatSettings {
-   fallback_model: string;
+-    const result = await runWooCommerceDripJob();
++    const result = await runWooCommerceSendJob();
+     return NextResponse.json({ success: true, ...result });
+   } catch (err) {
+-    const message = err instanceof Error ? err.message : 'Failed to run WooCommerce drip job';
++    const message = err instanceof Error ? err.message : 'Failed to run WooCommerce send job';
+     return NextResponse.json({ error: message }, { status: 500 });
+   }
+ }
+diff --git a/lib/cron-jobs.ts b/lib/cron-jobs.ts
+index 5135880..ee94624 100644
+--- a/lib/cron-jobs.ts
++++ b/lib/cron-jobs.ts
+@@ -37,7 +37,11 @@ import { publishVendorProductWithAI } from '@/lib/vendor-ai-listing';
+ import { checkPickupStatusForReturn, getReturnAutomationMode } from '@/lib/return-automation';
+ import { trackDelhiveryShipment } from '@/lib/delhivery-api';
+ import { recordReturnRiskIncident } from '@/lib/return-risk-api';
+-import { runWooCommerceDripJob as runWooCommerceDripJobImpl } from '@/lib/woocommerce-automation';
++import {
++  runWooCommerceDripJob as runWooCommerceDripJobImpl,
++  runWooCommerceEnqueueJob as runWooCommerceEnqueueJobImpl,
++  runWooCommerceSendJob as runWooCommerceSendJobImpl,
++} from '@/lib/woocommerce-automation';
+ import {
+   sendArrivingNotification,
+   sendOutForDeliveryNotification,
+@@ -53,6 +57,20 @@ export async function runWooCommerceDripJob() {
+   return runWooCommerceDripJobImpl();
  }
  
-+// NOTE: as of 2026-09-03, NVIDIA is retiring free-tier NIM models fast
-+// enough that pinning specific model names here just goes stale again
-+// within days (confirmed dead in one week: the entire Llama 3.x lineup,
-+// Llama 4 Maverick, Nemotron-Super-49B, Mixtral-8x7b). app/api/chat/ai/
-+// route.ts now asks NVIDIA's live /v1/models endpoint at request time
-+// instead of relying on a hardcoded name. Left blank here so a store
-+// that never customized Admin > Settings > AI Chat Assistant doesn't
-+// accidentally pin a model that's already dead -- admins can still type
-+// a specific model in that panel to force it, but it's optional.
- export const DEFAULT_AI_CHAT_SETTINGS: AiChatSettings = {
-   enabled: true,
--  primary_model: 'meta/llama-3.3-70b-instruct',
--  fallback_model: 'meta/llama-3.2-90b-vision-instruct',
-+  primary_model: '',
-+  fallback_model: '',
- };
++// Heavy (scans up to 5000+ customer rows) -- called ONCE/DAY from
++// app/api/cron/daily-jobs. Do not wire this into the 15-min external
++// cron; see the comment on runWooCommerceEnqueueJob in
++// lib/woocommerce-automation.ts for why.
++export async function runWooCommerceEnqueueJob() {
++  return runWooCommerceEnqueueJobImpl();
++}
++
++// Cheap (only touches already-queued rows) -- safe to call every 15 min.
++// This is what app/api/cron/woocommerce-drip (hit by cron-job.org) uses.
++export async function runWooCommerceSendJob(force = false) {
++  return runWooCommerceSendJobImpl(force);
++}
++
+ // ----------------------------- Abandoned carts -----------------------------
+ // Sends up to 3 recovery emails per cart (a "sequence"), instead of the
+ // single one-off email this job used to send. Which steps are enabled,
+diff --git a/lib/woocommerce-automation.ts b/lib/woocommerce-automation.ts
+index 238a41b..9e9b758 100644
+--- a/lib/woocommerce-automation.ts
++++ b/lib/woocommerce-automation.ts
+@@ -284,21 +284,28 @@ function isWithinPreferredSendWindow(sendHourIST: number): boolean {
+ }
  
- export async function fetchAiChatSettings(): Promise<AiChatSettings> {
+ // ---------------------------------------------------------------------
+-// Main job, called once/day from lib/cron-jobs.ts -> runWooCommerceDripJob.
+-// `force`: skip the preferred-send-hour check (used by the admin's "Run
+-// Now" button, which means "send immediately, I know what I'm doing").
++// STEP A -- ENQUEUE ONLY (no sending).
++//
++// Scans up to 5000 customer rows plus two up-to-5000-row .in() lookups.
++// That's fine to run ONCE A DAY (called from app/api/cron/daily-jobs,
++// itself only triggered once/day -- Vercel Hobby's cron limit) but it
++// must NOT be called from the 15-min external cron (woocommerce-drip
++// route) any more. It used to be: every 15-min tick re-ran this full
++// scan (96x/day), and almost every one of those found nothing new to
++// queue (the skip-if-already-queued check just discarded the read) --
++// pure wasted Supabase egress/bandwidth against the free-tier quota.
++// Splitting the rare, heavy "enqueue" step from the frequent, cheap
++// "send" step (STEP B below) is the fix.
+ // ---------------------------------------------------------------------
+-export async function runWooCommerceDripJob(force = false) {
++export async function runWooCommerceEnqueueJob() {
+   const supabase = getSupabaseAdmin();
+   const settings = await fetchDripSettings(supabase);
+   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || '').replace(/\/$/, '');
+ 
+   if (!settings.enabled) {
+-    return { skipped: true, reason: 'automation is off' };
++    return { skipped: true, reason: 'automation is off', welcomeQueued: 0, followupQueued: 0 };
+   }
+ 
+-  const dailyCap = Math.max(1, Number(settings.dailySendCap) || 50);
+-
+   // --- 1. Enqueue welcome emails for customers who don't have one yet ---
+   const { data: candidates } = await supabase
+     .from('woocommerce_customers')
+@@ -426,6 +433,34 @@ export async function runWooCommerceDripJob(force = false) {
+     }
+   }
+ 
++  return { welcomeQueued, followupQueued };
++}
++
++// ---------------------------------------------------------------------
++// STEP B -- WORK THE QUEUE (send only).
++//
++// Only reads/writes a handful of already-queued rows -- never touches
++// the 27k+ row customer table. Safe (and intended) to hit every 15 min:
++// this is what app/api/cron/woocommerce-drip/route.ts calls, triggered
++// by cron-job.org. Running it often costs almost nothing against
++// Supabase's free-tier egress, unlike STEP A above.
++//
++// `force`: skip the preferred-send-hour check (used by the admin's "Run
++// Now" button, which means "send immediately, I know what I'm doing").
++// ---------------------------------------------------------------------
++export async function runWooCommerceSendJob(force = false) {
++  const supabase = getSupabaseAdmin();
++  const settings = await fetchDripSettings(supabase);
++  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || '').replace(/\/$/, '');
++
++  if (!settings.enabled) {
++    return { skipped: true, reason: 'automation is off' };
++  }
++
++  const dailyCap = Math.max(1, Number(settings.dailySendCap) || 50);
++  const welcomeQueued = 0;
++  const followupQueued = 0;
++
+   // --- 3. How much of today's cap is already used (manual immediate sends included) ---
+   const todayStart = new Date();
+   todayStart.setHours(0, 0, 0, 0);
+@@ -522,3 +557,25 @@ export async function runWooCommerceDripJob(force = false) {
+ 
+   return { welcomeQueued, followupQueued, sent, failed, skipped };
+ }
++
++// ---------------------------------------------------------------------
++// Combined convenience wrapper: enqueue THEN send, in one call. Kept for
++// the admin's "Run Now" button (see
++// app/api/admin/woocommerce-import/automation/route.ts) where a full
++// immediate cycle is wanted on demand.
++//
++// NEITHER cron route uses this any more -- app/api/cron/daily-jobs calls
++// runWooCommerceEnqueueJob() once/day, and app/api/cron/woocommerce-drip
++// (hit every 15 min by cron-job.org) calls runWooCommerceSendJob(). See
++// the comments on those two functions above for why they were split.
++// ---------------------------------------------------------------------
++export async function runWooCommerceDripJob(force = false) {
++  const enqueueResult = await runWooCommerceEnqueueJob();
++  const sendResult = await runWooCommerceSendJob(force);
++  const { welcomeQueued: _wq, followupQueued: _fq, ...sendRest } = sendResult as Record<string, unknown>;
++  return {
++    welcomeQueued: (enqueueResult as any).welcomeQueued ?? 0,
++    followupQueued: (enqueueResult as any).followupQueued ?? 0,
++    ...sendRest,
++  };
++}

@@ -284,20 +284,27 @@ function isWithinPreferredSendWindow(sendHourIST: number): boolean {
 }
 
 // ---------------------------------------------------------------------
-// Main job, called once/day from lib/cron-jobs.ts -> runWooCommerceDripJob.
-// `force`: skip the preferred-send-hour check (used by the admin's "Run
-// Now" button, which means "send immediately, I know what I'm doing").
+// STEP A -- ENQUEUE ONLY (no sending).
+//
+// Scans up to 5000 customer rows plus two up-to-5000-row .in() lookups.
+// That's fine to run ONCE A DAY (called from app/api/cron/daily-jobs,
+// itself only triggered once/day -- Vercel Hobby's cron limit) but it
+// must NOT be called from the 15-min external cron (woocommerce-drip
+// route) any more. It used to be: every 15-min tick re-ran this full
+// scan (96x/day), and almost every one of those found nothing new to
+// queue (the skip-if-already-queued check just discarded the read) --
+// pure wasted Supabase egress/bandwidth against the free-tier quota.
+// Splitting the rare, heavy "enqueue" step from the frequent, cheap
+// "send" step (STEP B below) is the fix.
 // ---------------------------------------------------------------------
-export async function runWooCommerceDripJob(force = false) {
+export async function runWooCommerceEnqueueJob() {
   const supabase = getSupabaseAdmin();
   const settings = await fetchDripSettings(supabase);
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || '').replace(/\/$/, '');
 
   if (!settings.enabled) {
-    return { skipped: true, reason: 'automation is off' };
+    return { skipped: true, reason: 'automation is off', welcomeQueued: 0, followupQueued: 0 };
   }
-
-  const dailyCap = Math.max(1, Number(settings.dailySendCap) || 50);
 
   // --- 1. Enqueue welcome emails for customers who don't have one yet ---
   const { data: candidates } = await supabase
@@ -426,6 +433,34 @@ export async function runWooCommerceDripJob(force = false) {
     }
   }
 
+  return { welcomeQueued, followupQueued };
+}
+
+// ---------------------------------------------------------------------
+// STEP B -- WORK THE QUEUE (send only).
+//
+// Only reads/writes a handful of already-queued rows -- never touches
+// the 27k+ row customer table. Safe (and intended) to hit every 15 min:
+// this is what app/api/cron/woocommerce-drip/route.ts calls, triggered
+// by cron-job.org. Running it often costs almost nothing against
+// Supabase's free-tier egress, unlike STEP A above.
+//
+// `force`: skip the preferred-send-hour check (used by the admin's "Run
+// Now" button, which means "send immediately, I know what I'm doing").
+// ---------------------------------------------------------------------
+export async function runWooCommerceSendJob(force = false) {
+  const supabase = getSupabaseAdmin();
+  const settings = await fetchDripSettings(supabase);
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || '').replace(/\/$/, '');
+
+  if (!settings.enabled) {
+    return { skipped: true, reason: 'automation is off' };
+  }
+
+  const dailyCap = Math.max(1, Number(settings.dailySendCap) || 50);
+  const welcomeQueued = 0;
+  const followupQueued = 0;
+
   // --- 3. How much of today's cap is already used (manual immediate sends included) ---
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
@@ -521,4 +556,26 @@ export async function runWooCommerceDripJob(force = false) {
   }
 
   return { welcomeQueued, followupQueued, sent, failed, skipped };
+}
+
+// ---------------------------------------------------------------------
+// Combined convenience wrapper: enqueue THEN send, in one call. Kept for
+// the admin's "Run Now" button (see
+// app/api/admin/woocommerce-import/automation/route.ts) where a full
+// immediate cycle is wanted on demand.
+//
+// NEITHER cron route uses this any more -- app/api/cron/daily-jobs calls
+// runWooCommerceEnqueueJob() once/day, and app/api/cron/woocommerce-drip
+// (hit every 15 min by cron-job.org) calls runWooCommerceSendJob(). See
+// the comments on those two functions above for why they were split.
+// ---------------------------------------------------------------------
+export async function runWooCommerceDripJob(force = false) {
+  const enqueueResult = await runWooCommerceEnqueueJob();
+  const sendResult = await runWooCommerceSendJob(force);
+  const { welcomeQueued: _wq, followupQueued: _fq, ...sendRest } = sendResult as Record<string, unknown>;
+  return {
+    welcomeQueued: (enqueueResult as any).welcomeQueued ?? 0,
+    followupQueued: (enqueueResult as any).followupQueued ?? 0,
+    ...sendRest,
+  };
 }

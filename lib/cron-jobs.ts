@@ -37,7 +37,11 @@ import { publishVendorProductWithAI } from '@/lib/vendor-ai-listing';
 import { checkPickupStatusForReturn, getReturnAutomationMode } from '@/lib/return-automation';
 import { trackDelhiveryShipment } from '@/lib/delhivery-api';
 import { recordReturnRiskIncident } from '@/lib/return-risk-api';
-import { runWooCommerceDripJob as runWooCommerceDripJobImpl } from '@/lib/woocommerce-automation';
+import {
+  runWooCommerceDripJob as runWooCommerceDripJobImpl,
+  runWooCommerceEnqueueJob as runWooCommerceEnqueueJobImpl,
+  runWooCommerceSendJob as runWooCommerceSendJobImpl,
+} from '@/lib/woocommerce-automation';
 import {
   sendArrivingNotification,
   sendOutForDeliveryNotification,
@@ -51,6 +55,20 @@ import {
 // lib/woocommerce-automation.ts.
 export async function runWooCommerceDripJob() {
   return runWooCommerceDripJobImpl();
+}
+
+// Heavy (scans up to 5000+ customer rows) -- called ONCE/DAY from
+// app/api/cron/daily-jobs. Do not wire this into the 15-min external
+// cron; see the comment on runWooCommerceEnqueueJob in
+// lib/woocommerce-automation.ts for why.
+export async function runWooCommerceEnqueueJob() {
+  return runWooCommerceEnqueueJobImpl();
+}
+
+// Cheap (only touches already-queued rows) -- safe to call every 15 min.
+// This is what app/api/cron/woocommerce-drip (hit by cron-job.org) uses.
+export async function runWooCommerceSendJob(force = false) {
+  return runWooCommerceSendJobImpl(force);
 }
 
 // ----------------------------- Abandoned carts -----------------------------
