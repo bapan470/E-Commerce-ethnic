@@ -7,6 +7,85 @@ import { Heart, Share2, Volume2, VolumeX, X, Truck, ChevronRight } from 'lucide-
 import { hasLikedReel, toggleLikedReel } from '@/lib/video-reels-likes';
 import { guessVideoMime } from '@/lib/video-mime';
 import { fetchVariantsForProduct, ProductVariant } from '@/lib/variants-api';
+import { getRecentlyViewed } from '@/lib/recently-viewed';
+
+/** Fisher–Yates shuffle — never mutates the input array. */
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/**
+ * Decides the play order for every slide AFTER the one the shopper opened
+ * on. Three rules, in priority order:
+ *
+ *  1. The category the shopper is currently watching plays out fully
+ *     (in random order) before any other category is shown.
+ *  2. Within any category block, products the shopper already visited on
+ *     this browser (see lib/recently-viewed.ts) come first, most-recently
+ *     visited first — the rest of that category is shuffled behind them.
+ *  3. Once the current category is exhausted, the next category chosen is
+ *     whichever one contains the shopper's most-recently-visited product;
+ *     categories with no recently-viewed products are shuffled in after,
+ *     in random order. This repeats category by category.
+ *
+ * `recentProductIds` is most-recent-first (see getRecentlyViewed). Items
+ * are matched on productId so every colour variant of an already-viewed
+ * product is treated as "recently viewed" too.
+ */
+function buildFeedOrder(
+  rest: ReelItem[],
+  currentCategory: string | null | undefined,
+  recentProductIds: string[]
+): ReelItem[] {
+  const recentRank = new Map(recentProductIds.map((id, idx) => [id, idx]));
+  const UNCATEGORIZED = '__uncategorized__';
+
+  const byCategory = new Map<string, ReelItem[]>();
+  for (const item of rest) {
+    const key = item.category ?? UNCATEGORIZED;
+    const list = byCategory.get(key);
+    if (list) list.push(item);
+    else byCategory.set(key, [item]);
+  }
+
+  // Recently-viewed items in this category first (most-recent-first),
+  // everything else in the category shuffled behind them.
+  const orderCategoryBlock = (list: ReelItem[]): ReelItem[] => {
+    const recent = list
+      .filter((i) => recentRank.has(i.productId))
+      .sort((a, b) => recentRank.get(a.productId)! - recentRank.get(b.productId)!);
+    const others = shuffle(list.filter((i) => !recentRank.has(i.productId)));
+    return [...recent, ...others];
+  };
+
+  const currentKey = currentCategory ?? UNCATEGORIZED;
+  const currentBlock = byCategory.has(currentKey) ? orderCategoryBlock(byCategory.get(currentKey)!) : [];
+  byCategory.delete(currentKey);
+
+  const bestRecentRankFor = (key: string): number => {
+    let best = Infinity;
+    for (const item of byCategory.get(key)!) {
+      const r = recentRank.get(item.productId);
+      if (r !== undefined && r < best) best = r;
+    }
+    return best;
+  };
+
+  const remainingKeys = Array.from(byCategory.keys());
+  const withRecent = remainingKeys
+    .filter((k) => bestRecentRankFor(k) !== Infinity)
+    .sort((a, b) => bestRecentRankFor(a) - bestRecentRankFor(b));
+  const withoutRecent = shuffle(remainingKeys.filter((k) => bestRecentRankFor(k) === Infinity));
+
+  const remainingBlocks = [...withRecent, ...withoutRecent].flatMap((k) => orderCategoryBlock(byCategory.get(k)!));
+
+  return [...currentBlock, ...remainingBlocks];
+}
 
 export type ReelItem = {
   id: string;
@@ -137,9 +216,28 @@ export default function VideoReels({
   // long-form explanation this replaced, above.
   const notFound = startIndex === -1;
 
+  // Every OTHER slide (not the one the shopper opened on) gets reshuffled
+  // per rules in buildFeedOrder: finish the current category (randomly)
+  // before moving on, and surface recently-viewed products first. This is
+  // computed once per feed load (items/startIndex don't change while the
+  // overlay is open), so the order doesn't re-shuffle itself mid-scroll.
+  // The opened video always stays at index 0 — `effectiveStartIndex` below
+  // is what every other index-based calc uses from here on, since
+  // reordering can move it away from the original `startIndex`.
+  const orderedItems = useMemo(() => {
+    if (notFound) return items;
+    const current = items[startIndex];
+    const rest = items.filter((_, idx) => idx !== startIndex);
+    const recentProductIds = getRecentlyViewed(current.productId);
+    return [current, ...buildFeedOrder(rest, current.category, recentProductIds)];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, startIndex, notFound]);
+
+  const effectiveStartIndex = notFound ? startIndex : 0;
+
   const containerRef = useRef<HTMLDivElement>(null);
   const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const [activeIndex, setActiveIndex] = useState(notFound ? 0 : startIndex);
+  const [activeIndex, setActiveIndex] = useState(effectiveStartIndex);
   // Starts unmuted — the shopper just tapped a "Watch Product Video"
   // button/bubble, which counts as the user gesture browsers require
   // before allowing audio autoplay, so this doesn't get silently blocked.
@@ -214,7 +312,7 @@ export default function VideoReels({
   // so it doesn't look like the shopper accidentally swiped.
   useEffect(() => {
     if (notFound) return;
-    const el = slideRefs.current[startIndex];
+    const el = slideRefs.current[effectiveStartIndex];
     if (el) el.scrollIntoView({ behavior: 'instant' as ScrollBehavior, block: 'start' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -242,7 +340,7 @@ export default function VideoReels({
       raf = requestAnimationFrame(() => {
         const slideHeight = container.clientHeight || 1;
         const idx = Math.round(container.scrollTop / slideHeight);
-        const clamped = Math.min(Math.max(idx, 0), items.length - 1);
+        const clamped = Math.min(Math.max(idx, 0), orderedItems.length - 1);
         setActiveIndex((prev) => (prev === clamped ? prev : clamped));
       });
     };
@@ -252,9 +350,9 @@ export default function VideoReels({
       container.removeEventListener('scroll', onScroll);
       if (raf) cancelAnimationFrame(raf);
     };
-  }, [items.length]);
+  }, [orderedItems.length]);
 
-  const activeItem = items[activeIndex];
+  const activeItem = orderedItems[activeIndex];
 
   const goToProduct = useCallback(
     (slug: string) => {
@@ -280,7 +378,7 @@ export default function VideoReels({
     router.push(returnHref ?? `/product/${returnSlug}`);
   }, [onClose, returnHref, returnSlug, router]);
 
-  if (items.length === 0) return null;
+  if (orderedItems.length === 0) return null;
 
   // Never fall through to showing an unrelated product's video. This is the
   // deliberate replacement for the old `Math.max(0, -1) -> 0` fallback: if
@@ -352,7 +450,7 @@ export default function VideoReels({
         }`}
         style={!unlocked ? { touchAction: 'none' } : undefined}
       >
-        {items.map((item, idx) => (
+        {orderedItems.map((item, idx) => (
           <ReelSlide
             key={item.id}
             item={item}
@@ -365,8 +463,8 @@ export default function VideoReels({
             // Only the very first slide the shopper opened on plays "once,
             // then unlock"; every other slide behaves exactly as before
             // (loops while active) both before and after that unlock.
-            loopVideo={unlocked || idx !== startIndex}
-            onVideoEnded={idx === startIndex && !unlocked ? handleUnlock : undefined}
+            loopVideo={unlocked || idx !== effectiveStartIndex}
+            onVideoEnded={idx === effectiveStartIndex && !unlocked ? handleUnlock : undefined}
             ref={(el) => {
               slideRefs.current[idx] = el;
             }}
