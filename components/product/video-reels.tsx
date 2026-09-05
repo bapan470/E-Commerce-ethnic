@@ -399,77 +399,90 @@ export default function VideoReels({
   }
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black" role="dialog" aria-modal="true" aria-label="Product video feed">
-      <button
-        type="button"
-        onClick={handleClose}
-        aria-label="Close video feed"
-        className="absolute right-3 top-3 z-20 rounded-full bg-black/40 p-2 text-white backdrop-blur-sm transition-colors hover:bg-black/60 sm:right-5 sm:top-5"
-      >
-        <X className="h-6 w-6" />
-      </button>
-
-      {/* Small one-time hint that appears the moment the feed unlocks, so it's
-          obvious the overlay just turned into a swipeable Reels feed instead
-          of the shopper wondering why nothing happens on a swipe attempt
-          during the single-video stage. Auto-hides itself via CSS animation. */}
-      {unlocked && (
-        <div
-          key={activeItem?.id}
-          className="pointer-events-none absolute inset-x-0 top-16 z-20 flex justify-center animate-[fadeOutUp_2.2s_ease-out_forwards]"
+    // Full viewport on phones (unchanged). From the `sm` breakpoint up —
+    // i.e. any desktop/tablet width — this centres a phone-proportioned
+    // (9:16) "frame" on a dimmed backdrop instead of stretching the reel
+    // edge-to-edge, which is what was blowing the video up into an
+    // extreme, cropped close-up on wide screens. Mobile itself is
+    // untouched: no sm: class here changes anything below that breakpoint.
+    <div
+      className="fixed inset-0 z-[100] bg-black sm:flex sm:items-center sm:justify-center sm:bg-black/90 sm:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Product video feed"
+    >
+      <div className="relative h-full w-full overflow-hidden bg-black sm:aspect-[9/16] sm:h-[min(92vh,900px)] sm:w-auto sm:rounded-2xl sm:shadow-2xl sm:ring-1 sm:ring-white/10">
+        <button
+          type="button"
+          onClick={handleClose}
+          aria-label="Close video feed"
+          className="absolute right-3 top-3 z-20 rounded-full bg-black/40 p-2 text-white backdrop-blur-sm transition-colors hover:bg-black/60 sm:right-4 sm:top-4"
         >
-          <span className="rounded-full bg-black/50 px-3 py-1 text-xs font-medium text-white backdrop-blur-sm">
-            Swipe up for more ↑
-          </span>
-        </div>
-      )}
-      <style jsx>{`
-        @keyframes fadeOutUp {
-          0% {
-            opacity: 0;
-            transform: translateY(4px);
-          }
-          15% {
-            opacity: 1;
-            transform: translateY(0);
-          }
-          75% {
-            opacity: 1;
-          }
-          100% {
-            opacity: 0;
-            transform: translateY(-4px);
-          }
-        }
-      `}</style>
+          <X className="h-6 w-6" />
+        </button>
 
-      <div
-        ref={containerRef}
-        className={`h-full w-full overflow-y-scroll scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
-          unlocked ? 'snap-y snap-mandatory' : 'overflow-hidden overscroll-none'
-        }`}
-        style={!unlocked ? { touchAction: 'none' } : undefined}
-      >
-        {orderedItems.map((item, idx) => (
-          <ReelSlide
-            key={item.id}
-            item={item}
-            isActive={idx === activeIndex}
-            muted={muted}
-            onToggleMute={() => setMuted((m) => !m)}
-            onShopNow={() => goToProduct(item.slug)}
-            onSelectColour={goToProduct}
-            onGoToCategory={goToCategory}
-            // Only the very first slide the shopper opened on plays "once,
-            // then unlock"; every other slide behaves exactly as before
-            // (loops while active) both before and after that unlock.
-            loopVideo={unlocked || idx !== effectiveStartIndex}
-            onVideoEnded={idx === effectiveStartIndex && !unlocked ? handleUnlock : undefined}
-            ref={(el) => {
-              slideRefs.current[idx] = el;
-            }}
-          />
-        ))}
+        {/* Small one-time hint that appears the moment the feed unlocks, so it's
+            obvious the overlay just turned into a swipeable Reels feed instead
+            of the shopper wondering why nothing happens on a swipe attempt
+            during the single-video stage. Auto-hides itself via CSS animation. */}
+        {unlocked && (
+          <div
+            key={activeItem?.id}
+            className="pointer-events-none absolute inset-x-0 top-16 z-20 flex justify-center animate-[fadeOutUp_2.2s_ease-out_forwards]"
+          >
+            <span className="rounded-full bg-black/50 px-3 py-1 text-xs font-medium text-white backdrop-blur-sm">
+              Swipe up for more ↑
+            </span>
+          </div>
+        )}
+        <style jsx>{`
+          @keyframes fadeOutUp {
+            0% {
+              opacity: 0;
+              transform: translateY(4px);
+            }
+            15% {
+              opacity: 1;
+              transform: translateY(0);
+            }
+            75% {
+              opacity: 1;
+            }
+            100% {
+              opacity: 0;
+              transform: translateY(-4px);
+            }
+          }
+        `}</style>
+
+        <div
+          ref={containerRef}
+          className={`h-full w-full overflow-y-scroll scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${
+            unlocked ? 'snap-y snap-mandatory' : 'overflow-hidden overscroll-none'
+          }`}
+          style={!unlocked ? { touchAction: 'none' } : undefined}
+        >
+          {orderedItems.map((item, idx) => (
+            <ReelSlide
+              key={item.id}
+              item={item}
+              isActive={idx === activeIndex}
+              muted={muted}
+              onToggleMute={() => setMuted((m) => !m)}
+              onShopNow={() => goToProduct(item.slug)}
+              onSelectColour={goToProduct}
+              onGoToCategory={goToCategory}
+              // Only the very first slide the shopper opened on plays "once,
+              // then unlock"; every other slide behaves exactly as before
+              // (loops while active) both before and after that unlock.
+              loopVideo={unlocked || idx !== effectiveStartIndex}
+              onVideoEnded={idx === effectiveStartIndex && !unlocked ? handleUnlock : undefined}
+              ref={(el) => {
+                slideRefs.current[idx] = el;
+              }}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
