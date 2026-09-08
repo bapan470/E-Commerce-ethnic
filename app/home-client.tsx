@@ -9,7 +9,9 @@ import type { HomeBanner } from '@/lib/home-data-server';
 import type { PublicCollectionRow } from '@/lib/collections-api-server';
 import type { HomepageTile } from '@/lib/homepage-tiles-api';
 import type { HeroBanner } from '@/lib/hero-banners-api';
+import type { DiscoverSectionSettings } from '@/lib/discover-products-api';
 import ProductCard from '@/components/product-card';
+import DiscoverProductsSection from '@/components/home/discover-products-section';
 import { expandProductVariants } from '@/lib/expand-product-variants';
 import CouponStrip from '@/components/home/coupon-strip';
 import PromoSlider from '@/components/home/promo-slider';
@@ -28,6 +30,9 @@ interface HomeClientProps {
   tiles: HomepageTile[];
   collectionSlugById: Record<string, string>;
   promotionCollectionSlugById: Record<string, string>;
+  discoverSettings: DiscoverSectionSettings;
+  discoverInitialProducts: Product[];
+  discoverInitialHasMore: boolean;
 }
 
 export default function HomeClient({
@@ -40,6 +45,9 @@ export default function HomeClient({
   tiles,
   collectionSlugById,
   promotionCollectionSlugById,
+  discoverSettings,
+  discoverInitialProducts,
+  discoverInitialHasMore,
 }: HomeClientProps) {
   // Explode each grid's finite pick list into one card per colour, so a
   // featured/new-arrival piece that comes in several colours shows every
@@ -320,6 +328,13 @@ export default function HomeClient({
         tiles={tiles}
         collectionSlugById={collectionSlugById}
         promotionCollectionSlugById={promotionCollectionSlugById}
+      />
+
+      <DiscoverProductsSection
+        settings={discoverSettings}
+        initialProducts={discoverInitialProducts}
+        initialHasMore={discoverInitialHasMore}
+        categories={categories}
       />
 
       <PromoSlider />

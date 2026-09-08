@@ -104,6 +104,9 @@ export default async function Home() {
         tiles={homeData.tiles}
         collectionSlugById={homeData.collectionSlugById}
         promotionCollectionSlugById={homeData.promotionCollectionSlugById}
+        discoverSettings={homeData.discoverSettings}
+        discoverInitialProducts={homeData.discoverInitialProducts}
+        discoverInitialHasMore={homeData.discoverInitialHasMore}
       />
     </>
   );

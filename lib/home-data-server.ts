@@ -5,6 +5,7 @@ import { fetchPublicCollectionsServer, PublicCollectionRow } from './collections
 import { Product, CategoryRow } from './types';
 import { HomepageTile } from './homepage-tiles-api';
 import { HeroBanner } from './hero-banners-api';
+import { fetchDiscoverProductsServer, DiscoverSectionSettings, DEFAULT_DISCOVER_SETTINGS } from './discover-products-api';
 
 export interface HomeBanner {
   image_url: string;
@@ -24,6 +25,14 @@ export interface HomeData {
    *  link_type='promotion' to route "Shop Now" straight to the
    *  promotion's collection page. */
   promotionCollectionSlugById: Record<string, string>;
+  /** "Discover Products For You" section (Admin > Discover Products) —
+   *  settings plus its first page of products/hasMore, fetched server
+   *  side so the section renders on first load with no loading flash.
+   *  The client-side DiscoverProductsSection re-fetches further
+   *  pages/filters from /api/discover-products. */
+  discoverSettings: DiscoverSectionSettings;
+  discoverInitialProducts: Product[];
+  discoverInitialHasMore: boolean;
 }
 
 async function fetchHomeBanner(): Promise<HomeBanner | null> {
@@ -170,6 +179,25 @@ async function fetchPromotionCollectionSlugMap(
  * collections, then products, each popping in at a different moment). The
  * page now arrives with everything already rendered.
  */
+// Server-only read of the Discover Products section's first page — same
+// "fail quiet" approach as fetchHomeTiles/fetchHeroBanners above: a
+// Discover Products failure (e.g. settings row not created yet on a
+// fresh DB) should never break the rest of the homepage, it should just
+// fall back to the section's defaults with an empty product list (which
+// DiscoverProductsSection/home-client.tsx already render as "nothing").
+async function fetchHomeDiscoverProducts(): Promise<{
+  settings: DiscoverSectionSettings;
+  products: Product[];
+  hasMore: boolean;
+}> {
+  try {
+    const result = await fetchDiscoverProductsServer({ page: 1 });
+    return result;
+  } catch {
+    return { settings: DEFAULT_DISCOVER_SETTINGS, products: [], hasMore: false };
+  }
+}
+
 export async function fetchHomeData(): Promise<HomeData> {
   const [
     products,
@@ -180,6 +208,7 @@ export async function fetchHomeData(): Promise<HomeData> {
     tiles,
     heroBanners,
     collectionSlugById,
+    discover,
   ] = await Promise.all([
     fetchProductsServer(),
     fetchCategoriesServer(),
@@ -189,6 +218,7 @@ export async function fetchHomeData(): Promise<HomeData> {
     fetchHomeTiles(),
     fetchHeroBanners(),
     fetchCollectionSlugMap(),
+    fetchHomeDiscoverProducts(),
   ]);
 
   const promotionCollectionSlugById = await fetchPromotionCollectionSlugMap(collectionSlugById);
@@ -203,5 +233,8 @@ export async function fetchHomeData(): Promise<HomeData> {
     heroBanners,
     collectionSlugById,
     promotionCollectionSlugById,
+    discoverSettings: discover.settings,
+    discoverInitialProducts: discover.products,
+    discoverInitialHasMore: discover.hasMore,
   };
 }
