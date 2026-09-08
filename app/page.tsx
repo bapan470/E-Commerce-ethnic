@@ -107,6 +107,7 @@ export default async function Home() {
         discoverSettings={homeData.discoverSettings}
         discoverInitialProducts={homeData.discoverInitialProducts}
         discoverInitialHasMore={homeData.discoverInitialHasMore}
+        discoverCategoryCounts={homeData.discoverCategoryCounts}
       />
     </>
   );

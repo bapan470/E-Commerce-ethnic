@@ -18,6 +18,11 @@ interface DiscoverProductsSectionProps {
   initialProducts: Product[];
   initialHasMore: boolean;
   categories: CategoryRow[];
+  /** Category name -> live product count across the whole Discover
+   *  Products set (see fetchDiscoverCategoryCountsServer). Categories
+   *  with a zero (or missing) count are hidden from the filter bar below
+   *  so a shopper can never tap a pill straight into an empty grid. */
+  categoryCounts?: Record<string, number>;
 }
 
 /**
@@ -33,6 +38,7 @@ export default function DiscoverProductsSection({
   initialProducts,
   initialHasMore,
   categories,
+  categoryCounts,
 }: DiscoverProductsSectionProps) {
   // Hidden entirely when the admin has switched the section off, or when
   // it's in Manual mode with zero active picks — same "return null" guard
@@ -116,7 +122,19 @@ export default function DiscoverProductsSection({
     return () => observer.disconnect();
   }, [hidden, hasMore, loading, page, activeCategory, activeBucket, runFetch]);
 
-  const categoryNames = useMemo(() => categories.map((c) => c.name), [categories]);
+  // Hide any category pill that has zero products in the Discover set —
+  // without this, a shopper could tap a category and land on "No products
+  // match these filters right now" (see the screenshot this was reported
+  // from: "Blouse Pieces" had no live products but still showed a pill).
+  // When categoryCounts hasn't loaded (undefined), fall back to showing
+  // every category rather than hiding everything.
+  const categoryNames = useMemo(
+    () =>
+      categories
+        .map((c) => c.name)
+        .filter((name) => !categoryCounts || (categoryCounts[name] ?? 0) > 0),
+    [categories, categoryCounts]
+  );
 
   if (hidden) return null;
 
@@ -130,48 +148,59 @@ export default function DiscoverProductsSection({
       )}
       {!settings.subtitle && <div className="mb-3" />}
 
-      {settings.show_category_filter && categoryNames.length > 0 && (
-        <div className="mb-3 flex gap-2.5 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <button
-            type="button"
-            onClick={() => handleSelectCategory(null)}
-            aria-pressed={activeCategory === null}
-            className={`shrink-0 rounded-full border px-4 py-2 text-xs font-semibold transition-all ${
-              activeCategory === null
-                ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                : 'border-border bg-background text-foreground/80 hover:border-primary/50 hover:text-primary'
-            }`}
-          >
-            All
-          </button>
-          {categoryNames.map((name) => {
-            const isActive = activeCategory === name;
-            return (
+      {((settings.show_category_filter && categoryNames.length > 0) ||
+        (settings.show_price_filter && priceRanges.length > 0)) && (
+        // Pinned just under the site header while the shopper scrolls past
+        // this section, same "top-12 matches header's h-12" convention the
+        // Shop page's category row uses (see app/shop/shop-content.tsx) —
+        // so switching category/price filter never needs scrolling back up
+        // to find the pills again, especially useful on mobile where this
+        // section can run several screens tall.
+        <div className="sticky top-12 z-30 -mx-4 border-b border-border/60 bg-background/95 px-4 pb-3 pt-2 backdrop-blur-sm sm:mx-0 sm:border-none sm:bg-transparent sm:px-0 sm:pt-0 sm:backdrop-blur-none">
+          {settings.show_category_filter && categoryNames.length > 0 && (
+            <div className="flex gap-2.5 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <button
-                key={name}
                 type="button"
-                onClick={() => handleSelectCategory(name)}
-                aria-pressed={isActive}
-                className={`shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-xs font-semibold transition-all ${
-                  isActive
-                    ? 'border-primary bg-gradient-to-r from-primary to-primary/80 text-primary-foreground shadow-md shadow-primary/20'
+                onClick={() => handleSelectCategory(null)}
+                aria-pressed={activeCategory === null}
+                className={`shrink-0 rounded-full border px-4 py-2 text-xs font-semibold transition-all ${
+                  activeCategory === null
+                    ? 'border-primary bg-primary text-primary-foreground shadow-sm'
                     : 'border-border bg-background text-foreground/80 hover:border-primary/50 hover:text-primary'
                 }`}
               >
-                {name}
+                All
               </button>
-            );
-          })}
-        </div>
-      )}
+              {categoryNames.map((name) => {
+                const isActive = activeCategory === name;
+                return (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => handleSelectCategory(name)}
+                    aria-pressed={isActive}
+                    className={`shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-xs font-semibold transition-all ${
+                      isActive
+                        ? 'border-primary bg-gradient-to-r from-primary to-primary/80 text-primary-foreground shadow-md shadow-primary/20'
+                        : 'border-border bg-background text-foreground/80 hover:border-primary/50 hover:text-primary'
+                    }`}
+                  >
+                    {name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
-      {settings.show_price_filter && priceRanges.length > 0 && (
-        <PriceRangeFilterBar
-          ranges={priceRanges}
-          activeId={activeBucket?.id ?? null}
-          onSelect={handleSelectBucket}
-          className="mb-3"
-        />
+          {settings.show_price_filter && priceRanges.length > 0 && (
+            <PriceRangeFilterBar
+              ranges={priceRanges}
+              activeId={activeBucket?.id ?? null}
+              onSelect={handleSelectBucket}
+              className={settings.show_category_filter && categoryNames.length > 0 ? '' : 'pt-1'}
+            />
+          )}
+        </div>
       )}
 
       {products.length === 0 && !loading ? (

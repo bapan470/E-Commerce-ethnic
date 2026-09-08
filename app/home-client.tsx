@@ -33,6 +33,7 @@ interface HomeClientProps {
   discoverSettings: DiscoverSectionSettings;
   discoverInitialProducts: Product[];
   discoverInitialHasMore: boolean;
+  discoverCategoryCounts: Record<string, number>;
 }
 
 export default function HomeClient({
@@ -48,6 +49,7 @@ export default function HomeClient({
   discoverSettings,
   discoverInitialProducts,
   discoverInitialHasMore,
+  discoverCategoryCounts,
 }: HomeClientProps) {
   // Explode each grid's finite pick list into one card per colour, so a
   // featured/new-arrival piece that comes in several colours shows every
@@ -335,6 +337,7 @@ export default function HomeClient({
         initialProducts={discoverInitialProducts}
         initialHasMore={discoverInitialHasMore}
         categories={categories}
+        categoryCounts={discoverCategoryCounts}
       />
 
       <PromoSlider />

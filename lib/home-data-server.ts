@@ -5,7 +5,7 @@ import { fetchPublicCollectionsServer, PublicCollectionRow } from './collections
 import { Product, CategoryRow } from './types';
 import { HomepageTile } from './homepage-tiles-api';
 import { HeroBanner } from './hero-banners-api';
-import { fetchDiscoverProductsServer, DiscoverSectionSettings, DEFAULT_DISCOVER_SETTINGS } from './discover-products-api';
+import { fetchDiscoverProductsServer, fetchDiscoverCategoryCountsServer, DiscoverSectionSettings, DEFAULT_DISCOVER_SETTINGS } from './discover-products-api';
 
 export interface HomeBanner {
   image_url: string;
@@ -33,6 +33,10 @@ export interface HomeData {
   discoverSettings: DiscoverSectionSettings;
   discoverInitialProducts: Product[];
   discoverInitialHasMore: boolean;
+  /** Category -> live product count across the whole Discover Products
+   *  set, used to hide empty category pills from that section's filter
+   *  bar (see fetchDiscoverCategoryCountsServer). */
+  discoverCategoryCounts: Record<string, number>;
 }
 
 async function fetchHomeBanner(): Promise<HomeBanner | null> {
@@ -209,6 +213,7 @@ export async function fetchHomeData(): Promise<HomeData> {
     heroBanners,
     collectionSlugById,
     discover,
+    discoverCategoryCounts,
   ] = await Promise.all([
     fetchProductsServer(),
     fetchCategoriesServer(),
@@ -219,6 +224,7 @@ export async function fetchHomeData(): Promise<HomeData> {
     fetchHeroBanners(),
     fetchCollectionSlugMap(),
     fetchHomeDiscoverProducts(),
+    fetchDiscoverCategoryCountsServer(),
   ]);
 
   const promotionCollectionSlugById = await fetchPromotionCollectionSlugMap(collectionSlugById);
@@ -236,5 +242,6 @@ export async function fetchHomeData(): Promise<HomeData> {
     discoverSettings: discover.settings,
     discoverInitialProducts: discover.products,
     discoverInitialHasMore: discover.hasMore,
+    discoverCategoryCounts,
   };
 }

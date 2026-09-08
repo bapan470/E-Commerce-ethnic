@@ -1,233 +1,451 @@
-diff --git a/app/api/cron/daily-jobs/route.ts b/app/api/cron/daily-jobs/route.ts
-index c5b474b..8d65376 100644
---- a/app/api/cron/daily-jobs/route.ts
-+++ b/app/api/cron/daily-jobs/route.ts
-@@ -11,6 +11,7 @@ import {
-   runForwardShipmentTrackingJob,
-   runResellerPayoutWindowJob,
-   runAffiliatePayoutWindowJob,
-+  runWooCommerceEnqueueJob,
- } from '@/lib/cron-jobs';
- 
- export const dynamic = 'force-dynamic';
-@@ -28,12 +29,20 @@ export const maxDuration = 60;
- // (all except vendor-order-timeout, which has its own daily cron) are
- // combined here and run one after another.
- //
--// NOTE: WooCommerce Drip (welcome + follow-up emails) is intentionally
--// NOT included here. It is triggered separately every 15 min by
--// cron-job.org hitting /api/cron/woocommerce-drip. Keeping it out of
--// this route prevents the combined 10-job execution from timing out
-+// NOTE: WooCommerce Drip's SENDING half (welcome + follow-up emails)
-+// is intentionally NOT included here. It is triggered separately every
-+// 15 min by cron-job.org hitting /api/cron/woocommerce-drip. Keeping it
-+// out of this route prevents the combined job execution from timing out
- // cron-job.org's 30s hard limit.
- //
-+// Its ENQUEUE half (scanning the customer list + queueing welcome/
-+// follow-up rows) IS included below, once/day, since that part is heavy
-+// (up to 5000+ customer rows read per run) and gains nothing from
-+// running any more often than daily -- see the comment on
-+// runWooCommerceEnqueueJob in lib/woocommerce-automation.ts. Running it
-+// here instead of on every 15-min tick is what stopped this feature
-+// from burning through the Supabase free-tier egress quota.
-+//
- // Each job is wrapped in try/catch so one failing job doesn't stop the
- // others from running. See vercel.json for the schedule and
- // lib/cron-jobs.ts for the actual job logic (unchanged from before).
-@@ -69,6 +78,12 @@ export async function GET(req: Request) {
-     results.emailAutomation = { error: err?.message || 'Failed' };
-   }
- 
-+  try {
-+    results.wooCommerceEnqueue = await runWooCommerceEnqueueJob();
-+  } catch (err: any) {
-+    results.wooCommerceEnqueue = { error: err?.message || 'Failed' };
-+  }
-+
-   try {
-     results.vendorReturnTimers = await runVendorReturnTimersJob();
-   } catch (err: any) {
-diff --git a/app/api/cron/woocommerce-drip/route.ts b/app/api/cron/woocommerce-drip/route.ts
-index 8253174..aa16b07 100644
---- a/app/api/cron/woocommerce-drip/route.ts
-+++ b/app/api/cron/woocommerce-drip/route.ts
-@@ -1,17 +1,17 @@
- import { NextResponse } from 'next/server';
--import { runWooCommerceDripJob } from '@/lib/cron-jobs';
-+import { runWooCommerceSendJob } from '@/lib/cron-jobs';
- 
- export const dynamic = 'force-dynamic';
--// Vercel Hobby budget: 60s. Enqueue step (DB reads/writes for 27k+ customers)
--// alone can take 5-15s, leaving ~45s for the actual send loop (12 emails * ~3s
--// each = ~36s). Keep MAX_SEND_PER_RUN at 12 so this comfortably fits under 60s
--// even with Vercel cold-start overhead.
-+// Send-only now (see comment below) -- 8 emails * ~1.5s each is well under
-+// 30s, this budget is just headroom for cold starts / a slow ZeptoMail call.
- export const maxDuration = 60;
- 
--// Also run automatically as part of /api/cron/daily-jobs (once/day, see
--// vercel.json). This route is kept so the admin/dev can trigger the
--// welcome/follow-up drip manually — useful right after turning the
--// automation toggle on, instead of waiting for the next scheduled tick.
-+// SEND-ONLY. The heavy enqueue step (scanning the 27k+ customer table)
-+// now runs once/day from /api/cron/daily-jobs -> runWooCommerceEnqueueJob
-+// instead of here. This route only works the already-built queue (a
-+// handful of rows), which is cheap enough to hit every 15 min without
-+// burning through Supabase's free-tier egress quota the way the old
-+// combined enqueue+send job did.
- //
- // Cron-job.org triggers this every 15 min (during the 1hr send window)
- // with a Bearer token. Max timeout on cron-job.org is 30s — the function
-@@ -28,10 +28,10 @@ export async function GET(req: Request) {
-   }
- 
-   try {
--    const result = await runWooCommerceDripJob();
-+    const result = await runWooCommerceSendJob();
-     return NextResponse.json({ success: true, ...result });
-   } catch (err) {
--    const message = err instanceof Error ? err.message : 'Failed to run WooCommerce drip job';
-+    const message = err instanceof Error ? err.message : 'Failed to run WooCommerce send job';
-     return NextResponse.json({ error: message }, { status: 500 });
-   }
- }
-diff --git a/lib/cron-jobs.ts b/lib/cron-jobs.ts
-index 5135880..ee94624 100644
---- a/lib/cron-jobs.ts
-+++ b/lib/cron-jobs.ts
-@@ -37,7 +37,11 @@ import { publishVendorProductWithAI } from '@/lib/vendor-ai-listing';
- import { checkPickupStatusForReturn, getReturnAutomationMode } from '@/lib/return-automation';
- import { trackDelhiveryShipment } from '@/lib/delhivery-api';
- import { recordReturnRiskIncident } from '@/lib/return-risk-api';
--import { runWooCommerceDripJob as runWooCommerceDripJobImpl } from '@/lib/woocommerce-automation';
-+import {
-+  runWooCommerceDripJob as runWooCommerceDripJobImpl,
-+  runWooCommerceEnqueueJob as runWooCommerceEnqueueJobImpl,
-+  runWooCommerceSendJob as runWooCommerceSendJobImpl,
-+} from '@/lib/woocommerce-automation';
- import {
-   sendArrivingNotification,
-   sendOutForDeliveryNotification,
-@@ -53,6 +57,20 @@ export async function runWooCommerceDripJob() {
-   return runWooCommerceDripJobImpl();
+diff --git a/app/home-client.tsx b/app/home-client.tsx
+index 7da3c9f..11160bd 100644
+--- a/app/home-client.tsx
++++ b/app/home-client.tsx
+@@ -33,6 +33,7 @@ interface HomeClientProps {
+   discoverSettings: DiscoverSectionSettings;
+   discoverInitialProducts: Product[];
+   discoverInitialHasMore: boolean;
++  discoverCategoryCounts: Record<string, number>;
  }
  
-+// Heavy (scans up to 5000+ customer rows) -- called ONCE/DAY from
-+// app/api/cron/daily-jobs. Do not wire this into the 15-min external
-+// cron; see the comment on runWooCommerceEnqueueJob in
-+// lib/woocommerce-automation.ts for why.
-+export async function runWooCommerceEnqueueJob() {
-+  return runWooCommerceEnqueueJobImpl();
-+}
-+
-+// Cheap (only touches already-queued rows) -- safe to call every 15 min.
-+// This is what app/api/cron/woocommerce-drip (hit by cron-job.org) uses.
-+export async function runWooCommerceSendJob(force = false) {
-+  return runWooCommerceSendJobImpl(force);
-+}
-+
- // ----------------------------- Abandoned carts -----------------------------
- // Sends up to 3 recovery emails per cart (a "sequence"), instead of the
- // single one-off email this job used to send. Which steps are enabled,
-diff --git a/lib/woocommerce-automation.ts b/lib/woocommerce-automation.ts
-index 238a41b..9e9b758 100644
---- a/lib/woocommerce-automation.ts
-+++ b/lib/woocommerce-automation.ts
-@@ -284,21 +284,28 @@ function isWithinPreferredSendWindow(sendHourIST: number): boolean {
+ export default function HomeClient({
+@@ -48,6 +49,7 @@ export default function HomeClient({
+   discoverSettings,
+   discoverInitialProducts,
+   discoverInitialHasMore,
++  discoverCategoryCounts,
+ }: HomeClientProps) {
+   // Explode each grid's finite pick list into one card per colour, so a
+   // featured/new-arrival piece that comes in several colours shows every
+@@ -335,6 +337,7 @@ export default function HomeClient({
+         initialProducts={discoverInitialProducts}
+         initialHasMore={discoverInitialHasMore}
+         categories={categories}
++        categoryCounts={discoverCategoryCounts}
+       />
+ 
+       <PromoSlider />
+diff --git a/app/page.tsx b/app/page.tsx
+index 2cdd83c..cc8faef 100644
+--- a/app/page.tsx
++++ b/app/page.tsx
+@@ -107,6 +107,7 @@ export default async function Home() {
+         discoverSettings={homeData.discoverSettings}
+         discoverInitialProducts={homeData.discoverInitialProducts}
+         discoverInitialHasMore={homeData.discoverInitialHasMore}
++        discoverCategoryCounts={homeData.discoverCategoryCounts}
+       />
+     </>
+   );
+diff --git a/components/home/discover-products-section.tsx b/components/home/discover-products-section.tsx
+index 518f3d6..e2d213f 100644
+--- a/components/home/discover-products-section.tsx
++++ b/components/home/discover-products-section.tsx
+@@ -18,6 +18,11 @@ interface DiscoverProductsSectionProps {
+   initialProducts: Product[];
+   initialHasMore: boolean;
+   categories: CategoryRow[];
++  /** Category name -> live product count across the whole Discover
++   *  Products set (see fetchDiscoverCategoryCountsServer). Categories
++   *  with a zero (or missing) count are hidden from the filter bar below
++   *  so a shopper can never tap a pill straight into an empty grid. */
++  categoryCounts?: Record<string, number>;
  }
  
- // ---------------------------------------------------------------------
--// Main job, called once/day from lib/cron-jobs.ts -> runWooCommerceDripJob.
--// `force`: skip the preferred-send-hour check (used by the admin's "Run
--// Now" button, which means "send immediately, I know what I'm doing").
-+// STEP A -- ENQUEUE ONLY (no sending).
-+//
-+// Scans up to 5000 customer rows plus two up-to-5000-row .in() lookups.
-+// That's fine to run ONCE A DAY (called from app/api/cron/daily-jobs,
-+// itself only triggered once/day -- Vercel Hobby's cron limit) but it
-+// must NOT be called from the 15-min external cron (woocommerce-drip
-+// route) any more. It used to be: every 15-min tick re-ran this full
-+// scan (96x/day), and almost every one of those found nothing new to
-+// queue (the skip-if-already-queued check just discarded the read) --
-+// pure wasted Supabase egress/bandwidth against the free-tier quota.
-+// Splitting the rare, heavy "enqueue" step from the frequent, cheap
-+// "send" step (STEP B below) is the fix.
- // ---------------------------------------------------------------------
--export async function runWooCommerceDripJob(force = false) {
-+export async function runWooCommerceEnqueueJob() {
-   const supabase = getSupabaseAdmin();
-   const settings = await fetchDripSettings(supabase);
-   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || '').replace(/\/$/, '');
+ /**
+@@ -33,6 +38,7 @@ export default function DiscoverProductsSection({
+   initialProducts,
+   initialHasMore,
+   categories,
++  categoryCounts,
+ }: DiscoverProductsSectionProps) {
+   // Hidden entirely when the admin has switched the section off, or when
+   // it's in Manual mode with zero active picks — same "return null" guard
+@@ -116,7 +122,19 @@ export default function DiscoverProductsSection({
+     return () => observer.disconnect();
+   }, [hidden, hasMore, loading, page, activeCategory, activeBucket, runFetch]);
  
-   if (!settings.enabled) {
--    return { skipped: true, reason: 'automation is off' };
-+    return { skipped: true, reason: 'automation is off', welcomeQueued: 0, followupQueued: 0 };
-   }
+-  const categoryNames = useMemo(() => categories.map((c) => c.name), [categories]);
++  // Hide any category pill that has zero products in the Discover set —
++  // without this, a shopper could tap a category and land on "No products
++  // match these filters right now" (see the screenshot this was reported
++  // from: "Blouse Pieces" had no live products but still showed a pill).
++  // When categoryCounts hasn't loaded (undefined), fall back to showing
++  // every category rather than hiding everything.
++  const categoryNames = useMemo(
++    () =>
++      categories
++        .map((c) => c.name)
++        .filter((name) => !categoryCounts || (categoryCounts[name] ?? 0) > 0),
++    [categories, categoryCounts]
++  );
  
--  const dailyCap = Math.max(1, Number(settings.dailySendCap) || 50);
--
-   // --- 1. Enqueue welcome emails for customers who don't have one yet ---
-   const { data: candidates } = await supabase
-     .from('woocommerce_customers')
-@@ -426,6 +433,34 @@ export async function runWooCommerceDripJob(force = false) {
-     }
-   }
+   if (hidden) return null;
  
-+  return { welcomeQueued, followupQueued };
-+}
-+
-+// ---------------------------------------------------------------------
-+// STEP B -- WORK THE QUEUE (send only).
-+//
-+// Only reads/writes a handful of already-queued rows -- never touches
-+// the 27k+ row customer table. Safe (and intended) to hit every 15 min:
-+// this is what app/api/cron/woocommerce-drip/route.ts calls, triggered
-+// by cron-job.org. Running it often costs almost nothing against
-+// Supabase's free-tier egress, unlike STEP A above.
-+//
-+// `force`: skip the preferred-send-hour check (used by the admin's "Run
-+// Now" button, which means "send immediately, I know what I'm doing").
-+// ---------------------------------------------------------------------
-+export async function runWooCommerceSendJob(force = false) {
-+  const supabase = getSupabaseAdmin();
-+  const settings = await fetchDripSettings(supabase);
-+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || '').replace(/\/$/, '');
-+
-+  if (!settings.enabled) {
-+    return { skipped: true, reason: 'automation is off' };
-+  }
-+
-+  const dailyCap = Math.max(1, Number(settings.dailySendCap) || 50);
-+  const welcomeQueued = 0;
-+  const followupQueued = 0;
-+
-   // --- 3. How much of today's cap is already used (manual immediate sends included) ---
-   const todayStart = new Date();
-   todayStart.setHours(0, 0, 0, 0);
-@@ -522,3 +557,25 @@ export async function runWooCommerceDripJob(force = false) {
+@@ -130,48 +148,59 @@ export default function DiscoverProductsSection({
+       )}
+       {!settings.subtitle && <div className="mb-3" />}
  
-   return { welcomeQueued, followupQueued, sent, failed, skipped };
- }
+-      {settings.show_category_filter && categoryNames.length > 0 && (
+-        <div className="mb-3 flex gap-2.5 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+-          <button
+-            type="button"
+-            onClick={() => handleSelectCategory(null)}
+-            aria-pressed={activeCategory === null}
+-            className={`shrink-0 rounded-full border px-4 py-2 text-xs font-semibold transition-all ${
+-              activeCategory === null
+-                ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+-                : 'border-border bg-background text-foreground/80 hover:border-primary/50 hover:text-primary'
+-            }`}
+-          >
+-            All
+-          </button>
+-          {categoryNames.map((name) => {
+-            const isActive = activeCategory === name;
+-            return (
++      {((settings.show_category_filter && categoryNames.length > 0) ||
++        (settings.show_price_filter && priceRanges.length > 0)) && (
++        // Pinned just under the site header while the shopper scrolls past
++        // this section, same "top-12 matches header's h-12" convention the
++        // Shop page's category row uses (see app/shop/shop-content.tsx) —
++        // so switching category/price filter never needs scrolling back up
++        // to find the pills again, especially useful on mobile where this
++        // section can run several screens tall.
++        <div className="sticky top-12 z-30 -mx-4 border-b border-border/60 bg-background/95 px-4 pb-3 pt-2 backdrop-blur-sm sm:mx-0 sm:border-none sm:bg-transparent sm:px-0 sm:pt-0 sm:backdrop-blur-none">
++          {settings.show_category_filter && categoryNames.length > 0 && (
++            <div className="flex gap-2.5 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+               <button
+-                key={name}
+                 type="button"
+-                onClick={() => handleSelectCategory(name)}
+-                aria-pressed={isActive}
+-                className={`shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-xs font-semibold transition-all ${
+-                  isActive
+-                    ? 'border-primary bg-gradient-to-r from-primary to-primary/80 text-primary-foreground shadow-md shadow-primary/20'
++                onClick={() => handleSelectCategory(null)}
++                aria-pressed={activeCategory === null}
++                className={`shrink-0 rounded-full border px-4 py-2 text-xs font-semibold transition-all ${
++                  activeCategory === null
++                    ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                     : 'border-border bg-background text-foreground/80 hover:border-primary/50 hover:text-primary'
+                 }`}
+               >
+-                {name}
++                All
+               </button>
+-            );
+-          })}
+-        </div>
+-      )}
++              {categoryNames.map((name) => {
++                const isActive = activeCategory === name;
++                return (
++                  <button
++                    key={name}
++                    type="button"
++                    onClick={() => handleSelectCategory(name)}
++                    aria-pressed={isActive}
++                    className={`shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-xs font-semibold transition-all ${
++                      isActive
++                        ? 'border-primary bg-gradient-to-r from-primary to-primary/80 text-primary-foreground shadow-md shadow-primary/20'
++                        : 'border-border bg-background text-foreground/80 hover:border-primary/50 hover:text-primary'
++                    }`}
++                  >
++                    {name}
++                  </button>
++                );
++              })}
++            </div>
++          )}
+ 
+-      {settings.show_price_filter && priceRanges.length > 0 && (
+-        <PriceRangeFilterBar
+-          ranges={priceRanges}
+-          activeId={activeBucket?.id ?? null}
+-          onSelect={handleSelectBucket}
+-          className="mb-3"
+-        />
++          {settings.show_price_filter && priceRanges.length > 0 && (
++            <PriceRangeFilterBar
++              ranges={priceRanges}
++              activeId={activeBucket?.id ?? null}
++              onSelect={handleSelectBucket}
++              className={settings.show_category_filter && categoryNames.length > 0 ? '' : 'pt-1'}
++            />
++          )}
++        </div>
+       )}
+ 
+       {products.length === 0 && !loading ? (
+diff --git a/components/product/discover-quick-view.tsx b/components/product/discover-quick-view.tsx
+index 451787a..7d0a87d 100644
+--- a/components/product/discover-quick-view.tsx
++++ b/components/product/discover-quick-view.tsx
+@@ -1,6 +1,6 @@
+ 'use client';
+ 
+-import { useEffect, useMemo, useState } from 'react';
++import { useEffect, useMemo, useRef, useState } from 'react';
+ import Link from 'next/link';
+ import Image from 'next/image';
+ import { Loader2 } from 'lucide-react';
+@@ -129,12 +129,104 @@ export default function DiscoverQuickView({ product, onClose }: DiscoverQuickVie
+   const img =
+     toPublicMediaUrl(activeProduct.images[0]) || 'https://placehold.co/800x1000?text=No+Image';
+ 
++  // Drag-down-to-close on mobile, same touch-handler pattern the cart
++  // drawer uses for its horizontal swipe (see components/cart-drawer.tsx)
++  // but vertical here since this sheet slides up from the bottom. Only
++  // engages once a touch clearly moves more vertically-downward than
++  // horizontally, so a horizontal image swipe or a normal vertical scroll
++  // of the sheet's own content is never hijacked — and dragging is
++  // ignored entirely once the sheet content itself has been scrolled
++  // down, so it doesn't fight the scroll.
++  const panelRef = useRef<HTMLDivElement | null>(null);
++  const dragRef = useRef<{
++    startX: number;
++    startY: number;
++    lastY: number;
++    lastT: number;
++    velocity: number;
++    mode: 'undecided' | 'vertical' | 'horizontal';
++  } | null>(null);
 +
-+// ---------------------------------------------------------------------
-+// Combined convenience wrapper: enqueue THEN send, in one call. Kept for
-+// the admin's "Run Now" button (see
-+// app/api/admin/woocommerce-import/automation/route.ts) where a full
-+// immediate cycle is wanted on demand.
-+//
-+// NEITHER cron route uses this any more -- app/api/cron/daily-jobs calls
-+// runWooCommerceEnqueueJob() once/day, and app/api/cron/woocommerce-drip
-+// (hit every 15 min by cron-job.org) calls runWooCommerceSendJob(). See
-+// the comments on those two functions above for why they were split.
-+// ---------------------------------------------------------------------
-+export async function runWooCommerceDripJob(force = false) {
-+  const enqueueResult = await runWooCommerceEnqueueJob();
-+  const sendResult = await runWooCommerceSendJob(force);
-+  const { welcomeQueued: _wq, followupQueued: _fq, ...sendRest } = sendResult as Record<string, unknown>;
-+  return {
-+    welcomeQueued: (enqueueResult as any).welcomeQueued ?? 0,
-+    followupQueued: (enqueueResult as any).followupQueued ?? 0,
-+    ...sendRest,
++  const onTouchStart = (e: React.TouchEvent) => {
++    const panel = panelRef.current;
++    if (panel && panel.scrollTop > 0) return;
++    const t = e.touches[0];
++    dragRef.current = {
++      startX: t.clientX,
++      startY: t.clientY,
++      lastY: t.clientY,
++      lastT: Date.now(),
++      velocity: 0,
++      mode: 'undecided',
++    };
 +  };
++
++  const onTouchMove = (e: React.TouchEvent) => {
++    const drag = dragRef.current;
++    if (!drag) return;
++    const t = e.touches[0];
++    const dx = t.clientX - drag.startX;
++    const dy = t.clientY - drag.startY;
++
++    if (drag.mode === 'undecided') {
++      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
++      drag.mode = Math.abs(dy) > Math.abs(dx) && dy > 0 ? 'vertical' : 'horizontal';
++    }
++    if (drag.mode !== 'vertical') return;
++
++    e.preventDefault();
++    const now = Date.now();
++    const dt = now - drag.lastT;
++    if (dt > 0) drag.velocity = (t.clientY - drag.lastY) / dt;
++    drag.lastY = t.clientY;
++    drag.lastT = now;
++
++    const translate = Math.max(0, dy);
++    if (panelRef.current) {
++      panelRef.current.style.transition = 'none';
++      panelRef.current.style.transform = `translateY(${translate}px)`;
++    }
++  };
++
++  const onTouchEnd = () => {
++    const drag = dragRef.current;
++    dragRef.current = null;
++    if (!drag || drag.mode !== 'vertical' || !panelRef.current) return;
++
++    const dy = Math.max(0, drag.lastY - drag.startY);
++    const panelHeight = panelRef.current.offsetHeight || 1;
++    const shouldClose = dy > panelHeight * 0.25 || drag.velocity > 0.5;
++
++    if (shouldClose) {
++      // Hand off to Radix's own close animation instead of fighting it
++      // with our inline transform.
++      panelRef.current.style.transition = '';
++      panelRef.current.style.transform = '';
++      onClose();
++    } else {
++      panelRef.current.style.transition = 'transform 200ms ease';
++      panelRef.current.style.transform = 'translateY(0px)';
++    }
++  };
++
+   return (
+     <Sheet open onOpenChange={(open) => !open && onClose()}>
+       <SheetContent
++        ref={panelRef}
+         side="bottom"
++        onTouchStart={onTouchStart}
++        onTouchMove={onTouchMove}
++        onTouchEnd={onTouchEnd}
++        onTouchCancel={onTouchEnd}
+         className="inset-x-0 bottom-0 max-h-[88vh] overflow-y-auto rounded-t-2xl p-0 sm:inset-x-auto sm:left-1/2 sm:top-1/2 sm:bottom-auto sm:max-h-[85vh] sm:w-full sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:border sm:shadow-xl sm:data-[state=open]:slide-in-from-bottom-0"
+       >
++        {/* Drag handle — a visual affordance on mobile signalling the sheet
++            can be dragged closed, matching the pattern shoppers already
++            know from native bottom sheets. Hidden on desktop, where this
++            renders as a centred dialog instead. */}
++        <div className="flex justify-center pb-1 pt-2 sm:hidden">
++          <span className="h-1 w-10 rounded-full bg-border" />
++        </div>
+         <div className="flex flex-col">
+           <div className="relative aspect-[4/5] w-full overflow-hidden bg-muted">
+             <Image
+@@ -192,9 +284,14 @@ export default function DiscoverQuickView({ product, onClose }: DiscoverQuickVie
+                     </span>
+                   )}
+                 </p>
++                {/* Each colour's own product photo instead of a plain colour
++                    dot — a shopper can see exactly what that variation
++                    looks like before tapping it, instead of guessing from a
++                    swatch (which is unreadable for prints/patterns anyway). */}
+                 <div className="flex flex-wrap gap-2">
+                   {swatchVariants.map((v) => {
+                     const isActive = v.slug === activeProduct.slug;
++                    const thumb = toPublicMediaUrl(v.image || undefined);
+                     return (
+                       <button
+                         key={v.slug}
+@@ -202,13 +299,27 @@ export default function DiscoverQuickView({ product, onClose }: DiscoverQuickVie
+                         title={v.color}
+                         aria-label={`View in ${v.color}`}
+                         onClick={() => handleSelectColor(v)}
+-                        className={`h-6 w-6 shrink-0 rounded-full border-2 transition-transform hover:scale-110 ${
++                        className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 transition-transform hover:scale-105 ${
+                           isActive
+                             ? 'border-primary ring-2 ring-primary/25 ring-offset-1'
+                             : 'border-border/70'
+                         }`}
+-                        style={{ backgroundColor: v.color.toLowerCase().replace(/\s+/g, '') }}
+-                      />
++                      >
++                        {thumb ? (
++                          <Image
++                            src={thumb}
++                            alt={v.color}
++                            fill
++                            sizes="56px"
++                            className="object-cover"
++                          />
++                        ) : (
++                          <span
++                            className="block h-full w-full"
++                            style={{ backgroundColor: v.color.toLowerCase().replace(/\s+/g, '') }}
++                          />
++                        )}
++                      </button>
+                     );
+                   })}
+                 </div>
+diff --git a/lib/discover-products-api.ts b/lib/discover-products-api.ts
+index 5c64f84..baddd0a 100644
+--- a/lib/discover-products-api.ts
++++ b/lib/discover-products-api.ts
+@@ -216,6 +216,56 @@ export async function fetchDiscoverProductsServer(
+   return { products, hasMore, settings };
+ }
+ 
++/**
++ * Category -> live product count across the *entire* eligible Discover
++ * Products set (auto-mode's in-stock/live catalog, or manual mode's active
++ * picks) — ignores the category/price filters themselves, same way
++ * home-client.tsx's `categoryCounts` ignores the "Shop by Category" row's
++ * own filters. Used to hide any category pill from the Discover section's
++ * filter bar that would otherwise land the shopper on an empty grid (see
++ * DiscoverProductsSection's `visibleCategoryNames`).
++ */
++export async function fetchDiscoverCategoryCountsServer(): Promise<Record<string, number>> {
++  const { getServerSupabase } = await import('@/lib/supabase-server');
++  const db = getServerSupabase();
++  const settings = await fetchDiscoverSettingsAdminServer();
++  const counts: Record<string, number> = {};
++
++  try {
++    if (settings.mode === 'manual') {
++      const { data, error } = await db
++        .from('discover_picks')
++        .select('products!inner(category_name, approval_status)')
++        .eq('is_active', true)
++        .eq('products.approval_status', 'live');
++      if (error) throw error;
++      for (const row of (data ?? []) as any[]) {
++        const name = row.products?.category_name as string | undefined;
++        if (!name) continue;
++        counts[name] = (counts[name] ?? 0) + 1;
++      }
++      return counts;
++    }
++
++    const { data, error } = await db
++      .from('products')
++      .select('category_name')
++      .eq('approval_status', 'live')
++      .eq('in_stock', true);
++    if (error) throw error;
++    for (const row of (data ?? []) as any[]) {
++      const name = row.category_name as string | undefined;
++      if (!name) continue;
++      counts[name] = (counts[name] ?? 0) + 1;
++    }
++    return counts;
++  } catch {
++    // Fail quiet — an empty map just means the filter bar shows every
++    // category, same as before this feature existed.
++    return {};
++  }
 +}
++
+ /** Server-side settings read (service-role bypasses the anon RLS read,
+  *  and this needs to work even before the storefront anon-write policy
+  *  exists for this key on a fresh DB). Falls back to the client-safe
+diff --git a/lib/home-data-server.ts b/lib/home-data-server.ts
+index 508feba..6987232 100644
+--- a/lib/home-data-server.ts
++++ b/lib/home-data-server.ts
+@@ -5,7 +5,7 @@ import { fetchPublicCollectionsServer, PublicCollectionRow } from './collections
+ import { Product, CategoryRow } from './types';
+ import { HomepageTile } from './homepage-tiles-api';
+ import { HeroBanner } from './hero-banners-api';
+-import { fetchDiscoverProductsServer, DiscoverSectionSettings, DEFAULT_DISCOVER_SETTINGS } from './discover-products-api';
++import { fetchDiscoverProductsServer, fetchDiscoverCategoryCountsServer, DiscoverSectionSettings, DEFAULT_DISCOVER_SETTINGS } from './discover-products-api';
+ 
+ export interface HomeBanner {
+   image_url: string;
+@@ -33,6 +33,10 @@ export interface HomeData {
+   discoverSettings: DiscoverSectionSettings;
+   discoverInitialProducts: Product[];
+   discoverInitialHasMore: boolean;
++  /** Category -> live product count across the whole Discover Products
++   *  set, used to hide empty category pills from that section's filter
++   *  bar (see fetchDiscoverCategoryCountsServer). */
++  discoverCategoryCounts: Record<string, number>;
+ }
+ 
+ async function fetchHomeBanner(): Promise<HomeBanner | null> {
+@@ -209,6 +213,7 @@ export async function fetchHomeData(): Promise<HomeData> {
+     heroBanners,
+     collectionSlugById,
+     discover,
++    discoverCategoryCounts,
+   ] = await Promise.all([
+     fetchProductsServer(),
+     fetchCategoriesServer(),
+@@ -219,6 +224,7 @@ export async function fetchHomeData(): Promise<HomeData> {
+     fetchHeroBanners(),
+     fetchCollectionSlugMap(),
+     fetchHomeDiscoverProducts(),
++    fetchDiscoverCategoryCountsServer(),
+   ]);
+ 
+   const promotionCollectionSlugById = await fetchPromotionCollectionSlugMap(collectionSlugById);
+@@ -236,5 +242,6 @@ export async function fetchHomeData(): Promise<HomeData> {
+     discoverSettings: discover.settings,
+     discoverInitialProducts: discover.products,
+     discoverInitialHasMore: discover.hasMore,
++    discoverCategoryCounts,
+   };
+ }

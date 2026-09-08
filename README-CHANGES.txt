@@ -1,44 +1,40 @@
-CHANGES — Vendor Dashboard: "Products" tab with Add Product inside it
-========================================================================
+Changed files (6) — copy these into your repo at the same paths, then commit & push:
 
-WHAT CHANGED
-------------
-1. components/vendor/sidebar-nav.tsx
-   - Sidebar item "Add Product" replaced with "Products"
-     (now points to /vendor/dashboard/products)
+  lib/discover-products-api.ts        (edited)
+  lib/home-data-server.ts             (edited)
+  app/page.tsx                        (edited)
+  app/home-client.tsx                 (edited)
+  components/home/discover-products-section.tsx   (edited)
+  components/product/discover-quick-view.tsx       (edited)
 
-2. app/vendor/dashboard/products/page.tsx   [NEW FILE]
-   - New "Products" tab page — lists ALL your products (not just
-     recent 5) with status badges, and has an "Add Product" button
-     at the top that opens the add-product form.
+What changed:
 
-3. app/vendor/dashboard/products/add-product/page.tsx   [MOVED]
-   - This is the same Add Product form that used to live at
-     app/vendor/dashboard/add-product/page.tsx.
-   - It has been MOVED to app/vendor/dashboard/products/add-product/page.tsx
-     so it lives inside the Products section (URL:
-     /vendor/dashboard/products/add-product).
-   - Its "back" link now points to the Products tab instead of the
-     main dashboard.
+1) Empty categories hidden from "Discover Products For You" filter pills
+   - lib/discover-products-api.ts: new fetchDiscoverCategoryCountsServer()
+     counts live products per category across the whole Discover set.
+   - lib/home-data-server.ts, app/page.tsx, app/home-client.tsx: wire that
+     count map through to the section as `discoverCategoryCounts`.
+   - components/home/discover-products-section.tsx: category pills with a
+     zero count are filtered out of the bar entirely.
 
-4. app/vendor/dashboard/page.tsx
-   - "Add Product" button and "Your Products" card links updated to
-     point to the new /vendor/dashboard/products routes.
+2) Category/price filter bar goes sticky under the header on scroll (mobile)
+   - components/home/discover-products-section.tsx: the filter-pill wrapper
+     is now `sticky top-12` (matches the site header's height) with a
+     blurred background, same pattern the /shop page's category row uses.
 
-HOW TO APPLY (IMPORTANT — includes a delete step)
---------------------------------------------------
-1. Copy/replace these files into your project at the SAME paths:
-     app/vendor/dashboard/page.tsx
-     app/vendor/dashboard/products/page.tsx
-     app/vendor/dashboard/products/add-product/page.tsx
-     components/vendor/sidebar-nav.tsx
+3) Quick View popup: colour picker now shows each variation's own photo
+   instead of a plain colour dot
+   - components/product/discover-quick-view.tsx: swatch buttons render a
+     56x56 thumbnail of that colour's product image (falls back to a
+     colour dot only if that variant has no image).
 
-2. DELETE the old file/folder (it has moved, so this old path must
-   not remain or you'll have a duplicate/orphan route):
-     app/vendor/dashboard/add-product/         (delete this whole folder)
+4) Quick View popup: drag-down-to-close on mobile, in addition to the X
+   - components/product/discover-quick-view.tsx: added touch handlers
+     (same technique as the cart drawer's swipe-to-close) so dragging the
+     sheet down past ~25% of its height, or a fast flick, closes it. The
+     existing X button still works as before. A small drag handle bar was
+     also added at the top on mobile as a visual affordance.
 
-3. git add -A
-   git commit -m "Vendor dashboard: move Add Product inside Products tab"
-   git push
-
-That's it — no other files were touched.
+CHANGES.diff is the full unified diff of these edits against the repo you
+cloned, if you'd rather apply it with `git apply CHANGES.diff` instead of
+copying files by hand.

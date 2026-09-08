@@ -216,6 +216,56 @@ export async function fetchDiscoverProductsServer(
   return { products, hasMore, settings };
 }
 
+/**
+ * Category -> live product count across the *entire* eligible Discover
+ * Products set (auto-mode's in-stock/live catalog, or manual mode's active
+ * picks) — ignores the category/price filters themselves, same way
+ * home-client.tsx's `categoryCounts` ignores the "Shop by Category" row's
+ * own filters. Used to hide any category pill from the Discover section's
+ * filter bar that would otherwise land the shopper on an empty grid (see
+ * DiscoverProductsSection's `visibleCategoryNames`).
+ */
+export async function fetchDiscoverCategoryCountsServer(): Promise<Record<string, number>> {
+  const { getServerSupabase } = await import('@/lib/supabase-server');
+  const db = getServerSupabase();
+  const settings = await fetchDiscoverSettingsAdminServer();
+  const counts: Record<string, number> = {};
+
+  try {
+    if (settings.mode === 'manual') {
+      const { data, error } = await db
+        .from('discover_picks')
+        .select('products!inner(category_name, approval_status)')
+        .eq('is_active', true)
+        .eq('products.approval_status', 'live');
+      if (error) throw error;
+      for (const row of (data ?? []) as any[]) {
+        const name = row.products?.category_name as string | undefined;
+        if (!name) continue;
+        counts[name] = (counts[name] ?? 0) + 1;
+      }
+      return counts;
+    }
+
+    const { data, error } = await db
+      .from('products')
+      .select('category_name')
+      .eq('approval_status', 'live')
+      .eq('in_stock', true);
+    if (error) throw error;
+    for (const row of (data ?? []) as any[]) {
+      const name = row.category_name as string | undefined;
+      if (!name) continue;
+      counts[name] = (counts[name] ?? 0) + 1;
+    }
+    return counts;
+  } catch {
+    // Fail quiet — an empty map just means the filter bar shows every
+    // category, same as before this feature existed.
+    return {};
+  }
+}
+
 /** Server-side settings read (service-role bypasses the anon RLS read,
  *  and this needs to work even before the storefront anon-write policy
  *  exists for this key on a fresh DB). Falls back to the client-safe

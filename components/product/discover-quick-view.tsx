@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Loader2 } from 'lucide-react';
@@ -129,12 +129,104 @@ export default function DiscoverQuickView({ product, onClose }: DiscoverQuickVie
   const img =
     toPublicMediaUrl(activeProduct.images[0]) || 'https://placehold.co/800x1000?text=No+Image';
 
+  // Drag-down-to-close on mobile, same touch-handler pattern the cart
+  // drawer uses for its horizontal swipe (see components/cart-drawer.tsx)
+  // but vertical here since this sheet slides up from the bottom. Only
+  // engages once a touch clearly moves more vertically-downward than
+  // horizontally, so a horizontal image swipe or a normal vertical scroll
+  // of the sheet's own content is never hijacked — and dragging is
+  // ignored entirely once the sheet content itself has been scrolled
+  // down, so it doesn't fight the scroll.
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{
+    startX: number;
+    startY: number;
+    lastY: number;
+    lastT: number;
+    velocity: number;
+    mode: 'undecided' | 'vertical' | 'horizontal';
+  } | null>(null);
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    const panel = panelRef.current;
+    if (panel && panel.scrollTop > 0) return;
+    const t = e.touches[0];
+    dragRef.current = {
+      startX: t.clientX,
+      startY: t.clientY,
+      lastY: t.clientY,
+      lastT: Date.now(),
+      velocity: 0,
+      mode: 'undecided',
+    };
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const t = e.touches[0];
+    const dx = t.clientX - drag.startX;
+    const dy = t.clientY - drag.startY;
+
+    if (drag.mode === 'undecided') {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      drag.mode = Math.abs(dy) > Math.abs(dx) && dy > 0 ? 'vertical' : 'horizontal';
+    }
+    if (drag.mode !== 'vertical') return;
+
+    e.preventDefault();
+    const now = Date.now();
+    const dt = now - drag.lastT;
+    if (dt > 0) drag.velocity = (t.clientY - drag.lastY) / dt;
+    drag.lastY = t.clientY;
+    drag.lastT = now;
+
+    const translate = Math.max(0, dy);
+    if (panelRef.current) {
+      panelRef.current.style.transition = 'none';
+      panelRef.current.style.transform = `translateY(${translate}px)`;
+    }
+  };
+
+  const onTouchEnd = () => {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    if (!drag || drag.mode !== 'vertical' || !panelRef.current) return;
+
+    const dy = Math.max(0, drag.lastY - drag.startY);
+    const panelHeight = panelRef.current.offsetHeight || 1;
+    const shouldClose = dy > panelHeight * 0.25 || drag.velocity > 0.5;
+
+    if (shouldClose) {
+      // Hand off to Radix's own close animation instead of fighting it
+      // with our inline transform.
+      panelRef.current.style.transition = '';
+      panelRef.current.style.transform = '';
+      onClose();
+    } else {
+      panelRef.current.style.transition = 'transform 200ms ease';
+      panelRef.current.style.transform = 'translateY(0px)';
+    }
+  };
+
   return (
     <Sheet open onOpenChange={(open) => !open && onClose()}>
       <SheetContent
+        ref={panelRef}
         side="bottom"
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onTouchCancel={onTouchEnd}
         className="inset-x-0 bottom-0 max-h-[88vh] overflow-y-auto rounded-t-2xl p-0 sm:inset-x-auto sm:left-1/2 sm:top-1/2 sm:bottom-auto sm:max-h-[85vh] sm:w-full sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:border sm:shadow-xl sm:data-[state=open]:slide-in-from-bottom-0"
       >
+        {/* Drag handle — a visual affordance on mobile signalling the sheet
+            can be dragged closed, matching the pattern shoppers already
+            know from native bottom sheets. Hidden on desktop, where this
+            renders as a centred dialog instead. */}
+        <div className="flex justify-center pb-1 pt-2 sm:hidden">
+          <span className="h-1 w-10 rounded-full bg-border" />
+        </div>
         <div className="flex flex-col">
           <div className="relative aspect-[4/5] w-full overflow-hidden bg-muted">
             <Image
@@ -192,9 +284,14 @@ export default function DiscoverQuickView({ product, onClose }: DiscoverQuickVie
                     </span>
                   )}
                 </p>
+                {/* Each colour's own product photo instead of a plain colour
+                    dot — a shopper can see exactly what that variation
+                    looks like before tapping it, instead of guessing from a
+                    swatch (which is unreadable for prints/patterns anyway). */}
                 <div className="flex flex-wrap gap-2">
                   {swatchVariants.map((v) => {
                     const isActive = v.slug === activeProduct.slug;
+                    const thumb = toPublicMediaUrl(v.image || undefined);
                     return (
                       <button
                         key={v.slug}
@@ -202,13 +299,27 @@ export default function DiscoverQuickView({ product, onClose }: DiscoverQuickVie
                         title={v.color}
                         aria-label={`View in ${v.color}`}
                         onClick={() => handleSelectColor(v)}
-                        className={`h-6 w-6 shrink-0 rounded-full border-2 transition-transform hover:scale-110 ${
+                        className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 transition-transform hover:scale-105 ${
                           isActive
                             ? 'border-primary ring-2 ring-primary/25 ring-offset-1'
                             : 'border-border/70'
                         }`}
-                        style={{ backgroundColor: v.color.toLowerCase().replace(/\s+/g, '') }}
-                      />
+                      >
+                        {thumb ? (
+                          <Image
+                            src={thumb}
+                            alt={v.color}
+                            fill
+                            sizes="56px"
+                            className="object-cover"
+                          />
+                        ) : (
+                          <span
+                            className="block h-full w-full"
+                            style={{ backgroundColor: v.color.toLowerCase().replace(/\s+/g, '') }}
+                          />
+                        )}
+                      </button>
                     );
                   })}
                 </div>
