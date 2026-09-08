@@ -35,6 +35,17 @@ What changed:
      existing X button still works as before. A small drag handle bar was
      also added at the top on mobile as a visual affordance.
 
+5) Tapping a category/price pill while scrolled down now scrolls back to
+   the top of the results
+   - components/home/discover-products-section.tsx: the section now has a
+     ref + `scroll-mt-12`, and every category/price selection calls
+     `scrollIntoView({behavior:'smooth', block:'start'})`. Previously the
+     grid swapped to the new (often shorter) product list off-screen below
+     the shopper's current scroll position, so it looked like nothing had
+     happened and the sticky bar could end up outside its section's
+     scrollable bounds and stop sticking. Now every tap lands the shopper
+     right at the top of the fresh results, directly under the sticky bar.
+
 CHANGES.diff is the full unified diff of these edits against the repo you
 cloned, if you'd rather apply it with `git apply CHANGES.diff` instead of
 copying files by hand.

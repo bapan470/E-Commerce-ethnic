@@ -90,15 +90,31 @@ export default function DiscoverProductsSection({
     [settings.page_size]
   );
 
+  // Tapping a category/price pill while scrolled down (the sticky bar's
+  // whole point) previously left the shopper stranded wherever they'd
+  // already scrolled to — the grid underneath swapped to a shorter/empty
+  // set of products off-screen below, so it looked like nothing happened
+  // and they had to scroll back up by hand to see the new results, or the
+  // sticky bar itself would end up outside its section's bounds and stop
+  // sticking. Scrolling the section back to just under the sticky bar on
+  // every filter change fixes both: the new products are immediately
+  // visible, and the bar is back in a position where it can keep sticking.
+  const sectionRef = useRef<HTMLElement>(null);
+  const scrollToGridTop = () => {
+    sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   const handleSelectCategory = (name: string | null) => {
     const next = activeCategory === name ? null : name;
     setActiveCategory(next);
     runFetch(next, activeBucket, 1, true);
+    scrollToGridTop();
   };
 
   const handleSelectBucket = (bucket: PriceRangeBucket | null) => {
     setActiveBucket(bucket);
     runFetch(activeCategory, bucket, 1, true);
+    scrollToGridTop();
   };
 
   // Infinite scroll — a sentinel div at the bottom of the grid triggers the
@@ -139,7 +155,7 @@ export default function DiscoverProductsSection({
   if (hidden) return null;
 
   return (
-    <section className="container-boutique py-6">
+    <section ref={sectionRef} className="container-boutique scroll-mt-12 py-6">
       <p className="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
         {settings.title}
       </p>

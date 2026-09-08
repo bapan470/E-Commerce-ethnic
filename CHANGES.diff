@@ -39,7 +39,7 @@ index 2cdd83c..cc8faef 100644
      </>
    );
 diff --git a/components/home/discover-products-section.tsx b/components/home/discover-products-section.tsx
-index 518f3d6..e2d213f 100644
+index 518f3d6..6f17dee 100644
 --- a/components/home/discover-products-section.tsx
 +++ b/components/home/discover-products-section.tsx
 @@ -18,6 +18,11 @@ interface DiscoverProductsSectionProps {
@@ -62,7 +62,39 @@ index 518f3d6..e2d213f 100644
  }: DiscoverProductsSectionProps) {
    // Hidden entirely when the admin has switched the section off, or when
    // it's in Manual mode with zero active picks — same "return null" guard
-@@ -116,7 +122,19 @@ export default function DiscoverProductsSection({
+@@ -84,15 +90,31 @@ export default function DiscoverProductsSection({
+     [settings.page_size]
+   );
+ 
++  // Tapping a category/price pill while scrolled down (the sticky bar's
++  // whole point) previously left the shopper stranded wherever they'd
++  // already scrolled to — the grid underneath swapped to a shorter/empty
++  // set of products off-screen below, so it looked like nothing happened
++  // and they had to scroll back up by hand to see the new results, or the
++  // sticky bar itself would end up outside its section's bounds and stop
++  // sticking. Scrolling the section back to just under the sticky bar on
++  // every filter change fixes both: the new products are immediately
++  // visible, and the bar is back in a position where it can keep sticking.
++  const sectionRef = useRef<HTMLElement>(null);
++  const scrollToGridTop = () => {
++    sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
++  };
++
+   const handleSelectCategory = (name: string | null) => {
+     const next = activeCategory === name ? null : name;
+     setActiveCategory(next);
+     runFetch(next, activeBucket, 1, true);
++    scrollToGridTop();
+   };
+ 
+   const handleSelectBucket = (bucket: PriceRangeBucket | null) => {
+     setActiveBucket(bucket);
+     runFetch(activeCategory, bucket, 1, true);
++    scrollToGridTop();
+   };
+ 
+   // Infinite scroll — a sentinel div at the bottom of the grid triggers the
+@@ -116,12 +138,24 @@ export default function DiscoverProductsSection({
      return () => observer.disconnect();
    }, [hidden, hasMore, loading, page, activeCategory, activeBucket, runFetch]);
  
@@ -83,7 +115,13 @@ index 518f3d6..e2d213f 100644
  
    if (hidden) return null;
  
-@@ -130,48 +148,59 @@ export default function DiscoverProductsSection({
+   return (
+-    <section className="container-boutique py-6">
++    <section ref={sectionRef} className="container-boutique scroll-mt-12 py-6">
+       <p className="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
+         {settings.title}
+       </p>
+@@ -130,48 +164,59 @@ export default function DiscoverProductsSection({
        )}
        {!settings.subtitle && <div className="mb-3" />}
  
