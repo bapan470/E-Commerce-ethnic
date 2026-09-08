@@ -40,6 +40,7 @@ import {
   Download,
   Flame,
   IndianRupee,
+  Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import NotificationBell from './notification-bell';
@@ -64,6 +65,7 @@ export type AdminSection =
   | 'coupons'
   | 'promotions'
   | 'homepage-tiles'
+  | 'discover-products'
   | 'hero-banners'
   | 'marketing'
   | 'partner-pages'
@@ -144,6 +146,7 @@ const NAV_GROUPS: NavGroup[] = [
       { value: 'coupons', label: 'Coupons', icon: Tag },
       { value: 'promotions', label: 'Promotions', icon: Percent },
       { value: 'homepage-tiles', label: 'Homepage Tiles', icon: LayoutGrid },
+      { value: 'discover-products', label: 'Discover Products', icon: Sparkles },
       { value: 'hero-banners', label: 'Hero Banners', icon: Images },
       { value: 'marketing', label: 'Marketing', icon: Megaphone },
       { value: 'partner-pages', label: 'Partner Pages', icon: Store },

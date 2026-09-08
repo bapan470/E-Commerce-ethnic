@@ -13,6 +13,7 @@ import ReviewsPanel from '@/components/admin/reviews-panel';
 import CouponsPanel from '@/components/admin/coupons-panel';
 import PromotionsPanel from '@/components/admin/promotions-panel';
 import HomepageTilesPanel from '@/components/admin/homepage-tiles-panel';
+import DiscoverProductsPanel from '@/components/admin/discover-products-panel';
 import HeroBannersPanel from '@/components/admin/hero-banners-panel';
 import SettingsPanel from '@/components/admin/settings-panel';
 import ReturnsPanel from '@/components/admin/returns-panel';
@@ -59,6 +60,7 @@ const PANELS: Record<AdminSection, React.ComponentType> = {
   coupons: CouponsPanel,
   promotions: PromotionsPanel,
   'homepage-tiles': HomepageTilesPanel,
+  'discover-products': DiscoverProductsPanel,
   'hero-banners': HeroBannersPanel,
   marketing: MarketingPanel,
   'partner-pages': PartnerPagesPanel,
