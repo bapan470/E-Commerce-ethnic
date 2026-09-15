@@ -71,7 +71,22 @@ export async function checkPincodeServiceability(pincode: string): Promise<Pinco
   const codAvailable = !COD_RESTRICTED_PREFIXES.includes(clean.slice(0, 2));
 
   try {
-    const res = await fetch(`https://api.postalpincode.in/pincode/${clean}`);
+    // India Post's public API has no SLA and is known to occasionally hang
+    // rather than error out. Without a timeout, an unresponsive request
+    // here would leave the caller's "verifying" state stuck forever (both
+    // the checkout page's live pincode check AND the submit-time re-check
+    // reuse this function) -- so give it a hard deadline and fall through
+    // to the same "API unreachable" handling as a network error below.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    let res: Response;
+    try {
+      res = await fetch(`https://api.postalpincode.in/pincode/${clean}`, {
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
     const data = await res.json();
     const record = Array.isArray(data) ? data[0] : null;
 
