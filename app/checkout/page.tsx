@@ -1263,6 +1263,13 @@ export default function CheckoutPage() {
         });
 
         if (orderError) {
+          // Log the full Postgrest error (code/details/hint), not just
+          // message — the UI only ever showed a generic toast with no
+          // trace in the console, so any RLS/permission/schema error
+          // was completely invisible while debugging "Failed to place
+          // order". Check the browser console for this on any future
+          // failure.
+          console.error('place_order_with_items failed:', orderError);
           if (orderError.message?.includes('INSUFFICIENT_STOCK')) {
             toast.error('Sorry, one of the items in your cart just sold out. Please update your cart and try again.');
             setPlacing(false);
@@ -1382,6 +1389,10 @@ export default function CheckoutPage() {
       router.push(`/order-confirmation/${internalOrderId}`);
       return;
     } catch (err) {
+      // Always log the raw error so the real cause (Postgres/RLS error,
+      // network failure, etc.) is visible in the browser console instead
+      // of only ever seeing the generic "Failed to place order" toast.
+      console.error('Order placement failed:', err);
       const message = err instanceof Error ? err.message : 'Failed to place order';
       if (message.includes('cancelled')) {
         toast.error('Payment was cancelled. Your order is saved as pending.');
