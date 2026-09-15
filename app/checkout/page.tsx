@@ -1298,13 +1298,16 @@ export default function CheckoutPage() {
       // 2. Cash on Delivery — no online payment step, order is confirmed as-is
       // and payment is collected at delivery time.
       if (paymentMethod === 'cod') {
-        if (appliedCoupon) {
-          supabase
-            .from('coupons')
-            .update({ times_used: appliedCoupon.times_used + 1 })
-            .eq('id', appliedCoupon.id)
-            .then(() => {});
-        }
+        // NOTE: coupon.times_used is NOT incremented here. It's already
+        // incremented once, atomically, inside place_order_with_items()
+        // itself (see supabase/migrations/..._fix_gift_card_record_not_assigned.sql)
+        // whenever the server independently re-validates and accepts the
+        // coupon. Incrementing it again here double-counted every coupon
+        // use (2 instead of 1), which silently halved every coupon's
+        // effective usage_limit — and could increment it even when the
+        // server had actually rejected/ignored the coupon (e.g. expired
+        // between apply and place-order), since this used the client's
+        // own `appliedCoupon` state rather than what the server accepted.
         setOrderPlaced(true);
         clearOrderedItems();
         decrementStockForOrder(orderItems).catch(() => {});
@@ -1361,14 +1364,10 @@ export default function CheckoutPage() {
       );
 
       // 5. Payment succeeded and verified.
-      if (appliedCoupon) {
-        // Best-effort — a failed increment shouldn't block order confirmation.
-        supabase
-          .from('coupons')
-          .update({ times_used: appliedCoupon.times_used + 1 })
-          .eq('id', appliedCoupon.id)
-          .then(() => {});
-      }
+      // NOTE: coupon.times_used is NOT incremented here — see the matching
+      // note in the COD branch above. place_order_with_items() already
+      // incremented it once, atomically, at order-creation time (a few
+      // lines up), so doing it again here double-counted every coupon use.
       pendingOrderRef.current = null;
       setOrderPlaced(true);
       clearOrderedItems();
