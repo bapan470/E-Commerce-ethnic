@@ -305,6 +305,12 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
               <span>-{formatINR(order.coupon_discount)}</span>
             </div>
           )}
+          {(order.bogo_discount ?? 0) > 0 && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">BOGO offer</span>
+              <span>-{formatINR(order.bogo_discount ?? 0)}</span>
+            </div>
+          )}
           <div className="flex justify-between">
             <span className="text-muted-foreground">Shipping</span>
             <span>{order.shipping_charge ? formatINR(order.shipping_charge) : 'FREE'}</span>

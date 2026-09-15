@@ -1238,9 +1238,23 @@ export default function CheckoutPage() {
             session_id: getSessionId(),
             subtotal,
             shipping_charge: shipping,
+            // Stored on the order for the invoice only — prices here are
+            // GST-INCLUSIVE, so this must never be added on top of the
+            // total. place_order_with_items() used to do exactly that,
+            // inflating every order by the GST amount (~4.76% at 5%).
             gst_amount: tax,
             coupon_code: appliedCoupon?.code ?? null,
             coupon_discount: couponDiscount,
+            // Sent for parity/debugging only — place_order_with_items()
+            // recomputes the BOGO discount itself from the `promotions`
+            // table and the authoritative product prices (see the
+            // 20261001000000 migration) and stores its own value, exactly
+            // like it already does for the coupon. Before that migration
+            // BOGO didn't exist server-side at all, so total_amount came
+            // out HIGHER than the "Pay ₹X" shown here on any cart with a
+            // live Buy-X-Get-Y promo — and that row's total is what
+            // /api/razorpay/create-order actually charges.
+            bogo_discount: bogoDiscount,
             gift_card_code: appliedGiftCard?.code ?? null,
             gift_card_discount: clampedGiftCardDiscount,
             loyalty_points_redeemed: loyaltyDiscount > 0 ? pointsToRedeem : 0,
