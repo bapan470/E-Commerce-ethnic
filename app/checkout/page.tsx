@@ -1919,6 +1919,22 @@ export default function CheckoutPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <button
                 type="button"
+                onClick={() => setPaymentMethod('cod')}
+                className={`flex items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors ${
+                  paymentMethod === 'cod'
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border/60 hover:border-primary/40'
+                }`}
+              >
+                <Wallet className="mt-0.5 h-5 w-5 shrink-0 text-secondary" />
+                <div>
+                  <p className="font-medium">Cash on Delivery</p>
+                  <p className="text-xs text-muted-foreground">Pay in cash when your order arrives</p>
+                </div>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setPaymentMethod('online')}
                 className={`relative flex items-start gap-3 overflow-hidden rounded-md border p-3 text-left text-sm transition-colors ${
                   paymentMethod === 'online'
@@ -1960,22 +1976,6 @@ export default function CheckoutPage() {
                       Get {formatINR(potentialOnlinePaymentDiscount)} off — applied automatically
                     </p>
                   )}
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setPaymentMethod('cod')}
-                className={`flex items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors ${
-                  paymentMethod === 'cod'
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border/60 hover:border-primary/40'
-                }`}
-              >
-                <Wallet className="mt-0.5 h-5 w-5 shrink-0 text-secondary" />
-                <div>
-                  <p className="font-medium">Cash on Delivery</p>
-                  <p className="text-xs text-muted-foreground">Pay in cash when your order arrives</p>
                 </div>
               </button>
             </div>
