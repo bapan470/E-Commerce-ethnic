@@ -1920,15 +1920,38 @@ export default function CheckoutPage() {
               <button
                 type="button"
                 onClick={() => setPaymentMethod('online')}
-                className={`flex items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors ${
+                className={`relative flex items-start gap-3 overflow-hidden rounded-md border p-3 text-left text-sm transition-colors ${
                   paymentMethod === 'online'
                     ? 'border-primary bg-primary/5'
-                    : 'border-border/60 hover:border-primary/40'
+                    : 'border-secondary/50 bg-secondary/5 hover:border-secondary'
                 }`}
               >
-                <CreditCard className="mt-0.5 h-5 w-5 shrink-0 text-secondary" />
-                <div>
-                  <p className="font-medium">Pay Online</p>
+                {/* COD is the default now, so this card needs its own pull
+                    to make sure the online-payment discount doesn't get
+                    missed -- a slow gold sweep + a small pulsing badge,
+                    only shown while it isn't already the selected option
+                    and only when there's an actual discount configured
+                    (no point drawing attention to a ₹0 saving). */}
+                {paymentMethod !== 'online' &&
+                  paymentDiscount.enabled &&
+                  potentialOnlinePaymentDiscount > 0 && (
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute inset-y-0 left-0 w-1/3 animate-shine-sweep bg-gradient-to-r from-transparent via-secondary/45 to-transparent"
+                    />
+                  )}
+                <CreditCard className="relative z-10 mt-0.5 h-5 w-5 shrink-0 text-secondary" />
+                <div className="relative z-10">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <p className="font-medium">Pay Online</p>
+                    {paymentMethod !== 'online' &&
+                      paymentDiscount.enabled &&
+                      potentialOnlinePaymentDiscount > 0 && (
+                        <span className="animate-badge-pop rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-secondary-foreground">
+                          Save more
+                        </span>
+                      )}
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     Razorpay — card, UPI, netbanking
                   </p>
