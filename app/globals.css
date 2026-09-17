@@ -160,4 +160,58 @@
       transform: translateX(100%);
     }
   }
+
+  /* Premium "Buy Now" highlight sweep -- a soft diagonal light streak that
+     glides across the button on its own, on a loop, so it catches a
+     visitor's eye without needing a hover/tap. Runs continuously (no
+     :hover trigger) with a pause between passes so it stays classy
+     instead of feeling like a spinner. Safe on any solid-color button:
+     the glow layer sits above the background but below the label via
+     z-index, and pointer-events: none keeps clicks passing through to
+     the real button underneath. */
+  .btn-shine {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+  }
+  .btn-shine > * {
+    position: relative;
+    z-index: 1;
+  }
+  .btn-shine::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    top: 0;
+    left: -75%;
+    width: 45%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+    background: linear-gradient(
+      115deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.65) 50%,
+      transparent 100%
+    );
+    transform: skewX(-20deg);
+    animation: btn-shine-sweep 2.8s ease-in-out infinite;
+  }
+  @keyframes btn-shine-sweep {
+    0% {
+      left: -75%;
+    }
+    35% {
+      left: 125%;
+    }
+    100% {
+      left: 125%;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .btn-shine::after {
+      animation: none;
+      display: none;
+    }
+  }
 }

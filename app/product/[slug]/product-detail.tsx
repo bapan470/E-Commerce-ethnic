@@ -1252,7 +1252,7 @@ function ProductInfo({
             <Button
               onClick={onBuyNow}
               size="lg"
-              className="w-full gap-2 bg-primary text-base text-primary-foreground"
+              className="btn-shine w-full gap-2 bg-primary text-base text-primary-foreground"
             >
               Buy Now
             </Button>

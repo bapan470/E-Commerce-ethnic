@@ -69,7 +69,11 @@ export default function MobileStickyCartBar({
               <ShoppingBag className="h-4 w-4" />
               Add to Bag
             </Button>
-            <Button onClick={onBuyNow} size="lg" className="bg-primary px-5 text-primary-foreground">
+            <Button
+              onClick={onBuyNow}
+              size="lg"
+              className="btn-shine bg-primary px-5 text-primary-foreground"
+            >
               Buy Now
             </Button>
           </div>
