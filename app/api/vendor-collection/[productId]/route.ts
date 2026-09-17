@@ -3,6 +3,13 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { mapRowToProduct, CUSTOMER_SAFE_PRODUCT_COLUMNS } from '@/lib/products-api-server';
 import { ProductRow } from '@/lib/types';
 
+// A vendor's public product list doesn't change minute-to-minute, so cache
+// each response for 5 minutes to cut down repeated DB round-trips (product
+// lookup + vendor lookup + product list) on every product-page view.
+const CACHE_HEADERS = {
+  'Cache-Control': 's-maxage=300, stale-while-revalidate=600',
+};
+
 /**
  * GET /api/vendor-collection/[productId]
  *
@@ -34,7 +41,7 @@ export async function GET(
       .maybeSingle();
 
     if (productErr || !product?.vendor_id) {
-      return NextResponse.json({ vendor: null, products: [] });
+      return NextResponse.json({ vendor: null, products: [] }, { headers: CACHE_HEADERS });
     }
 
     const { data: vendor, error: vendorErr } = await admin
@@ -45,7 +52,7 @@ export async function GET(
 
     if (vendorErr || !vendor) {
       // Vendor not approved (or gone) -- nothing public to show.
-      return NextResponse.json({ vendor: null, products: [] });
+      return NextResponse.json({ vendor: null, products: [] }, { headers: CACHE_HEADERS });
     }
 
     const { data: rows, error: rowsErr } = await admin
@@ -61,14 +68,17 @@ export async function GET(
 
     const products = ((rows ?? []) as unknown as ProductRow[]).map(mapRowToProduct);
 
-    return NextResponse.json({
-      vendor: {
-        id: vendor.id,
-        name: vendor.business_name,
-        slug: vendor.storefront_slug,
+    return NextResponse.json(
+      {
+        vendor: {
+          id: vendor.id,
+          name: vendor.business_name,
+          slug: vendor.storefront_slug,
+        },
+        products,
       },
-      products,
-    });
+      { headers: CACHE_HEADERS }
+    );
   } catch (err) {
     console.error('[vendor-collection] failed', params.productId, err);
     return NextResponse.json({ vendor: null, products: [] });

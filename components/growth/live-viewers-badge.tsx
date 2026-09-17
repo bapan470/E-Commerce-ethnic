@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Eye } from 'lucide-react';
 import { fetchGrowthSettings, fetchLiveViewerCount } from '@/lib/growth-api';
 
-const POLL_MS = 25000;
+const POLL_MS = 60000;
 
 /**
  * "12 people are viewing this right now" — real count of distinct

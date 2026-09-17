@@ -83,7 +83,10 @@ export async function GET() {
           : true,
     }));
 
-    return NextResponse.json({ promotions: result });
+    return NextResponse.json(
+      { promotions: result },
+      { headers: { 'Cache-Control': 's-maxage=30, stale-while-revalidate=60' } }
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to load active promotions';
     return NextResponse.json({ error: message }, { status: 500 });
