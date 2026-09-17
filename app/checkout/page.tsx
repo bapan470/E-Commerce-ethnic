@@ -177,7 +177,7 @@ export default function CheckoutPage() {
     : cartBogoDiscount;
   const [placing, setPlacing] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('online');
+  const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('cod');
   const { user } = useAuth();
 
   // Same real-device repaint bug as StickyOrderBar (see
