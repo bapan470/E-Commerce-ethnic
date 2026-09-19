@@ -1,0 +1,268 @@
+import { getSupabaseAdmin } from './supabase-admin';
+import { sendEmail } from './email';
+import { orderConfirmationEmail, newOrderAdminNotification } from './email-templates';
+import { DEFAULT_LOYALTY_SETTINGS, type LoyaltySettings } from './loyalty-api';
+import { DEFAULT_REFERRAL_SETTINGS, type ReferralSettings } from './referrals-api';
+
+// Extracted out of app/api/order-confirm/route.ts so this exact logic can
+// also be called server-side from app/api/razorpay/webhook/route.ts --
+// see that file's header comment for why. Behaviour is unchanged: same
+// five jobs, same idempotency guards (safe to call more than once for the
+// same order), same best-effort error handling (nothing here should ever
+// throw in a way that aborts the caller).
+//
+//   1. Customer "order confirmed" email + admin "new order" email.
+//   2. Clear this customer's abandoned-cart row, if any.
+//   3. Gift card redemption (guest-checkout safe -- not tied to a login).
+//   4. Loyalty points (redeem + earn) -- logged-in customers only.
+//   5. Referral reward, on the referred customer's first completed order.
+export async function runOrderConfirmationSideEffects(orderId: string) {
+  const supabase = getSupabaseAdmin();
+
+  const { data: order, error } = await supabase.from('orders').select('*').eq('id', orderId).single();
+
+  if (error || !order) {
+    console.error('[order-confirmation] order not found:', orderId, error);
+    return;
+  }
+
+  // 1a. Customer "order confirmed" email -- guarded by
+  // confirmation_email_sent_at so this is safe to call more than once
+  // (e.g. once from the client on the happy path, once more from the
+  // webhook as a safety net) without double-sending.
+  if (order.customer_email && !order.confirmation_email_sent_at) {
+    const { subject, html } = orderConfirmationEmail({
+      id: order.id,
+      customer_name: order.customer_name,
+      items: Array.isArray(order.items) ? order.items : [],
+      total_amount: order.total_amount,
+      payment_method: order.payment_method,
+    });
+
+    sendEmail({ to: order.customer_email, subject, html })
+      .then(() =>
+        supabase.from('orders').update({ confirmation_email_sent_at: new Date().toISOString() }).eq('id', order.id)
+      )
+      .catch((err) => {
+        console.error('[order-confirmation] Customer email send failed:', err);
+      });
+  }
+
+  // 1b. Clear this customer's abandoned cart, if any.
+  if (order.customer_email) {
+    try {
+      const { data: recoveredCarts } = await supabase
+        .from('abandoned_carts')
+        .update({ recovered: true })
+        .eq('email', order.customer_email)
+        .eq('recovered', false)
+        .select('id');
+
+      const cartIds = (recoveredCarts || []).map((c: { id: string }) => c.id);
+      if (cartIds.length > 0) {
+        await supabase
+          .from('abandoned_cart_emails')
+          .update({ converted: true, converted_at: new Date().toISOString() })
+          .in('cart_id', cartIds)
+          .eq('converted', false);
+      }
+    } catch (err) {
+      console.log('Abandoned cart update error (non-critical):', err);
+    }
+  }
+
+  // 1c. Admin "you've got a new order" email.
+  try {
+    const { data: orderNotifRow } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'order_notifications')
+      .maybeSingle();
+    const orderNotif = orderNotifRow?.value as { enabled?: boolean; email?: string } | null;
+    const notifEnabled = orderNotif?.enabled !== false;
+
+    if (notifEnabled) {
+      let adminEmail = orderNotif?.email?.trim();
+      if (!adminEmail) {
+        const { data: storeInfoRow } = await supabase
+          .from('settings')
+          .select('value')
+          .eq('key', 'store_info')
+          .maybeSingle();
+        adminEmail = (storeInfoRow?.value as { support_email?: string } | null)?.support_email;
+      }
+
+      if (adminEmail) {
+        const notice = newOrderAdminNotification({
+          id: order.id,
+          customer_name: order.customer_name,
+          customer_email: order.customer_email,
+          customer_phone: order.customer_phone,
+          items: Array.isArray(order.items) ? order.items : [],
+          total_amount: order.total_amount,
+          payment_method: order.payment_method,
+        });
+
+        sendEmail({ to: adminEmail, subject: notice.subject, html: notice.html }).catch((err) => {
+          console.error('[order-confirmation] Admin notification email failed:', err);
+        });
+      } else {
+        console.warn(
+          '[order-confirmation] No admin/support email configured (Admin -> Settings) -- skipping new-order notification.'
+        );
+      }
+    }
+  } catch (adminEmailErr) {
+    console.error('[order-confirmation] Admin notification setup failed:', adminEmailErr);
+  }
+
+  // 2. Gift card redemption.
+  if (order.gift_card_code && order.gift_card_discount > 0) {
+    const { data: card } = await supabase
+      .from('gift_cards')
+      .select('id')
+      .eq('code', order.gift_card_code)
+      .maybeSingle();
+
+    if (card) {
+      const { data: existingRedeem } = await supabase
+        .from('gift_card_transactions')
+        .select('id')
+        .eq('gift_card_id', card.id)
+        .eq('order_id', order.id)
+        .limit(1);
+
+      if (!existingRedeem || existingRedeem.length === 0) {
+        await supabase.from('gift_card_transactions').insert({
+          gift_card_id: card.id,
+          order_id: order.id,
+          amount: -order.gift_card_discount,
+          type: 'redeem',
+          reason: `Redeemed on order #${order.id.slice(0, 8)}`,
+        });
+      }
+    }
+  }
+
+  // 3. Loyalty points -- logged-in customers only.
+  if (order.user_id) {
+    const { data: existingEntries } = await supabase
+      .from('loyalty_points_ledger')
+      .select('id')
+      .eq('order_id', order.id)
+      .limit(1);
+
+    if (!existingEntries || existingEntries.length === 0) {
+      const { data: settingsRow } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'loyalty_program')
+        .maybeSingle();
+      const loyaltySettings: LoyaltySettings = {
+        ...DEFAULT_LOYALTY_SETTINGS,
+        ...((settingsRow?.value as Partial<LoyaltySettings>) ?? {}),
+      };
+
+      if (loyaltySettings.enabled) {
+        if (order.loyalty_points_redeemed > 0) {
+          const { error: ledgerError } = await supabase.from('loyalty_points_ledger').insert({
+            user_id: order.user_id,
+            order_id: order.id,
+            points: -order.loyalty_points_redeemed,
+            type: 'redeem',
+            reason: `Redeemed on order #${order.id.slice(0, 8)}`,
+          });
+          if (ledgerError) {
+            console.error('[loyalty-redeem] Ledger insert failed:', ledgerError);
+          }
+        }
+
+        const pointsEarned = Math.floor((order.total_amount * loyaltySettings.points_per_100_rupees) / 100);
+
+        if (pointsEarned > 0) {
+          const { error: earnError } = await supabase.from('loyalty_points_ledger').insert({
+            user_id: order.user_id,
+            order_id: order.id,
+            points: pointsEarned,
+            type: 'earn',
+            reason: `Order #${order.id.slice(0, 8)}`,
+          });
+
+          if (!earnError) {
+            const { error: earnedUpdateError } = await supabase
+              .from('orders')
+              .update({ loyalty_points_earned: pointsEarned })
+              .eq('id', order.id);
+            if (earnedUpdateError) {
+              console.error('[loyalty-earn] Failed to record loyalty_points_earned on order:', earnedUpdateError);
+            }
+          } else {
+            console.error('[loyalty-earn] Ledger insert failed:', earnError);
+          }
+        }
+      }
+    }
+
+    // 4. Referral reward -- only fires on the referred customer's FIRST
+    // completed order.
+    const { data: referral } = await supabase
+      .from('referrals')
+      .select('*')
+      .eq('referred_user_id', order.user_id)
+      .eq('status', 'pending')
+      .maybeSingle();
+
+    if (referral) {
+      const { count: priorOrderCount } = await supabase
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', order.user_id)
+        .neq('id', order.id);
+
+      if (!priorOrderCount) {
+        const { data: referralSettingsRow } = await supabase
+          .from('settings')
+          .select('value')
+          .eq('key', 'referral_program')
+          .maybeSingle();
+        const referralSettings: ReferralSettings = {
+          ...DEFAULT_REFERRAL_SETTINGS,
+          ...((referralSettingsRow?.value as Partial<ReferralSettings>) ?? {}),
+        };
+
+        if (referralSettings.enabled) {
+          if (referralSettings.referrer_reward_points > 0) {
+            await supabase.from('loyalty_points_ledger').insert({
+              user_id: referral.referrer_user_id,
+              order_id: order.id,
+              points: referralSettings.referrer_reward_points,
+              type: 'earn',
+              reason: `Referral bonus — friend's first order #${order.id.slice(0, 8)}`,
+            });
+          }
+
+          if (referralSettings.referred_reward_points > 0) {
+            await supabase.from('loyalty_points_ledger').insert({
+              user_id: order.user_id,
+              order_id: order.id,
+              points: referralSettings.referred_reward_points,
+              type: 'earn',
+              reason: `Welcome bonus — signed up with a referral code`,
+            });
+          }
+
+          await supabase
+            .from('referrals')
+            .update({
+              status: 'completed',
+              first_order_id: order.id,
+              referrer_reward_points: referralSettings.referrer_reward_points,
+              referred_reward_points: referralSettings.referred_reward_points,
+              completed_at: new Date().toISOString(),
+            })
+            .eq('id', referral.id);
+        }
+      }
+    }
+  }
+}

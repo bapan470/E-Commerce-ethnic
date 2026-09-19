@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { sendEmail } from '@/lib/email';
 import { orderStatusUpdateEmail } from '@/lib/email-templates';
 import { isInPaymentRequestFlow, logPaymentRequestEvent } from '@/lib/order-payment-events';
+import { runOrderConfirmationSideEffects } from '@/lib/order-confirmation';
 
 // WHY THIS ROUTE EXISTS
 // -----------------------------------------------------------------------
@@ -161,6 +162,23 @@ export async function POST(req: NextRequest) {
         console.error('[razorpay-webhook] payment-confirmed email failed:', err);
       });
     }
+
+    // Same "order confirmed" side effects the checkout page normally
+    // triggers itself (app/checkout/page.tsx -> POST /api/order-confirm)
+    // right after openRazorpayCheckout() resolves in the browser: the
+    // "Order Confirmed" email, admin new-order notification, abandoned-cart
+    // clearing, gift card redemption, loyalty points, and referral reward.
+    // That client call is gated behind the exact same browser round-trip
+    // as verify-payment -- if the tab/app closed or the network dropped
+    // right after Razorpay captured the payment, none of those five things
+    // ever ran either, even once the order itself is correctly marked
+    // 'paid'. Running it here closes that gap: it's idempotent (guarded by
+    // confirmation_email_sent_at / existing ledger rows, same as the
+    // client-triggered path), so if the browser call DID also succeed,
+    // this is just a harmless no-op.
+    runOrderConfirmationSideEffects(order.id).catch((err) => {
+      console.error('[razorpay-webhook] order-confirmation side effects failed:', err);
+    });
 
     return NextResponse.json({ received: true, orderId: order.id, status: 'paid' });
   } catch (err) {
