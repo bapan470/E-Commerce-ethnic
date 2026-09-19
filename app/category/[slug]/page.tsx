@@ -24,7 +24,9 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms
 // deleted/changed products within a minute instead of only on the next
 // deploy. Admin mutations also call revalidatePath() for an instant purge --
 // see app/api/admin/products/[id]/route.ts -- this is just the safety net.
-export const revalidate = 60;
+// CPU-saving change: safety-net window raised 60s -> 1800s (30 min). Admin
+// product/collection edits still purge instantly via revalidatePath().
+export const revalidate = 1800;
 
 type Params = { params: { slug: string } };
 
