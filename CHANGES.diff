@@ -1,341 +1,192 @@
-diff --git a/app/api/admin/orders/[id]/delivery-test/route.ts b/app/api/admin/orders/[id]/delivery-test/route.ts
-index b6935f4..554346d 100644
---- a/app/api/admin/orders/[id]/delivery-test/route.ts
-+++ b/app/api/admin/orders/[id]/delivery-test/route.ts
-@@ -7,6 +7,10 @@ import {
-   sendOutForDeliveryNotification,
-   sendDeliveredNotification,
- } from '@/lib/delivery-notifications';
-+import {
-+  sendReviewRequestNotification,
-+  sendReviewReminderNotification,
-+} from '@/lib/review-notifications';
- 
- // Admin > Orders "Test" panel. Unlike preview-email (which never touches
- // the DB or the real customer), these actions are the REAL thing -- they
-@@ -54,6 +58,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
-       return NextResponse.json(result);
-     }
- 
-+    if (action === 'send_review_request') {
-+      const result = await sendReviewRequestNotification(params.id, { force: !!body?.force });
-+      return NextResponse.json(result);
-+    }
-+
-+    if (action === 'send_review_reminder') {
-+      const result = await sendReviewReminderNotification(params.id, { force: !!body?.force });
-+      return NextResponse.json(result);
-+    }
-+
-     return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
-   } catch (err) {
-     const message = err instanceof Error ? err.message : 'Action failed';
-diff --git a/app/api/admin/orders/[id]/preview-email/route.ts b/app/api/admin/orders/[id]/preview-email/route.ts
-index a7f3092..81fcb9d 100644
---- a/app/api/admin/orders/[id]/preview-email/route.ts
-+++ b/app/api/admin/orders/[id]/preview-email/route.ts
-@@ -9,6 +9,8 @@ import {
-   orderArrivingEmail,
-   orderOutForDeliveryEmail,
-   codToPrepaidRequestEmail,
-+  reviewRequestEmail,
-+  reviewReminderEmail,
- } from '@/lib/email-templates';
- import { isInPaymentRequestFlow } from '@/lib/order-payment-events';
- 
-@@ -99,6 +101,18 @@ async function buildPreview(orderId: string, type: string, dateOverride?: string
-         store: (storeSetting?.value as any) || undefined,
-       });
-     }
-+    case 'review_request':
-+      return reviewRequestEmail({
-+        id: order.id,
-+        customer_name: order.customer_name,
-+        items: previewItems,
-+      });
-+    case 'review_reminder':
-+      return reviewReminderEmail({
-+        id: order.id,
-+        customer_name: order.customer_name,
-+        items: previewItems,
-+      });
-     case 'delivered':
-     case 'paid':
-     case 'cancelled':
-diff --git a/app/api/cron/daily-jobs/route.ts b/app/api/cron/daily-jobs/route.ts
-index 8d65376..c72fe9c 100644
---- a/app/api/cron/daily-jobs/route.ts
-+++ b/app/api/cron/daily-jobs/route.ts
-@@ -12,6 +12,8 @@ import {
-   runResellerPayoutWindowJob,
-   runAffiliatePayoutWindowJob,
-   runWooCommerceEnqueueJob,
-+  runReviewRequestEmailsJob,
-+  runReviewReminderEmailsJob,
- } from '@/lib/cron-jobs';
- 
- export const dynamic = 'force-dynamic';
-@@ -114,6 +116,18 @@ export async function GET(req: Request) {
-     results.forwardShipmentTracking = { error: err?.message || 'Failed' };
-   }
- 
-+  try {
-+    results.reviewRequestEmails = await runReviewRequestEmailsJob();
-+  } catch (err: any) {
-+    results.reviewRequestEmails = { error: err?.message || 'Failed' };
-+  }
-+
-+  try {
-+    results.reviewReminderEmails = await runReviewReminderEmailsJob();
-+  } catch (err: any) {
-+    results.reviewReminderEmails = { error: err?.message || 'Failed' };
-+  }
-+
-   try {
-     results.resellerPayoutWindow = await runResellerPayoutWindowJob();
-   } catch (err: any) {
-diff --git a/components/admin/delivery-notification-tester.tsx b/components/admin/delivery-notification-tester.tsx
-index c47448e..a9eaa31 100644
---- a/components/admin/delivery-notification-tester.tsx
-+++ b/components/admin/delivery-notification-tester.tsx
-@@ -18,6 +18,8 @@ import {
-   CheckCircle2,
-   XCircle,
-   MailWarning,
-+  Star,
-+  BellRing,
+diff --git a/app/review/[token]/page.tsx b/app/review/[token]/page.tsx
+index 7df3945..d9bb0d8 100644
+--- a/app/review/[token]/page.tsx
++++ b/app/review/[token]/page.tsx
+@@ -30,6 +30,9 @@ import {
+   PartyPopper,
+   AlertTriangle,
+   ChevronRight,
++  ImageOff,
++  Send,
++  Pencil,
  } from 'lucide-react';
- import { Button } from '@/components/ui/button';
- import { Input } from '@/components/ui/input';
-@@ -149,6 +151,8 @@ export default function DeliveryNotificationTester({
-     { key: 'arriving', label: 'Arriving', icon: CalendarClock },
-     { key: 'out_for_delivery', label: 'Out for Delivery', icon: Truck },
-     { key: 'delivered', label: 'Delivered', icon: Home },
-+    { key: 'review_request', label: 'Rate & Review (auto, ~4 days after delivery)', icon: Star },
-+    { key: 'review_reminder', label: 'Review Reminder (auto, ~7 days after that)', icon: BellRing },
-     { key: 'cod_to_prepaid', label: 'Request Online Payment', icon: Wallet },
-   ];
- 
-@@ -259,10 +263,42 @@ export default function DeliveryNotificationTester({
-           )}
-           Mark "Delivered" now
-         </Button>
-+        <Button
-+          type="button"
-+          size="sm"
-+          variant="secondary"
-+          disabled={busy === 'send_review_request'}
-+          onClick={() => runAction('send_review_request', { force: true })}
-+          className="gap-1.5"
-+        >
-+          {busy === 'send_review_request' ? (
-+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-+          ) : (
-+            <Star className="h-3.5 w-3.5" />
-+          )}
-+          Send "Rate &amp; Review" now
-+        </Button>
-+        <Button
-+          type="button"
-+          size="sm"
-+          variant="secondary"
-+          disabled={busy === 'send_review_reminder'}
-+          onClick={() => runAction('send_review_reminder', { force: true })}
-+          className="gap-1.5"
-+        >
-+          {busy === 'send_review_reminder' ? (
-+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-+          ) : (
-+            <BellRing className="h-3.5 w-3.5" />
-+          )}
-+          Send Review Reminder now
-+        </Button>
-       </div>
-       <p className="mt-2 text-[11px] text-muted-foreground">
-         These buttons send real emails to the customer above and (for "Out for Delivery" / "Delivered") update the
--        order's actual status — use a test order if you don't want to touch a real customer's order.
-+        order's actual status — use a test order if you don't want to touch a real customer's order. The normal
-+        review emails run automatically once a day (~4 days after delivery, then one reminder ~7 days after that if
-+        they still haven't reviewed) — these two buttons just let you fire them on demand for testing.
-       </p>
- 
-       <div className="my-4 border-t border-border/60" />
-diff --git a/lib/cron-jobs.ts b/lib/cron-jobs.ts
-index ee94624..199d9d8 100644
---- a/lib/cron-jobs.ts
-+++ b/lib/cron-jobs.ts
-@@ -47,6 +47,11 @@ import {
-   sendOutForDeliveryNotification,
-   sendDeliveredNotification,
- } from '@/lib/delivery-notifications';
-+import {
-+  sendReviewRequestNotification,
-+  sendReviewReminderNotification,
-+  hasOrderBeenReviewed,
-+} from '@/lib/review-notifications';
- 
- // -------------------- WooCommerce imported-customer drip --------------------
- // Thin wrapper so this job is listed alongside the others here and picked
-@@ -812,3 +817,87 @@ export async function runForwardShipmentTrackingJob() {
- 
-   return { checked: orders.length, delivered, rto, errors };
- }
-+
-+// -------------------- Review-request emails --------------------
-+// Straight after unboxing is the worst moment to ask "how is it?" -- the
-+// customer hasn't worn/used the thing yet -- so this waits a few days
-+// after "Delivered" before asking. Tune freely; these are calendar days,
-+// not a strict SLA.
-+const REVIEW_REQUEST_DELAY_DAYS = 4;
-+const REVIEW_REMINDER_DELAY_DAYS = 7; // measured from when the request went out, not from delivery.
-+
-+function daysAgoIso(days: number) {
-+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-+}
-+
-+// Run once daily (see app/api/cron/daily-jobs/route.ts). Finds every
-+// delivered order whose "Delivered" email went out REVIEW_REQUEST_DELAY_DAYS+
-+// ago and that hasn't had a review-request email yet, and sends one. Ordering
-+// off delivered_email_sent_at (not just status='delivered') means an order
-+// only enters this funnel once the delivered-lifecycle email has actually
-+// fired, keeping this in step with the rest of the lifecycle-email log.
-+export async function runReviewRequestEmailsJob() {
-+  const supabase = getSupabaseAdmin();
-+  const cutoff = daysAgoIso(REVIEW_REQUEST_DELAY_DAYS);
-+
-+  const { data: orders, error } = await supabase
-+    .from('orders')
-+    .select('id')
-+    .eq('status', 'delivered')
-+    .is('review_request_email_sent_at', null)
-+    .not('delivered_email_sent_at', 'is', null)
-+    .lte('delivered_email_sent_at', cutoff);
-+  if (error) throw error;
-+
-+  let sent = 0;
-+  const errors: string[] = [];
-+  for (const order of orders || []) {
-+    try {
-+      const result = await sendReviewRequestNotification(order.id);
-+      if (result.sent) sent++;
-+    } catch (err: any) {
-+      errors.push(`order ${order.id}: ${err?.message || err}`);
-+    }
-+  }
-+
-+  return { checked: (orders || []).length, sent, errors };
-+}
-+
-+// Run once daily, same cron. Finds every order whose review-request email
-+// went out REVIEW_REMINDER_DELAY_DAYS+ ago, hasn't had a reminder yet, and
-+// -- the whole point of a reminder -- where the customer still hasn't
-+// actually left a review. sendReviewReminderNotification() re-checks
-+// hasOrderBeenReviewed() itself right before sending (a review could land
-+// between this query and that send), this pre-filter just keeps the loop
-+// from doing pointless work on orders that are obviously already reviewed.
-+export async function runReviewReminderEmailsJob() {
-+  const supabase = getSupabaseAdmin();
-+  const cutoff = daysAgoIso(REVIEW_REMINDER_DELAY_DAYS);
-+
-+  const { data: candidates, error } = await supabase
-+    .from('orders')
-+    .select('id, user_id, items')
-+    .eq('status', 'delivered')
-+    .is('review_reminder_email_sent_at', null)
-+    .not('review_request_email_sent_at', 'is', null)
-+    .lte('review_request_email_sent_at', cutoff);
-+  if (error) throw error;
-+
-+  let sent = 0;
-+  let skippedAlreadyReviewed = 0;
-+  const errors: string[] = [];
-+  for (const order of candidates || []) {
-+    try {
-+      if (await hasOrderBeenReviewed(order)) {
-+        skippedAlreadyReviewed++;
-+        continue;
-+      }
-+      const result = await sendReviewReminderNotification(order.id);
-+      if (result.sent) sent++;
-+    } catch (err: any) {
-+      errors.push(`order ${order.id}: ${err?.message || err}`);
-+    }
-+  }
-+
-+  return { checked: (candidates || []).length, sent, skippedAlreadyReviewed, errors };
-+}
-diff --git a/lib/email-templates.ts b/lib/email-templates.ts
-index 7b7c78b..f1b31b0 100644
---- a/lib/email-templates.ts
-+++ b/lib/email-templates.ts
-@@ -711,6 +711,70 @@ export function orderOutForDeliveryEmail(order: {
-   return { subject, html };
+ import {
+   fetchReviewLinkOrder,
+@@ -133,29 +136,60 @@ function RewardBanner({ reward }: { reward: ReviewLinkReward }) {
  }
  
-+// Sent once, a few days after "Delivered", asking the customer to leave a
-+// star rating + written review + product photos. Deliberately delayed
-+// (see REVIEW_REQUEST_DELAY_DAYS in lib/cron-jobs.ts) rather than firing
-+// right on delivery -- straight after unboxing, before they've actually
-+// worn/used it, is the worst possible moment to ask "how is it?". The CTA
-+// goes to the order page itself (not the product page), because that's
-+// where <DeliveredItemReview /> renders the 1-tap star picker + photo
-+// upload for every item in the order -- no separate "write a review" page
-+// to build or find. Deduped by orders.review_request_email_sent_at.
-+export function reviewRequestEmail(order: {
-+  id: string;
-+  customer_name?: string;
-+  items?: any[];
+ /** Small "Step 1 of 3" progress row -- done steps get a check, the
+- *  current step is highlighted, future steps are dim. Purely visual;
+- *  which steps exist at all is decided by `steps` (from store settings). */
+-function StepProgress({ steps, currentIndex }: { steps: StepKey[]; currentIndex: number }) {
++ *  current step is highlighted, future steps are dim. Which steps exist
++ *  at all is decided by `steps` (from store settings). Done steps (rate /
++ *  write) are clickable so a customer who already finished them can tap
++ *  back in and edit their star rating or review text before final submit. */
++function StepProgress({
++  steps,
++  currentIndex,
++  onEditStep,
++}: {
++  steps: StepKey[];
++  currentIndex: number;
++  onEditStep?: (idx: number) => void;
 +}) {
-+  const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
-+  const name = order.customer_name || 'there';
-+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';
-+  const orderUrl = `${siteUrl}/account/orders/${order.id}`;
-+  const firstItemName = order.items?.[0]?.product_name || order.items?.[0]?.name || 'your order';
-+  const subject = `${name === 'there' ? 'How' : `${name}, how`} was ${order.items?.length === 1 ? firstItemName : 'your order'}? Rate it in 30 seconds`;
-+  const html = wrapper(`
-+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Hi ${name}, how's your ${order.items?.length === 1 ? 'new piece' : 'order'}?</h2>
-+    <p>Your order <strong>${shortId}</strong> was delivered a few days ago -- we'd love to know what you think.</p>
-+    ${order.items?.length ? itemsTable(order.items) : ''}
-+    <p>It only takes a moment: tap a star rating, and if you have a minute more, tell us about the fit and fabric -- and a quick photo of you wearing it helps other shoppers (and us!) more than anything else.</p>
-+    <p style="text-align:center; margin-top: 20px;">
-+      <a href="${orderUrl}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
-+        Rate &amp; Review
-+      </a>
-+    </p>
-+    <p style="text-align:center; margin-top: 10px; font-size: 12px; color:#9a8f87;">Tap a star to rate instantly, then add a photo if you'd like -- no account juggling, it's right there on your order page.</p>
-+  `);
-+  return { subject, html };
-+}
+   if (steps.length <= 1) return null;
+   return (
+     <div className="mb-3 flex items-center gap-1">
+       {steps.map((step, idx) => {
+         const done = idx < currentIndex;
+         const active = idx === currentIndex;
++        // Only "rate" and "write" can be revisited -- editing a photo has
++        // its own dedicated flow (the upload box itself), so we don't
++        // wire a click here for that step.
++        const editable = done && step !== 'photo' && !!onEditStep;
++        const pill = (
++          <div
++            className={`flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium transition-colors ${
++              done
++                ? editable
++                  ? 'bg-secondary/15 text-secondary hover:bg-secondary/25'
++                  : 'bg-secondary/15 text-secondary'
++                : active
++                ? 'bg-primary/10 text-primary'
++                : 'text-muted-foreground/60'
++            }`}
++          >
++            {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
++            <span className="hidden sm:inline">{STEP_LABEL[step]}</span>
++            {editable && <Pencil className="h-2.5 w-2.5 opacity-70" />}
++          </div>
++        );
+         return (
+           <div key={step} className="flex flex-1 items-center gap-1">
+-            <div
+-              className={`flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium ${
+-                done
+-                  ? 'bg-secondary/15 text-secondary'
+-                  : active
+-                  ? 'bg-primary/10 text-primary'
+-                  : 'text-muted-foreground/60'
+-              }`}
+-            >
+-              {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
+-              <span className="hidden sm:inline">{STEP_LABEL[step]}</span>
+-            </div>
++            {editable ? (
++              <button
++                type="button"
++                onClick={() => onEditStep?.(idx)}
++                aria-label={`Edit ${STEP_LABEL[step]}`}
++                className="flex-1 text-left"
++              >
++                {pill}
++              </button>
++            ) : (
++              pill
++            )}
+             {idx < steps.length - 1 && <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/40" />}
+           </div>
+         );
+@@ -202,6 +236,11 @@ function ReviewItemCard({
+   const [reward, setReward] = useState<ReviewLinkReward | null>(null);
+   const [rewardIssued, setRewardIssued] = useState(item.progress.rewardIssued);
+   const [photoSkipped, setPhotoSkipped] = useState(false);
++  // When a customer taps back into an already-completed step (e.g. "Rate")
++  // to change something, we park the step they came from here so that once
++  // they save the edit we return them straight there -- instead of
++  // marching them forward through every step again from the start.
++  const [editReturnIndex, setEditReturnIndex] = useState<number | null>(null);
+ 
+   useEffect(() => {
+     const urls = photoFiles.map((f) => URL.createObjectURL(f));
+@@ -263,7 +302,11 @@ function ReviewItemCard({
+       setReward(result.reward);
+       setRewardIssued(result.progress.rewardIssued);
+       onSubmitted(item.productId, result.reward);
+-      setStepIndex((i) => i + 1);
++      setStepIndex(() => {
++        if (editReturnIndex !== null) return editReturnIndex;
++        return stepIndex + 1;
++      });
++      setEditReturnIndex(null);
+     } catch (err) {
+       // eslint-disable-next-line no-alert
+       alert(err instanceof Error ? err.message : 'Could not save this step.');
+@@ -289,6 +332,20 @@ function ReviewItemCard({
+   const canSkipPhoto = currentStep === 'photo' && savedPhotoUrls.length + photoFiles.length === 0;
+ 
+   const isLastStep = stepIndex === steps.length - 1;
++  const isEditing = editReturnIndex !== null;
 +
-+// Single follow-up, sent once, only to customers who still haven't left a
-+// review after the first request (see hasOrderBeenReviewed in
-+// lib/review-notifications.ts) -- the whole point of a reminder is to lift
-+// total review volume, so it must never go to someone who already
-+// reviewed. Deduped by orders.review_reminder_email_sent_at.
-+export function reviewReminderEmail(order: {
-+  id: string;
-+  customer_name?: string;
-+  items?: any[];
-+}) {
-+  const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
-+  const name = order.customer_name || 'there';
-+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';
-+  const orderUrl = `${siteUrl}/account/orders/${order.id}`;
-+  const subject = `Quick reminder: share your thoughts on order ${shortId}`;
-+  const html = wrapper(`
-+    <h2 style="margin-top:0; color:${BRAND_COLOR};">A small favour, ${name}?</h2>
-+    <p>We noticed you haven't had a chance to review order <strong>${shortId}</strong> yet -- totally fine if you've just been busy, this is just a friendly nudge.</p>
-+    ${order.items?.length ? itemsTable(order.items) : ''}
-+    <p>A star rating alone takes seconds, and if you can spare a photo of you wearing it, it genuinely helps other shoppers picture how it looks in real life.</p>
-+    <p style="text-align:center; margin-top: 20px;">
-+      <a href="${orderUrl}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
-+        Leave a Quick Review
-+      </a>
-+    </p>
-+  `);
-+  return { subject, html };
-+}
++  const handleEditStep = (idx: number) => {
++    if (idx === stepIndex) return;
++    setEditReturnIndex((prev) => (prev !== null ? prev : stepIndex));
++    setStepIndex(idx);
++  };
 +
- export function returnStatusEmail(ret: {
-   id: string;
-   order_id: string;
++  const cancelEdit = () => {
++    if (editReturnIndex !== null) setStepIndex(editReturnIndex);
++    setEditReturnIndex(null);
++  };
++
++  const hasAttachedPhoto = savedPhotoUrls.length + photoFiles.length > 0;
+ 
+   return (
+     <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+@@ -336,7 +393,18 @@ function ReviewItemCard({
+         </div>
+       ) : (
+         <div className="mt-4 space-y-3">
+-          <StepProgress steps={steps} currentIndex={stepIndex} />
++          <StepProgress steps={steps} currentIndex={stepIndex} onEditStep={handleEditStep} />
++
++          {isEditing && (currentStep === 'rate' || currentStep === 'write') && (
++            <div className="flex items-center justify-between rounded-md bg-primary/5 px-3 py-1.5 text-[11px] text-primary">
++              <span className="flex items-center gap-1">
++                <Pencil className="h-3 w-3" /> Editing your {currentStep === 'rate' ? 'rating' : 'review'}
++              </span>
++              <button type="button" onClick={cancelEdit} className="font-medium underline underline-offset-2">
++                Cancel
++              </button>
++            </div>
++          )}
+ 
+           {currentStep === 'rate' && (
+             <div className="flex items-center justify-center">
+@@ -401,8 +469,18 @@ function ReviewItemCard({
+               <>
+                 <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Saving...
+               </>
++            ) : isEditing ? (
++              <>
++                <Check className="mr-1.5 h-4 w-4" /> Save Changes
++              </>
++            ) : isLastStep && currentStep === 'photo' && hasAttachedPhoto ? (
++              <>
++                <ImagePlus className="mr-1.5 h-4 w-4" /> Submit Review with Photo
++              </>
+             ) : isLastStep ? (
+-              'Submit Review'
++              <>
++                <Send className="mr-1.5 h-4 w-4" /> Submit Review
++              </>
+             ) : (
+               'Continue'
+             )}
+@@ -417,9 +495,13 @@ function ReviewItemCard({
+                   type="button"
+                   onClick={() => submitStep({ skipPhoto: true })}
+                   disabled={submitting}
+-                  className="w-full text-center text-xs font-medium text-muted-foreground underline underline-offset-2 decoration-dotted hover:text-destructive disabled:cursor-not-allowed disabled:opacity-60"
++                  className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-muted-foreground/40 bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground hover:border-destructive/50 hover:bg-destructive/5 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-60"
+                 >
+-                  Skip -- submit without a photo (you won't unlock the {steps.length > 1 ? 'discount' : 'reward'} for this item)
++                  <ImageOff className="h-3.5 w-3.5 shrink-0" />
++                  Skip photo &amp; submit without it
++                  <span className="hidden sm:inline">
++                    (no {steps.length > 1 ? 'discount' : 'reward'} for this item)
++                  </span>
+                 </button>
+               )}
+             </>

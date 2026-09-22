@@ -30,6 +30,9 @@ import {
   PartyPopper,
   AlertTriangle,
   ChevronRight,
+  ImageOff,
+  Send,
+  Pencil,
 } from 'lucide-react';
 import {
   fetchReviewLinkOrder,
@@ -133,29 +136,60 @@ function RewardBanner({ reward }: { reward: ReviewLinkReward }) {
 }
 
 /** Small "Step 1 of 3" progress row -- done steps get a check, the
- *  current step is highlighted, future steps are dim. Purely visual;
- *  which steps exist at all is decided by `steps` (from store settings). */
-function StepProgress({ steps, currentIndex }: { steps: StepKey[]; currentIndex: number }) {
+ *  current step is highlighted, future steps are dim. Which steps exist
+ *  at all is decided by `steps` (from store settings). Done steps (rate /
+ *  write) are clickable so a customer who already finished them can tap
+ *  back in and edit their star rating or review text before final submit. */
+function StepProgress({
+  steps,
+  currentIndex,
+  onEditStep,
+}: {
+  steps: StepKey[];
+  currentIndex: number;
+  onEditStep?: (idx: number) => void;
+}) {
   if (steps.length <= 1) return null;
   return (
     <div className="mb-3 flex items-center gap-1">
       {steps.map((step, idx) => {
         const done = idx < currentIndex;
         const active = idx === currentIndex;
+        // Only "rate" and "write" can be revisited -- editing a photo has
+        // its own dedicated flow (the upload box itself), so we don't
+        // wire a click here for that step.
+        const editable = done && step !== 'photo' && !!onEditStep;
+        const pill = (
+          <div
+            className={`flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium transition-colors ${
+              done
+                ? editable
+                  ? 'bg-secondary/15 text-secondary hover:bg-secondary/25'
+                  : 'bg-secondary/15 text-secondary'
+                : active
+                ? 'bg-primary/10 text-primary'
+                : 'text-muted-foreground/60'
+            }`}
+          >
+            {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
+            <span className="hidden sm:inline">{STEP_LABEL[step]}</span>
+            {editable && <Pencil className="h-2.5 w-2.5 opacity-70" />}
+          </div>
+        );
         return (
           <div key={step} className="flex flex-1 items-center gap-1">
-            <div
-              className={`flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium ${
-                done
-                  ? 'bg-secondary/15 text-secondary'
-                  : active
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground/60'
-              }`}
-            >
-              {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
-              <span className="hidden sm:inline">{STEP_LABEL[step]}</span>
-            </div>
+            {editable ? (
+              <button
+                type="button"
+                onClick={() => onEditStep?.(idx)}
+                aria-label={`Edit ${STEP_LABEL[step]}`}
+                className="flex-1 text-left"
+              >
+                {pill}
+              </button>
+            ) : (
+              pill
+            )}
             {idx < steps.length - 1 && <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/40" />}
           </div>
         );
@@ -202,6 +236,11 @@ function ReviewItemCard({
   const [reward, setReward] = useState<ReviewLinkReward | null>(null);
   const [rewardIssued, setRewardIssued] = useState(item.progress.rewardIssued);
   const [photoSkipped, setPhotoSkipped] = useState(false);
+  // When a customer taps back into an already-completed step (e.g. "Rate")
+  // to change something, we park the step they came from here so that once
+  // they save the edit we return them straight there -- instead of
+  // marching them forward through every step again from the start.
+  const [editReturnIndex, setEditReturnIndex] = useState<number | null>(null);
 
   useEffect(() => {
     const urls = photoFiles.map((f) => URL.createObjectURL(f));
@@ -263,7 +302,11 @@ function ReviewItemCard({
       setReward(result.reward);
       setRewardIssued(result.progress.rewardIssued);
       onSubmitted(item.productId, result.reward);
-      setStepIndex((i) => i + 1);
+      setStepIndex(() => {
+        if (editReturnIndex !== null) return editReturnIndex;
+        return stepIndex + 1;
+      });
+      setEditReturnIndex(null);
     } catch (err) {
       // eslint-disable-next-line no-alert
       alert(err instanceof Error ? err.message : 'Could not save this step.');
@@ -289,6 +332,20 @@ function ReviewItemCard({
   const canSkipPhoto = currentStep === 'photo' && savedPhotoUrls.length + photoFiles.length === 0;
 
   const isLastStep = stepIndex === steps.length - 1;
+  const isEditing = editReturnIndex !== null;
+
+  const handleEditStep = (idx: number) => {
+    if (idx === stepIndex) return;
+    setEditReturnIndex((prev) => (prev !== null ? prev : stepIndex));
+    setStepIndex(idx);
+  };
+
+  const cancelEdit = () => {
+    if (editReturnIndex !== null) setStepIndex(editReturnIndex);
+    setEditReturnIndex(null);
+  };
+
+  const hasAttachedPhoto = savedPhotoUrls.length + photoFiles.length > 0;
 
   return (
     <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
@@ -336,7 +393,18 @@ function ReviewItemCard({
         </div>
       ) : (
         <div className="mt-4 space-y-3">
-          <StepProgress steps={steps} currentIndex={stepIndex} />
+          <StepProgress steps={steps} currentIndex={stepIndex} onEditStep={handleEditStep} />
+
+          {isEditing && (currentStep === 'rate' || currentStep === 'write') && (
+            <div className="flex items-center justify-between rounded-md bg-primary/5 px-3 py-1.5 text-[11px] text-primary">
+              <span className="flex items-center gap-1">
+                <Pencil className="h-3 w-3" /> Editing your {currentStep === 'rate' ? 'rating' : 'review'}
+              </span>
+              <button type="button" onClick={cancelEdit} className="font-medium underline underline-offset-2">
+                Cancel
+              </button>
+            </div>
+          )}
 
           {currentStep === 'rate' && (
             <div className="flex items-center justify-center">
@@ -401,8 +469,18 @@ function ReviewItemCard({
               <>
                 <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Saving...
               </>
+            ) : isEditing ? (
+              <>
+                <Check className="mr-1.5 h-4 w-4" /> Save Changes
+              </>
+            ) : isLastStep && currentStep === 'photo' && hasAttachedPhoto ? (
+              <>
+                <ImagePlus className="mr-1.5 h-4 w-4" /> Submit Review with Photo
+              </>
             ) : isLastStep ? (
-              'Submit Review'
+              <>
+                <Send className="mr-1.5 h-4 w-4" /> Submit Review
+              </>
             ) : (
               'Continue'
             )}
@@ -417,9 +495,13 @@ function ReviewItemCard({
                   type="button"
                   onClick={() => submitStep({ skipPhoto: true })}
                   disabled={submitting}
-                  className="w-full text-center text-xs font-medium text-muted-foreground underline underline-offset-2 decoration-dotted hover:text-destructive disabled:cursor-not-allowed disabled:opacity-60"
+                  className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-muted-foreground/40 bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground hover:border-destructive/50 hover:bg-destructive/5 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Skip -- submit without a photo (you won't unlock the {steps.length > 1 ? 'discount' : 'reward'} for this item)
+                  <ImageOff className="h-3.5 w-3.5 shrink-0" />
+                  Skip photo &amp; submit without it
+                  <span className="hidden sm:inline">
+                    (no {steps.length > 1 ? 'discount' : 'reward'} for this item)
+                  </span>
                 </button>
               )}
             </>

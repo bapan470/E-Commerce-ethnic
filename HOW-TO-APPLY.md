@@ -1,80 +1,39 @@
-# Price Filter Bar (Shop by Price) — Apply Guide
+# Review page — kya change hua
 
-## Kya add hua
-Shop page (`/shop`) par ab category ki jagah/saath ek **scrollable "Shop by
-Price" chip bar** hai — bilkul category-icons wali scroll style mein, bas
-category ki jagah price ranges hain:
+File: `app/review/[token]/page.tsx`
 
-- Under ₹499
-- ₹499 - ₹699
-- ₹699 - ₹899
-- ₹899 - ₹1000
-- ₹1000 - ₹5000
+## 1. Rating / Review edit karne ka option
+Jab "Rate" ya "Write a review" step already complete ho chuka ho (checkmark
+wale chip), ab uspar tap karke customer wapas us step par ja sakta hai aur
+apni rating ya review text edit kar sakta hai. Edit karke "Save Changes"
+dabane par wo seedha wahi laut aata hai jaha se aaya tha (photo step ya
+jaha bhi tha) — pura flow dobara nahi karna padta.
+- Photo step edit-jump me shaamil nahi kiya, kyunki uska apna upload box
+  already hai (usme change karna already easy hai).
+- Edit mode me ek chhota banner dikhta hai: "Editing your rating/review"
+  + "Cancel" link, taaki customer confuse na ho.
 
-Kisi bhi chip par tap karo → grid turant us price range ke products dikhayega
-(same "Filters" logic jo already price slider use karta hai, bas ab ek tap
-mein). Dobara tap karo ya "All Prices" dabao → filter clear ho jata hai.
+## 2. Skip button
+Pehle sirf underline text tha ("Skip -- submit without a photo..."), jisse
+customer ko clear nahi hota tha ki ye ek action button hai. Ab ye ek proper
+dashed-border button ban gaya hai, ek `ImageOff` icon ke saath, aur text
+short/clear hai: "Skip photo & submit without it (no discount for this
+item)".
 
-**Admin se fully manage hota hai** — koi bhi price range add/edit/delete/
-reorder kar sakte ho bina code chhue:
-`Admin panel → Catalog → Price Filters`
+## 3. Submit button
+- Photo attach hai to: "Submit Review with Photo" (photo icon ke saath)
+- Photo skip kar rahe ho ya photo step hai hi nahi to: "Submit Review"
+  (send icon ke saath)
+- Edit mode me: "Save Changes" (check icon ke saath)
 
-Koi naya database table/migration nahi chahiye — yeh existing generic
-`settings` table (jo already store info, banners, etc. ke liye use hota hai)
-mein ek naya key (`price_range_filters`) store karta hai.
-
-## Files (is zip mein)
-- `lib/settings-api.ts` — **replace** (naya function add hua: end mein
-  `PriceRangeBucket`, `fetchPriceRangeFilters`, `savePriceRangeFilters`)
-- `app/shop/shop-content.tsx` — **replace** (naya "Shop by Price" bar add
-  hua, category filter bar jaisi hi scroll style mein)
-- `components/shop/price-range-filter-bar.tsx` — **naya file**
-- `components/admin/price-range-filters-panel.tsx` — **naya file**
-- `app/admin/page.tsx` — **replace** (naya panel register hua)
-- `components/admin/admin-shell.tsx` — **replace** (sidebar mein "Price
-  Filters" naya menu item add hua, Catalog group ke andar, Categories ke
-  just neeche)
+Isse customer ko turant pata chal jayega ki button dabane par exactly kya
+hoga.
 
 ## Apply kaise karein
+1. Apne local repo `E-Commerce-ethnic` me `app/review/[token]/page.tsx`
+   ko is zip ke andar wali file se replace kar dein.
+2. `git add -A && git commit -m "review page: editable rating/review steps, clearer skip & submit buttons" && git push`
+3. Deploy/build karke live check kar lein (rate → write → photo → submit
+   flow, aur "Rate"/"Write a review" chip par tap karke edit flow).
 
-**Option A — Patch file (fastest, edited files ke liye):**
-Repo root se (jahan `.git` folder hai):
-```
-git apply price-filter-update.diff
-```
-Isse `lib/settings-api.ts`, `app/shop/shop-content.tsx`, `app/admin/page.tsx`,
-`components/admin/admin-shell.tsx` — ye 4 already-existing files apply ho
-jayengi. Patch sirf edits track karta hai, naye files nahi — isliye niche
-diye 2 naye components manually copy karne honge (Option B follow karo un
-2 files ke liye):
-- `components/shop/price-range-filter-bar.tsx`
-- `components/admin/price-range-filters-panel.tsx`
-
-**Option B — Sabhi files manually copy-paste (patch use nahi karna ho toh):**
-1. Is zip ke andar jo bhi files hain, unko apne local repo
-   (`E-Commerce-ethnic`) mein **same exact path** par copy-paste/replace
-   karo (folder structure zip mein bhi wahi hai).
-2. Phir:
-   ```
-   git add lib/settings-api.ts app/shop/shop-content.tsx app/admin/page.tsx components/admin/admin-shell.tsx components/shop/price-range-filter-bar.tsx components/admin/price-range-filters-panel.tsx
-   git commit -m "feat: admin-managed 'Shop by Price' scrollable price-range filter bar"
-   git push
-   ```
-
-(Maine patch ko ek fresh clone par `git apply --check` se verify bhi kar
-liya hai — cleanly apply hota hai.)
-
-## Test karne ke liye
-1. `/shop` kholo — heading ke neeche, "Price Drop / Bestseller / Most
-   Gifted" chips ke just neeche, "Shop by Price" bar dikhna chahiye,
-   horizontally scrollable.
-2. Kisi bhi price chip pe tap karo — sirf us range ke products dikhein
-   (e.g. "Under ₹499" pe tap karo → sirf ₹100–₹499 wale products).
-3. Admin panel kholo → left sidebar mein "Catalog" group ke andar
-   "Price Filters" naya option dikhna chahiye. Wahan se koi range edit/add/
-   delete/reorder karke save karo, phir `/shop` refresh karke check karo ki
-   chip bar turant update ho gaya.
-
-## Note
-Maine already `npx tsc --noEmit` chala ke poore project mein 0 TypeScript
-errors confirm kiye hain, toh yeh changes safely apply ho jaane chahiye.
+`CHANGES.diff` file me exact diff bhi diya gaya hai reference ke liye.
