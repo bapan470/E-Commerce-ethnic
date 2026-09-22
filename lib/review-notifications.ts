@@ -71,7 +71,7 @@ export async function sendReviewRequestNotification(
     return { sent: false, skipped: 'Already sent' };
   }
 
-  const { subject, html } = reviewRequestEmail({
+  const { subject, html } = await reviewRequestEmail({
     id: order.id,
     customer_name: order.customer_name,
     items: order.items,
@@ -109,7 +109,7 @@ export async function sendReviewReminderNotification(
     }
   }
 
-  const { subject, html } = reviewReminderEmail({
+  const { subject, html } = await reviewReminderEmail({
     id: order.id,
     customer_name: order.customer_name,
     items: order.items,

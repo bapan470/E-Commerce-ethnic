@@ -41,6 +41,7 @@ import {
   Flame,
   IndianRupee,
   Sparkles,
+  Award,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import NotificationBell from './notification-bell';
@@ -70,6 +71,7 @@ export type AdminSection =
   | 'marketing'
   | 'partner-pages'
   | 'loyalty'
+  | 'review-rewards'
   | 'referrals'
   | 'resellers'
   | 'affiliates'
@@ -151,6 +153,7 @@ const NAV_GROUPS: NavGroup[] = [
       { value: 'marketing', label: 'Marketing', icon: Megaphone },
       { value: 'partner-pages', label: 'Partner Pages', icon: Store },
       { value: 'loyalty', label: 'Loyalty', icon: Gift },
+      { value: 'review-rewards', label: 'Review Rewards', icon: Award },
       { value: 'referrals', label: 'Referrals', icon: Users2 },
       { value: 'resellers', label: 'Resellers', icon: Store },
       { value: 'affiliates', label: 'Affiliates', icon: Users2 },

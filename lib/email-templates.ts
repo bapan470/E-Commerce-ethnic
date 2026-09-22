@@ -1,4 +1,7 @@
 import { formatINR } from './format';
+import { getSupabaseAdmin } from './supabase-admin';
+import { getOrCreateReviewToken } from './review-link-tokens';
+import { getReviewRewardSettings } from './review-reward-settings';
 
 const BRAND_COLOR = '#7c3a1d';
 const GOLD_ACCENT = '#c9a15a';
@@ -711,16 +714,52 @@ export function orderOutForDeliveryEmail(order: {
   return { subject, html };
 }
 
+// Builds the "Rate N★ or more and get a surprise discount" incentive
+// banner shown in both review emails below, pulling minStars/discount
+// entirely from lib/review-reward-settings.ts (never hardcoded) so an
+// admin changing the Rewards settings updates the email copy too.
+// Returns '' when the reward program is switched off, so no email ever
+// promises a discount that won't actually be issued.
+async function reviewRewardBanner(): Promise<string> {
+  try {
+    const settings = await getReviewRewardSettings(getSupabaseAdmin());
+    if (!settings.enabled) return '';
+    const discountLabel =
+      settings.discountType === 'percentage'
+        ? `${settings.discountValue}% off`
+        : `${formatINR(settings.discountValue)} off`;
+    return `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 18px 0;">
+      <tr>
+        <td style="background:#fbf1de; border:1px solid ${GOLD_ACCENT}; border-radius:6px; padding:14px 16px; text-align:center;">
+          <span style="color:${BRAND_COLOR}; font-weight:bold; font-size:14px;">
+            ✦ Rate ${settings.minStars}★ or more and get a surprise discount
+          </span>
+          <div style="margin-top:4px; font-size:13px; color:#6b5c4f;">
+            Qualifying reviews unlock ${discountLabel} instantly -- no waiting, no extra steps.
+          </div>
+        </td>
+      </tr>
+    </table>`;
+  } catch (err) {
+    // Never let a settings-fetch hiccup block the review email itself --
+    // just send it without the incentive banner.
+    console.error('[reviewRewardBanner] failed to load settings:', err);
+    return '';
+  }
+}
+
 // Sent once, a few days after "Delivered", asking the customer to leave a
 // star rating + written review + product photos. Deliberately delayed
 // (see REVIEW_REQUEST_DELAY_DAYS in lib/cron-jobs.ts) rather than firing
 // right on delivery -- straight after unboxing, before they've actually
 // worn/used it, is the worst possible moment to ask "how is it?". The CTA
-// goes to the order page itself (not the product page), because that's
-// where <DeliveredItemReview /> renders the 1-tap star picker + photo
-// upload for every item in the order -- no separate "write a review" page
-// to build or find. Deduped by orders.review_request_email_sent_at.
-export function reviewRequestEmail(order: {
+// now goes to the secret, login-free app/review/[token] link (see
+// lib/review-link-tokens.ts) instead of the login-gated
+// /account/orders/[id] -- a guest checkout customer with no account can
+// now rate/review/get-rewarded without ever needing to sign in.
+// Deduped by orders.review_request_email_sent_at.
+export async function reviewRequestEmail(order: {
   id: string;
   customer_name?: string;
   items?: any[];
@@ -728,7 +767,9 @@ export function reviewRequestEmail(order: {
   const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
   const name = order.customer_name || 'there';
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';
-  const orderUrl = `${siteUrl}/account/orders/${order.id}`;
+  const token = await getOrCreateReviewToken(order.id);
+  const reviewUrl = `${siteUrl}/review/${token}`;
+  const rewardBanner = await reviewRewardBanner();
   const firstItemName = order.items?.[0]?.product_name || order.items?.[0]?.name || 'your order';
   const subject = `${name === 'there' ? 'How' : `${name}, how`} was ${order.items?.length === 1 ? firstItemName : 'your order'}? Rate it in 30 seconds`;
   const html = wrapper(`
@@ -736,12 +777,13 @@ export function reviewRequestEmail(order: {
     <p>Your order <strong>${shortId}</strong> was delivered a few days ago -- we'd love to know what you think.</p>
     ${order.items?.length ? itemsTable(order.items) : ''}
     <p>It only takes a moment: tap a star rating, and if you have a minute more, tell us about the fit and fabric -- and a quick photo of you wearing it helps other shoppers (and us!) more than anything else.</p>
+    ${rewardBanner}
     <p style="text-align:center; margin-top: 20px;">
-      <a href="${orderUrl}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+      <a href="${reviewUrl}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
         Rate &amp; Review
       </a>
     </p>
-    <p style="text-align:center; margin-top: 10px; font-size: 12px; color:#9a8f87;">Tap a star to rate instantly, then add a photo if you'd like -- no account juggling, it's right there on your order page.</p>
+    <p style="text-align:center; margin-top: 10px; font-size: 12px; color:#9a8f87;">Tap a star to rate instantly, then add a photo if you'd like -- no login needed, this link is just for you.</p>
   `);
   return { subject, html };
 }
@@ -750,8 +792,11 @@ export function reviewRequestEmail(order: {
 // review after the first request (see hasOrderBeenReviewed in
 // lib/review-notifications.ts) -- the whole point of a reminder is to lift
 // total review volume, so it must never go to someone who already
-// reviewed. Deduped by orders.review_reminder_email_sent_at.
-export function reviewReminderEmail(order: {
+// reviewed. Also points at the login-free app/review/[token] link now
+// (same token the first request email used -- getOrCreateReviewToken is
+// idempotent, so this is never a second/different link).
+// Deduped by orders.review_reminder_email_sent_at.
+export async function reviewReminderEmail(order: {
   id: string;
   customer_name?: string;
   items?: any[];
@@ -759,15 +804,18 @@ export function reviewReminderEmail(order: {
   const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
   const name = order.customer_name || 'there';
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';
-  const orderUrl = `${siteUrl}/account/orders/${order.id}`;
+  const token = await getOrCreateReviewToken(order.id);
+  const reviewUrl = `${siteUrl}/review/${token}`;
+  const rewardBanner = await reviewRewardBanner();
   const subject = `Quick reminder: share your thoughts on order ${shortId}`;
   const html = wrapper(`
     <h2 style="margin-top:0; color:${BRAND_COLOR};">A small favour, ${name}?</h2>
     <p>We noticed you haven't had a chance to review order <strong>${shortId}</strong> yet -- totally fine if you've just been busy, this is just a friendly nudge.</p>
     ${order.items?.length ? itemsTable(order.items) : ''}
     <p>A star rating alone takes seconds, and if you can spare a photo of you wearing it, it genuinely helps other shoppers picture how it looks in real life.</p>
+    ${rewardBanner}
     <p style="text-align:center; margin-top: 20px;">
-      <a href="${orderUrl}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+      <a href="${reviewUrl}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
         Leave a Quick Review
       </a>
     </p>

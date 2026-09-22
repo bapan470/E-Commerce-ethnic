@@ -28,6 +28,7 @@ import CustomersPanel from '@/components/admin/customers-panel';
 import WooCommerceImportPanel from '@/components/admin/woocommerce-import-panel';
 import WholesalePanel from '@/components/admin/wholesale-panel';
 import LoyaltyPanel from '@/components/admin/loyalty-panel';
+import ReviewRewardsPanel from '@/components/admin/review-rewards-panel';
 import ReferralsPanel from '@/components/admin/referrals-panel';
 import ResellersPanel from '@/components/admin/resellers-panel';
 import CacheWarmPanel from '@/components/admin/cache-warm-panel';
@@ -65,6 +66,7 @@ const PANELS: Record<AdminSection, React.ComponentType> = {
   marketing: MarketingPanel,
   'partner-pages': PartnerPagesPanel,
   loyalty: LoyaltyPanel,
+  'review-rewards': ReviewRewardsPanel,
   referrals: ReferralsPanel,
   resellers: ResellersPanel,
   affiliates: AffiliatesPanel,
