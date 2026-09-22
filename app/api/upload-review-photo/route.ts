@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase-server-auth';
 import { uploadToStorage } from '@/lib/storage';
 import { storeBlurPreview } from '@/lib/blur-preview';
+import { verifyReviewToken } from '@/lib/review-link-tokens';
 
 // ---------------------------------------------------------------------
 // POST /api/upload-review-photo
@@ -11,9 +12,12 @@ import { storeBlurPreview } from '@/lib/blur-preview';
 // here gives the same dual-write (Supabase + R2 mirror) and canonical
 // /media/ URL that all other uploads now get.
 //
-// Requires an authenticated user (any logged-in customer). File size is
-// capped at 10MB (review photos don't need to be huge). No WebP
-// conversion here — kept simple to match the original behaviour.
+// Requires EITHER a logged-in customer (original behaviour, unchanged)
+// OR a valid guest review-link token, sent as a `reviewToken` form
+// field, so app/review/[token] (no login) can attach photos too -- see
+// lib/review-link-tokens.ts. File size is capped at 10MB (review
+// photos don't need to be huge). No WebP conversion here — kept simple
+// to match the original behaviour.
 // ---------------------------------------------------------------------
 
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -22,18 +26,27 @@ const ALLOWED_TYPES = new Set([
 ]);
 
 export async function POST(req: Request) {
-  // Must be a logged-in customer
-  const supabase = await getSupabaseServer();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'Please log in to upload review photos.' }, { status: 401 });
-  }
-
   let form: FormData;
   try {
     form = await req.formData();
   } catch {
     return NextResponse.json({ error: 'Expected multipart/form-data with a file field.' }, { status: 400 });
+  }
+
+  // Auth: logged-in customer OR a valid guest review-link token.
+  const reviewToken = form.get('reviewToken');
+  let authorized = false;
+  if (typeof reviewToken === 'string' && reviewToken) {
+    const verified = await verifyReviewToken(reviewToken).catch(() => null);
+    authorized = Boolean(verified);
+  }
+  if (!authorized) {
+    const supabase = await getSupabaseServer();
+    const { data: { user } } = await supabase.auth.getUser();
+    authorized = Boolean(user);
+  }
+  if (!authorized) {
+    return NextResponse.json({ error: 'Please log in to upload review photos.' }, { status: 401 });
   }
 
   const file = form.get('file');
