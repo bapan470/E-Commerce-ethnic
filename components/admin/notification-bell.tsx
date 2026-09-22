@@ -13,6 +13,7 @@ import {
   Loader2,
   Truck,
   Landmark,
+  Star,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -30,7 +31,8 @@ interface AdminNotification {
     | 'vendor_application'
     | 'vendor_bank_update'
     | 'vendor_pickup'
-    | 'vendor_return_pending';
+    | 'vendor_return_pending'
+    | 'review';
   title: string;
   message: string;
   section: string;
@@ -48,6 +50,7 @@ const ICONS: Record<AdminNotification['type'], typeof Bell> = {
   vendor_bank_update: Landmark,
   vendor_pickup: Truck,
   vendor_return_pending: Undo2,
+  review: Star,
 };
 
 const LAST_SEEN_KEY = 'admin_notifications_last_seen';

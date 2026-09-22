@@ -19,7 +19,8 @@ export type AdminNotification = {
     | 'restock'
     | 'abandoned_cart'
     | 'vendor_pickup'
-    | 'vendor_return_pending';
+    | 'vendor_return_pending'
+    | 'review';
   title: string;
   message: string;
   section: string;
@@ -36,7 +37,7 @@ export async function GET() {
   const supabase = getSupabaseAdmin();
 
   try {
-    const [ordersRes, contactRes, ticketsRes, returnsRes, restockRes, cartsRes, pickupRes, vendorReturnRes] = await Promise.all([
+    const [ordersRes, contactRes, ticketsRes, returnsRes, restockRes, cartsRes, pickupRes, vendorReturnRes, reviewsRes] = await Promise.all([
       supabase
         .from('orders')
         .select('id, customer_name, customer_email, total_amount, created_at')
@@ -94,6 +95,17 @@ export async function GET() {
         .eq('status', 'pending')
         .order('created_at', { ascending: false })
         .limit(30),
+      // New reviews/ratings — auto-published 5s after submission (see
+      // scheduleAutoPublish in lib/reviews-api.ts), so this isn't a
+      // "pending action" queue like the others; it's just the latest
+      // arrivals so an admin notices right away and can Hide one from
+      // the Reviews panel if needed. Newest 10 only, so the bell doesn't
+      // fill up with old reviews once caught up.
+      supabase
+        .from('reviews')
+        .select('id, customer_name, rating, comment, title, created_at, product_id, products(name)')
+        .order('created_at', { ascending: false })
+        .limit(10),
     ]);
 
     const notifications: AdminNotification[] = [];
@@ -196,6 +208,22 @@ export async function GET() {
         title: 'Return to Vendor — pending',
         message: `${productName} (${r.vendors?.business_name || 'vendor'}) — ${reasonLabel} · pending ${daysPending} din`,
         section: 'vendor-ops',
+        created_at: r.created_at,
+      });
+    });
+
+    (reviewsRes.data || []).forEach((r: any) => {
+      const stars = '★'.repeat(Math.max(0, Math.min(5, r.rating || 0)));
+      const productName = r.products?.name || 'a product';
+      const hasWritten = Boolean((r.title && r.title.trim()) || (r.comment && r.comment.trim()));
+      notifications.push({
+        id: `review-${r.id}`,
+        type: 'review',
+        title: hasWritten ? 'New review received' : 'New rating received',
+        message: `${r.customer_name || 'A customer'} rated "${productName}" ${stars} (${r.rating}/5)${
+          hasWritten ? ` — "${(r.title || r.comment || '').slice(0, 60)}"` : ''
+        }`,
+        section: 'reviews',
         created_at: r.created_at,
       });
     });
