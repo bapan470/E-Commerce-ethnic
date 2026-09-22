@@ -9,6 +9,8 @@ import {
   orderArrivingEmail,
   orderOutForDeliveryEmail,
   codToPrepaidRequestEmail,
+  reviewRequestEmail,
+  reviewReminderEmail,
 } from '@/lib/email-templates';
 import { isInPaymentRequestFlow } from '@/lib/order-payment-events';
 
@@ -99,6 +101,18 @@ async function buildPreview(orderId: string, type: string, dateOverride?: string
         store: (storeSetting?.value as any) || undefined,
       });
     }
+    case 'review_request':
+      return reviewRequestEmail({
+        id: order.id,
+        customer_name: order.customer_name,
+        items: previewItems,
+      });
+    case 'review_reminder':
+      return reviewReminderEmail({
+        id: order.id,
+        customer_name: order.customer_name,
+        items: previewItems,
+      });
     case 'delivered':
     case 'paid':
     case 'cancelled':

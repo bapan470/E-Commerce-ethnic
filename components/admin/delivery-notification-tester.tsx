@@ -18,6 +18,8 @@ import {
   CheckCircle2,
   XCircle,
   MailWarning,
+  Star,
+  BellRing,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -149,6 +151,8 @@ export default function DeliveryNotificationTester({
     { key: 'arriving', label: 'Arriving', icon: CalendarClock },
     { key: 'out_for_delivery', label: 'Out for Delivery', icon: Truck },
     { key: 'delivered', label: 'Delivered', icon: Home },
+    { key: 'review_request', label: 'Rate & Review (auto, ~4 days after delivery)', icon: Star },
+    { key: 'review_reminder', label: 'Review Reminder (auto, ~7 days after that)', icon: BellRing },
     { key: 'cod_to_prepaid', label: 'Request Online Payment', icon: Wallet },
   ];
 
@@ -259,10 +263,42 @@ export default function DeliveryNotificationTester({
           )}
           Mark "Delivered" now
         </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          disabled={busy === 'send_review_request'}
+          onClick={() => runAction('send_review_request', { force: true })}
+          className="gap-1.5"
+        >
+          {busy === 'send_review_request' ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Star className="h-3.5 w-3.5" />
+          )}
+          Send "Rate &amp; Review" now
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          disabled={busy === 'send_review_reminder'}
+          onClick={() => runAction('send_review_reminder', { force: true })}
+          className="gap-1.5"
+        >
+          {busy === 'send_review_reminder' ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <BellRing className="h-3.5 w-3.5" />
+          )}
+          Send Review Reminder now
+        </Button>
       </div>
       <p className="mt-2 text-[11px] text-muted-foreground">
         These buttons send real emails to the customer above and (for "Out for Delivery" / "Delivered") update the
-        order's actual status — use a test order if you don't want to touch a real customer's order.
+        order's actual status — use a test order if you don't want to touch a real customer's order. The normal
+        review emails run automatically once a day (~4 days after delivery, then one reminder ~7 days after that if
+        they still haven't reviewed) — these two buttons just let you fire them on demand for testing.
       </p>
 
       <div className="my-4 border-t border-border/60" />

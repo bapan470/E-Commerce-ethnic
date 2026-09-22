@@ -7,6 +7,10 @@ import {
   sendOutForDeliveryNotification,
   sendDeliveredNotification,
 } from '@/lib/delivery-notifications';
+import {
+  sendReviewRequestNotification,
+  sendReviewReminderNotification,
+} from '@/lib/review-notifications';
 
 // Admin > Orders "Test" panel. Unlike preview-email (which never touches
 // the DB or the real customer), these actions are the REAL thing -- they
@@ -51,6 +55,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
     if (action === 'send_delivered') {
       const result = await sendDeliveredNotification(params.id, { force: !!body?.force });
+      return NextResponse.json(result);
+    }
+
+    if (action === 'send_review_request') {
+      const result = await sendReviewRequestNotification(params.id, { force: !!body?.force });
+      return NextResponse.json(result);
+    }
+
+    if (action === 'send_review_reminder') {
+      const result = await sendReviewReminderNotification(params.id, { force: !!body?.force });
       return NextResponse.json(result);
     }
 

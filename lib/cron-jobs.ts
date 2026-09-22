@@ -47,6 +47,11 @@ import {
   sendOutForDeliveryNotification,
   sendDeliveredNotification,
 } from '@/lib/delivery-notifications';
+import {
+  sendReviewRequestNotification,
+  sendReviewReminderNotification,
+  hasOrderBeenReviewed,
+} from '@/lib/review-notifications';
 
 // -------------------- WooCommerce imported-customer drip --------------------
 // Thin wrapper so this job is listed alongside the others here and picked
@@ -811,4 +816,88 @@ export async function runForwardShipmentTrackingJob() {
   }
 
   return { checked: orders.length, delivered, rto, errors };
+}
+
+// -------------------- Review-request emails --------------------
+// Straight after unboxing is the worst moment to ask "how is it?" -- the
+// customer hasn't worn/used the thing yet -- so this waits a few days
+// after "Delivered" before asking. Tune freely; these are calendar days,
+// not a strict SLA.
+const REVIEW_REQUEST_DELAY_DAYS = 4;
+const REVIEW_REMINDER_DELAY_DAYS = 7; // measured from when the request went out, not from delivery.
+
+function daysAgoIso(days: number) {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+// Run once daily (see app/api/cron/daily-jobs/route.ts). Finds every
+// delivered order whose "Delivered" email went out REVIEW_REQUEST_DELAY_DAYS+
+// ago and that hasn't had a review-request email yet, and sends one. Ordering
+// off delivered_email_sent_at (not just status='delivered') means an order
+// only enters this funnel once the delivered-lifecycle email has actually
+// fired, keeping this in step with the rest of the lifecycle-email log.
+export async function runReviewRequestEmailsJob() {
+  const supabase = getSupabaseAdmin();
+  const cutoff = daysAgoIso(REVIEW_REQUEST_DELAY_DAYS);
+
+  const { data: orders, error } = await supabase
+    .from('orders')
+    .select('id')
+    .eq('status', 'delivered')
+    .is('review_request_email_sent_at', null)
+    .not('delivered_email_sent_at', 'is', null)
+    .lte('delivered_email_sent_at', cutoff);
+  if (error) throw error;
+
+  let sent = 0;
+  const errors: string[] = [];
+  for (const order of orders || []) {
+    try {
+      const result = await sendReviewRequestNotification(order.id);
+      if (result.sent) sent++;
+    } catch (err: any) {
+      errors.push(`order ${order.id}: ${err?.message || err}`);
+    }
+  }
+
+  return { checked: (orders || []).length, sent, errors };
+}
+
+// Run once daily, same cron. Finds every order whose review-request email
+// went out REVIEW_REMINDER_DELAY_DAYS+ ago, hasn't had a reminder yet, and
+// -- the whole point of a reminder -- where the customer still hasn't
+// actually left a review. sendReviewReminderNotification() re-checks
+// hasOrderBeenReviewed() itself right before sending (a review could land
+// between this query and that send), this pre-filter just keeps the loop
+// from doing pointless work on orders that are obviously already reviewed.
+export async function runReviewReminderEmailsJob() {
+  const supabase = getSupabaseAdmin();
+  const cutoff = daysAgoIso(REVIEW_REMINDER_DELAY_DAYS);
+
+  const { data: candidates, error } = await supabase
+    .from('orders')
+    .select('id, user_id, items')
+    .eq('status', 'delivered')
+    .is('review_reminder_email_sent_at', null)
+    .not('review_request_email_sent_at', 'is', null)
+    .lte('review_request_email_sent_at', cutoff);
+  if (error) throw error;
+
+  let sent = 0;
+  let skippedAlreadyReviewed = 0;
+  const errors: string[] = [];
+  for (const order of candidates || []) {
+    try {
+      if (await hasOrderBeenReviewed(order)) {
+        skippedAlreadyReviewed++;
+        continue;
+      }
+      const result = await sendReviewReminderNotification(order.id);
+      if (result.sent) sent++;
+    } catch (err: any) {
+      errors.push(`order ${order.id}: ${err?.message || err}`);
+    }
+  }
+
+  return { checked: (candidates || []).length, sent, skippedAlreadyReviewed, errors };
 }

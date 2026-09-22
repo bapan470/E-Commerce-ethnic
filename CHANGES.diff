@@ -1,489 +1,341 @@
-diff --git a/app/home-client.tsx b/app/home-client.tsx
-index 7da3c9f..11160bd 100644
---- a/app/home-client.tsx
-+++ b/app/home-client.tsx
-@@ -33,6 +33,7 @@ interface HomeClientProps {
-   discoverSettings: DiscoverSectionSettings;
-   discoverInitialProducts: Product[];
-   discoverInitialHasMore: boolean;
-+  discoverCategoryCounts: Record<string, number>;
- }
+diff --git a/app/api/admin/orders/[id]/delivery-test/route.ts b/app/api/admin/orders/[id]/delivery-test/route.ts
+index b6935f4..554346d 100644
+--- a/app/api/admin/orders/[id]/delivery-test/route.ts
++++ b/app/api/admin/orders/[id]/delivery-test/route.ts
+@@ -7,6 +7,10 @@ import {
+   sendOutForDeliveryNotification,
+   sendDeliveredNotification,
+ } from '@/lib/delivery-notifications';
++import {
++  sendReviewRequestNotification,
++  sendReviewReminderNotification,
++} from '@/lib/review-notifications';
  
- export default function HomeClient({
-@@ -48,6 +49,7 @@ export default function HomeClient({
-   discoverSettings,
-   discoverInitialProducts,
-   discoverInitialHasMore,
-+  discoverCategoryCounts,
- }: HomeClientProps) {
-   // Explode each grid's finite pick list into one card per colour, so a
-   // featured/new-arrival piece that comes in several colours shows every
-@@ -335,6 +337,7 @@ export default function HomeClient({
-         initialProducts={discoverInitialProducts}
-         initialHasMore={discoverInitialHasMore}
-         categories={categories}
-+        categoryCounts={discoverCategoryCounts}
-       />
+ // Admin > Orders "Test" panel. Unlike preview-email (which never touches
+ // the DB or the real customer), these actions are the REAL thing -- they
+@@ -54,6 +58,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
+       return NextResponse.json(result);
+     }
  
-       <PromoSlider />
-diff --git a/app/page.tsx b/app/page.tsx
-index 2cdd83c..cc8faef 100644
---- a/app/page.tsx
-+++ b/app/page.tsx
-@@ -107,6 +107,7 @@ export default async function Home() {
-         discoverSettings={homeData.discoverSettings}
-         discoverInitialProducts={homeData.discoverInitialProducts}
-         discoverInitialHasMore={homeData.discoverInitialHasMore}
-+        discoverCategoryCounts={homeData.discoverCategoryCounts}
-       />
-     </>
-   );
-diff --git a/components/home/discover-products-section.tsx b/components/home/discover-products-section.tsx
-index 518f3d6..6f17dee 100644
---- a/components/home/discover-products-section.tsx
-+++ b/components/home/discover-products-section.tsx
-@@ -18,6 +18,11 @@ interface DiscoverProductsSectionProps {
-   initialProducts: Product[];
-   initialHasMore: boolean;
-   categories: CategoryRow[];
-+  /** Category name -> live product count across the whole Discover
-+   *  Products set (see fetchDiscoverCategoryCountsServer). Categories
-+   *  with a zero (or missing) count are hidden from the filter bar below
-+   *  so a shopper can never tap a pill straight into an empty grid. */
-+  categoryCounts?: Record<string, number>;
- }
- 
- /**
-@@ -33,6 +38,7 @@ export default function DiscoverProductsSection({
-   initialProducts,
-   initialHasMore,
-   categories,
-+  categoryCounts,
- }: DiscoverProductsSectionProps) {
-   // Hidden entirely when the admin has switched the section off, or when
-   // it's in Manual mode with zero active picks — same "return null" guard
-@@ -84,15 +90,31 @@ export default function DiscoverProductsSection({
-     [settings.page_size]
-   );
- 
-+  // Tapping a category/price pill while scrolled down (the sticky bar's
-+  // whole point) previously left the shopper stranded wherever they'd
-+  // already scrolled to — the grid underneath swapped to a shorter/empty
-+  // set of products off-screen below, so it looked like nothing happened
-+  // and they had to scroll back up by hand to see the new results, or the
-+  // sticky bar itself would end up outside its section's bounds and stop
-+  // sticking. Scrolling the section back to just under the sticky bar on
-+  // every filter change fixes both: the new products are immediately
-+  // visible, and the bar is back in a position where it can keep sticking.
-+  const sectionRef = useRef<HTMLElement>(null);
-+  const scrollToGridTop = () => {
-+    sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-+  };
-+
-   const handleSelectCategory = (name: string | null) => {
-     const next = activeCategory === name ? null : name;
-     setActiveCategory(next);
-     runFetch(next, activeBucket, 1, true);
-+    scrollToGridTop();
-   };
- 
-   const handleSelectBucket = (bucket: PriceRangeBucket | null) => {
-     setActiveBucket(bucket);
-     runFetch(activeCategory, bucket, 1, true);
-+    scrollToGridTop();
-   };
- 
-   // Infinite scroll — a sentinel div at the bottom of the grid triggers the
-@@ -116,12 +138,24 @@ export default function DiscoverProductsSection({
-     return () => observer.disconnect();
-   }, [hidden, hasMore, loading, page, activeCategory, activeBucket, runFetch]);
- 
--  const categoryNames = useMemo(() => categories.map((c) => c.name), [categories]);
-+  // Hide any category pill that has zero products in the Discover set —
-+  // without this, a shopper could tap a category and land on "No products
-+  // match these filters right now" (see the screenshot this was reported
-+  // from: "Blouse Pieces" had no live products but still showed a pill).
-+  // When categoryCounts hasn't loaded (undefined), fall back to showing
-+  // every category rather than hiding everything.
-+  const categoryNames = useMemo(
-+    () =>
-+      categories
-+        .map((c) => c.name)
-+        .filter((name) => !categoryCounts || (categoryCounts[name] ?? 0) > 0),
-+    [categories, categoryCounts]
-+  );
- 
-   if (hidden) return null;
- 
-   return (
--    <section className="container-boutique py-6">
-+    <section ref={sectionRef} className="container-boutique scroll-mt-12 py-6">
-       <p className="mb-1 text-xs font-semibold uppercase tracking-[0.2em] text-secondary">
-         {settings.title}
-       </p>
-@@ -130,48 +164,59 @@ export default function DiscoverProductsSection({
-       )}
-       {!settings.subtitle && <div className="mb-3" />}
- 
--      {settings.show_category_filter && categoryNames.length > 0 && (
--        <div className="mb-3 flex gap-2.5 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
--          <button
--            type="button"
--            onClick={() => handleSelectCategory(null)}
--            aria-pressed={activeCategory === null}
--            className={`shrink-0 rounded-full border px-4 py-2 text-xs font-semibold transition-all ${
--              activeCategory === null
--                ? 'border-primary bg-primary text-primary-foreground shadow-sm'
--                : 'border-border bg-background text-foreground/80 hover:border-primary/50 hover:text-primary'
--            }`}
--          >
--            All
--          </button>
--          {categoryNames.map((name) => {
--            const isActive = activeCategory === name;
--            return (
-+      {((settings.show_category_filter && categoryNames.length > 0) ||
-+        (settings.show_price_filter && priceRanges.length > 0)) && (
-+        // Pinned just under the site header while the shopper scrolls past
-+        // this section, same "top-12 matches header's h-12" convention the
-+        // Shop page's category row uses (see app/shop/shop-content.tsx) —
-+        // so switching category/price filter never needs scrolling back up
-+        // to find the pills again, especially useful on mobile where this
-+        // section can run several screens tall.
-+        <div className="sticky top-12 z-30 -mx-4 border-b border-border/60 bg-background/95 px-4 pb-3 pt-2 backdrop-blur-sm sm:mx-0 sm:border-none sm:bg-transparent sm:px-0 sm:pt-0 sm:backdrop-blur-none">
-+          {settings.show_category_filter && categoryNames.length > 0 && (
-+            <div className="flex gap-2.5 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-               <button
--                key={name}
-                 type="button"
--                onClick={() => handleSelectCategory(name)}
--                aria-pressed={isActive}
--                className={`shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-xs font-semibold transition-all ${
--                  isActive
--                    ? 'border-primary bg-gradient-to-r from-primary to-primary/80 text-primary-foreground shadow-md shadow-primary/20'
-+                onClick={() => handleSelectCategory(null)}
-+                aria-pressed={activeCategory === null}
-+                className={`shrink-0 rounded-full border px-4 py-2 text-xs font-semibold transition-all ${
-+                  activeCategory === null
-+                    ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                     : 'border-border bg-background text-foreground/80 hover:border-primary/50 hover:text-primary'
-                 }`}
-               >
--                {name}
-+                All
-               </button>
--            );
--          })}
--        </div>
--      )}
-+              {categoryNames.map((name) => {
-+                const isActive = activeCategory === name;
-+                return (
-+                  <button
-+                    key={name}
-+                    type="button"
-+                    onClick={() => handleSelectCategory(name)}
-+                    aria-pressed={isActive}
-+                    className={`shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-xs font-semibold transition-all ${
-+                      isActive
-+                        ? 'border-primary bg-gradient-to-r from-primary to-primary/80 text-primary-foreground shadow-md shadow-primary/20'
-+                        : 'border-border bg-background text-foreground/80 hover:border-primary/50 hover:text-primary'
-+                    }`}
-+                  >
-+                    {name}
-+                  </button>
-+                );
-+              })}
-+            </div>
-+          )}
- 
--      {settings.show_price_filter && priceRanges.length > 0 && (
--        <PriceRangeFilterBar
--          ranges={priceRanges}
--          activeId={activeBucket?.id ?? null}
--          onSelect={handleSelectBucket}
--          className="mb-3"
--        />
-+          {settings.show_price_filter && priceRanges.length > 0 && (
-+            <PriceRangeFilterBar
-+              ranges={priceRanges}
-+              activeId={activeBucket?.id ?? null}
-+              onSelect={handleSelectBucket}
-+              className={settings.show_category_filter && categoryNames.length > 0 ? '' : 'pt-1'}
-+            />
-+          )}
-+        </div>
-       )}
- 
-       {products.length === 0 && !loading ? (
-diff --git a/components/product/discover-quick-view.tsx b/components/product/discover-quick-view.tsx
-index 451787a..7d0a87d 100644
---- a/components/product/discover-quick-view.tsx
-+++ b/components/product/discover-quick-view.tsx
-@@ -1,6 +1,6 @@
- 'use client';
- 
--import { useEffect, useMemo, useState } from 'react';
-+import { useEffect, useMemo, useRef, useState } from 'react';
- import Link from 'next/link';
- import Image from 'next/image';
- import { Loader2 } from 'lucide-react';
-@@ -129,12 +129,104 @@ export default function DiscoverQuickView({ product, onClose }: DiscoverQuickVie
-   const img =
-     toPublicMediaUrl(activeProduct.images[0]) || 'https://placehold.co/800x1000?text=No+Image';
- 
-+  // Drag-down-to-close on mobile, same touch-handler pattern the cart
-+  // drawer uses for its horizontal swipe (see components/cart-drawer.tsx)
-+  // but vertical here since this sheet slides up from the bottom. Only
-+  // engages once a touch clearly moves more vertically-downward than
-+  // horizontally, so a horizontal image swipe or a normal vertical scroll
-+  // of the sheet's own content is never hijacked — and dragging is
-+  // ignored entirely once the sheet content itself has been scrolled
-+  // down, so it doesn't fight the scroll.
-+  const panelRef = useRef<HTMLDivElement | null>(null);
-+  const dragRef = useRef<{
-+    startX: number;
-+    startY: number;
-+    lastY: number;
-+    lastT: number;
-+    velocity: number;
-+    mode: 'undecided' | 'vertical' | 'horizontal';
-+  } | null>(null);
-+
-+  const onTouchStart = (e: React.TouchEvent) => {
-+    const panel = panelRef.current;
-+    if (panel && panel.scrollTop > 0) return;
-+    const t = e.touches[0];
-+    dragRef.current = {
-+      startX: t.clientX,
-+      startY: t.clientY,
-+      lastY: t.clientY,
-+      lastT: Date.now(),
-+      velocity: 0,
-+      mode: 'undecided',
-+    };
-+  };
-+
-+  const onTouchMove = (e: React.TouchEvent) => {
-+    const drag = dragRef.current;
-+    if (!drag) return;
-+    const t = e.touches[0];
-+    const dx = t.clientX - drag.startX;
-+    const dy = t.clientY - drag.startY;
-+
-+    if (drag.mode === 'undecided') {
-+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
-+      drag.mode = Math.abs(dy) > Math.abs(dx) && dy > 0 ? 'vertical' : 'horizontal';
++    if (action === 'send_review_request') {
++      const result = await sendReviewRequestNotification(params.id, { force: !!body?.force });
++      return NextResponse.json(result);
 +    }
-+    if (drag.mode !== 'vertical') return;
 +
-+    e.preventDefault();
-+    const now = Date.now();
-+    const dt = now - drag.lastT;
-+    if (dt > 0) drag.velocity = (t.clientY - drag.lastY) / dt;
-+    drag.lastY = t.clientY;
-+    drag.lastT = now;
-+
-+    const translate = Math.max(0, dy);
-+    if (panelRef.current) {
-+      panelRef.current.style.transition = 'none';
-+      panelRef.current.style.transform = `translateY(${translate}px)`;
++    if (action === 'send_review_reminder') {
++      const result = await sendReviewReminderNotification(params.id, { force: !!body?.force });
++      return NextResponse.json(result);
 +    }
-+  };
 +
-+  const onTouchEnd = () => {
-+    const drag = dragRef.current;
-+    dragRef.current = null;
-+    if (!drag || drag.mode !== 'vertical' || !panelRef.current) return;
-+
-+    const dy = Math.max(0, drag.lastY - drag.startY);
-+    const panelHeight = panelRef.current.offsetHeight || 1;
-+    const shouldClose = dy > panelHeight * 0.25 || drag.velocity > 0.5;
-+
-+    if (shouldClose) {
-+      // Hand off to Radix's own close animation instead of fighting it
-+      // with our inline transform.
-+      panelRef.current.style.transition = '';
-+      panelRef.current.style.transform = '';
-+      onClose();
-+    } else {
-+      panelRef.current.style.transition = 'transform 200ms ease';
-+      panelRef.current.style.transform = 'translateY(0px)';
-+    }
-+  };
-+
-   return (
-     <Sheet open onOpenChange={(open) => !open && onClose()}>
-       <SheetContent
-+        ref={panelRef}
-         side="bottom"
-+        onTouchStart={onTouchStart}
-+        onTouchMove={onTouchMove}
-+        onTouchEnd={onTouchEnd}
-+        onTouchCancel={onTouchEnd}
-         className="inset-x-0 bottom-0 max-h-[88vh] overflow-y-auto rounded-t-2xl p-0 sm:inset-x-auto sm:left-1/2 sm:top-1/2 sm:bottom-auto sm:max-h-[85vh] sm:w-full sm:max-w-lg sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:border sm:shadow-xl sm:data-[state=open]:slide-in-from-bottom-0"
-       >
-+        {/* Drag handle — a visual affordance on mobile signalling the sheet
-+            can be dragged closed, matching the pattern shoppers already
-+            know from native bottom sheets. Hidden on desktop, where this
-+            renders as a centred dialog instead. */}
-+        <div className="flex justify-center pb-1 pt-2 sm:hidden">
-+          <span className="h-1 w-10 rounded-full bg-border" />
-+        </div>
-         <div className="flex flex-col">
-           <div className="relative aspect-[4/5] w-full overflow-hidden bg-muted">
-             <Image
-@@ -192,9 +284,14 @@ export default function DiscoverQuickView({ product, onClose }: DiscoverQuickVie
-                     </span>
-                   )}
-                 </p>
-+                {/* Each colour's own product photo instead of a plain colour
-+                    dot — a shopper can see exactly what that variation
-+                    looks like before tapping it, instead of guessing from a
-+                    swatch (which is unreadable for prints/patterns anyway). */}
-                 <div className="flex flex-wrap gap-2">
-                   {swatchVariants.map((v) => {
-                     const isActive = v.slug === activeProduct.slug;
-+                    const thumb = toPublicMediaUrl(v.image || undefined);
-                     return (
-                       <button
-                         key={v.slug}
-@@ -202,13 +299,27 @@ export default function DiscoverQuickView({ product, onClose }: DiscoverQuickVie
-                         title={v.color}
-                         aria-label={`View in ${v.color}`}
-                         onClick={() => handleSelectColor(v)}
--                        className={`h-6 w-6 shrink-0 rounded-full border-2 transition-transform hover:scale-110 ${
-+                        className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 transition-transform hover:scale-105 ${
-                           isActive
-                             ? 'border-primary ring-2 ring-primary/25 ring-offset-1'
-                             : 'border-border/70'
-                         }`}
--                        style={{ backgroundColor: v.color.toLowerCase().replace(/\s+/g, '') }}
--                      />
-+                      >
-+                        {thumb ? (
-+                          <Image
-+                            src={thumb}
-+                            alt={v.color}
-+                            fill
-+                            sizes="56px"
-+                            className="object-cover"
-+                          />
-+                        ) : (
-+                          <span
-+                            className="block h-full w-full"
-+                            style={{ backgroundColor: v.color.toLowerCase().replace(/\s+/g, '') }}
-+                          />
-+                        )}
-+                      </button>
-                     );
-                   })}
-                 </div>
-diff --git a/lib/discover-products-api.ts b/lib/discover-products-api.ts
-index 5c64f84..baddd0a 100644
---- a/lib/discover-products-api.ts
-+++ b/lib/discover-products-api.ts
-@@ -216,6 +216,56 @@ export async function fetchDiscoverProductsServer(
-   return { products, hasMore, settings };
- }
+     return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
+   } catch (err) {
+     const message = err instanceof Error ? err.message : 'Action failed';
+diff --git a/app/api/admin/orders/[id]/preview-email/route.ts b/app/api/admin/orders/[id]/preview-email/route.ts
+index a7f3092..81fcb9d 100644
+--- a/app/api/admin/orders/[id]/preview-email/route.ts
++++ b/app/api/admin/orders/[id]/preview-email/route.ts
+@@ -9,6 +9,8 @@ import {
+   orderArrivingEmail,
+   orderOutForDeliveryEmail,
+   codToPrepaidRequestEmail,
++  reviewRequestEmail,
++  reviewReminderEmail,
+ } from '@/lib/email-templates';
+ import { isInPaymentRequestFlow } from '@/lib/order-payment-events';
  
-+/**
-+ * Category -> live product count across the *entire* eligible Discover
-+ * Products set (auto-mode's in-stock/live catalog, or manual mode's active
-+ * picks) — ignores the category/price filters themselves, same way
-+ * home-client.tsx's `categoryCounts` ignores the "Shop by Category" row's
-+ * own filters. Used to hide any category pill from the Discover section's
-+ * filter bar that would otherwise land the shopper on an empty grid (see
-+ * DiscoverProductsSection's `visibleCategoryNames`).
-+ */
-+export async function fetchDiscoverCategoryCountsServer(): Promise<Record<string, number>> {
-+  const { getServerSupabase } = await import('@/lib/supabase-server');
-+  const db = getServerSupabase();
-+  const settings = await fetchDiscoverSettingsAdminServer();
-+  const counts: Record<string, number> = {};
+@@ -99,6 +101,18 @@ async function buildPreview(orderId: string, type: string, dateOverride?: string
+         store: (storeSetting?.value as any) || undefined,
+       });
+     }
++    case 'review_request':
++      return reviewRequestEmail({
++        id: order.id,
++        customer_name: order.customer_name,
++        items: previewItems,
++      });
++    case 'review_reminder':
++      return reviewReminderEmail({
++        id: order.id,
++        customer_name: order.customer_name,
++        items: previewItems,
++      });
+     case 'delivered':
+     case 'paid':
+     case 'cancelled':
+diff --git a/app/api/cron/daily-jobs/route.ts b/app/api/cron/daily-jobs/route.ts
+index 8d65376..c72fe9c 100644
+--- a/app/api/cron/daily-jobs/route.ts
++++ b/app/api/cron/daily-jobs/route.ts
+@@ -12,6 +12,8 @@ import {
+   runResellerPayoutWindowJob,
+   runAffiliatePayoutWindowJob,
+   runWooCommerceEnqueueJob,
++  runReviewRequestEmailsJob,
++  runReviewReminderEmailsJob,
+ } from '@/lib/cron-jobs';
+ 
+ export const dynamic = 'force-dynamic';
+@@ -114,6 +116,18 @@ export async function GET(req: Request) {
+     results.forwardShipmentTracking = { error: err?.message || 'Failed' };
+   }
+ 
++  try {
++    results.reviewRequestEmails = await runReviewRequestEmailsJob();
++  } catch (err: any) {
++    results.reviewRequestEmails = { error: err?.message || 'Failed' };
++  }
 +
 +  try {
-+    if (settings.mode === 'manual') {
-+      const { data, error } = await db
-+        .from('discover_picks')
-+        .select('products!inner(category_name, approval_status)')
-+        .eq('is_active', true)
-+        .eq('products.approval_status', 'live');
-+      if (error) throw error;
-+      for (const row of (data ?? []) as any[]) {
-+        const name = row.products?.category_name as string | undefined;
-+        if (!name) continue;
-+        counts[name] = (counts[name] ?? 0) + 1;
-+      }
-+      return counts;
-+    }
-+
-+    const { data, error } = await db
-+      .from('products')
-+      .select('category_name')
-+      .eq('approval_status', 'live')
-+      .eq('in_stock', true);
-+    if (error) throw error;
-+    for (const row of (data ?? []) as any[]) {
-+      const name = row.category_name as string | undefined;
-+      if (!name) continue;
-+      counts[name] = (counts[name] ?? 0) + 1;
-+    }
-+    return counts;
-+  } catch {
-+    // Fail quiet — an empty map just means the filter bar shows every
-+    // category, same as before this feature existed.
-+    return {};
++    results.reviewReminderEmails = await runReviewReminderEmailsJob();
++  } catch (err: any) {
++    results.reviewReminderEmails = { error: err?.message || 'Failed' };
 +  }
++
+   try {
+     results.resellerPayoutWindow = await runResellerPayoutWindowJob();
+   } catch (err: any) {
+diff --git a/components/admin/delivery-notification-tester.tsx b/components/admin/delivery-notification-tester.tsx
+index c47448e..a9eaa31 100644
+--- a/components/admin/delivery-notification-tester.tsx
++++ b/components/admin/delivery-notification-tester.tsx
+@@ -18,6 +18,8 @@ import {
+   CheckCircle2,
+   XCircle,
+   MailWarning,
++  Star,
++  BellRing,
+ } from 'lucide-react';
+ import { Button } from '@/components/ui/button';
+ import { Input } from '@/components/ui/input';
+@@ -149,6 +151,8 @@ export default function DeliveryNotificationTester({
+     { key: 'arriving', label: 'Arriving', icon: CalendarClock },
+     { key: 'out_for_delivery', label: 'Out for Delivery', icon: Truck },
+     { key: 'delivered', label: 'Delivered', icon: Home },
++    { key: 'review_request', label: 'Rate & Review (auto, ~4 days after delivery)', icon: Star },
++    { key: 'review_reminder', label: 'Review Reminder (auto, ~7 days after that)', icon: BellRing },
+     { key: 'cod_to_prepaid', label: 'Request Online Payment', icon: Wallet },
+   ];
+ 
+@@ -259,10 +263,42 @@ export default function DeliveryNotificationTester({
+           )}
+           Mark "Delivered" now
+         </Button>
++        <Button
++          type="button"
++          size="sm"
++          variant="secondary"
++          disabled={busy === 'send_review_request'}
++          onClick={() => runAction('send_review_request', { force: true })}
++          className="gap-1.5"
++        >
++          {busy === 'send_review_request' ? (
++            <Loader2 className="h-3.5 w-3.5 animate-spin" />
++          ) : (
++            <Star className="h-3.5 w-3.5" />
++          )}
++          Send "Rate &amp; Review" now
++        </Button>
++        <Button
++          type="button"
++          size="sm"
++          variant="secondary"
++          disabled={busy === 'send_review_reminder'}
++          onClick={() => runAction('send_review_reminder', { force: true })}
++          className="gap-1.5"
++        >
++          {busy === 'send_review_reminder' ? (
++            <Loader2 className="h-3.5 w-3.5 animate-spin" />
++          ) : (
++            <BellRing className="h-3.5 w-3.5" />
++          )}
++          Send Review Reminder now
++        </Button>
+       </div>
+       <p className="mt-2 text-[11px] text-muted-foreground">
+         These buttons send real emails to the customer above and (for "Out for Delivery" / "Delivered") update the
+-        order's actual status — use a test order if you don't want to touch a real customer's order.
++        order's actual status — use a test order if you don't want to touch a real customer's order. The normal
++        review emails run automatically once a day (~4 days after delivery, then one reminder ~7 days after that if
++        they still haven't reviewed) — these two buttons just let you fire them on demand for testing.
+       </p>
+ 
+       <div className="my-4 border-t border-border/60" />
+diff --git a/lib/cron-jobs.ts b/lib/cron-jobs.ts
+index ee94624..199d9d8 100644
+--- a/lib/cron-jobs.ts
++++ b/lib/cron-jobs.ts
+@@ -47,6 +47,11 @@ import {
+   sendOutForDeliveryNotification,
+   sendDeliveredNotification,
+ } from '@/lib/delivery-notifications';
++import {
++  sendReviewRequestNotification,
++  sendReviewReminderNotification,
++  hasOrderBeenReviewed,
++} from '@/lib/review-notifications';
+ 
+ // -------------------- WooCommerce imported-customer drip --------------------
+ // Thin wrapper so this job is listed alongside the others here and picked
+@@ -812,3 +817,87 @@ export async function runForwardShipmentTrackingJob() {
+ 
+   return { checked: orders.length, delivered, rto, errors };
+ }
++
++// -------------------- Review-request emails --------------------
++// Straight after unboxing is the worst moment to ask "how is it?" -- the
++// customer hasn't worn/used the thing yet -- so this waits a few days
++// after "Delivered" before asking. Tune freely; these are calendar days,
++// not a strict SLA.
++const REVIEW_REQUEST_DELAY_DAYS = 4;
++const REVIEW_REMINDER_DELAY_DAYS = 7; // measured from when the request went out, not from delivery.
++
++function daysAgoIso(days: number) {
++  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 +}
 +
- /** Server-side settings read (service-role bypasses the anon RLS read,
-  *  and this needs to work even before the storefront anon-write policy
-  *  exists for this key on a fresh DB). Falls back to the client-safe
-diff --git a/lib/home-data-server.ts b/lib/home-data-server.ts
-index 508feba..6987232 100644
---- a/lib/home-data-server.ts
-+++ b/lib/home-data-server.ts
-@@ -5,7 +5,7 @@ import { fetchPublicCollectionsServer, PublicCollectionRow } from './collections
- import { Product, CategoryRow } from './types';
- import { HomepageTile } from './homepage-tiles-api';
- import { HeroBanner } from './hero-banners-api';
--import { fetchDiscoverProductsServer, DiscoverSectionSettings, DEFAULT_DISCOVER_SETTINGS } from './discover-products-api';
-+import { fetchDiscoverProductsServer, fetchDiscoverCategoryCountsServer, DiscoverSectionSettings, DEFAULT_DISCOVER_SETTINGS } from './discover-products-api';
- 
- export interface HomeBanner {
-   image_url: string;
-@@ -33,6 +33,10 @@ export interface HomeData {
-   discoverSettings: DiscoverSectionSettings;
-   discoverInitialProducts: Product[];
-   discoverInitialHasMore: boolean;
-+  /** Category -> live product count across the whole Discover Products
-+   *  set, used to hide empty category pills from that section's filter
-+   *  bar (see fetchDiscoverCategoryCountsServer). */
-+  discoverCategoryCounts: Record<string, number>;
++// Run once daily (see app/api/cron/daily-jobs/route.ts). Finds every
++// delivered order whose "Delivered" email went out REVIEW_REQUEST_DELAY_DAYS+
++// ago and that hasn't had a review-request email yet, and sends one. Ordering
++// off delivered_email_sent_at (not just status='delivered') means an order
++// only enters this funnel once the delivered-lifecycle email has actually
++// fired, keeping this in step with the rest of the lifecycle-email log.
++export async function runReviewRequestEmailsJob() {
++  const supabase = getSupabaseAdmin();
++  const cutoff = daysAgoIso(REVIEW_REQUEST_DELAY_DAYS);
++
++  const { data: orders, error } = await supabase
++    .from('orders')
++    .select('id')
++    .eq('status', 'delivered')
++    .is('review_request_email_sent_at', null)
++    .not('delivered_email_sent_at', 'is', null)
++    .lte('delivered_email_sent_at', cutoff);
++  if (error) throw error;
++
++  let sent = 0;
++  const errors: string[] = [];
++  for (const order of orders || []) {
++    try {
++      const result = await sendReviewRequestNotification(order.id);
++      if (result.sent) sent++;
++    } catch (err: any) {
++      errors.push(`order ${order.id}: ${err?.message || err}`);
++    }
++  }
++
++  return { checked: (orders || []).length, sent, errors };
++}
++
++// Run once daily, same cron. Finds every order whose review-request email
++// went out REVIEW_REMINDER_DELAY_DAYS+ ago, hasn't had a reminder yet, and
++// -- the whole point of a reminder -- where the customer still hasn't
++// actually left a review. sendReviewReminderNotification() re-checks
++// hasOrderBeenReviewed() itself right before sending (a review could land
++// between this query and that send), this pre-filter just keeps the loop
++// from doing pointless work on orders that are obviously already reviewed.
++export async function runReviewReminderEmailsJob() {
++  const supabase = getSupabaseAdmin();
++  const cutoff = daysAgoIso(REVIEW_REMINDER_DELAY_DAYS);
++
++  const { data: candidates, error } = await supabase
++    .from('orders')
++    .select('id, user_id, items')
++    .eq('status', 'delivered')
++    .is('review_reminder_email_sent_at', null)
++    .not('review_request_email_sent_at', 'is', null)
++    .lte('review_request_email_sent_at', cutoff);
++  if (error) throw error;
++
++  let sent = 0;
++  let skippedAlreadyReviewed = 0;
++  const errors: string[] = [];
++  for (const order of candidates || []) {
++    try {
++      if (await hasOrderBeenReviewed(order)) {
++        skippedAlreadyReviewed++;
++        continue;
++      }
++      const result = await sendReviewReminderNotification(order.id);
++      if (result.sent) sent++;
++    } catch (err: any) {
++      errors.push(`order ${order.id}: ${err?.message || err}`);
++    }
++  }
++
++  return { checked: (candidates || []).length, sent, skippedAlreadyReviewed, errors };
++}
+diff --git a/lib/email-templates.ts b/lib/email-templates.ts
+index 7b7c78b..f1b31b0 100644
+--- a/lib/email-templates.ts
++++ b/lib/email-templates.ts
+@@ -711,6 +711,70 @@ export function orderOutForDeliveryEmail(order: {
+   return { subject, html };
  }
  
- async function fetchHomeBanner(): Promise<HomeBanner | null> {
-@@ -209,6 +213,7 @@ export async function fetchHomeData(): Promise<HomeData> {
-     heroBanners,
-     collectionSlugById,
-     discover,
-+    discoverCategoryCounts,
-   ] = await Promise.all([
-     fetchProductsServer(),
-     fetchCategoriesServer(),
-@@ -219,6 +224,7 @@ export async function fetchHomeData(): Promise<HomeData> {
-     fetchHeroBanners(),
-     fetchCollectionSlugMap(),
-     fetchHomeDiscoverProducts(),
-+    fetchDiscoverCategoryCountsServer(),
-   ]);
- 
-   const promotionCollectionSlugById = await fetchPromotionCollectionSlugMap(collectionSlugById);
-@@ -236,5 +242,6 @@ export async function fetchHomeData(): Promise<HomeData> {
-     discoverSettings: discover.settings,
-     discoverInitialProducts: discover.products,
-     discoverInitialHasMore: discover.hasMore,
-+    discoverCategoryCounts,
-   };
- }
++// Sent once, a few days after "Delivered", asking the customer to leave a
++// star rating + written review + product photos. Deliberately delayed
++// (see REVIEW_REQUEST_DELAY_DAYS in lib/cron-jobs.ts) rather than firing
++// right on delivery -- straight after unboxing, before they've actually
++// worn/used it, is the worst possible moment to ask "how is it?". The CTA
++// goes to the order page itself (not the product page), because that's
++// where <DeliveredItemReview /> renders the 1-tap star picker + photo
++// upload for every item in the order -- no separate "write a review" page
++// to build or find. Deduped by orders.review_request_email_sent_at.
++export function reviewRequestEmail(order: {
++  id: string;
++  customer_name?: string;
++  items?: any[];
++}) {
++  const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
++  const name = order.customer_name || 'there';
++  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';
++  const orderUrl = `${siteUrl}/account/orders/${order.id}`;
++  const firstItemName = order.items?.[0]?.product_name || order.items?.[0]?.name || 'your order';
++  const subject = `${name === 'there' ? 'How' : `${name}, how`} was ${order.items?.length === 1 ? firstItemName : 'your order'}? Rate it in 30 seconds`;
++  const html = wrapper(`
++    <h2 style="margin-top:0; color:${BRAND_COLOR};">Hi ${name}, how's your ${order.items?.length === 1 ? 'new piece' : 'order'}?</h2>
++    <p>Your order <strong>${shortId}</strong> was delivered a few days ago -- we'd love to know what you think.</p>
++    ${order.items?.length ? itemsTable(order.items) : ''}
++    <p>It only takes a moment: tap a star rating, and if you have a minute more, tell us about the fit and fabric -- and a quick photo of you wearing it helps other shoppers (and us!) more than anything else.</p>
++    <p style="text-align:center; margin-top: 20px;">
++      <a href="${orderUrl}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
++        Rate &amp; Review
++      </a>
++    </p>
++    <p style="text-align:center; margin-top: 10px; font-size: 12px; color:#9a8f87;">Tap a star to rate instantly, then add a photo if you'd like -- no account juggling, it's right there on your order page.</p>
++  `);
++  return { subject, html };
++}
++
++// Single follow-up, sent once, only to customers who still haven't left a
++// review after the first request (see hasOrderBeenReviewed in
++// lib/review-notifications.ts) -- the whole point of a reminder is to lift
++// total review volume, so it must never go to someone who already
++// reviewed. Deduped by orders.review_reminder_email_sent_at.
++export function reviewReminderEmail(order: {
++  id: string;
++  customer_name?: string;
++  items?: any[];
++}) {
++  const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
++  const name = order.customer_name || 'there';
++  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';
++  const orderUrl = `${siteUrl}/account/orders/${order.id}`;
++  const subject = `Quick reminder: share your thoughts on order ${shortId}`;
++  const html = wrapper(`
++    <h2 style="margin-top:0; color:${BRAND_COLOR};">A small favour, ${name}?</h2>
++    <p>We noticed you haven't had a chance to review order <strong>${shortId}</strong> yet -- totally fine if you've just been busy, this is just a friendly nudge.</p>
++    ${order.items?.length ? itemsTable(order.items) : ''}
++    <p>A star rating alone takes seconds, and if you can spare a photo of you wearing it, it genuinely helps other shoppers picture how it looks in real life.</p>
++    <p style="text-align:center; margin-top: 20px;">
++      <a href="${orderUrl}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
++        Leave a Quick Review
++      </a>
++    </p>
++  `);
++  return { subject, html };
++}
++
+ export function returnStatusEmail(ret: {
+   id: string;
+   order_id: string;

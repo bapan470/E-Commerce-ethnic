@@ -12,6 +12,8 @@ import {
   runResellerPayoutWindowJob,
   runAffiliatePayoutWindowJob,
   runWooCommerceEnqueueJob,
+  runReviewRequestEmailsJob,
+  runReviewReminderEmailsJob,
 } from '@/lib/cron-jobs';
 
 export const dynamic = 'force-dynamic';
@@ -112,6 +114,18 @@ export async function GET(req: Request) {
     results.forwardShipmentTracking = await runForwardShipmentTrackingJob();
   } catch (err: any) {
     results.forwardShipmentTracking = { error: err?.message || 'Failed' };
+  }
+
+  try {
+    results.reviewRequestEmails = await runReviewRequestEmailsJob();
+  } catch (err: any) {
+    results.reviewRequestEmails = { error: err?.message || 'Failed' };
+  }
+
+  try {
+    results.reviewReminderEmails = await runReviewReminderEmailsJob();
+  } catch (err: any) {
+    results.reviewReminderEmails = { error: err?.message || 'Failed' };
   }
 
   try {

@@ -711,6 +711,70 @@ export function orderOutForDeliveryEmail(order: {
   return { subject, html };
 }
 
+// Sent once, a few days after "Delivered", asking the customer to leave a
+// star rating + written review + product photos. Deliberately delayed
+// (see REVIEW_REQUEST_DELAY_DAYS in lib/cron-jobs.ts) rather than firing
+// right on delivery -- straight after unboxing, before they've actually
+// worn/used it, is the worst possible moment to ask "how is it?". The CTA
+// goes to the order page itself (not the product page), because that's
+// where <DeliveredItemReview /> renders the 1-tap star picker + photo
+// upload for every item in the order -- no separate "write a review" page
+// to build or find. Deduped by orders.review_request_email_sent_at.
+export function reviewRequestEmail(order: {
+  id: string;
+  customer_name?: string;
+  items?: any[];
+}) {
+  const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
+  const name = order.customer_name || 'there';
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';
+  const orderUrl = `${siteUrl}/account/orders/${order.id}`;
+  const firstItemName = order.items?.[0]?.product_name || order.items?.[0]?.name || 'your order';
+  const subject = `${name === 'there' ? 'How' : `${name}, how`} was ${order.items?.length === 1 ? firstItemName : 'your order'}? Rate it in 30 seconds`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Hi ${name}, how's your ${order.items?.length === 1 ? 'new piece' : 'order'}?</h2>
+    <p>Your order <strong>${shortId}</strong> was delivered a few days ago -- we'd love to know what you think.</p>
+    ${order.items?.length ? itemsTable(order.items) : ''}
+    <p>It only takes a moment: tap a star rating, and if you have a minute more, tell us about the fit and fabric -- and a quick photo of you wearing it helps other shoppers (and us!) more than anything else.</p>
+    <p style="text-align:center; margin-top: 20px;">
+      <a href="${orderUrl}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+        Rate &amp; Review
+      </a>
+    </p>
+    <p style="text-align:center; margin-top: 10px; font-size: 12px; color:#9a8f87;">Tap a star to rate instantly, then add a photo if you'd like -- no account juggling, it's right there on your order page.</p>
+  `);
+  return { subject, html };
+}
+
+// Single follow-up, sent once, only to customers who still haven't left a
+// review after the first request (see hasOrderBeenReviewed in
+// lib/review-notifications.ts) -- the whole point of a reminder is to lift
+// total review volume, so it must never go to someone who already
+// reviewed. Deduped by orders.review_reminder_email_sent_at.
+export function reviewReminderEmail(order: {
+  id: string;
+  customer_name?: string;
+  items?: any[];
+}) {
+  const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
+  const name = order.customer_name || 'there';
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';
+  const orderUrl = `${siteUrl}/account/orders/${order.id}`;
+  const subject = `Quick reminder: share your thoughts on order ${shortId}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">A small favour, ${name}?</h2>
+    <p>We noticed you haven't had a chance to review order <strong>${shortId}</strong> yet -- totally fine if you've just been busy, this is just a friendly nudge.</p>
+    ${order.items?.length ? itemsTable(order.items) : ''}
+    <p>A star rating alone takes seconds, and if you can spare a photo of you wearing it, it genuinely helps other shoppers picture how it looks in real life.</p>
+    <p style="text-align:center; margin-top: 20px;">
+      <a href="${orderUrl}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+        Leave a Quick Review
+      </a>
+    </p>
+  `);
+  return { subject, html };
+}
+
 export function returnStatusEmail(ret: {
   id: string;
   order_id: string;
