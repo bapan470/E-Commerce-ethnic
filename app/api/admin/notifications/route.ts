@@ -20,7 +20,10 @@ export type AdminNotification = {
     | 'abandoned_cart'
     | 'vendor_pickup'
     | 'vendor_return_pending'
-    | 'review';
+    | 'review'
+    | 'vendor_application'
+    | 'new_reseller'
+    | 'new_affiliate';
   title: string;
   message: string;
   section: string;
@@ -37,7 +40,7 @@ export async function GET() {
   const supabase = getSupabaseAdmin();
 
   try {
-    const [ordersRes, contactRes, ticketsRes, returnsRes, restockRes, cartsRes, pickupRes, vendorReturnRes, reviewsRes] = await Promise.all([
+    const [ordersRes, contactRes, ticketsRes, returnsRes, restockRes, cartsRes, pickupRes, vendorReturnRes, reviewsRes, vendorAppsRes, resellersRes, affiliatesRes] = await Promise.all([
       supabase
         .from('orders')
         .select('id, customer_name, customer_email, total_amount, created_at')
@@ -106,7 +109,44 @@ export async function GET() {
         .select('id, customer_name, rating, comment, title, created_at, product_id, products(name)')
         .order('created_at', { ascending: false })
         .limit(10),
+      // New vendor applications waiting on Approve/Reject (Vendors panel,
+      // "Pending Applications" tab in the screenshot). This IS a real
+      // pending-action queue, like orders/returns/tickets above.
+      supabase
+        .from('vendors')
+        .select('id, business_name, owner_name, created_at')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(20),
+      // Reseller & affiliate signups are both self-serve / auto-approved
+      // (no pending state to gate on — see lib/reseller-api.ts and the
+      // `status: 'approved'` insert in app/api/affiliate/route.ts), so
+      // like reviews these are just "latest arrivals" rather than a
+      // to-do queue. Newest 5 each keeps the bell from filling up once
+      // an admin is caught up.
+      supabase
+        .from('reseller_profiles')
+        .select('id, user_id, business_name, created_at')
+        .order('created_at', { ascending: false })
+        .limit(5),
+      supabase
+        .from('affiliates')
+        .select('id, user_id, code, created_at')
+        .order('created_at', { ascending: false })
+        .limit(5),
     ]);
+
+    // reseller_profiles / affiliates don't carry the person's name --
+    // resolved the same way the admin Resellers/Affiliates panels do,
+    // via `profiles.full_name` keyed by user_id.
+    const nameLookupIds = [
+      ...(resellersRes.data || []).map((r: any) => r.user_id),
+      ...(affiliatesRes.data || []).map((a: any) => a.user_id),
+    ].filter(Boolean);
+    const { data: nameProfiles } = nameLookupIds.length
+      ? await supabase.from('profiles').select('id, full_name').in('id', nameLookupIds)
+      : { data: [] as any[] };
+    const nameByUserId = new Map((nameProfiles || []).map((p: any) => [p.id, p.full_name]));
 
     const notifications: AdminNotification[] = [];
 
@@ -225,6 +265,41 @@ export async function GET() {
         }`,
         section: 'reviews',
         created_at: r.created_at,
+      });
+    });
+
+    (vendorAppsRes.data || []).forEach((v: any) => {
+      notifications.push({
+        id: `vendor-app-${v.id}`,
+        type: 'vendor_application',
+        title: 'New vendor application',
+        message: `${v.business_name || 'A vendor'}${v.owner_name ? ` (${v.owner_name})` : ''} applied — waiting on Approve/Reject`,
+        section: 'vendors',
+        created_at: v.created_at,
+      });
+    });
+
+    (resellersRes.data || []).forEach((r: any) => {
+      const name = nameByUserId.get(r.user_id) || r.business_name || 'A customer';
+      notifications.push({
+        id: `reseller-${r.id}`,
+        type: 'new_reseller',
+        title: 'New reseller joined',
+        message: `${name} joined the Reseller Program`,
+        section: 'resellers',
+        created_at: r.created_at,
+      });
+    });
+
+    (affiliatesRes.data || []).forEach((a: any) => {
+      const name = nameByUserId.get(a.user_id) || 'A customer';
+      notifications.push({
+        id: `affiliate-${a.id}`,
+        type: 'new_affiliate',
+        title: 'New affiliate joined',
+        message: `${name} joined the Affiliate Program (code ${a.code})`,
+        section: 'affiliates',
+        created_at: a.created_at,
       });
     });
 
