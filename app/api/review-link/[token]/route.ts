@@ -3,6 +3,8 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { verifyReviewToken } from '@/lib/review-link-tokens';
 import { issueReviewReward, getReviewStepProgress } from '@/lib/review-rewards-server';
 import { getReviewRewardSettings } from '@/lib/review-reward-settings';
+import { sendEmail } from '@/lib/email';
+import { reviewRewardIssuedEmail } from '@/lib/email-templates';
 
 // ---------------------------------------------------------------------
 // Public, login-free review flow behind a secret per-order token (see
@@ -248,6 +250,29 @@ export async function POST(req: Request, { params }: { params: { token: string }
       // A reward failure should never lose the review the customer just
       // submitted -- log it and still return success for the review.
       console.error('[review-link POST] reward issue failed:', rewardErr);
+    }
+
+    // Reward was just newly issued (not merely already-existing from an
+    // earlier step) -- also email the code, since the on-screen banner on
+    // app/review/[token]/page.tsx is otherwise the ONLY place a guest ever
+    // sees it: no account, no order history, nowhere to look it up again
+    // if the tab is closed before it's copied. Best-effort: a failed/skipped
+    // send (e.g. no email provider configured, or a guest who never gave an
+    // email) must never fail the review submission itself, which is already
+    // saved by this point.
+    if (reward) {
+      const recipientEmail = guestEmail || order.customer_email || null;
+      if (recipientEmail) {
+        try {
+          const { subject, html } = reviewRewardIssuedEmail({
+            order: { id: order.id, customer_name: order.customer_name },
+            reward,
+          });
+          await sendEmail({ to: recipientEmail, subject, html });
+        } catch (emailErr) {
+          console.error('[review-link POST] reward email failed:', emailErr);
+        }
+      }
     }
 
     const settings = await getReviewRewardSettings(supabase);

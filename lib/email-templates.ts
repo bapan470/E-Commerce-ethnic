@@ -823,6 +823,51 @@ export async function reviewReminderEmail(order: {
   return { subject, html };
 }
 
+// Sent once, right after issueReviewReward() (lib/review-rewards-server.ts)
+// actually creates a coupon -- i.e. the moment a guest/customer finishes
+// all required steps (rate -> write -> photo, per this store's Rewards
+// settings) on the login-free app/review/[token] page. Until this email
+// existed, the coupon code only ever appeared once, on-screen, on that
+// page (see the "You've earned X% off" banner in app/review/[token]/page.tsx)
+// -- close the tab or lose the page and the code was gone for good, with
+// no way to look it up again (guest flow, no account to check). This is
+// purely a "here's your code again, in your inbox" confirmation; it does
+// NOT re-issue or duplicate anything -- callers must only send it once,
+// exactly when issueReviewReward() returns a non-null reward (see
+// app/api/review-link/[token]/route.ts).
+export function reviewRewardIssuedEmail(params: {
+  order: { id: string; customer_name?: string };
+  reward: { code: string; discountType: 'percentage' | 'flat'; discountValue: number; expiresAt: string };
+}) {
+  const { order, reward } = params;
+  const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
+  const name = order.customer_name || 'there';
+  const discountLabel =
+    reward.discountType === 'percentage' ? `${reward.discountValue}% off` : `${formatINR(reward.discountValue)} off`;
+  const expiry = new Date(reward.expiresAt).toLocaleDateString('en-IN', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+  const subject = `Thanks for the review! Here's your ${discountLabel} code`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Thank you, ${name}!</h2>
+    <p>We really appreciate you taking the time to rate and review your order <strong>${shortId}</strong>. As promised, here's your reward:</p>
+    <div style="margin:20px 0; padding:16px; background:#fbf1de; border:1px dashed ${GOLD_ACCENT}; text-align:center; border-radius:8px;">
+      <p style="margin:0 0 4px; font-size:12px; letter-spacing:0.1em; text-transform:uppercase; color:#9a8f87;">Your reward code</p>
+      <p style="margin:0; font-size:24px; font-weight:bold; letter-spacing:0.05em; color:${BRAND_COLOR};">${reward.code}</p>
+      <p style="margin:8px 0 0; font-size:13px; color:#6b5c4f;">${discountLabel} • valid till ${expiry}</p>
+    </div>
+    <p>Just enter this code at checkout on your next order. Keep this email safe -- this is the only place the code is saved for you.</p>
+    <p style="text-align:center; margin-top: 20px;">
+      <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/shop" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+        Shop Now
+      </a>
+    </p>
+  `);
+  return { subject, html };
+}
+
 export function returnStatusEmail(ret: {
   id: string;
   order_id: string;
