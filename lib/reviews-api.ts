@@ -16,6 +16,12 @@ export interface Review {
    *  shown for reviews that aren't actually from a purchaser. */
   verified_purchase: boolean;
   created_at: string;
+  /** Colour of the variant this review was left on, when known (guest
+   *  reviews via /review/[token] always set it; older/logged-in reviews
+   *  may be null). Used to filter the reviews list by the colour the
+   *  shopper currently has selected on the product page. */
+  variant_color?: string | null;
+  variant_slug?: string | null;
 }
 
 export interface RatingSummary {
@@ -56,6 +62,33 @@ export async function fetchApprovedReviews(productId: string): Promise<Review[]>
     .order('created_at', { ascending: false });
   if (error) throw error;
   return (data ?? []).map((r: any) => ({ ...r, photos: r.photos ?? [] })) as Review[];
+}
+
+/**
+ * Every distinct colour that has at least one review, in first-seen
+ * order -- feeds the "Filter by colour" chip row on the product page.
+ * Reviews with no recorded colour (variant_color null) are left out of
+ * this list but still show up under "All colours".
+ */
+export function getReviewColorOptions(reviews: Review[]): string[] {
+  const seen = new Set<string>();
+  const colors: string[] = [];
+  for (const r of reviews) {
+    const c = r.variant_color?.trim();
+    if (c && !seen.has(c)) {
+      seen.add(c);
+      colors.push(c);
+    }
+  }
+  return colors;
+}
+
+/** Reviews for a given colour, or every review when `color` is null/empty
+ *  (the "All colours" state). Case-insensitive so "Green" / "green" match. */
+export function filterReviewsByColor(reviews: Review[], color: string | null | undefined): Review[] {
+  if (!color) return reviews;
+  const target = color.trim().toLowerCase();
+  return reviews.filter((r) => r.variant_color?.trim().toLowerCase() === target);
 }
 
 /** Has the current logged-in user already reviewed this product? */
@@ -214,6 +247,11 @@ export async function submitReview(input: {
   title?: string;
   comment?: string;
   photos?: string[];
+  /** Colour of the variant the reviewer is on, if known (e.g. the
+   *  colour-variant page they reviewed from). Optional -- omit when the
+   *  base product has no colour variants. */
+  color?: string;
+  variantSlug?: string;
 }): Promise<Review> {
   const supabase = getSupabaseBrowser();
   const {
@@ -242,6 +280,8 @@ export async function submitReview(input: {
       title: input.title || null,
       comment: input.comment || null,
       photos: input.photos ?? [],
+      variant_color: input.color || null,
+      variant_slug: input.variantSlug || null,
       is_approved: false,
       verified_purchase: verifiedPurchase,
     })

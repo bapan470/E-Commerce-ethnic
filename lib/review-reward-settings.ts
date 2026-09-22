@@ -24,6 +24,18 @@ export interface ReviewRewardSettings {
   /** Minimum order value (in the store's smallest currency unit, same
    *  as coupons.min_order_value elsewhere) required to redeem it. */
   minOrderValue: number;
+  /**
+   * Step-gating: ONE reward per order+product, only once every required
+   * step is complete -- never one coupon per step. `minStars` (the star
+   * rating itself) is always required; these two flags control whether
+   * the other two steps are also mandatory before the coupon fires.
+   * Both default true, i.e. "rate + write + real photo" all three,
+   * matching the storefront's 3-step progress UI. An admin who wants a
+   * lighter bar (e.g. rating + photo, no written text) can flip one off
+   * here without touching code.
+   */
+  requireWrittenReview: boolean;
+  requirePhoto: boolean;
 }
 
 export const DEFAULT_REVIEW_REWARD_SETTINGS: ReviewRewardSettings = {
@@ -33,6 +45,8 @@ export const DEFAULT_REVIEW_REWARD_SETTINGS: ReviewRewardSettings = {
   discountValue: 10,
   expiryDays: 30,
   minOrderValue: 0,
+  requireWrittenReview: true,
+  requirePhoto: true,
 };
 
 export function mergeReviewRewardSettings(
@@ -48,6 +62,8 @@ export function mergeReviewRewardSettings(
       : Math.max(1, merged.discountValue);
   merged.expiryDays = Math.max(1, Math.round(merged.expiryDays));
   merged.minOrderValue = Math.max(0, merged.minOrderValue);
+  merged.requireWrittenReview = Boolean(merged.requireWrittenReview);
+  merged.requirePhoto = Boolean(merged.requirePhoto);
   return merged;
 }
 

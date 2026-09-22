@@ -21,6 +21,38 @@ export interface IssuedReward {
   expiresAt: string;
 }
 
+/**
+ * Per-step completion for ONE (order, product) review, independent of
+ * whether a reward has actually been issued for it. Purely derived from
+ * data that's already on the reviews row (rating/comment/photos) -- no
+ * extra "progress" table needed. Used both to gate issueReviewReward
+ * below and to tell the storefront which of the 3 steps still need
+ * doing (see app/api/review-link/[token]/route.ts).
+ */
+export interface ReviewStepProgress {
+  rated: boolean;
+  reviewed: boolean;
+  photoUploaded: boolean;
+  /** All steps this store's settings actually require are done. */
+  allRequiredStepsDone: boolean;
+}
+
+export function getReviewStepProgress(
+  input: { rating?: number | null; comment?: string | null; photos?: string[] | null },
+  settings: Pick<ReviewRewardSettings, 'minStars' | 'requireWrittenReview' | 'requirePhoto'>
+): ReviewStepProgress {
+  const rated = Number(input.rating) >= settings.minStars;
+  const reviewed = Boolean(input.comment && input.comment.trim().length > 0);
+  const photoUploaded = Array.isArray(input.photos) && input.photos.length > 0;
+
+  const allRequiredStepsDone =
+    rated &&
+    (!settings.requireWrittenReview || reviewed) &&
+    (!settings.requirePhoto || photoUploaded);
+
+  return { rated, reviewed, photoUploaded, allRequiredStepsDone };
+}
+
 function generateCouponCode(): string {
   // e.g. THANKS-7F3K9A -- short enough to read out / type by hand,
   // long enough (6 base32-ish chars from hex) that collisions are rare;
@@ -31,23 +63,38 @@ function generateCouponCode(): string {
 
 /**
  * Attempts to issue a reward for one (orderId, productId) pair.
- * Returns null if rewards are disabled, the rating doesn't qualify, or
- * a reward for this order+product already exists (no error in that
- * last case -- it's the expected outcome of a repeat submission, not a
- * failure).
+ *
+ * Step-gated: this is called again on EVERY step of the 3-step flow
+ * (rate -> write -> upload photo), not just once. It only actually
+ * issues a coupon the first time ALL of this store's required steps
+ * (settings.requireWrittenReview / requirePhoto, on top of the
+ * always-required star rating) are satisfied -- earlier partial calls
+ * fall through and return null so a customer never gets a coupon per
+ * step, only ever ONE coupon for the whole review. The UNIQUE
+ * (order_id, product_id) constraint on review_rewards is still what
+ * makes that safe under retries/races; the step check here is what
+ * makes it correct on the *first* successful call specifically.
+ *
+ * Returns null if rewards are disabled, the required steps aren't all
+ * complete yet, or a reward for this order+product already exists (no
+ * error in that last case -- expected outcome of a repeat submission).
  */
 export async function issueReviewReward(params: {
   orderId: string;
   productId: string;
   reviewId?: string | null;
   rating: number;
+  comment?: string | null;
+  photos?: string[] | null;
 }): Promise<IssuedReward | null> {
-  const { orderId, productId, reviewId, rating } = params;
+  const { orderId, productId, reviewId, rating, comment, photos } = params;
   const supabase = getSupabaseAdmin();
 
   const settings = await getReviewRewardSettings(supabase);
   if (!settings.enabled) return null;
-  if (rating < settings.minStars) return null;
+
+  const progress = getReviewStepProgress({ rating, comment, photos }, settings);
+  if (!progress.allRequiredStepsDone) return null;
 
   // Someone already earned a reward for this exact order+product?
   // Cheap pre-check to avoid burning a coupon-code attempt in the
