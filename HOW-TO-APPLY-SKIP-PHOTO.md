@@ -16,11 +16,14 @@ koi photo attach nahi ki gayi) — isse:
   — backend ka existing step-gating logic (`lib/review-rewards-server.ts`)
   ye already sahi handle karta hai, is fix ne usko chheda nahi hai
 - Submit hone ke baad ek clear note dikhta hai: "No discount this time —
-  you skipped adding a photo. You can still come back and add one later
-  from this same link to unlock it." — customer ko turant pata chal jata
-  hai ki discount kyun nahi mila, aur ye bhi ki wo baad me wapas aake
-  photo add kar sakta hai (link expire hone tak) taaki discount tab mil
-  jaye.
+  you skipped adding a photo." + ek button "**Add a photo now to unlock
+  your discount**" — isse customer usi page par, turant, wapas photo step
+  par ja sakta hai (page reload ki zaroorat nahi) aur photo daal ke
+  discount unlock kar sakta hai. Agar wo page band kar de aur baad me wahi
+  link dobara khole, to bhi wahi photo step par hi resume hoga (server-side
+  progress tracking hi karta hai, koi "finished" flag save nahi hota) —
+  matlab dono tareeke se (usi session me ya baad me link dobara khol ke)
+  photo add karna hamesha possible rehta hai.
 
 Agar customer photo attach kar leta hai (chahe skip dikh raha ho), to
 normal "Submit Review" button khud enable ho jata hai aur skip link gayab

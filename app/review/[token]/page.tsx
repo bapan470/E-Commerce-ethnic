@@ -318,8 +318,20 @@ function ReviewItemCard({
           {photoSkipped && !rewardIssued && (
             <div className="flex items-center gap-2 rounded-md border border-dashed border-muted-foreground/30 px-3 py-2 text-xs text-muted-foreground">
               <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-              No discount this time -- you skipped adding a photo. You can still come back and add one later from this same link to unlock it.
+              No discount this time -- you skipped adding a photo.
             </div>
+          )}
+          {photoSkipped && !rewardIssued && steps.includes('photo') && (
+            <button
+              type="button"
+              onClick={() => {
+                setPhotoSkipped(false);
+                setStepIndex(steps.indexOf('photo'));
+              }}
+              className="w-full rounded-md border border-dashed border-secondary/50 py-2 text-xs font-medium text-secondary hover:bg-secondary/10"
+            >
+              Add a photo now to unlock your discount
+            </button>
           )}
         </div>
       ) : (
