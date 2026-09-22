@@ -201,6 +201,7 @@ function ReviewItemCard({
   const [submitting, setSubmitting] = useState(false);
   const [reward, setReward] = useState<ReviewLinkReward | null>(null);
   const [rewardIssued, setRewardIssued] = useState(item.progress.rewardIssued);
+  const [photoSkipped, setPhotoSkipped] = useState(false);
 
   useEffect(() => {
     const urls = photoFiles.map((f) => URL.createObjectURL(f));
@@ -219,7 +220,7 @@ function ReviewItemCard({
   };
   const removePhoto = (idx: number) => setPhotoFiles((prev) => prev.filter((_, i) => i !== idx));
 
-  const submitStep = async () => {
+  const submitStep = async (opts: { skipPhoto?: boolean } = {}) => {
     if (!item.productId) return;
     setSubmitting(true);
     try {
@@ -238,12 +239,24 @@ function ReviewItemCard({
         payload.title = title || undefined;
         payload.comment = comment;
       } else if (currentStep === 'photo') {
-        const uploaded =
-          photoFiles.length > 0 ? await Promise.all(photoFiles.map((f) => uploadGuestReviewPhoto(token, f))) : [];
-        const allPhotos = [...savedPhotoUrls, ...uploaded].slice(0, MAX_PHOTOS);
-        payload.photos = allPhotos;
-        setSavedPhotoUrls(allPhotos);
-        setPhotoFiles([]);
+        if (opts.skipPhoto) {
+          // Customer chose "Submit without a photo" -- send whatever's
+          // already saved (normally none at this point) as-is, with no
+          // upload attempt. Backend's step-gating (getReviewStepProgress
+          // in lib/review-rewards-server.ts) then correctly sees
+          // photoUploaded: false and withholds the reward -- this path
+          // deliberately does NOT unlock the discount, only lets the
+          // review itself go through.
+          payload.photos = savedPhotoUrls;
+          setPhotoSkipped(true);
+        } else {
+          const uploaded =
+            photoFiles.length > 0 ? await Promise.all(photoFiles.map((f) => uploadGuestReviewPhoto(token, f))) : [];
+          const allPhotos = [...savedPhotoUrls, ...uploaded].slice(0, MAX_PHOTOS);
+          payload.photos = allPhotos;
+          setSavedPhotoUrls(allPhotos);
+          setPhotoFiles([]);
+        }
       }
 
       const result = await submitGuestReview(token, payload);
@@ -268,6 +281,13 @@ function ReviewItemCard({
       ? savedPhotoUrls.length + photoFiles.length > 0
       : false;
 
+  // Skip is only offered while no photo has been picked yet -- the moment
+  // one is attached, the normal "Submit Review" button above already
+  // enables and is clearly the better choice, so the skip link disappears
+  // rather than sitting there as a confusing second way to do the same
+  // thing.
+  const canSkipPhoto = currentStep === 'photo' && savedPhotoUrls.length + photoFiles.length === 0;
+
   const isLastStep = stepIndex === steps.length - 1;
 
   return (
@@ -290,9 +310,17 @@ function ReviewItemCard({
       </div>
 
       {done ? (
-        <div className="mt-3 flex items-center gap-2 rounded-md bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-          <CheckCircle2 className="h-4 w-4 shrink-0 text-secondary" />
-          {rating > 0 ? `Thanks, all done (${rating}★)!` : 'Thanks, already reviewed!'}
+        <div className="mt-3 space-y-2">
+          <div className="flex items-center gap-2 rounded-md bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-secondary" />
+            {rating > 0 ? `Thanks, all done (${rating}★)!` : 'Thanks, already reviewed!'}
+          </div>
+          {photoSkipped && !rewardIssued && (
+            <div className="flex items-center gap-2 rounded-md border border-dashed border-muted-foreground/30 px-3 py-2 text-xs text-muted-foreground">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              No discount this time -- you skipped adding a photo. You can still come back and add one later from this same link to unlock it.
+            </div>
+          )}
         </div>
       ) : (
         <div className="mt-4 space-y-3">
@@ -356,7 +384,7 @@ function ReviewItemCard({
             </div>
           )}
 
-          <Button onClick={submitStep} disabled={submitting || !canContinue} className="w-full bg-primary">
+          <Button onClick={() => submitStep()} disabled={submitting || !canContinue} className="w-full bg-primary">
             {submitting ? (
               <>
                 <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Saving...
@@ -368,9 +396,21 @@ function ReviewItemCard({
             )}
           </Button>
           {currentStep === 'photo' && (
-            <p className="text-center text-[11px] text-muted-foreground">
-              A real photo of you wearing/using it -- helps other shoppers (and unlocks your reward).
-            </p>
+            <>
+              <p className="text-center text-[11px] text-muted-foreground">
+                A real photo of you wearing/using it -- helps other shoppers (and unlocks your reward).
+              </p>
+              {canSkipPhoto && (
+                <button
+                  type="button"
+                  onClick={() => submitStep({ skipPhoto: true })}
+                  disabled={submitting}
+                  className="w-full text-center text-xs font-medium text-muted-foreground underline underline-offset-2 decoration-dotted hover:text-destructive disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Skip -- submit without a photo (you won't unlock the {steps.length > 1 ? 'discount' : 'reward'} for this item)
+                </button>
+              )}
+            </>
           )}
         </div>
       )}
