@@ -853,7 +853,7 @@ export default function ProductDetail({
         <h2 className="mb-3 text-sm font-semibold text-foreground">
           Reviews ({displayRatingsCount})
         </h2>
-        <ReviewsSection productId={baseProduct.id} productSlug={baseProduct.slug} />
+        <ReviewsSection productId={baseProduct.id} productSlug={baseProduct.slug} selectedColor={product?.colors?.[0] ?? null} />
       </div>
 
       <div className="mt-6">

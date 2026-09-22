@@ -9,6 +9,8 @@ import {
   Review,
   fetchApprovedReviews,
   fetchMyReviewForProduct,
+  filterReviewsByColor,
+  getReviewColorOptions,
   hasPurchasedProduct,
   hasWrittenContent,
   scheduleAutoPublish,
@@ -102,9 +104,14 @@ function firstName(name: string) {
 export default function ReviewsSection({
   productId,
   productSlug,
+  selectedColor,
 }: {
   productId: string;
   productSlug: string;
+  /** Colour of the variant currently open on the page -- pre-highlighted
+   *  (but not force-applied) in the "Filter by colour" row below, so a
+   *  shopper looking at the Green variant sees Green offered first. */
+  selectedColor?: string | null;
 }) {
   const { user } = useAuth();
   const router = useRouter();
@@ -124,6 +131,10 @@ export default function ReviewsSection({
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [helpfulVotes, setHelpfulVotes] = useState<Record<string, number>>({});
   const [markedHelpful, setMarkedHelpful] = useState<Record<string, boolean>>({});
+  /** null = "All colours". Starts unset (showing every review) even when
+   *  `selectedColor` is known -- filtering is something the shopper opts
+   *  into via the chips, not something sprung on them by default. */
+  const [colorFilter, setColorFilter] = useState<string | null>(null);
 
   const MAX_PHOTOS = 4;
 
@@ -163,6 +174,8 @@ export default function ReviewsSection({
   }, [user, productId]);
 
   const summary = summarizeReviews(reviews);
+  const colorOptions = getReviewColorOptions(reviews);
+  const filteredReviews = filterReviewsByColor(reviews, colorFilter);
 
   const onPickPhotos = (e: React.ChangeEvent<HTMLInputElement>) => {
     const picked = Array.from(e.target.files ?? []);
@@ -194,7 +207,7 @@ export default function ReviewsSection({
     }
     setSubmitting(true);
     try {
-      const review = await submitReview({ productId, rating });
+      const review = await submitReview({ productId, rating, color: selectedColor || undefined });
       setMyReview(review);
       setStep('details');
       scheduleAutoPublish(review.id, () => {
@@ -449,15 +462,61 @@ export default function ReviewsSection({
           </div>
         )}
 
+        {colorOptions.length > 1 && (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground">Filter by colour:</span>
+            <button
+              type="button"
+              onClick={() => setColorFilter(null)}
+              className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                colorFilter === null
+                  ? 'border-primary bg-primary text-primary-foreground'
+                  : 'border-border/60 text-muted-foreground hover:border-primary/40 hover:text-primary'
+              }`}
+            >
+              All colours ({reviews.length})
+            </button>
+            {colorOptions.map((color) => {
+              const count = reviews.filter((r) => r.variant_color?.trim().toLowerCase() === color.toLowerCase()).length;
+              const active = colorFilter?.toLowerCase() === color.toLowerCase();
+              return (
+                <button
+                  key={color}
+                  type="button"
+                  onClick={() => setColorFilter(color)}
+                  className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                    active
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : color.toLowerCase() === selectedColor?.toLowerCase()
+                      ? 'border-secondary/60 text-secondary'
+                      : 'border-border/60 text-muted-foreground hover:border-primary/40 hover:text-primary'
+                  }`}
+                >
+                  {color} ({count})
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {loading ? (
           <div className="flex flex-col gap-4">
             {Array.from({ length: 3 }).map((_, i) => (
               <Skeleton key={i} className="h-20 w-full" />
             ))}
           </div>
-        ) : reviews.length === 0 ? null : (
+        ) : filteredReviews.length === 0 ? (
+          colorFilter ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              No reviews yet for {colorFilter}.{' '}
+              <button type="button" onClick={() => setColorFilter(null)} className="text-primary underline underline-offset-2">
+                Show all colours
+              </button>
+            </p>
+          ) : null
+        ) : (
           <ul className="flex flex-col divide-y divide-border/60">
-            {reviews.map((r) => (
+            {filteredReviews.map((r) => (
               <li key={r.id} className="rounded-lg py-4 transition-colors hover:bg-secondary/[0.04]">
                 <div className="flex items-start gap-3">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary/70 text-xs font-semibold text-primary-foreground shadow-sm">
@@ -470,6 +529,11 @@ export default function ReviewsSection({
                         {r.rating.toFixed(1)}
                         <Star className="h-3 w-3 fill-white" />
                       </span>
+                      {r.variant_color && (
+                        <span className="rounded-full border border-border/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                          {r.variant_color}
+                        </span>
+                      )}
                     </div>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       Posted on{' '}

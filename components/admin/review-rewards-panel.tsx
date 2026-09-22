@@ -191,6 +191,50 @@ export default function ReviewRewardsPanel() {
           off coupon, shown instantly on the page and mentioned in the review-request/reminder emails.
         </p>
 
+        <div className="mt-5 border-t border-border/60 pt-4">
+          <h3 className="mb-1 text-sm font-semibold text-primary">Required steps before the coupon fires</h3>
+          <p className="mb-3 text-xs text-muted-foreground">
+            The star rating above is always required. Turn these on/off to control how many more steps a
+            customer must complete on the same review before ONE coupon is issued -- never one coupon per
+            step, always just one for the whole review.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex items-center justify-between rounded-md border border-border/60 p-3">
+              <div>
+                <Label htmlFor="require-written" className="cursor-pointer text-sm">
+                  Require a written review
+                </Label>
+                <p className="text-xs text-muted-foreground">Customer must type a comment, not just tap stars.</p>
+              </div>
+              <Switch
+                id="require-written"
+                checked={settings.requireWrittenReview}
+                onCheckedChange={(v) => setSettings((s) => ({ ...s, requireWrittenReview: v }))}
+              />
+            </div>
+            <div className="flex items-center justify-between rounded-md border border-border/60 p-3">
+              <div>
+                <Label htmlFor="require-photo" className="cursor-pointer text-sm">
+                  Require a real photo
+                </Label>
+                <p className="text-xs text-muted-foreground">Customer must upload at least one photo.</p>
+              </div>
+              <Switch
+                id="require-photo"
+                checked={settings.requirePhoto}
+                onCheckedChange={(v) => setSettings((s) => ({ ...s, requirePhoto: v }))}
+              />
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Steps required right now:{' '}
+            <span className="font-medium text-primary">
+              Rate{settings.requireWrittenReview ? ' → Write a review' : ''}
+              {settings.requirePhoto ? ' → Upload a photo' : ''}
+            </span>
+          </p>
+        </div>
+
         <Button type="submit" disabled={saving} className="mt-4 bg-primary">
           <Save className="mr-1.5 h-4 w-4" />
           {saving ? 'Saving…' : 'Save Settings'}

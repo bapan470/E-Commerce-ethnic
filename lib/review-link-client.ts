@@ -8,12 +8,22 @@
 // untouched by this guest flow.
 // ---------------------------------------------------------------------
 
+export interface ReviewStepProgress {
+  rated: boolean;
+  reviewed: boolean;
+  photoUploaded: boolean;
+  allRequiredStepsDone: boolean;
+  rewardIssued: boolean;
+}
+
 export interface ReviewLinkItem {
   productId: string | null;
   name: string;
   image: string | null;
   size: string | null;
   slug: string | null;
+  /** Colour of the exact variant bought -- shown as "Reviewing: <colour>". */
+  color: string | null;
   existingReview: {
     id: string;
     product_id: string;
@@ -22,7 +32,18 @@ export interface ReviewLinkItem {
     comment: string | null;
     photos: string[];
     is_approved: boolean;
+    variant_color?: string | null;
   } | null;
+  progress: ReviewStepProgress;
+}
+
+export interface ReviewLinkRewardConfig {
+  enabled: boolean;
+  minStars: number;
+  requireWrittenReview: boolean;
+  requirePhoto: boolean;
+  discountType: 'percentage' | 'flat';
+  discountValue: number;
 }
 
 export interface ReviewLinkOrder {
@@ -31,6 +52,9 @@ export interface ReviewLinkOrder {
     shortId: string;
     customerName: string | null;
   };
+  /** Which steps this store currently requires + the coupon shape --
+   *  drives how many steps the stepper shows. */
+  reward: ReviewLinkRewardConfig;
   items: ReviewLinkItem[];
 }
 
@@ -62,18 +86,20 @@ export async function uploadGuestReviewPhoto(token: string, file: File): Promise
   return json.url as string;
 }
 
-/** Submits a rating/review (and any auto-issued reward) for one item. */
+/** Submits one step (rate / write / photo) for one item. Safe to call more
+ *  than once for the same item -- each call fills in the next step on the
+ *  same review row; the caller decides which fields to send. */
 export async function submitGuestReview(
   token: string,
   input: {
     productId: string;
-    rating: number;
+    rating?: number;
     title?: string;
     comment?: string;
     photos?: string[];
     guestEmail?: string;
   }
-): Promise<{ review: unknown; reward: ReviewLinkReward | null }> {
+): Promise<{ review: unknown; reward: ReviewLinkReward | null; progress: ReviewStepProgress }> {
   const res = await fetch(`/api/review-link/${encodeURIComponent(token)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
