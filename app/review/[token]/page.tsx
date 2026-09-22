@@ -10,7 +10,7 @@
 // grants access, same trust model as a password-reset link.
 // ---------------------------------------------------------------------
 
-import { use, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Star, Loader2, ImagePlus, X, CheckCircle2, Copy, Check, PartyPopper, AlertTriangle } from 'lucide-react';
 import {
@@ -260,8 +260,8 @@ function BrandHeader() {
   );
 }
 
-export default function ReviewLinkPage({ params }: { params: Promise<{ token: string }> }) {
-  const { token } = use(params);
+export default function ReviewLinkPage({ params }: { params: { token: string } }) {
+  const { token } = params;
   const [data, setData] = useState<ReviewLinkOrder | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
