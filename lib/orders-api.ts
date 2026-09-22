@@ -109,6 +109,52 @@ async function attachReturnRefundStatus(supabase: ReturnType<typeof getSupabaseA
   });
 }
 
+// Attaches, on each order, a `_review_rewards` array -- one entry per
+// (order, product) that has earned a "leave a review" discount coupon
+// via app/api/review-link/[token]/route.ts -> issueReviewReward(). A
+// single order can carry more than one of these (one per reviewed
+// product), unlike the five fixed lifecycle columns below, which is why
+// this is a join rather than another *_sent_at column on `orders`
+// itself. Powers the extra "Review Reward" row(s) in Admin -> Orders ->
+// Email Log (see EmailLog() in components/admin/orders-panel.tsx) --
+// specifically email_sent_at / email_error, written back by that same
+// route right after it calls sendEmail() with reviewRewardIssuedEmail()
+// (see 20261011000000_review_reward_email_tracking.sql). Product name
+// for display comes from the order's own `items` (already loaded),
+// keyed by product_id -- no extra products-table join needed here.
+async function attachReviewRewards(supabase: ReturnType<typeof getSupabaseAdmin>, orders: any[]) {
+  const orderIds = orders.map((o) => o.id).filter(Boolean);
+  if (orderIds.length === 0) return orders;
+
+  const { data: rewards, error } = await supabase
+    .from('review_rewards')
+    .select('id, order_id, product_id, rating, email_sent_at, email_error, created_at, coupons(code, discount_type, discount_value, expires_at)')
+    .in('order_id', orderIds);
+  if (error || !rewards || rewards.length === 0) return orders;
+
+  const byOrderId = new Map<string, any[]>();
+  for (const r of rewards) {
+    const list = byOrderId.get(r.order_id) ?? [];
+    list.push({
+      id: r.id,
+      product_id: r.product_id,
+      rating: r.rating,
+      email_sent_at: r.email_sent_at,
+      email_error: r.email_error,
+      created_at: r.created_at,
+      code: (r as any).coupons?.code ?? null,
+      discount_type: (r as any).coupons?.discount_type ?? null,
+      discount_value: (r as any).coupons?.discount_value ?? null,
+    });
+    byOrderId.set(r.order_id, list);
+  }
+
+  return orders.map((order) => {
+    const list = byOrderId.get(order.id);
+    return list && list.length > 0 ? { ...order, _review_rewards: list } : order;
+  });
+}
+
 export async function fetchOrders() {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
@@ -117,7 +163,8 @@ export async function fetchOrders() {
     .order('created_at', { ascending: false });
   if (error) throw error;
   const withSources = await attachItemSources(supabase, data ?? []);
-  return attachReturnRefundStatus(supabase, withSources);
+  const withReturns = await attachReturnRefundStatus(supabase, withSources);
+  return attachReviewRewards(supabase, withReturns);
 }
 
 // Called from Admin -> Orders whenever the admin changes an order's status

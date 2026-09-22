@@ -15,6 +15,13 @@ import { getSupabaseAdmin } from './supabase-admin';
 import { getReviewRewardSettings, type ReviewRewardSettings } from './review-reward-settings';
 
 export interface IssuedReward {
+  /** review_rewards.id -- callers use this to write back email_sent_at /
+   *  email_error once they've attempted the confirmation email (see
+   *  app/api/review-link/[token]/route.ts). Nothing here writes those
+   *  columns itself; issuing the coupon and emailing it are deliberately
+   *  kept as two separate steps so an email failure can never roll back
+   *  or retry-duplicate an already-issued coupon. */
+  id: string;
   code: string;
   discountType: 'percentage' | 'flat';
   discountValue: number;
@@ -142,13 +149,17 @@ export async function issueReviewReward(params: {
     // roll back the coupon we just created (it would otherwise be
     // orphaned and unredeemable-but-live) and report "no reward"
     // rather than a duplicate.
-    const { error: rewardError } = await supabase.from('review_rewards').insert({
-      order_id: orderId,
-      product_id: productId,
-      review_id: reviewId ?? null,
-      coupon_id: coupon.id,
-      rating,
-    });
+    const { data: rewardRow, error: rewardError } = await supabase
+      .from('review_rewards')
+      .insert({
+        order_id: orderId,
+        product_id: productId,
+        review_id: reviewId ?? null,
+        coupon_id: coupon.id,
+        rating,
+      })
+      .select('id')
+      .single();
 
     if (rewardError) {
       await supabase.from('coupons').delete().eq('id', coupon.id);
@@ -157,6 +168,7 @@ export async function issueReviewReward(params: {
     }
 
     return {
+      id: rewardRow.id,
       code: coupon.code,
       discountType: coupon.discount_type,
       discountValue: coupon.discount_value,

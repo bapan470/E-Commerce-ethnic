@@ -262,15 +262,36 @@ export async function POST(req: Request, { params }: { params: { token: string }
     // saved by this point.
     if (reward) {
       const recipientEmail = guestEmail || order.customer_email || null;
-      if (recipientEmail) {
+      // Write back onto the SAME review_rewards row every branch below --
+      // this is exactly what powers the "Review Reward" row in Admin ->
+      // Orders -> Email Log (see attachReviewRewards() in
+      // lib/orders-api.ts). Not just the success path: an admin looking
+      // at "why didn't the customer get their code" needs to see *why*
+      // it didn't send (no email on file vs. provider not configured vs.
+      // an actual send failure), not just a blank "Not sent yet" that
+      // looks identical to "hasn't been attempted yet".
+      if (!recipientEmail) {
+        await supabase
+          .from('review_rewards')
+          .update({ email_error: 'No email address on this order/review' })
+          .eq('id', reward.id);
+      } else {
         try {
           const { subject, html } = reviewRewardIssuedEmail({
             order: { id: order.id, customer_name: order.customer_name },
             reward,
           });
-          await sendEmail({ to: recipientEmail, subject, html });
+          const result = await sendEmail({ to: recipientEmail, subject, html });
+          if (result.success) {
+            await supabase.from('review_rewards').update({ email_sent_at: new Date().toISOString() }).eq('id', reward.id);
+          } else {
+            const errMsg = typeof result.error === 'string' ? result.error : JSON.stringify(result.error);
+            await supabase.from('review_rewards').update({ email_error: errMsg.slice(0, 500) }).eq('id', reward.id);
+          }
         } catch (emailErr) {
           console.error('[review-link POST] reward email failed:', emailErr);
+          const errMsg = emailErr instanceof Error ? emailErr.message : String(emailErr);
+          await supabase.from('review_rewards').update({ email_error: errMsg.slice(0, 500) }).eq('id', reward.id);
         }
       }
     }

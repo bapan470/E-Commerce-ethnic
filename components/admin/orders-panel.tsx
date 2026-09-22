@@ -115,6 +115,21 @@ type Order = {
   arriving_email_sent_at?: string | null;
   out_for_delivery_email_sent_at?: string | null;
   delivered_email_sent_at?: string | null;
+  // One entry per product that earned a "leave a review" discount coupon
+  // (app/api/review-link/[token]/route.ts -> issueReviewReward()). See
+  // attachReviewRewards() in lib/orders-api.ts and
+  // 20261011000000_review_reward_email_tracking.sql.
+  _review_rewards?: {
+    id: string;
+    product_id: string;
+    rating: number;
+    email_sent_at: string | null;
+    email_error: string | null;
+    created_at: string;
+    code: string | null;
+    discount_type: 'percentage' | 'flat' | null;
+    discount_value: number | null;
+  }[];
 };
 
 export default function OrdersPanel() {
@@ -1314,7 +1329,7 @@ function OrderRow({
 // and delivery-notifications.ts; never sends anything itself (see the
 // "Test Notifications" panel below for that).
 function EmailLog({ order }: { order: Order }) {
-  const rows: { label: string; sentAt?: string | null; note?: string }[] = [
+  const rows: { label: string; sentAt?: string | null; note?: string; error?: string | null }[] = [
     { label: 'Order Confirmed', sentAt: order.confirmation_email_sent_at },
     { label: 'Shipped', sentAt: order.shipped_email_sent_at },
     {
@@ -1328,14 +1343,37 @@ function EmailLog({ order }: { order: Order }) {
     { label: 'Delivered', sentAt: order.delivered_email_sent_at },
   ];
 
-  if (!order.customer_email) {
+  // One row per product that has earned a review-reward coupon -- a
+  // single order can have more than one (one per reviewed product),
+  // unlike the five lifecycle rows above which only ever fire once each.
+  // Product name comes from this order's own `items` array (already
+  // loaded, keyed by product_id) rather than a fresh products lookup.
+  const items = Array.isArray((order as any).items) ? (order as any).items : [];
+  const nameByProductId = new Map(items.map((it: any) => [it.product_id, it.product_name || it.name]));
+  for (const reward of order._review_rewards ?? []) {
+    const productName = nameByProductId.get(reward.product_id) || 'Item';
+    const discountLabel =
+      reward.discount_type === 'percentage'
+        ? `${reward.discount_value}% off`
+        : reward.discount_type === 'flat'
+        ? `₹${reward.discount_value} off`
+        : null;
+    rows.push({
+      label: `Review Reward — ${productName}`,
+      sentAt: reward.email_sent_at,
+      error: reward.email_error,
+      note: [reward.code, discountLabel].filter(Boolean).join(' · ') || undefined,
+    });
+  }
+
+  if (!order.customer_email && !(order._review_rewards ?? []).length) {
     return <p className="text-sm text-muted-foreground">No customer email on this order — nothing has been sent.</p>;
   }
 
   return (
     <div className="rounded-md border border-border/60 p-3">
       <p className="mb-2 text-xs text-muted-foreground">
-        Sent to: <span className="font-medium text-foreground">{order.customer_email}</span>
+        Sent to: <span className="font-medium text-foreground">{order.customer_email || 'no email on this order'}</span>
       </p>
       <div className="space-y-1.5">
         {rows.map((row) => (
@@ -1343,15 +1381,19 @@ function EmailLog({ order }: { order: Order }) {
             <div className="flex items-center gap-2">
               {row.sentAt ? (
                 <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+              ) : row.error ? (
+                <XCircle className="h-3.5 w-3.5 shrink-0 text-destructive" />
               ) : (
                 <XCircle className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
               )}
               <span className={row.sentAt ? 'text-foreground' : 'text-muted-foreground'}>{row.label}</span>
               {row.note && <span className="text-xs text-muted-foreground">({row.note})</span>}
             </div>
-            <span className="text-xs text-muted-foreground">
+            <span className={`text-xs ${row.error ? 'text-destructive' : 'text-muted-foreground'}`}>
               {row.sentAt
                 ? new Date(row.sentAt).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
+                : row.error
+                ? row.error
                 : 'Not sent yet'}
             </span>
           </div>
