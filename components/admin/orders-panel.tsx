@@ -606,7 +606,15 @@ export default function OrdersPanel() {
 // chat with the message already typed -- admin only has to press Send.
 // Payment link = same /checkout/resume/[id] page the email points to, so the
 // amount shown to the customer (already discounted) is identical.
-// Edit the message text below to change the wording.
+//
+// The message explains WHY online payment is being asked for (high demand,
+// prepaid orders ship first, COD after), shows product / colour / size, the
+// COD-vs-online price difference, and the 30-day money-back guarantee.
+// Edit the wording in the `lines` array below.
+//
+// NOTE: wa.me links can only carry text (no attachments). The product photo
+// is sent as an image link -- WhatsApp shows a preview of the FIRST link in a
+// message, so the photo link is placed before the payment link on purpose.
 function buildPaymentWhatsAppUrl(order: Order): string | null {
   let digits = String(order.customer_phone ?? '').replace(/\D/g, '');
   if (digits.startsWith('00')) digits = digits.slice(2);
@@ -619,26 +627,59 @@ function buildPaymentWhatsAppUrl(order: Order): string | null {
   const payLink = `${siteUrl}/checkout/resume/${order.id}`;
   const shortId = order.id.slice(0, 8).toUpperCase();
   const first = (order.customer_name || '').trim().split(/\s+/)[0];
+  const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
+
   const items: any[] = Array.isArray(order.items) ? order.items : [];
-  const itemName = items[0]?.product_name || items[0]?.name || 'your order';
-  const more = items.length > 1 ? ` +${items.length - 1} more` : '';
+  const itemLines = items.map((it) => {
+    const name = it.product_name || it.name || 'Your item';
+    const qty = Number(it.quantity ?? 1);
+    const extras = [it.color ? `Color: ${it.color}` : '', it.size ? `Size: ${it.size}` : '']
+      .filter(Boolean)
+      .join(' | ');
+    return `• *${name}*${qty > 1 ? ` x ${qty}` : ''}${extras ? `\n   ${extras}` : ''}`;
+  });
+
+  // First product photo (made absolute if it's a site-relative path)
+  const rawImg: string | undefined = items.find((it) => it?.image_url)?.image_url;
+  const imageUrl = rawImg ? (rawImg.startsWith('/') ? `${siteUrl}${rawImg}` : rawImg) : '';
+
   const discount = Number(order.online_payment_discount ?? 0);
-  const payable = Number(order.total_amount || 0);
-  const originalTotal = payable + discount;
+  const onlinePrice = Number(order.total_amount || 0);
+  const codPrice = onlinePrice + discount;
+
+  const priceBlock =
+    discount > 0
+      ? [
+          `💰 *Price details*`,
+          `COD price: ~${inr(codPrice)}~`,
+          `Online payment discount: -${inr(discount)} 🎁`,
+          `*Online price: ${inr(onlinePrice)}* ✅ (you save ${inr(discount)})`,
+        ]
+      : [`💰 *Amount to pay online: ${inr(onlinePrice)}*`];
 
   const lines = [
-    `Namaste${first ? ` ${first}` : ''} ji 🙏`,
+    `Hello${first ? ` ${first}` : ''} 🙏`,
     '',
-    `Aapka order #${shortId} (${itemName}${more}) hume mil gaya hai. Ye item aapke liye specially taiyar karna hota hai, isliye hum isse *online payment* ke baad hi start kar paayenge.`,
+    `Thank you so much for shopping with us! We have received your order.`,
     '',
-    discount > 0
-      ? `Online payment par aapko ₹${discount.toLocaleString('en-IN')} ka discount mil raha hai:\n~₹${originalTotal.toLocaleString('en-IN')}~ → *₹${payable.toLocaleString('en-IN')}*`
-      : `Payable amount: *₹${payable.toLocaleString('en-IN')}*`,
+    `🛍️ *Order #${shortId}*`,
+    ...itemLines,
+    ...(imageUrl ? ['', `📸 Product photo:`, imageUrl] : []),
     '',
-    `Yahan se secure payment kar dijiye 👇`,
+    `We have a small request 🙏`,
+    `We are currently experiencing *very high demand*, so COD orders are taking longer than usual to process. We are shipping *prepaid (online payment) orders first*, followed by COD orders.`,
+    '',
+    `So that your order reaches you as quickly as possible, we kindly request you to complete the payment online.`,
+    '',
+    ...priceBlock,
+    '',
+    `🔗 Secure payment link:`,
     payLink,
     '',
-    `Payment hote hi hum order prepare karke dispatch kar denge. Dhanyavaad! 🙏`,
+    `🛡️ *Shop with complete peace of mind!* Every order is covered by our *30-day No-Questions-Asked Money-Back Guarantee*. If you are not happy with your purchase, you will get a full refund within 30 days, no questions asked.`,
+    '',
+    `If you have any questions, just reply to this chat and we will be happy to help. 😊`,
+    `Thank you for your support and patience! 🙏`,
   ];
   return `https://wa.me/${digits}?text=${encodeURIComponent(lines.join('\n'))}`;
 }
