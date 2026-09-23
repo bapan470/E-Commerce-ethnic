@@ -621,12 +621,19 @@ const STORE_NAME = 'Aruhi Handlooms';
 // Made-to-order processing time quoted to the customer (before dispatch).
 const PROCESSING_TIME = '4-7 days';
 
-function buildPaymentWhatsAppUrl(order: Order): string | null {
+// Customer phone -> WhatsApp number (digits only, with country code), or
+// null when the number on the order isn't usable.
+function getWhatsAppDigits(order: Order): string | null {
   let digits = String(order.customer_phone ?? '').replace(/\D/g, '');
   if (digits.startsWith('00')) digits = digits.slice(2);
   if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
   if (digits.length === 10) digits = `91${digits}`; // India country code
-  if (digits.length < 11) return null;
+  return digits.length < 11 ? null : digits;
+}
+
+function buildPaymentWhatsAppUrl(order: Order): string | null {
+  const digits = getWhatsAppDigits(order);
+  if (!digits) return null;
 
   const siteUrl =
     process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== 'undefined' ? window.location.origin : '');
@@ -699,8 +706,65 @@ function buildPaymentWhatsAppUrl(order: Order): string | null {
   return `https://wa.me/${digits}?text=${encodeURIComponent(lines.join('\n'))}`;
 }
 
-function WhatsAppPaymentButton({ order, className = '' }: { order: Order; className?: string }) {
-  const url = buildPaymentWhatsAppUrl(order);
+// ---- WhatsApp "payment received" confirmation ------------------------------
+// Sent AFTER the customer has paid (order status 'paid'). Many customers never
+// open their email, so this puts the good news where they'll actually see it:
+// payment received, order confirmed, what happens next, how to track it.
+// Same made-to-order processing time as the payment-request message above.
+function buildPaidConfirmationWhatsAppUrl(order: Order): string | null {
+  const digits = getWhatsAppDigits(order);
+  if (!digits) return null;
+
+  const shortId = order.id.slice(0, 8).toUpperCase();
+  const first = (order.customer_name || '').trim().split(/\s+/)[0];
+  const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
+  const paid = Number(order.total_amount || 0);
+  const discount = Number(order.online_payment_discount ?? 0);
+
+  const items: any[] = Array.isArray(order.items) ? order.items : [];
+  const itemLines = items.map((it) => {
+    const name = it.product_name || it.name || 'Your selection';
+    const qty = Number(it.quantity ?? 1);
+    const extras = [it.color ? `Color: ${it.color}` : '', it.size ? `Size: ${it.size}` : '', qty > 1 ? `Qty: ${qty}` : '']
+      .filter(Boolean)
+      .join('  ·  ');
+    return `*${name}*${extras ? `\n${extras}` : ''}`;
+  });
+
+  const lines = [
+    `Dear${first ? ` ${first}` : ''},`,
+    '',
+    `Thank you! We have received your payment of *${inr(paid)}* for order *#${shortId}*. Your order is confirmed. ✅`,
+    ...(discount > 0 ? [`You saved ${inr(discount)} by paying online.`] : []),
+    '',
+    `*Your order*`,
+    ...itemLines,
+    '',
+    `*What happens next*`,
+    `Our team will now start preparing your order. Processing takes ${PROCESSING_TIME}, then we dispatch it. We will email you every update until it reaches your hands.`,
+    '',
+    `*Track your order anytime*`,
+    `Log in with the same email you ordered with (OTP or Google login) to see your order status.`,
+    '',
+    `Thank you for your trust and patience.`,
+    '',
+    `Warm regards,`,
+    `*Team ${STORE_NAME}*`,
+  ];
+  return `https://wa.me/${digits}?text=${encodeURIComponent(lines.join('\n'))}`;
+}
+
+function WhatsAppLinkButton({
+  url,
+  label,
+  title,
+  className = '',
+}: {
+  url: string | null;
+  label: string;
+  title: string;
+  className?: string;
+}) {
   if (!url) {
     return (
       <span className="mt-1.5 block text-[10px] text-red-600">No valid phone number for WhatsApp</span>
@@ -711,12 +775,36 @@ function WhatsAppPaymentButton({ order, className = '' }: { order: Order; classN
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      title="Open WhatsApp with the online-payment request message ready to send"
+      title={title}
       className={`inline-flex w-fit items-center gap-1 rounded-md bg-[#25D366] px-2 py-1 text-[11px] font-medium leading-tight text-white hover:bg-[#1ebe57] ${className}`}
     >
       <MessageCircle className="h-3 w-3" />
-      Send on WhatsApp
+      {label}
     </a>
+  );
+}
+
+// Pending online-payment request -> "please pay online" message.
+function WhatsAppPaymentButton({ order, className = '' }: { order: Order; className?: string }) {
+  return (
+    <WhatsAppLinkButton
+      url={buildPaymentWhatsAppUrl(order)}
+      label="Send on WhatsApp"
+      title="Open WhatsApp with the online-payment request message ready to send"
+      className={className}
+    />
+  );
+}
+
+// Paid order -> "payment received, order confirmed" message.
+function WhatsAppPaidConfirmationButton({ order, className = '' }: { order: Order; className?: string }) {
+  return (
+    <WhatsAppLinkButton
+      url={buildPaidConfirmationWhatsAppUrl(order)}
+      label="Send payment confirmation on WhatsApp"
+      title="Open WhatsApp with the payment-received confirmation message ready to send"
+      className={className}
+    />
   );
 }
 
@@ -1048,6 +1136,14 @@ function OrderRow({
               <WhatsAppPaymentButton order={order} />
             </div>
           )}
+          {/* Customer has paid -> reassure them on WhatsApp too (many people
+              never open the confirmation email). Disappears once the order
+              moves on from 'paid' (shipped, delivered, ...). */}
+          {order.status === 'paid' && (
+            <div className="mt-1.5">
+              <WhatsAppPaidConfirmationButton order={order} />
+            </div>
+          )}
         </td>
         <td className="px-4 py-3 align-top text-sm">
           {/* An online order stuck at "pending" almost always means the
@@ -1245,6 +1341,11 @@ function OrderRow({
                     {isAwaitingOnlinePayment && order.status === 'pending' && (
                       <div className="mt-2">
                         <WhatsAppPaymentButton order={order} />
+                      </div>
+                    )}
+                    {order.status === 'paid' && (
+                      <div className="mt-2">
+                        <WhatsAppPaidConfirmationButton order={order} />
                       </div>
                     )}
                   </div>

@@ -1,14 +1,9 @@
-WhatsApp payment message v10 (COD->prepaid note, track via OTP/Google login)
-===========================
-Changed file (replace, same path):
+v11: WhatsApp payment-confirmation button + "COD order paid online" bell notification
+Files (replace at same paths):
   components/admin/orders-panel.tsx
+  components/admin/notification-bell.tsx
+  app/api/admin/notifications/route.ts
 
-Message me ab: high-demand + prepaid pehle/COD baad ka reason, product name +
-color + size + photo link, COD price vs online price + discount, payment link,
-aur 30-day no-questions-asked money-back guarantee.
-
-Wording badalna ho: buildPaymentWhatsAppUrl() ke andar `lines` array.
-
-git add components/admin/orders-panel.tsx
-git commit -m "Improve WhatsApp online payment request message"
+git add components/admin/orders-panel.tsx components/admin/notification-bell.tsx app/api/admin/notifications/route.ts
+git commit -m "WhatsApp payment confirmation button + COD-to-prepaid admin notification"
 git push

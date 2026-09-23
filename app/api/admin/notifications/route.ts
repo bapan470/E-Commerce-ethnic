@@ -13,6 +13,7 @@ export type AdminNotification = {
   id: string;
   type:
     | 'order'
+    | 'order_paid'
     | 'contact_message'
     | 'support_ticket'
     | 'return'
@@ -40,13 +41,26 @@ export async function GET() {
   const supabase = getSupabaseAdmin();
 
   try {
-    const [ordersRes, contactRes, ticketsRes, returnsRes, restockRes, cartsRes, pickupRes, vendorReturnRes, reviewsRes, vendorAppsRes, resellersRes, affiliatesRes] = await Promise.all([
+    const [ordersRes, paidRes, contactRes, ticketsRes, returnsRes, restockRes, cartsRes, pickupRes, vendorReturnRes, reviewsRes, vendorAppsRes, resellersRes, affiliatesRes] = await Promise.all([
       supabase
         .from('orders')
         .select('id, customer_name, customer_email, total_amount, created_at')
         .eq('status', 'pending')
         .order('created_at', { ascending: false })
         .limit(20),
+      // COD -> prepaid: the moment a customer actually pays an order that
+      // went through Admin > Orders > "Request Online Payment", verify-payment
+      // logs a 'payment_verified' event (only orders in that flow are ever
+      // logged there -- see lib/order-payment-events.ts). Without this, the
+      // order's "New order received" bell entry just vanished when its status
+      // flipped pending -> paid, and nothing told the admin the money arrived.
+      // Latest 10 only, same "recent arrivals" pattern as reviews below.
+      supabase
+        .from('order_payment_request_events')
+        .select('id, created_at, orders(id, customer_name, customer_email, total_amount, online_payment_discount)')
+        .eq('event_type', 'payment_verified')
+        .order('created_at', { ascending: false })
+        .limit(10),
       supabase
         .from('contact_messages')
         .select('id, name, subject, created_at')
@@ -158,6 +172,24 @@ export async function GET() {
         message: `${o.customer_name || o.customer_email || 'A customer'} placed an order for ₹${o.total_amount}`,
         section: 'orders',
         created_at: o.created_at,
+      });
+    });
+
+    (paidRes.data || []).forEach((e: any) => {
+      const o = Array.isArray(e.orders) ? e.orders[0] : e.orders;
+      if (!o) return;
+      const total = Number(o.total_amount ?? 0);
+      const discount = Number(o.online_payment_discount ?? 0);
+      const shortId = String(o.id).slice(0, 8).toUpperCase();
+      notifications.push({
+        id: `order-paid-${e.id}`,
+        type: 'order_paid',
+        title: 'COD order paid online ✅',
+        message: `${o.customer_name || o.customer_email || 'A customer'} paid ₹${total} online${
+          discount > 0 ? ` (was ₹${total + discount} COD)` : ''
+        } — order #${shortId} is now prepaid, ready to process`,
+        section: 'orders',
+        created_at: e.created_at,
       });
     });
 
