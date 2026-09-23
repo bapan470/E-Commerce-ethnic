@@ -607,16 +607,20 @@ export default function OrdersPanel() {
 // Payment link = same /checkout/resume/[id] page the email points to, so the
 // amount shown to the customer (already discounted) is identical.
 //
-// The message explains WHY online payment is being asked for (high demand,
-// prepaid orders ship first, COD after), shows product / colour / size, the
+// The message explains WHY online payment is being asked for (made to order,
+// high demand, prepaid orders first, COD after, 4-7 day processing time), shows product / colour / size, the
 // COD-vs-online price difference, and the returns/refund assurance.
 // KEEP the returns wording in sync with /legal/refund-policy (7-day returns,
 // 48-hour damaged-item claims, 5-7 business day refunds).
 // Edit the wording in the `lines` array below.
 //
 // NOTE: wa.me links can only carry text (no attachments). The product photo
-// is sent as an image link -- WhatsApp shows a preview of the FIRST link in a
-// message, so the photo link is placed before the payment link on purpose.
+// is sent as an image link right under the item -- WhatsApp shows a preview of
+// the FIRST link in a message, so it is placed before the payment link on purpose.
+const STORE_NAME = 'Aruhi Handlooms';
+// Made-to-order processing time quoted to the customer (before dispatch).
+const PROCESSING_TIME = '4-7 days';
+
 function buildPaymentWhatsAppUrl(order: Order): string | null {
   let digits = String(order.customer_phone ?? '').replace(/\D/g, '');
   if (digits.startsWith('00')) digits = digits.slice(2);
@@ -633,12 +637,12 @@ function buildPaymentWhatsAppUrl(order: Order): string | null {
 
   const items: any[] = Array.isArray(order.items) ? order.items : [];
   const itemLines = items.map((it) => {
-    const name = it.product_name || it.name || 'Your item';
+    const name = it.product_name || it.name || 'Your selection';
     const qty = Number(it.quantity ?? 1);
-    const extras = [it.color ? `Color: ${it.color}` : '', it.size ? `Size: ${it.size}` : '']
+    const extras = [it.color ? `Color: ${it.color}` : '', it.size ? `Size: ${it.size}` : '', qty > 1 ? `Qty: ${qty}` : '']
       .filter(Boolean)
-      .join(' | ');
-    return `• *${name}*${qty > 1 ? ` x ${qty}` : ''}${extras ? `\n   ${extras}` : ''}`;
+      .join('  ·  ');
+    return `*${name}*${extras ? `\n${extras}` : ''}`;
   });
 
   // First product photo (made absolute if it's a site-relative path)
@@ -652,39 +656,45 @@ function buildPaymentWhatsAppUrl(order: Order): string | null {
   const priceBlock =
     discount > 0
       ? [
-          `💰 *Price details*`,
-          `COD price: ~${inr(codPrice)}~`,
-          `Online payment discount: -${inr(discount)} 🎁`,
-          `*Online price: ${inr(onlinePrice)}* ✅ (you save ${inr(discount)})`,
+          `*Your online price*`,
+          `Cash on Delivery: ~${inr(codPrice)}~`,
+          `Online payment benefit: -${inr(discount)}`,
+          `*Pay online: ${inr(onlinePrice)}*`,
+          `_You save ${inr(discount)} by paying online._`,
         ]
-      : [`💰 *Amount to pay online: ${inr(onlinePrice)}*`];
+      : [`*Amount payable online: ${inr(onlinePrice)}*`];
 
   const lines = [
-    `Hello${first ? ` ${first}` : ''} 🙏`,
+    `Dear${first ? ` ${first}` : ''},`,
     '',
-    `Thank you for shopping with us! We have received your order.`,
+    `Thank you for choosing *${STORE_NAME}*. ✨`,
     '',
-    `🛍️ *Order #${shortId}*`,
+    `*Your order  ·  #${shortId}*`,
     ...itemLines,
-    ...(imageUrl ? ['', `📸 Product photo:`, imageUrl] : []),
+    ...(imageUrl ? [imageUrl] : []),
     '',
-    `We have a small request 🙏`,
-    `We are currently experiencing *very high demand*, so COD orders are taking longer than usual to process. We are shipping *prepaid (online payment) orders first*, followed by COD orders.`,
+    `*Why we request online payment*`,
+    `Our pieces are in high demand and each one is made to order. We begin production only once an order is confirmed, so we take up prepaid orders first and schedule Cash on Delivery orders afterwards.`,
     '',
-    `So that your order reaches you as quickly as possible, we kindly request you to complete the payment online.`,
+    `*Processing time*`,
+    `Your order may take a little longer to ship than some of our other products. Processing takes ${PROCESSING_TIME}, after which we dispatch it.`,
+    '',
+    `Given the demand and limited availability of this product, we are sure you will understand, and we sincerely appreciate your patience.`,
     '',
     ...priceBlock,
     '',
-    `🔗 Secure payment link:`,
+    `*Complete your payment securely*`,
     payLink,
     '',
-    `🛡️ *Shop with peace of mind!*`,
+    `*Our promise to you*`,
     `• Easy 7-day returns & exchanges, with free reverse pickup (where serviceable)`,
-    `• Damaged or wrong item? Tell us within 48 hours for a free replacement or full refund`,
-    `• Refunds reach your original payment method in 5-7 business days`,
+    `• Damaged or wrong item? Report within 48 hours for a free replacement or full refund`,
+    `• Refunds to your original payment method in 5-7 business days`,
     '',
-    `Any questions? Just reply here, we are happy to help. 😊`,
-    `Thank you for your support and patience! 🙏`,
+    `Need any help? Simply reply to this message. We are always happy to assist.`,
+    '',
+    `Warm regards,`,
+    `*Team ${STORE_NAME}*`,
   ];
   return `https://wa.me/${digits}?text=${encodeURIComponent(lines.join('\n'))}`;
 }

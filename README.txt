@@ -1,4 +1,4 @@
-WhatsApp payment message v5 (fresh clone, English, matches refund policy)
+WhatsApp payment message v8 (fresh clone, premium, made-to-order + 4-7 day processing)
 ===========================
 Changed file (replace, same path):
   components/admin/orders-panel.tsx
