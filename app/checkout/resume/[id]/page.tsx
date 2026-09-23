@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Image from 'next/image';
 import { notFound } from 'next/navigation';
 import { CreditCard } from 'lucide-react';
@@ -15,6 +16,55 @@ import { toPublicMediaUrl } from '@/lib/media-url';
 // an order they abandoned mid-checkout. Same security model as
 // /order-confirmation/[id]: the order id itself (an unguessable UUID)
 // is the access token, exactly like every other order-lookup-by-id page.
+// Link preview (WhatsApp / iMessage / Slack ...) for the payment link that the
+// admin sends from Orders > "Send on WhatsApp". The link's preview card shows
+// the product photo + "Complete your payment" + the amount, and the whole card
+// is tappable, so it works like a Pay button inside the chat. The photo is
+// served from our own domain as a JPEG by /api/og/pay/[id] (WhatsApp is
+// unreliable with the stored .webp files). The page itself stays out of search.
+export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
+  const base: Metadata = { title: 'Complete your payment', robots: { index: false, follow: false } };
+  try {
+    const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com').replace(/\/$/, '');
+    const supabase = getSupabaseAdmin();
+    const { data: order } = await supabase
+      .from('orders')
+      .select('id, items, total_amount')
+      .eq('id', params.id)
+      .maybeSingle();
+    if (!order) return base;
+
+    const items: any[] = Array.isArray(order.items) ? order.items : [];
+    const first = items[0];
+    const itemName: string = first?.product_name || first?.name || 'your order';
+    const more = items.length > 1 ? ` +${items.length - 1} more` : '';
+    const shortId = String(order.id).slice(0, 8).toUpperCase();
+    const hasImage = items.some((it) => it?.image_url || it?.image || it?.images?.[0]);
+
+    const title = 'Complete your payment · Aruhi Handlooms';
+    const description = `Order #${shortId} · ${itemName}${more} · Tap to pay ${formatINR(order.total_amount || 0)} securely online`;
+    const url = `${siteUrl}/checkout/resume/${order.id}`;
+
+    return {
+      ...base,
+      title: { absolute: title },
+      description,
+      openGraph: {
+        title,
+        description,
+        url,
+        siteName: 'Aruhi Handlooms',
+        type: 'website',
+        ...(hasImage
+          ? { images: [{ url: `${siteUrl}/api/og/pay/${order.id}`, width: 800, height: 800, alt: itemName }] }
+          : {}),
+      },
+    };
+  } catch {
+    return base;
+  }
+}
+
 export default async function ResumePaymentPage({
   params,
   searchParams,

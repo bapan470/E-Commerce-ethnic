@@ -614,9 +614,12 @@ export default function OrdersPanel() {
 // 48-hour damaged-item claims, 5-7 business day refunds).
 // Edit the wording in the `lines` array below.
 //
-// NOTE: wa.me links can only carry text (no attachments). The product photo
-// is sent as an image link right under the item -- WhatsApp shows a preview of
-// the FIRST link in a message, so it is placed before the payment link on purpose.
+// NOTE: wa.me links can only carry text (no attachments or buttons). The
+// product photo therefore rides on the PAYMENT LINK's preview card instead:
+// WhatsApp previews the first link in a message, and /checkout/resume/[id]
+// publishes og:title/description/image (photo served from our own domain, see
+// app/checkout/resume/[id]/page.tsx and app/api/og/pay/[id]/route.ts). Keep
+// the payment link as the ONLY link in this message so its card is the one shown.
 const STORE_NAME = 'Aruhi Handlooms';
 // Made-to-order processing time quoted to the customer (before dispatch).
 const PROCESSING_TIME = '4-7 days';
@@ -652,10 +655,6 @@ function buildPaymentWhatsAppUrl(order: Order): string | null {
     return `*${name}*${extras ? `\n${extras}` : ''}`;
   });
 
-  // First product photo (made absolute if it's a site-relative path)
-  const rawImg: string | undefined = items.find((it) => it?.image_url)?.image_url;
-  const imageUrl = rawImg ? (rawImg.startsWith('/') ? `${siteUrl}${rawImg}` : rawImg) : '';
-
   const discount = Number(order.online_payment_discount ?? 0);
   const onlinePrice = Number(order.total_amount || 0);
   const codPrice = onlinePrice + discount;
@@ -677,7 +676,6 @@ function buildPaymentWhatsAppUrl(order: Order): string | null {
     '',
     `*Your order  ·  #${shortId}*`,
     ...itemLines,
-    ...(imageUrl ? [imageUrl] : []),
     '',
     `*Why we request online payment*`,
     `Each piece is made to order and is in high demand. We begin production only once an order is confirmed, so prepaid orders come first and Cash on Delivery orders follow. This order may take a little longer to ship than some of our other products: processing takes ${PROCESSING_TIME}, then we dispatch it.`,
