@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, Truck, Search, X, Copy, Check, Trash2, ExternalLink, Wallet, Download, CheckCircle2, XCircle } from 'lucide-react';
+import { Loader2, Truck, Search, X, Copy, Check, Trash2, ExternalLink, Wallet, Download, CheckCircle2, XCircle, MessageCircle } from 'lucide-react';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -600,6 +600,70 @@ export default function OrdersPanel() {
 // then falls back to the cancellation refund. Returns null when there's
 // genuinely nothing to show (COD order, order never paid online, or a
 // return that hasn't reached the refund stage yet).
+// ---- WhatsApp "pay online" request ----------------------------------------
+// One-click WhatsApp version of the "Request Online Payment" email. Uses a
+// wa.me click-to-chat link: it opens WhatsApp (app or web) on the customer's
+// chat with the message already typed -- admin only has to press Send.
+// Payment link = same /checkout/resume/[id] page the email points to, so the
+// amount shown to the customer (already discounted) is identical.
+// Edit the message text below to change the wording.
+function buildPaymentWhatsAppUrl(order: Order): string | null {
+  let digits = String(order.customer_phone ?? '').replace(/\D/g, '');
+  if (digits.startsWith('00')) digits = digits.slice(2);
+  if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+  if (digits.length === 10) digits = `91${digits}`; // India country code
+  if (digits.length < 11) return null;
+
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== 'undefined' ? window.location.origin : '');
+  const payLink = `${siteUrl}/checkout/resume/${order.id}`;
+  const shortId = order.id.slice(0, 8).toUpperCase();
+  const first = (order.customer_name || '').trim().split(/\s+/)[0];
+  const items: any[] = Array.isArray(order.items) ? order.items : [];
+  const itemName = items[0]?.product_name || items[0]?.name || 'your order';
+  const more = items.length > 1 ? ` +${items.length - 1} more` : '';
+  const discount = Number(order.online_payment_discount ?? 0);
+  const payable = Number(order.total_amount || 0);
+  const originalTotal = payable + discount;
+
+  const lines = [
+    `Namaste${first ? ` ${first}` : ''} ji 🙏`,
+    '',
+    `Aapka order #${shortId} (${itemName}${more}) hume mil gaya hai. Ye item aapke liye specially taiyar karna hota hai, isliye hum isse *online payment* ke baad hi start kar paayenge.`,
+    '',
+    discount > 0
+      ? `Online payment par aapko ₹${discount.toLocaleString('en-IN')} ka discount mil raha hai:\n~₹${originalTotal.toLocaleString('en-IN')}~ → *₹${payable.toLocaleString('en-IN')}*`
+      : `Payable amount: *₹${payable.toLocaleString('en-IN')}*`,
+    '',
+    `Yahan se secure payment kar dijiye 👇`,
+    payLink,
+    '',
+    `Payment hote hi hum order prepare karke dispatch kar denge. Dhanyavaad! 🙏`,
+  ];
+  return `https://wa.me/${digits}?text=${encodeURIComponent(lines.join('\n'))}`;
+}
+
+function WhatsAppPaymentButton({ order, className = '' }: { order: Order; className?: string }) {
+  const url = buildPaymentWhatsAppUrl(order);
+  if (!url) {
+    return (
+      <span className="mt-1.5 block text-[10px] text-red-600">No valid phone number for WhatsApp</span>
+    );
+  }
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      title="Open WhatsApp with the online-payment request message ready to send"
+      className={`inline-flex w-fit items-center gap-1 rounded-md bg-[#25D366] px-2 py-1 text-[11px] font-medium leading-tight text-white hover:bg-[#1ebe57] ${className}`}
+    >
+      <MessageCircle className="h-3 w-3" />
+      Send on WhatsApp
+    </a>
+  );
+}
+
 function getRefundBadge(order: Order): { label: string; className: string } | null {
   const status = order._return_status ? order._return_refund_status : order.refund_status;
   if (!status || status === 'not_applicable') return null;
@@ -921,6 +985,13 @@ function OrderRow({
               Request Online Payment
             </Button>
           )}
+          {/* Already converted to online + still unpaid -> let the admin
+              nudge the customer on WhatsApp too, one click. */}
+          {wasConvertedFromCod && isAwaitingOnlinePayment && order.status === 'pending' && (
+            <div className="mt-1.5">
+              <WhatsAppPaymentButton order={order} />
+            </div>
+          )}
         </td>
         <td className="px-4 py-3 align-top text-sm">
           {/* An online order stuck at "pending" almost always means the
@@ -1115,6 +1186,11 @@ function OrderRow({
                       was requested, the standard online-payment discount was applied — the customer only
                       owes {formatINR(order.total_amount)} now, not the original {formatINR(originalOrderTotal)}.
                     </p>
+                    {isAwaitingOnlinePayment && order.status === 'pending' && (
+                      <div className="mt-2">
+                        <WhatsAppPaymentButton order={order} />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
