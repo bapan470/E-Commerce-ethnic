@@ -1,4 +1,4 @@
-WhatsApp payment message v3 (English)
+WhatsApp payment message v5 (fresh clone, English, matches refund policy)
 ===========================
 Changed file (replace, same path):
   components/admin/orders-panel.tsx

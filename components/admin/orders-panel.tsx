@@ -609,7 +609,9 @@ export default function OrdersPanel() {
 //
 // The message explains WHY online payment is being asked for (high demand,
 // prepaid orders ship first, COD after), shows product / colour / size, the
-// COD-vs-online price difference, and the 30-day money-back guarantee.
+// COD-vs-online price difference, and the returns/refund assurance.
+// KEEP the returns wording in sync with /legal/refund-policy (7-day returns,
+// 48-hour damaged-item claims, 5-7 business day refunds).
 // Edit the wording in the `lines` array below.
 //
 // NOTE: wa.me links can only carry text (no attachments). The product photo
@@ -660,7 +662,7 @@ function buildPaymentWhatsAppUrl(order: Order): string | null {
   const lines = [
     `Hello${first ? ` ${first}` : ''} 🙏`,
     '',
-    `Thank you so much for shopping with us! We have received your order.`,
+    `Thank you for shopping with us! We have received your order.`,
     '',
     `🛍️ *Order #${shortId}*`,
     ...itemLines,
@@ -676,9 +678,12 @@ function buildPaymentWhatsAppUrl(order: Order): string | null {
     `🔗 Secure payment link:`,
     payLink,
     '',
-    `🛡️ *Shop with complete peace of mind!* Every order is covered by our *30-day No-Questions-Asked Money-Back Guarantee*. If you are not happy with your purchase, you will get a full refund within 30 days, no questions asked.`,
+    `🛡️ *Shop with peace of mind!*`,
+    `• Easy 7-day returns & exchanges, with free reverse pickup (where serviceable)`,
+    `• Damaged or wrong item? Tell us within 48 hours for a free replacement or full refund`,
+    `• Refunds reach your original payment method in 5-7 business days`,
     '',
-    `If you have any questions, just reply to this chat and we will be happy to help. 😊`,
+    `Any questions? Just reply here, we are happy to help. 😊`,
     `Thank you for your support and patience! 🙏`,
   ];
   return `https://wa.me/${digits}?text=${encodeURIComponent(lines.join('\n'))}`;
