@@ -42,10 +42,18 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     const rawUrl: string | undefined = items
       .map((it) => it?.image_url || it?.image || it?.images?.[0])
       .find((u) => typeof u === 'string' && u.length > 0);
-    if (!rawUrl) return new NextResponse(null, { status: 404, headers: NOT_FOUND_HEADERS });
+    if (!rawUrl) {
+      // Diagnostic: this is the #1 reason the WhatsApp preview silently has
+      // no photo -- the order row simply has no usable image_url on any
+      // item. Logged so it shows up in Vercel's function logs instead of
+      // disappearing as a bare 404.
+      console.warn(`[og/pay] order ${params.id} has no item image_url/image/images[0]`);
+      return new NextResponse(null, { status: 404, headers: NOT_FOUND_HEADERS });
+    }
 
     const imageUrl = new URL(rawUrl.startsWith('/') ? `${SITE_URL}${rawUrl}` : rawUrl);
     if (!isAllowedImageUrl(imageUrl)) {
+      console.warn(`[og/pay] order ${params.id} image host not allow-listed: ${imageUrl.hostname} (raw: ${rawUrl})`);
       return new NextResponse(null, { status: 404, headers: NOT_FOUND_HEADERS });
     }
 
@@ -57,7 +65,10 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     } finally {
       clearTimeout(timer);
     }
-    if (!upstream.ok) return new NextResponse(null, { status: 404, headers: NOT_FOUND_HEADERS });
+    if (!upstream.ok) {
+      console.warn(`[og/pay] order ${params.id} upstream fetch failed: ${upstream.status} ${upstream.statusText} for ${imageUrl.toString()}`);
+      return new NextResponse(null, { status: 404, headers: NOT_FOUND_HEADERS });
+    }
 
     const input = Buffer.from(await upstream.arrayBuffer());
     const jpeg = await sharp(input)
@@ -76,7 +87,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       },
     });
   } catch (err) {
-    console.error('[og/pay] failed:', err);
+    console.error(`[og/pay] order ${params.id} failed:`, err);
     return new NextResponse(null, { status: 404, headers: NOT_FOUND_HEADERS });
   }
 }
