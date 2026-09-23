@@ -1,4 +1,4 @@
-WhatsApp payment message v8 (fresh clone, premium, made-to-order + 4-7 day processing)
+WhatsApp payment message v10 (COD->prepaid note, track via OTP/Google login)
 ===========================
 Changed file (replace, same path):
   components/admin/orders-panel.tsx
