@@ -17,6 +17,7 @@ import {
   Store,
   Users2,
   CheckCircle2,
+  PackageCheck,
 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -27,6 +28,7 @@ interface AdminNotification {
   type:
     | 'order'
     | 'order_paid'
+    | 'order_delivered'
     | 'contact_message'
     | 'support_ticket'
     | 'return'
@@ -48,6 +50,7 @@ interface AdminNotification {
 const ICONS: Record<AdminNotification['type'], typeof Bell> = {
   order: ShoppingCart,
   order_paid: CheckCircle2,
+  order_delivered: PackageCheck,
   contact_message: MessageSquare,
   support_ticket: LifeBuoy,
   return: Undo2,

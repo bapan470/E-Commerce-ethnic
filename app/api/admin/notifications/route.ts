@@ -14,6 +14,7 @@ export type AdminNotification = {
   type:
     | 'order'
     | 'order_paid'
+    | 'order_delivered'
     | 'contact_message'
     | 'support_ticket'
     | 'return'
@@ -41,7 +42,7 @@ export async function GET() {
   const supabase = getSupabaseAdmin();
 
   try {
-    const [ordersRes, paidRes, contactRes, ticketsRes, returnsRes, restockRes, cartsRes, pickupRes, vendorReturnRes, reviewsRes, vendorAppsRes, resellersRes, affiliatesRes] = await Promise.all([
+    const [ordersRes, paidRes, contactRes, ticketsRes, returnsRes, restockRes, cartsRes, pickupRes, vendorReturnRes, reviewsRes, vendorAppsRes, resellersRes, affiliatesRes, deliveredRes] = await Promise.all([
       supabase
         .from('orders')
         .select('id, customer_name, customer_email, total_amount, created_at')
@@ -148,6 +149,18 @@ export async function GET() {
         .select('id, user_id, code, created_at')
         .order('created_at', { ascending: false })
         .limit(5),
+      // Orders that just got delivered (auto-detected by the courier-tracking
+      // cron or set manually from Admin > Orders). `delivered_email_sent_at`
+      // is stamped by updateOrderStatus() the moment the "Delivered" email
+      // goes out, so it doubles as the delivery time. Latest 10 only, same
+      // "recent arrivals" pattern as reviews / COD-paid above.
+      supabase
+        .from('orders')
+        .select('id, customer_name, customer_email, total_amount, delivered_email_sent_at')
+        .eq('status', 'delivered')
+        .not('delivered_email_sent_at', 'is', null)
+        .order('delivered_email_sent_at', { ascending: false })
+        .limit(10),
     ]);
 
     // reseller_profiles / affiliates don't carry the person's name --
@@ -332,6 +345,18 @@ export async function GET() {
         message: `${name} joined the Affiliate Program (code ${a.code})`,
         section: 'affiliates',
         created_at: a.created_at,
+      });
+    });
+
+    (deliveredRes.data || []).forEach((o: any) => {
+      const shortId = String(o.id).slice(0, 8).toUpperCase();
+      notifications.push({
+        id: `order-delivered-${o.id}`,
+        type: 'order_delivered',
+        title: 'Order delivered 📦',
+        message: `${o.customer_name || o.customer_email || 'A customer'}'s order #${shortId} (₹${o.total_amount}) was delivered`,
+        section: 'orders',
+        created_at: o.delivered_email_sent_at,
       });
     });
 
