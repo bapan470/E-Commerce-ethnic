@@ -19,7 +19,9 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms
 // admin edits/deletes even if the on-demand revalidatePath() call in
 // app/api/admin/products/[id]/route.ts is ever missed (e.g. a direct DB
 // edit, or a vendor-side approval-status change).
-export const revalidate = 60;
+// Vercel ISR-writes fix: 60 -> 300 (5 min). Admin edits still purge instantly
+// via revalidatePath(); live stock/size data is refreshed client-side.
+export const revalidate = 300;
 
 type Params = { params: { slug: string }; searchParams?: { size?: string } };
 

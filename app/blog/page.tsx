@@ -14,7 +14,9 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms
 // caching between requests; the admin panel also pings
 // /api/admin/revalidate-blog right after a save for a near-instant update
 // instead of waiting out this window.
-export const revalidate = 60;
+// Vercel ISR-writes fix: 60 -> 1800. The admin panel still purges instantly
+// via /api/admin/revalidate-blog after every save.
+export const revalidate = 1800;
 
 export const metadata: Metadata = {
   title: 'Blog | AruhiHandlooms',

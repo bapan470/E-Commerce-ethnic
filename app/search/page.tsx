@@ -5,7 +5,8 @@ import ShopContent from '../shop/shop-content';
 // Same caching reasoning as app/shop/page.tsx: dynamically rendered per
 // request, but the underlying fetch is cached for 60s at the route level so
 // most visits don't hit Supabase at all.
-export const revalidate = 60;
+// Vercel ISR-writes fix: 60 -> 300 (5 min).
+export const revalidate = 300;
 
 // Search results get their own URL (/search?q=...) instead of living under
 // /shop?q=... -- /shop stays the pure category/filter browsing page, while

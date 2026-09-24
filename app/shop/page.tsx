@@ -14,7 +14,8 @@ import ShopContent from './shop-content';
 // route level, so most visits don't hit Supabase at all. Admin mutations
 // call revalidatePath('/shop') for an instant purge when a product changes
 // (see app/api/admin/products/[id]/route.ts) -- this is just the safety net.
-export const revalidate = 60;
+// Vercel ISR-writes fix: 60 -> 300 (5 min).
+export const revalidate = 300;
 
 export const metadata: Metadata = {
   title: 'Shop All Sarees & Ethnic Wear | AruhiHandlooms',

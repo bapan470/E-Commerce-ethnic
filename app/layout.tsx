@@ -39,7 +39,11 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms
 // site. If instant propagation after an admin save is required, replace
 // this with an on-demand `revalidatePath('/', 'layout')` call from the
 // settings-save API route instead of blanket force-dynamic.
-export const revalidate = 300;
+// Vercel ISR-writes fix: 300 -> 1800. Next.js uses the LOWEST `revalidate`
+// across layout + page, so this 300 was silently capping app/page.tsx and
+// app/category/[slug]/page.tsx (both set to 1800) down to 5 minutes, and
+// making every other page without its own value regenerate every 5 minutes.
+export const revalidate = 1800;
 
 const DEFAULT_SEO: SeoSettings = {
   site_title: 'AruhiHandlooms — Handwoven Indian Ethnic Wear & Sarees',

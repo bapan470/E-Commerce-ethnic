@@ -26,7 +26,9 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms
 // See the matching comment in app/blog/page.tsx -- same reasoning applies
 // here: without this, a newly-published or edited post's own page would
 // also be served stale/missing from the last deploy's static build.
-export const revalidate = 60;
+// Vercel ISR-writes fix: 60 -> 1800 (instant purge still happens via
+// /api/admin/revalidate-blog after every admin save).
+export const revalidate = 1800;
 
 // Parses the `[anchor text](category:Category Name)` markup that the AI
 // blog generator (and, optionally, manual authors) can embed in
