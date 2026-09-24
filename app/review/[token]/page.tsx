@@ -33,6 +33,8 @@ import {
   ImageOff,
   Send,
   Pencil,
+  Gift,
+  Heart,
 } from 'lucide-react';
 import {
   fetchReviewLinkOrder,
@@ -65,6 +67,8 @@ const STEP_LABEL: Record<StepKey, string> = {
   photo: 'Add a photo',
 };
 
+const RATING_LABELS = ['', 'Not happy', 'Could be better', 'It was okay', 'Loved it', 'Absolutely love it!'];
+
 function StarPicker({
   value,
   onChange,
@@ -75,32 +79,47 @@ function StarPicker({
   disabled?: boolean;
 }) {
   const [hover, setHover] = useState(0);
+  const shown = hover || value;
   return (
-    <div className="flex items-center gap-1.5">
-      {Array.from({ length: 5 }).map((_, i) => {
-        const n = i + 1;
-        return (
-          <button
-            key={n}
-            type="button"
-            disabled={disabled}
-            onClick={() => onChange(n)}
-            onMouseEnter={() => setHover(n)}
-            onMouseLeave={() => setHover(0)}
-            aria-label={`Rate ${n} stars`}
-            className="disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <Star
-              className={`h-8 w-8 transition-colors ${
-                n <= (hover || value) ? 'fill-secondary text-secondary' : 'text-muted-foreground/30'
-              }`}
-            />
-          </button>
-        );
-      })}
+    <div className="flex flex-col items-center gap-2">
+      <div className="flex items-center gap-0.5 sm:gap-1.5" onMouseLeave={() => setHover(0)}>
+        {Array.from({ length: 5 }).map((_, i) => {
+          const n = i + 1;
+          return (
+            <button
+              key={n}
+              type="button"
+              disabled={disabled}
+              onClick={() => onChange(n)}
+              onMouseEnter={() => setHover(n)}
+              aria-label={`Rate ${n} star${n > 1 ? 's' : ''}`}
+              className="rounded-full p-1 transition-transform hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Star
+                className={`h-10 w-10 transition-colors sm:h-11 sm:w-11 ${
+                  n <= shown ? 'fill-secondary text-secondary drop-shadow-sm' : 'text-muted-foreground/30'
+                }`}
+              />
+            </button>
+          );
+        })}
+      </div>
+      <p
+        aria-live="polite"
+        className={`h-5 font-serif text-base font-semibold transition-colors ${
+          shown ? 'text-primary' : 'text-muted-foreground/70 font-normal text-sm'
+        }`}
+      >
+        {shown ? RATING_LABELS[shown] : 'Tap a star to rate'}
+      </p>
     </div>
   );
 }
+
+// One-tap phrases that fill the review box, so writing a review feels like
+// choosing rather than composing. Picked by the star rating already given.
+const POSITIVE_TAGS = ['Beautiful fabric', 'Colour as shown', 'Lovely drape', 'Perfect fit', 'Worth the price', 'Well packed'];
+const CRITICAL_TAGS = ['Colour looks different', 'Fabric could be better', 'Fit is not right', 'Delivery took long'];
 
 function formatDiscount(reward: ReviewLinkReward): string {
   return reward.discountType === 'percentage' ? `${reward.discountValue}% off` : `₹${reward.discountValue} off`;
@@ -172,7 +191,7 @@ function StepProgress({
             }`}
           >
             {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
-            <span className="hidden sm:inline">{STEP_LABEL[step]}</span>
+            <span className={active ? 'inline' : 'hidden sm:inline'}>{STEP_LABEL[step]}</span>
             {editable && <Pencil className="h-2.5 w-2.5 opacity-70" />}
           </div>
         );
@@ -348,16 +367,16 @@ function ReviewItemCard({
   const hasAttachedPhoto = savedPhotoUrls.length + photoFiles.length > 0;
 
   return (
-    <div className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
-      <div className="flex items-center gap-3">
+    <div className="overflow-hidden rounded-2xl border border-border/60 bg-card p-5 shadow-sm">
+      <div className="flex items-center gap-4">
         {item.image ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={item.image} alt={item.name} className="h-16 w-16 shrink-0 rounded-lg object-cover border border-border/50" />
+          <img src={item.image} alt={item.name} className="h-24 w-24 shrink-0 rounded-xl border border-border/50 object-cover shadow-sm" />
         ) : (
-          <div className="h-16 w-16 shrink-0 rounded-lg bg-muted" />
+          <div className="h-24 w-24 shrink-0 rounded-xl bg-muted" />
         )}
         <div className="min-w-0">
-          <p className="truncate font-serif text-base font-semibold text-primary">{item.name}</p>
+          <p className="line-clamp-2 font-serif text-lg font-semibold leading-snug text-primary">{item.name}</p>
           <p className="text-xs text-muted-foreground">
             {item.size && <span>Size: {item.size}</span>}
             {item.size && item.color && <span> · </span>}
@@ -368,9 +387,23 @@ function ReviewItemCard({
 
       {done ? (
         <div className="mt-3 space-y-2">
-          <div className="flex items-center gap-2 rounded-md bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-secondary" />
-            {rating > 0 ? `Thanks, all done (${rating}★)!` : 'Thanks, already reviewed!'}
+          <div className="flex flex-col items-center gap-1.5 rounded-xl bg-secondary/10 px-3 py-5 text-center">
+            {rating > 0 ? (
+              <div className="flex gap-0.5" aria-label={`You rated ${rating} out of 5`}>
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Star
+                    key={i}
+                    className={`h-5 w-5 ${i < rating ? 'fill-secondary text-secondary' : 'text-muted-foreground/30'}`}
+                  />
+                ))}
+              </div>
+            ) : (
+              <CheckCircle2 className="h-6 w-6 text-secondary" />
+            )}
+            <p className="flex items-center gap-1.5 font-serif text-base font-semibold text-primary">
+              Thank you, your review is in <Heart className="h-4 w-4 fill-secondary text-secondary" />
+            </p>
+            <p className="text-xs text-muted-foreground">It helps other shoppers choose with confidence.</p>
           </div>
           {photoSkipped && !rewardIssued && (
             <div className="flex items-center gap-2 rounded-md border border-dashed border-muted-foreground/30 px-3 py-2 text-xs text-muted-foreground">
@@ -407,41 +440,80 @@ function ReviewItemCard({
           )}
 
           {currentStep === 'rate' && (
-            <div className="flex items-center justify-center">
+            <div className="flex flex-col items-center gap-2 py-1">
+              <p className="font-serif text-base font-semibold text-primary">How would you rate it?</p>
               <StarPicker value={rating} onChange={setRating} disabled={submitting} />
             </div>
           )}
 
           {currentStep === 'write' && (
-            <div className="space-y-2.5">
+            <div className="space-y-3">
+              <p className="font-serif text-base font-semibold text-primary">Tell us what you think</p>
+              <div>
+                <p className="mb-1.5 text-[11px] text-muted-foreground">Tap to add, or write in your own words</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(rating > 0 && rating <= 2 ? CRITICAL_TAGS : POSITIVE_TAGS).map((tag) => {
+                    const active = comment.includes(`${tag}.`);
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        disabled={submitting}
+                        onClick={() =>
+                          setComment((prev) =>
+                            prev.includes(`${tag}.`)
+                              ? prev.replace(`${tag}.`, '').replace(/\s{2,}/g, ' ').trim()
+                              : `${prev.trimEnd()}${prev.trim() ? ' ' : ''}${tag}.`.slice(0, 1000)
+                          )
+                        }
+                        className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-60 ${
+                          active
+                            ? 'border-secondary bg-secondary/15 text-secondary'
+                            : 'border-border bg-background text-muted-foreground hover:border-secondary/60 hover:text-primary'
+                        }`}
+                      >
+                        {active && <Check className="-ml-0.5 mr-1 inline h-3 w-3" />}
+                        {tag}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <Input
-                placeholder="Review title (optional)"
+                placeholder="Give your review a title (optional)"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 maxLength={100}
                 disabled={submitting}
               />
-              <Textarea
-                placeholder={`Tell us about ${item.name}'s fit, fabric and quality...`}
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                rows={3}
-                maxLength={1000}
-                disabled={submitting}
-              />
+              <div>
+                <Textarea
+                  placeholder={`How is the fabric, colour and fit of your ${item.name}?`}
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  rows={4}
+                  maxLength={1000}
+                  disabled={submitting}
+                />
+                <p className="mt-1 text-right text-[10px] text-muted-foreground">{comment.length}/1000</p>
+              </div>
             </div>
+          )}
+
+          {currentStep === 'photo' && (
+            <p className="font-serif text-base font-semibold text-primary">Show us how it looks on you</p>
           )}
 
           {currentStep === 'photo' && (
             <div className="flex flex-wrap gap-2">
               {savedPhotoUrls.map((src, idx) => (
-                <div key={`saved-${idx}`} className="relative h-16 w-16 overflow-hidden rounded-md border border-border/60">
+                <div key={`saved-${idx}`} className="relative h-20 w-20 overflow-hidden rounded-lg border border-border/60">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={src} alt={`Uploaded photo ${idx + 1}`} className="h-full w-full object-cover" />
                 </div>
               ))}
               {photoPreviews.map((src, idx) => (
-                <div key={`new-${idx}`} className="relative h-16 w-16 overflow-hidden rounded-md border border-border/60">
+                <div key={`new-${idx}`} className="relative h-20 w-20 overflow-hidden rounded-lg border border-border/60">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={src} alt={`Attached photo ${idx + 1}`} className="h-full w-full object-cover" />
                   <button
@@ -455,9 +527,9 @@ function ReviewItemCard({
                 </div>
               ))}
               {savedPhotoUrls.length + photoFiles.length < MAX_PHOTOS && (
-                <label className="flex h-16 w-16 cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border text-muted-foreground hover:border-primary/40 hover:text-primary">
+                <label className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-secondary/50 bg-secondary/5 text-secondary hover:bg-secondary/10">
                   <ImagePlus className="h-5 w-5" />
-                  <span className="text-[10px]">Real photo</span>
+                  <span className="text-[10px] font-medium">Add photo</span>
                   <input type="file" accept="image/*" multiple className="hidden" onChange={onPickPhotos} disabled={submitting} />
                 </label>
               )}
@@ -587,26 +659,36 @@ export default function ReviewLinkPage({ params }: { params: { token: string } }
 
         {!loading && !error && data && (
           <>
-            <div className="mt-6 text-center">
-              <h1 className="font-serif text-xl font-bold text-primary">
-                Hi {data.order.customerName || 'there'}, how's your order?
+            <div className="mt-7 text-center">
+              <h1 className="font-serif text-2xl font-bold leading-tight text-primary">
+                Hi {data.order.customerName ? data.order.customerName.trim().split(/\s+/)[0] : 'there'}, how do you like your order?
               </h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Order <span className="font-medium text-foreground">#{data.order.shortId}</span> --{' '}
-                {steps.length > 1
-                  ? `complete all ${steps.length} steps for each item to unlock your reward.`
-                  : 'tap a star for each item below.'}
+              <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">
+                Your honest review helps other shoppers, and means a lot to the weavers behind every piece.
               </p>
-              {data.reward.enabled && (
-                <p className="mt-1 text-xs font-medium text-secondary">
-                  {steps.map((s) => STEP_LABEL[s]).join(' → ')} ={' '}
-                  {data.reward.discountType === 'percentage'
-                    ? `${data.reward.discountValue}% off`
-                    : `₹${data.reward.discountValue} off`}{' '}
-                  your next order
-                </p>
-              )}
+              <p className="mt-1 text-[11px] text-muted-foreground">Order #{data.order.shortId}</p>
             </div>
+
+            {data.reward.enabled && (
+              <div className="mt-4 flex items-center gap-3 rounded-xl border border-secondary/40 bg-secondary/10 px-4 py-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-secondary/20">
+                  <Gift className="h-5 w-5 text-secondary" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-primary">
+                    Get{' '}
+                    {data.reward.discountType === 'percentage'
+                      ? `${data.reward.discountValue}% off`
+                      : `₹${data.reward.discountValue} off`}{' '}
+                    your next order
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {steps.map((st) => STEP_LABEL[st]).join(' → ')}
+                    {steps.length > 1 ? ' for each item' : ''}
+                  </p>
+                </div>
+              </div>
+            )}
 
             {!data.items.some((it) => it.existingReview) && (
               <div className="mt-4">

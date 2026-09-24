@@ -718,6 +718,10 @@ function buildPaidConfirmationWhatsAppUrl(order: Order): string | null {
   const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
   const paid = Number(order.total_amount || 0);
   const discount = Number(order.online_payment_discount ?? 0);
+  const siteUrl = (
+    process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== 'undefined' ? window.location.origin : '')
+  ).replace(/\/$/, '');
+  const trackLink = `${siteUrl}/track/${order.id}`;
 
   const items: any[] = Array.isArray(order.items) ? order.items : [];
   const itemLines = items.map((it) => {
@@ -742,7 +746,8 @@ function buildPaidConfirmationWhatsAppUrl(order: Order): string | null {
     `Our team will now start preparing your order. Processing takes ${PROCESSING_TIME}, then we dispatch it. We will email you every update until it reaches your hands.`,
     '',
     `*Track your order anytime*`,
-    `Log in with the same email you ordered with (OTP or Google login) to see your order status.`,
+    `Log in with the same email you ordered with (OTP or Google login) to see your order status, or open your order directly:`,
+    trackLink,
     '',
     `Thank you for your trust and patience.`,
     '',
@@ -853,7 +858,14 @@ const STATUS_WA_META: Record<StatusWhatsAppKind, { label: string; title: string 
   },
 };
 
-function buildStatusWhatsAppUrl(order: Order, kind: StatusWhatsAppKind): string | null {
+// `extra` is only used by the delivered message: the secret login-free review
+// link (minted server-side by /api/admin/orders/[id]/review-link) and, when the
+// store's review reward is switched on, a short "X off" phrase.
+function buildStatusWhatsAppUrl(
+  order: Order,
+  kind: StatusWhatsAppKind,
+  extra: { reviewLink?: string; rewardText?: string } = {}
+): string | null {
   const digits = getWhatsAppDigits(order);
   if (!digits) return null;
 
@@ -920,7 +932,7 @@ function buildStatusWhatsAppUrl(order: Order, kind: StatusWhatsAppKind): string 
       ? new Date(order.expected_delivery_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
       : '';
     body = [
-      `Good news! Your order *#${shortId}* has been shipped. 🚚`,
+      `Good news! Your order *#${shortId}* has been shipped.`,
       '',
       `*Your order*`,
       ...itemLines,
@@ -942,16 +954,26 @@ function buildStatusWhatsAppUrl(order: Order, kind: StatusWhatsAppKind): string 
     ];
   } else if (kind === 'delivered') {
     body = [
-      `We are happy to let you know that your order *#${shortId}* has been delivered. 🎉`,
+      `We are happy to let you know that your order *#${shortId}* has been delivered.`,
       '',
       `*Your order*`,
       ...itemLines,
       '',
       `Thank you for choosing *${STORE_NAME}*. We hope you love your purchase.`,
       '',
+      ...(extra.reviewLink
+        ? [
+            `*How did we do?*`,
+            `Your feedback means a lot to us and helps other customers choose with confidence. It takes less than a minute${
+              extra.rewardText ? `, and you will unlock ${extra.rewardText} on your next order` : ''
+            }:`,
+            extra.reviewLink,
+            '',
+          ]
+        : []),
       `If anything is not right, please reply here and we will help you. We offer 7-day returns & exchanges, and damaged or wrong items can be reported within 48 hours for a free replacement or full refund.`,
       '',
-      `If you are happy with your order, we would truly appreciate your feedback. It helps other customers and small artisans like ours.`,
+      `Thank you for your trust.`,
     ];
   } else if (kind === 'cancelled') {
     const wasPaid = !!order.razorpay_payment_id;
@@ -971,6 +993,9 @@ function buildStatusWhatsAppUrl(order: Order, kind: StatusWhatsAppKind): string 
           ]
         : []),
       `We are sorry we could not fulfil this order. If you would like to order again or need any help, please just reply to this message. We would be glad to assist you.`,
+      '',
+      `*Order details*`,
+      trackLink,
       '',
       `Thank you for your understanding.`,
     ];
@@ -993,6 +1018,54 @@ function buildStatusWhatsAppUrl(order: Order, kind: StatusWhatsAppKind): string 
   }
 
   return `https://wa.me/${digits}?text=${encodeURIComponent([...greeting, ...body, ...signoff].join('\n'))}`;
+}
+
+// Delivered -> thank-you message WITH the customer's secret review link. The
+// link is minted server-side (needs the service-role DB), so the click first
+// asks /api/admin/orders/[id]/review-link for it, then opens WhatsApp. The
+// tab is opened synchronously on click so popup blockers allow it.
+function WhatsAppDeliveredButton({ order, className = '' }: { order: Order; className?: string }) {
+  const [busy, setBusy] = useState(false);
+  if (!getWhatsAppDigits(order)) {
+    return <span className="mt-1.5 block text-[10px] text-red-600">No valid phone number for WhatsApp</span>;
+  }
+  const onClick = async () => {
+    const tab = window.open('', '_blank');
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/admin/orders/${order.id}/review-link`, { credentials: 'same-origin' });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.url) throw new Error(json?.error || 'Could not create the review link');
+      const r = json.reward;
+      const rewardText =
+        r?.enabled && Number(r.discountValue) > 0
+          ? r.discountType === 'percentage'
+            ? `${r.discountValue}% off`
+            : `₹${r.discountValue} off`
+          : '';
+      const url = buildStatusWhatsAppUrl(order, 'delivered', { reviewLink: json.url, rewardText });
+      if (!url) throw new Error('No valid phone number for WhatsApp');
+      if (tab) tab.location.href = url;
+      else window.location.href = url;
+    } catch (err) {
+      tab?.close();
+      toast.error(err instanceof Error ? err.message : 'Could not open WhatsApp');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      title={STATUS_WA_META.delivered.title}
+      className={`inline-flex w-fit items-center gap-1 rounded-md bg-[#25D366] px-2 py-1 text-[11px] font-medium leading-tight text-white hover:bg-[#1ebe57] disabled:opacity-70 ${className}`}
+    >
+      {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <MessageCircle className="h-3 w-3" />}
+      {STATUS_WA_META.delivered.label}
+    </button>
+  );
 }
 
 function WhatsAppStatusButton({
@@ -1369,7 +1442,7 @@ function OrderRow({
           )}
           {order.status === 'delivered' && (
             <div className="mt-1.5">
-              <WhatsAppStatusButton order={order} kind="delivered" />
+              <WhatsAppDeliveredButton order={order} />
             </div>
           )}
           {order.status === 'cancelled' && (
