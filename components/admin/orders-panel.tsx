@@ -806,6 +806,214 @@ function WhatsAppPaidConfirmationButton({ order, className = '' }: { order: Orde
   );
 }
 
+// ---- WhatsApp messages for EVERY other order status ------------------------
+// Added on top of the two messages above (payment request + payment received),
+// which are unchanged. Same one-click wa.me approach: opens the customer's
+// chat with a polite, ready-typed message -- admin only presses Send.
+//   cod_confirmed    -> COD order received / confirmed
+//   payment_reminder -> online payment still pending (abandoned checkout)
+//   shipped          -> order dispatched (+ courier / tracking)
+//   delivered        -> delivered, thank-you, returns window
+//   cancelled        -> order cancelled (+ refund note if it was paid online)
+//   failed           -> payment failed, retry link
+// Keep the returns/refund wording in sync with /legal/refund-policy.
+// Each message carries at most ONE link so WhatsApp shows a clean preview.
+type StatusWhatsAppKind =
+  | 'cod_confirmed'
+  | 'payment_reminder'
+  | 'shipped'
+  | 'delivered'
+  | 'cancelled'
+  | 'failed';
+
+const STATUS_WA_META: Record<StatusWhatsAppKind, { label: string; title: string }> = {
+  cod_confirmed: {
+    label: 'Send order confirmation on WhatsApp',
+    title: 'Open WhatsApp with the COD order-confirmed message ready to send',
+  },
+  payment_reminder: {
+    label: 'Send payment reminder on WhatsApp',
+    title: 'Open WhatsApp with a polite payment reminder ready to send',
+  },
+  shipped: {
+    label: 'Send shipping update on WhatsApp',
+    title: 'Open WhatsApp with the order-shipped message ready to send',
+  },
+  delivered: {
+    label: 'Send delivery message on WhatsApp',
+    title: 'Open WhatsApp with the order-delivered thank-you message ready to send',
+  },
+  cancelled: {
+    label: 'Send cancellation message on WhatsApp',
+    title: 'Open WhatsApp with the order-cancelled message ready to send',
+  },
+  failed: {
+    label: 'Send payment-failed message on WhatsApp',
+    title: 'Open WhatsApp with the payment-failed / retry message ready to send',
+  },
+};
+
+function buildStatusWhatsAppUrl(order: Order, kind: StatusWhatsAppKind): string | null {
+  const digits = getWhatsAppDigits(order);
+  if (!digits) return null;
+
+  const siteUrl = (
+    process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== 'undefined' ? window.location.origin : '')
+  ).replace(/\/$/, '');
+  const trackLink = `${siteUrl}/track/${order.id}`;
+  const payLink = `${siteUrl}/checkout/resume/${order.id}`;
+  const shortId = order.id.slice(0, 8).toUpperCase();
+  const first = (order.customer_name || '').trim().split(/\s+/)[0];
+  const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
+  const total = Number(order.total_amount || 0);
+
+  const items: any[] = Array.isArray(order.items) ? order.items : [];
+  const itemLines = items.map((it) => {
+    const name = it.product_name || it.name || 'Your selection';
+    const qty = Number(it.quantity ?? 1);
+    const extras = [it.color ? `Color: ${it.color}` : '', it.size ? `Size: ${it.size}` : '', qty > 1 ? `Qty: ${qty}` : '']
+      .filter(Boolean)
+      .join('  ·  ');
+    return `*${name}*${extras ? `\n${extras}` : ''}`;
+  });
+
+  const greeting = [`Dear${first ? ` ${first}` : ''},`, ''];
+  const signoff = ['', `Warm regards,`, `*Team ${STORE_NAME}*`];
+  let body: string[] = [];
+
+  if (kind === 'cod_confirmed') {
+    body = [
+      `Thank you for shopping with *${STORE_NAME}*. We have received your order *#${shortId}* and it is confirmed. ✅`,
+      '',
+      `*Your order*`,
+      ...itemLines,
+      '',
+      `*Payment*`,
+      `Cash on Delivery: *${inr(total)}*. Please keep this amount ready at the time of delivery.`,
+      '',
+      `*What happens next*`,
+      `Our team will prepare your order. Processing takes ${PROCESSING_TIME}, then we dispatch it. We will email you every update until it reaches your hands.`,
+      '',
+      `*Track your order anytime*`,
+      trackLink,
+      '',
+      `Thank you for your trust and patience.`,
+    ];
+  } else if (kind === 'payment_reminder') {
+    body = [
+      `Thank you for choosing *${STORE_NAME}*. This is a gentle reminder that the online payment for your order *#${shortId}* is still pending.`,
+      '',
+      `*Your order*`,
+      ...itemLines,
+      '',
+      `*Amount payable: ${inr(total)}*`,
+      '',
+      `You can complete your payment securely here:`,
+      payLink,
+      '',
+      `If you have already paid or need any help, please just reply to this message and we will be happy to assist you.`,
+      '',
+      `Thank you for your patience.`,
+    ];
+  } else if (kind === 'shipped') {
+    const expected = order.expected_delivery_date
+      ? new Date(order.expected_delivery_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+      : '';
+    body = [
+      `Good news! Your order *#${shortId}* has been shipped. 🚚`,
+      '',
+      `*Your order*`,
+      ...itemLines,
+      '',
+      ...(order.courier_name || order.tracking_number
+        ? [
+            `*Shipment details*`,
+            ...(order.courier_name ? [`Courier: ${order.courier_name}`] : []),
+            ...(order.tracking_number ? [`Tracking number: ${order.tracking_number}`] : []),
+            ...(expected ? [`Expected delivery: ${expected}`] : []),
+            '',
+          ]
+        : []),
+      ...(order.payment_method === 'cod' ? [`Cash on Delivery: please keep *${inr(total)}* ready at the time of delivery.`, ''] : []),
+      `*Track your order anytime*`,
+      trackLink,
+      '',
+      `Thank you for your patience. We hope you love it!`,
+    ];
+  } else if (kind === 'delivered') {
+    body = [
+      `We are happy to let you know that your order *#${shortId}* has been delivered. 🎉`,
+      '',
+      `*Your order*`,
+      ...itemLines,
+      '',
+      `Thank you for choosing *${STORE_NAME}*. We hope you love your purchase.`,
+      '',
+      `If anything is not right, please reply here and we will help you. We offer 7-day returns & exchanges, and damaged or wrong items can be reported within 48 hours for a free replacement or full refund.`,
+      '',
+      `If you are happy with your order, we would truly appreciate your feedback. It helps other customers and small artisans like ours.`,
+    ];
+  } else if (kind === 'cancelled') {
+    const wasPaid = !!order.razorpay_payment_id;
+    const refunded = order.refund_status === 'refunded';
+    body = [
+      `This is to let you know that your order *#${shortId}* has been cancelled.`,
+      '',
+      `*Order*`,
+      ...itemLines,
+      '',
+      ...(wasPaid
+        ? [
+            refunded
+              ? `*Refund*\nYour payment of ${inr(total)} has been refunded to your original payment method. It may take 5-7 business days to reflect in your account.`
+              : `*Refund*\nYour payment of ${inr(total)} will be refunded to your original payment method within 5-7 business days.`,
+            '',
+          ]
+        : []),
+      `We are sorry we could not fulfil this order. If you would like to order again or need any help, please just reply to this message. We would be glad to assist you.`,
+      '',
+      `Thank you for your understanding.`,
+    ];
+  } else {
+    body = [
+      `We noticed that the payment for your order *#${shortId}* did not go through, so the order is not confirmed yet.`,
+      '',
+      `*Your order*`,
+      ...itemLines,
+      '',
+      `*Amount payable: ${inr(total)}*`,
+      '',
+      `If any amount was deducted from your account, it is usually returned automatically by your bank within 5-7 business days. You can retry your payment securely here:`,
+      payLink,
+      '',
+      `If you need any help, please just reply to this message and we will be happy to assist you.`,
+      '',
+      `Thank you for your patience.`,
+    ];
+  }
+
+  return `https://wa.me/${digits}?text=${encodeURIComponent([...greeting, ...body, ...signoff].join('\n'))}`;
+}
+
+function WhatsAppStatusButton({
+  order,
+  kind,
+  className = '',
+}: {
+  order: Order;
+  kind: StatusWhatsAppKind;
+  className?: string;
+}) {
+  return (
+    <WhatsAppLinkButton
+      url={buildStatusWhatsAppUrl(order, kind)}
+      label={STATUS_WA_META[kind].label}
+      title={STATUS_WA_META[kind].title}
+      className={className}
+    />
+  );
+}
+
 function getRefundBadge(order: Order): { label: string; className: string } | null {
   const status = order._return_status ? order._return_refund_status : order.refund_status;
   if (!status || status === 'not_applicable') return null;
@@ -1140,6 +1348,38 @@ function OrderRow({
           {order.status === 'paid' && (
             <div className="mt-1.5">
               <WhatsAppPaidConfirmationButton order={order} />
+            </div>
+          )}
+          {/* Every other status gets its own polite WhatsApp message too.
+              (pending+converted-from-COD and paid are handled just above.) */}
+          {order.status === 'pending' && isCod && (
+            <div className="mt-1.5">
+              <WhatsAppStatusButton order={order} kind="cod_confirmed" />
+            </div>
+          )}
+          {order.status === 'pending' && !isCod && !wasConvertedFromCod && isAwaitingOnlinePayment && (
+            <div className="mt-1.5">
+              <WhatsAppStatusButton order={order} kind="payment_reminder" />
+            </div>
+          )}
+          {order.status === 'shipped' && (
+            <div className="mt-1.5">
+              <WhatsAppStatusButton order={order} kind="shipped" />
+            </div>
+          )}
+          {order.status === 'delivered' && (
+            <div className="mt-1.5">
+              <WhatsAppStatusButton order={order} kind="delivered" />
+            </div>
+          )}
+          {order.status === 'cancelled' && (
+            <div className="mt-1.5">
+              <WhatsAppStatusButton order={order} kind="cancelled" />
+            </div>
+          )}
+          {order.status === 'failed' && (
+            <div className="mt-1.5">
+              <WhatsAppStatusButton order={order} kind="failed" />
             </div>
           )}
         </td>
