@@ -28,9 +28,31 @@ export interface CartRecoveryEmailStep {
   coupon_code: string;
 }
 
+// A single, later-stage WhatsApp nudge for carts that are still not
+// recovered after `delay_hours` (default 3 days / 72h) since
+// last_activity_at. Unlike the email steps above, this isn't sent
+// automatically — the admin taps a button in the Carts tab that appears
+// once the cart is old enough — but the wording, timing, and discount are
+// all configurable here so the admin doesn't have to hand-edit the
+// message every time.
+export interface CartRecoveryUrgencyWhatsappSettings {
+  enabled: boolean;
+  // How many hours of inactivity before the "urgency" WhatsApp button
+  // appears in the admin panel. Defaults to 72 (3 days).
+  delay_hours: number;
+  discount_type: 'percentage' | 'flat';
+  // Percentage points (e.g. 5 for 5%) or a flat rupee amount (e.g. 100),
+  // depending on discount_type.
+  discount_value: number;
+  // Optional coupon code to quote in the message. Create the matching
+  // coupon under Admin > Coupons so it actually applies at checkout.
+  coupon_code: string;
+}
+
 export interface CartRecoverySequenceSettings {
   enabled: boolean;
   steps: [CartRecoveryEmailStep, CartRecoveryEmailStep, CartRecoveryEmailStep];
+  urgency_whatsapp: CartRecoveryUrgencyWhatsappSettings;
 }
 
 const emptyStep = (delay_hours: number): CartRecoveryEmailStep => ({
@@ -41,9 +63,18 @@ const emptyStep = (delay_hours: number): CartRecoveryEmailStep => ({
   coupon_code: '',
 });
 
+const DEFAULT_URGENCY_WHATSAPP_SETTINGS: CartRecoveryUrgencyWhatsappSettings = {
+  enabled: true,
+  delay_hours: 72,
+  discount_type: 'percentage',
+  discount_value: 5,
+  coupon_code: '',
+};
+
 export const DEFAULT_CART_RECOVERY_SEQUENCE_SETTINGS: CartRecoverySequenceSettings = {
   enabled: true,
   steps: [emptyStep(1), emptyStep(24), emptyStep(72)],
+  urgency_whatsapp: DEFAULT_URGENCY_WHATSAPP_SETTINGS,
 };
 
 export function mergeCartRecoverySequenceSettings(
@@ -53,7 +84,11 @@ export function mergeCartRecoverySequenceSettings(
     ...DEFAULT_CART_RECOVERY_SEQUENCE_SETTINGS.steps[i],
     ...(value?.steps?.[i] || {}),
   })) as CartRecoverySequenceSettings['steps'];
-  return { enabled: value?.enabled ?? true, steps };
+  const urgency_whatsapp: CartRecoveryUrgencyWhatsappSettings = {
+    ...DEFAULT_URGENCY_WHATSAPP_SETTINGS,
+    ...(value?.urgency_whatsapp || {}),
+  };
+  return { enabled: value?.enabled ?? true, steps, urgency_whatsapp };
 }
 
 export async function getCartRecoverySequenceSettings(

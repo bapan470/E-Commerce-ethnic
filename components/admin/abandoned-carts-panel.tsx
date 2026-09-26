@@ -89,9 +89,29 @@ type SequenceStep = {
   coupon_code: string;
 };
 
+// Discount + timing for the later-stage "urgency" WhatsApp nudge (see
+// buildUrgencyWhatsAppLink below). Saved/loaded together with the email
+// sequence settings via /api/admin/cart-recovery-settings.
+type UrgencyWhatsappSettings = {
+  enabled: boolean;
+  delay_hours: number;
+  discount_type: 'percentage' | 'flat';
+  discount_value: number;
+  coupon_code: string;
+};
+
 type SequenceSettings = {
   enabled: boolean;
   steps: SequenceStep[];
+  urgency_whatsapp: UrgencyWhatsappSettings;
+};
+
+const DEFAULT_URGENCY_WHATSAPP_SETTINGS: UrgencyWhatsappSettings = {
+  enabled: true,
+  delay_hours: 72,
+  discount_type: 'percentage',
+  discount_value: 5,
+  coupon_code: '',
 };
 
 const DEFAULT_SEQUENCE_SETTINGS: SequenceSettings = {
@@ -101,7 +121,14 @@ const DEFAULT_SEQUENCE_SETTINGS: SequenceSettings = {
     { enabled: true, delay_hours: 24, subject: '', html: '', coupon_code: '' },
     { enabled: true, delay_hours: 72, subject: '', html: '', coupon_code: '' },
   ],
+  urgency_whatsapp: DEFAULT_URGENCY_WHATSAPP_SETTINGS,
 };
+
+// How many hours have passed since the cart's last activity — used to
+// decide whether the "urgency" WhatsApp button should appear yet.
+function hoursSince(dateStr: string): number {
+  return (Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60);
+}
 
 const STEP_LABELS = ['1st email', '2nd email', '3rd email'];
 
@@ -160,6 +187,50 @@ function buildWhatsAppRecoveryLink(phone: string, cartValue: number, items: any[
 
   const message = messageParts.join('\n\n');
 
+  return `https://wa.me/91${digits}?text=${encodeURIComponent(message)}`;
+}
+
+// Later-stage nudge for carts that are still unrecovered after
+// `settings.delay_hours` (3 days by default). Kept deliberately warmer and
+// more apologetic in tone than the first message, and adds a genuine,
+// admin-configured discount (percentage or flat rupees) plus a short
+// validity window to create real urgency without sounding pushy.
+function buildUrgencyWhatsAppLink(
+  phone: string,
+  cartValue: number,
+  items: any[] = [],
+  settings: UrgencyWhatsappSettings
+): string | null {
+  let digits = phone.replace(/\D/g, '');
+  if (digits.startsWith('91') && digits.length === 12) digits = digits.slice(2);
+  if (digits.startsWith('0') && digits.length === 11) digits = digits.slice(1);
+  if (!/^[6-9][0-9]{9}$/.test(digits)) return null;
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
+  const firstImage = items?.map((it) => toPublicMediaUrl(it?.image_url || it?.image || it?.images?.[0] || null)).find(Boolean);
+  const itemLines = (items || []).slice(0, 5).map((it) => `• ${describeItem(it)}`).join('\n');
+
+  const discountText =
+    settings.discount_type === 'percentage'
+      ? `an extra ${settings.discount_value}% off`
+      : `an extra ${formatINR(settings.discount_value)} off`;
+  const couponLine = settings.coupon_code
+    ? `Just use the code *${settings.coupon_code}* at checkout.`
+    : `Just reply to this message and we'll apply it for you.`;
+
+  const messageParts = [
+    firstImage ? `${firstImage}` : null,
+    `Hello again, this is AruhiHandlooms 🙏`,
+    `We hope you're doing well! We noticed ${items?.length > 1 ? 'these items are' : 'this item is'} still waiting in your cart${
+      cartValue ? ` (total value ${formatINR(cartValue)})` : ''
+    }, so we wanted to check in gently:`,
+    itemLines || null,
+    `As a small thank-you for considering us, we'd love to offer you ${discountText} on this order. ${couponLine}`,
+    `This little offer is valid for a short time only, so we didn't want you to miss it. You can complete your order here whenever it's convenient: ${siteUrl}/cart`,
+    `No pressure at all — we're just happy to help if you have any questions. Thank you for shopping with us! 🌸`,
+  ].filter(Boolean);
+
+  const message = messageParts.join('\n\n');
   return `https://wa.me/91${digits}?text=${encodeURIComponent(message)}`;
 }
 
@@ -543,6 +614,99 @@ function SequenceSettingsPanel() {
         </Card>
       ))}
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between gap-2 text-base">
+            <span className="flex items-center gap-2">
+              <MessageCircle className="h-5 w-5" /> 3-Day Urgency WhatsApp Reminder
+            </span>
+            <Switch
+              checked={settings.urgency_whatsapp.enabled}
+              onCheckedChange={(v) =>
+                setSettings((s) => ({ ...s, urgency_whatsapp: { ...s.urgency_whatsapp, enabled: v } }))
+              }
+            />
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Once a cart has had no order for this many hours, an extra, more polite "Send WhatsApp"
+            button appears in the Carts tab that mentions this discount and a short validity window
+            to encourage a quick purchase. You still send it manually, one tap at a time — nothing is
+            sent automatically.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div>
+              <Label>Show button after (hours)</Label>
+              <Input
+                type="number"
+                min={1}
+                value={settings.urgency_whatsapp.delay_hours}
+                onChange={(e) =>
+                  setSettings((s) => ({
+                    ...s,
+                    urgency_whatsapp: { ...s.urgency_whatsapp, delay_hours: Number(e.target.value) },
+                  }))
+                }
+              />
+              <p className="mt-1 text-xs text-muted-foreground">72 = 3 days of no order</p>
+            </div>
+            <div>
+              <Label>Discount type</Label>
+              <Select
+                value={settings.urgency_whatsapp.discount_type}
+                onValueChange={(v) =>
+                  setSettings((s) => ({
+                    ...s,
+                    urgency_whatsapp: { ...s.urgency_whatsapp, discount_type: v as 'percentage' | 'flat' },
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="percentage">Percentage (%)</SelectItem>
+                  <SelectItem value="flat">Flat amount (₹)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>{settings.urgency_whatsapp.discount_type === 'percentage' ? 'Discount (%)' : 'Discount (₹)'}</Label>
+              <Input
+                type="number"
+                min={0}
+                value={settings.urgency_whatsapp.discount_value}
+                onChange={(e) =>
+                  setSettings((s) => ({
+                    ...s,
+                    urgency_whatsapp: { ...s.urgency_whatsapp, discount_value: Number(e.target.value) },
+                  }))
+                }
+              />
+            </div>
+          </div>
+          <div>
+            <Label>Coupon code (optional)</Label>
+            <Input
+              value={settings.urgency_whatsapp.coupon_code}
+              onChange={(e) =>
+                setSettings((s) => ({
+                  ...s,
+                  urgency_whatsapp: { ...s.urgency_whatsapp, coupon_code: e.target.value },
+                }))
+              }
+              placeholder="e.g. COMEBACK5"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Create this code under Admin &gt; Coupons too, matching this discount, so it actually
+              applies at checkout. Leave blank to instead ask the customer to reply and have the
+              discount applied manually.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+
       <Button onClick={save} disabled={saving}>
         {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
         {saving ? 'Saving…' : 'Save sequence settings'}
@@ -562,6 +726,26 @@ function CartsList() {
   // Carts where the admin has explicitly chosen to contact anyway, even
   // though we detected they already have an order — see existing_order.
   const [forceContactIds, setForceContactIds] = useState<Set<string>>(new Set());
+  // Delay/discount for the 3-day urgency WhatsApp button — loaded once so
+  // the button can appear/disappear and word itself per the admin's saved
+  // settings (see the "3-Day Urgency WhatsApp Reminder" card above).
+  const [urgencySettings, setUrgencySettings] = useState<UrgencyWhatsappSettings>(
+    DEFAULT_URGENCY_WHATSAPP_SETTINGS
+  );
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/admin/cart-recovery-settings');
+        if (res.ok) {
+          const body = await res.json();
+          if (body.settings?.urgency_whatsapp) setUrgencySettings(body.settings.urgency_whatsapp);
+        }
+      } catch {
+        // Non-fatal — the extra button just won't appear until this loads.
+      }
+    })();
+  }, []);
 
   const load = async () => {
     setLoading(true);
@@ -849,6 +1033,31 @@ function CartsList() {
                                   <a href={link} target="_blank" rel="noopener noreferrer">
                                     <MessageCircle className="mr-1.5 h-3.5 w-3.5" />
                                     Send WhatsApp
+                                  </a>
+                                </Button>
+                              );
+                            })()}
+                          {!c.recovered &&
+                            c.phone &&
+                            urgencySettings.enabled &&
+                            hoursSince(c.last_activity_at) >= urgencySettings.delay_hours &&
+                            (() => {
+                              const link = buildUrgencyWhatsAppLink(c.phone, c.cart_value, c.items, urgencySettings);
+                              if (!link) return null;
+                              const discountLabel =
+                                urgencySettings.discount_type === 'percentage'
+                                  ? `${urgencySettings.discount_value}% off`
+                                  : `${formatINR(urgencySettings.discount_value)} off`;
+                              return (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-amber-300 text-amber-800 hover:bg-amber-50"
+                                  asChild
+                                >
+                                  <a href={link} target="_blank" rel="noopener noreferrer">
+                                    <MessageCircle className="mr-1.5 h-3.5 w-3.5" />
+                                    Send WhatsApp ({discountLabel})
                                   </a>
                                 </Button>
                               );
