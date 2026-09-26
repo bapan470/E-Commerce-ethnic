@@ -48,13 +48,23 @@ export async function runOrderConfirmationSideEffects(orderId: string) {
       });
   }
 
-  // 1b. Clear this customer's abandoned cart, if any.
-  if (order.customer_email) {
+  // 1b. Clear this customer's abandoned cart, if any — matched by email OR
+  // phone. Matching on email alone used to miss the case where the same
+  // shopper placed the order using a different email login (or as a
+  // guest) but the same phone number as the one captured earlier by the
+  // cart-tracking widget, which left a stale "not recovered" row sitting
+  // in the admin panel even though the order had already gone through.
+  if (order.customer_email || order.customer_phone) {
     try {
+      const phoneDigits = (order.customer_phone || '').replace(/\D/g, '').slice(-10);
+      const orFilters: string[] = [];
+      if (order.customer_email) orFilters.push(`email.eq.${order.customer_email}`);
+      if (phoneDigits.length === 10) orFilters.push(`phone.ilike.%${phoneDigits}`);
+
       const { data: recoveredCarts } = await supabase
         .from('abandoned_carts')
         .update({ recovered: true })
-        .eq('email', order.customer_email)
+        .or(orFilters.join(','))
         .eq('recovered', false)
         .select('id');
 

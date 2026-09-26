@@ -55,6 +55,11 @@ type AbandonedCart = {
   recovery_email_sent_at?: string | null;
   recovery_stage?: number;
   recovered: boolean;
+  // Set server-side (see the GET route) when an order already exists for
+  // this cart's email or phone, even though `recovered` itself is still
+  // false — catches cases the automatic matching misses, e.g. the order
+  // was placed with a different email but the same phone number.
+  existing_order?: { id: string; status: string; created_at: string } | null;
 };
 
 type CartEmailLogEntry = {
@@ -549,6 +554,9 @@ function CartsList() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'recovered' | 'sent' | 'not_contacted'>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [customizeCart, setCustomizeCart] = useState<AbandonedCart | null>(null);
+  // Carts where the admin has explicitly chosen to contact anyway, even
+  // though we detected they already have an order — see existing_order.
+  const [forceContactIds, setForceContactIds] = useState<Set<string>>(new Set());
 
   const load = async () => {
     setLoading(true);
@@ -741,21 +749,56 @@ function CartsList() {
                         {new Date(c.last_activity_at).toLocaleString('en-IN')}
                       </td>
                       <td className="px-4 py-3 align-top text-sm">
-                        {c.recovered ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
-                            <CheckCircle2 className="h-3 w-3" /> Recovered
-                          </span>
-                        ) : stage > 0 ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
-                            <Mail className="h-3 w-3" /> {stage}/3 emails sent
-                          </span>
-                        ) : (
-                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-                            Not contacted
-                          </span>
-                        )}
+                        <div className="flex flex-col items-start gap-1.5">
+                          {c.recovered ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                              <CheckCircle2 className="h-3 w-3" /> Recovered
+                            </span>
+                          ) : stage > 0 ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
+                              <Mail className="h-3 w-3" /> {stage}/3 emails sent
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                              Not contacted
+                            </span>
+                          )}
+                          {!c.recovered && c.existing_order && (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200"
+                              title={`Order ${c.existing_order.id.slice(0, 8)} · ${c.existing_order.status} · ${new Date(
+                                c.existing_order.created_at
+                              ).toLocaleString('en-IN')}`}
+                            >
+                              <CheckCircle2 className="h-3 w-3" /> Already ordered
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 align-top text-sm">
+                        {!c.recovered && c.existing_order && !forceContactIds.has(c.id) ? (
+                          <div className="max-w-[220px] text-xs text-muted-foreground">
+                            <p>
+                              Looks like they already placed order{' '}
+                              <span className="font-mono">#{c.existing_order.id.slice(0, 8)}</span> on{' '}
+                              {new Date(c.existing_order.created_at).toLocaleDateString('en-IN')}. Recovery outreach is
+                              probably not needed.
+                            </p>
+                            <button
+                              type="button"
+                              className="mt-1 underline hover:text-foreground"
+                              onClick={() =>
+                                setForceContactIds((prev) => {
+                                  const next = new Set(prev);
+                                  next.add(c.id);
+                                  return next;
+                                })
+                              }
+                            >
+                              Contact anyway
+                            </button>
+                          </div>
+                        ) : (
                         <div className="flex flex-wrap gap-2">
                           {!c.recovered && c.email && stage < 3 && (
                             <>
@@ -793,6 +836,7 @@ function CartsList() {
                               );
                             })()}
                         </div>
+                        )}
                       </td>
                     </tr>
                     {isExpanded && (
