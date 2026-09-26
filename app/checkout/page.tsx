@@ -545,6 +545,13 @@ export default function CheckoutPage() {
           phone: shipPhone,
           items: items.map((i) => ({
             product_name: i.product.name,
+            // Slug/image/colour so the admin panel's abandoned-cart list
+            // and its "Send WhatsApp" recovery message can show exactly
+            // what the shopper left behind — same fields used on the real
+            // order payload above.
+            slug: i.product.slug,
+            image_url: i.product.images?.[0] ?? null,
+            color: i.product.colors?.[0] ?? null,
             size: i.size,
             quantity: i.quantity,
             price: i.product.price,

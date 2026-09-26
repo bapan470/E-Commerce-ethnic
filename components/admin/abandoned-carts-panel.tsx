@@ -17,6 +17,7 @@ import {
   Save,
 } from 'lucide-react';
 import { formatINR } from '@/lib/format';
+import { toPublicMediaUrl } from '@/lib/media-url';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -94,6 +95,16 @@ const DEFAULT_SEQUENCE_SETTINGS: SequenceSettings = {
 
 const STEP_LABELS = ['1st email', '2nd email', '3rd email'];
 
+// One line per cart item: name, size, colour, quantity — used both in the
+// on-screen preview and in the WhatsApp message text below.
+function describeItem(it: any): string {
+  const name = it?.product_name || it?.name || 'Item';
+  const size = it?.size ? `, Size: ${it.size}` : '';
+  const color = it?.color ? `, Color: ${it.color}` : '';
+  const qty = it?.quantity && it.quantity > 1 ? ` x${it.quantity}` : '';
+  return `${name}${size}${color}${qty}`;
+}
+
 // Builds a free wa.me click-to-chat link — no WhatsApp Business API / BSP
 // involved, so no per-message Meta billing. Opening it starts a chat from
 // whichever WhatsApp (Web or app) the admin is logged into, with the
@@ -101,19 +112,85 @@ const STEP_LABELS = ['1st email', '2nd email', '3rd email'];
 // null if the stored phone number doesn't look like a valid 10-digit
 // Indian mobile number, so the button can hide itself instead of building
 // a broken link.
-function buildWhatsAppRecoveryLink(phone: string, cartValue: number): string | null {
+//
+// wa.me can't attach a photo by itself (no file upload in a URL), so two
+// things stand in for "send the image too":
+//   1. The admin panel shows the item's thumbnail right next to this
+//      button (see CartItemsPreview) so the admin can see/forward it.
+//   2. The message includes a direct link to the item's photo as the very
+//      first line — WhatsApp auto-generates a link-preview thumbnail for
+//      an image URL, so the customer sees the picture right in the chat.
+// The message also proactively answers the three questions shoppers most
+// often hesitate on: how to order, what happens after, and how safe it is.
+function buildWhatsAppRecoveryLink(phone: string, cartValue: number, items: any[] = []): string | null {
   let digits = phone.replace(/\D/g, '');
   if (digits.startsWith('91') && digits.length === 12) digits = digits.slice(2);
   if (digits.startsWith('0') && digits.length === 11) digits = digits.slice(1);
   if (!/^[6-9][0-9]{9}$/.test(digits)) return null;
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
-  const message =
-    `Hi! You left some beautiful pieces in your AruhiHandlooms cart` +
-    (cartValue ? ` (worth ${formatINR(cartValue)})` : '') +
-    `. Complete your order here: ${siteUrl}/cart`;
+
+  const firstImage = items?.map((it) => toPublicMediaUrl(it?.image_url || it?.image || it?.images?.[0] || null)).find(Boolean);
+  const itemLines = (items || []).slice(0, 5).map((it) => `• ${describeItem(it)}`).join('\n');
+
+  const messageParts = [
+    firstImage ? `${firstImage}` : null,
+    `Namaste! 🙏 This is AruhiHandlooms.`,
+    `You left ${items?.length > 1 ? 'these beautiful pieces' : 'this beautiful piece'} in your cart${
+      cartValue ? ` (worth ${formatINR(cartValue)})` : ''
+    }:`,
+    itemLines || null,
+    `Complete your order here: ${siteUrl}/cart`,
+    `A few quick answers, in case you're wondering:\n` +
+      `📦 *How to order:* Tap the link above, confirm your address & payment (Cash on Delivery available), and you're done — takes under 2 minutes.\n` +
+      `🚚 *What happens next:* We pack & dispatch within 2-3 business days, and share a live tracking link on WhatsApp/SMS/email. Delivery usually takes 3-8 business days.\n` +
+      `🔒 *How safe is it:* 100% secure checkout, easy 7-day returns/exchange, and a free replacement or full refund if anything ever arrives damaged, defective, or wrong.`,
+    `We're here if you have any questions — just reply to this message 💛`,
+  ].filter(Boolean);
+
+  const message = messageParts.join('\n\n');
 
   return `https://wa.me/91${digits}?text=${encodeURIComponent(message)}`;
+}
+
+// Small thumbnail strip shown in the Items column so the admin can see at
+// a glance what's sitting in each abandoned cart (and its colour) without
+// opening anything.
+function CartItemsPreview({ items }: { items: any[] }) {
+  const list = items || [];
+  if (list.length === 0) return <span>0 items</span>;
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-1.5">
+        {list.slice(0, 3).map((it, idx) => {
+          const img = toPublicMediaUrl(it?.image_url || it?.image || it?.images?.[0] || null);
+          return img ? (
+            <img
+              key={idx}
+              src={img}
+              alt={it?.product_name || it?.name || 'Item'}
+              className="h-10 w-10 rounded-md border border-border/60 object-cover"
+            />
+          ) : (
+            <div
+              key={idx}
+              className="flex h-10 w-10 items-center justify-center rounded-md border border-dashed border-border/60 text-[9px] text-muted-foreground"
+            >
+              No img
+            </div>
+          );
+        })}
+        {list.length > 3 && (
+          <span className="text-xs text-muted-foreground">+{list.length - 3}</span>
+        )}
+      </div>
+      <div className="text-xs text-muted-foreground">
+        {list.length} item{list.length === 1 ? '' : 's'}
+        {list[0]?.color ? ` · ${list[0].color}` : ''}
+      </div>
+    </div>
+  );
 }
 
 function EmailStatusBadges({ e }: { e: CartEmailLogEntry }) {
@@ -657,7 +734,7 @@ function CartsList() {
                         {c.phone && <div className="text-xs text-muted-foreground">{c.phone}</div>}
                       </td>
                       <td className="px-4 py-3 align-top text-sm text-muted-foreground">
-                        {(c.items || []).length} item{(c.items || []).length === 1 ? '' : 's'}
+                        <CartItemsPreview items={c.items} />
                       </td>
                       <td className="px-4 py-3 align-top text-sm font-medium">{formatINR(c.cart_value || 0)}</td>
                       <td className="px-4 py-3 align-top text-sm">
@@ -704,7 +781,7 @@ function CartsList() {
                           {!c.recovered &&
                             c.phone &&
                             (() => {
-                              const link = buildWhatsAppRecoveryLink(c.phone, c.cart_value);
+                              const link = buildWhatsAppRecoveryLink(c.phone, c.cart_value, c.items);
                               if (!link) return null;
                               return (
                                 <Button size="sm" variant="outline" asChild>
