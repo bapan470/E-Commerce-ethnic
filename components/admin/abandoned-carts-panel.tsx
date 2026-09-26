@@ -60,6 +60,11 @@ type AbandonedCart = {
   // false — catches cases the automatic matching misses, e.g. the order
   // was placed with a different email but the same phone number.
   existing_order?: { id: string; status: string; created_at: string } | null;
+  // Set server-side when this person has one or more EARLIER orders that
+  // clearly predate this cart (a repeat customer abandoning a cart for a
+  // different item) — informational only, doesn't affect the buttons.
+  prior_order_count?: number;
+  prior_order_last_item?: string | null;
 };
 
 type CartEmailLogEntry = {
@@ -140,17 +145,17 @@ function buildWhatsAppRecoveryLink(phone: string, cartValue: number, items: any[
 
   const messageParts = [
     firstImage ? `${firstImage}` : null,
-    `Namaste! 🙏 This is AruhiHandlooms.`,
-    `You left ${items?.length > 1 ? 'these beautiful pieces' : 'this beautiful piece'} in your cart${
-      cartValue ? ` (worth ${formatINR(cartValue)})` : ''
+    `Hello, this is AruhiHandlooms.`,
+    `We noticed you left ${items?.length > 1 ? 'the following items' : 'the following item'} in your cart${
+      cartValue ? ` (total value ${formatINR(cartValue)})` : ''
     }:`,
     itemLines || null,
-    `Complete your order here: ${siteUrl}/cart`,
-    `A few quick answers, in case you're wondering:\n` +
-      `📦 *How to order:* Tap the link above, confirm your address & payment (Cash on Delivery available), and you're done — takes under 2 minutes.\n` +
-      `🚚 *What happens next:* We pack & dispatch within 2-3 business days, and share a live tracking link on WhatsApp/SMS/email. Delivery usually takes 3-8 business days.\n` +
-      `🔒 *How safe is it:* 100% secure checkout, easy 7-day returns/exchange, and a free replacement or full refund if anything ever arrives damaged, defective, or wrong.`,
-    `We're here if you have any questions — just reply to this message 💛`,
+    `You can complete your order here: ${siteUrl}/cart`,
+    `A few quick details, in case they're useful:\n` +
+      `*Placing the order:* Open the link above, confirm your address and payment method (Cash on Delivery is available), and you're done — it takes under two minutes.\n` +
+      `*After you order:* We pack and dispatch within 2-3 business days, and share a live tracking link by WhatsApp, SMS, and email. Delivery typically takes 3-8 business days.\n` +
+      `*Safety and returns:* Checkout is fully secure, we offer an easy 7-day return/exchange window, and a free replacement or full refund if anything arrives damaged, defective, or incorrect.`,
+    `Please feel free to reply to this message if you have any questions — we're happy to help.`,
   ].filter(Boolean);
 
   const message = messageParts.join('\n\n');
@@ -740,6 +745,19 @@ function CartsList() {
                       <td className="px-4 py-3 align-top text-sm">
                         <div>{c.email || '—'}</div>
                         {c.phone && <div className="text-xs text-muted-foreground">{c.phone}</div>}
+                        {!!c.prior_order_count && (
+                          <span
+                            className="mt-1 inline-flex items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700 ring-1 ring-violet-200"
+                            title={
+                              c.prior_order_last_item
+                                ? `Most recent earlier order: ${c.prior_order_last_item}`
+                                : undefined
+                            }
+                          >
+                            Repeat customer · {c.prior_order_count + 1}
+                            {c.prior_order_count + 1 === 2 ? 'nd' : c.prior_order_count + 1 === 3 ? 'rd' : 'th'} order
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 align-top text-sm text-muted-foreground">
                         <CartItemsPreview items={c.items} />
