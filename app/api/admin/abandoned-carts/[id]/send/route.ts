@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { sendEmail } from '@/lib/email';
 import { renderCartRecoveryEmail } from '@/lib/email-templates';
 import { createEmailTrackingRecord, instrumentEmailHtml } from '@/lib/email-tracking';
+import { getCartRecoverySequenceSettings } from '@/lib/cart-recovery-settings';
 
 // Manual send from Admin -> Abandoned Carts. Body is optional:
 //   { subject?, html?, coupon_code? } -- lets the admin override the
@@ -29,6 +30,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const customSubject: string | undefined = body?.subject?.trim() || undefined;
   const customHtml: string | undefined = body?.html?.trim() || undefined;
   const couponCode: string | undefined = body?.coupon_code?.trim() || undefined;
+  const bodyDiscountType: 'percentage' | 'flat' | undefined = body?.discount_type;
+  const bodyDiscountValue: number | undefined =
+    typeof body?.discount_value === 'number' ? body.discount_value : undefined;
 
   try {
     const { data: cart, error } = await supabase
@@ -50,9 +54,35 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
 
     const sequenceNumber = (cart.recovery_stage || 0) + 1;
+
+    // When the admin just taps the quick "Send recovery email" / "Send
+    // email N" button (no subject/html/coupon typed in), fall back to
+    // this step's configured template + coupon + discount from Sequence
+    // Settings, same as the automatic cron job would use for this stage
+    // -- otherwise the quick button silently sent a bare template with no
+    // coupon at all, even when one was configured.
+    let discountType: 'percentage' | 'flat' | undefined = bodyDiscountType;
+    let discountValue: number | undefined = bodyDiscountValue;
+    let effectiveCouponCode = couponCode;
+    if (!customSubject && !customHtml && !couponCode) {
+      const settings = await getCartRecoverySequenceSettings(supabase);
+      const step = settings.steps[sequenceNumber - 1];
+      if (step) {
+        effectiveCouponCode = step.coupon_code?.trim() || undefined;
+        discountType = step.discount_type;
+        discountValue = step.discount_value;
+      }
+    }
+
     const { subject, html } = renderCartRecoveryEmail(
       { items: Array.isArray(cart.items) ? cart.items : [], cart_value: cart.cart_value },
-      { subject: customSubject, html: customHtml, coupon_code: couponCode },
+      {
+        subject: customSubject,
+        html: customHtml,
+        coupon_code: effectiveCouponCode,
+        discount_type: discountType,
+        discount_value: discountValue,
+      },
       sequenceNumber
     );
 
@@ -62,7 +92,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         cartId: cart.id,
         sequenceNumber,
         subject,
-        couponCode,
+        couponCode: effectiveCouponCode,
       });
       finalHtml = instrumentEmailHtml(html, token);
     } catch (err) {

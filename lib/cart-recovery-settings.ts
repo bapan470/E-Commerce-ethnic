@@ -26,6 +26,14 @@ export interface CartRecoveryEmailStep {
   subject: string;
   html: string;
   coupon_code: string;
+  // Optional — leave discount_value at 0 to just quote the coupon code
+  // with generic "special discount" wording, same as before. Set it above
+  // 0 to also show the exact rupee amount the customer will pay after the
+  // discount (see computeDiscountedPrice / {{final_price}} in
+  // lib/email-templates.ts) — showing a concrete price instead of just a
+  // code tends to convert better.
+  discount_type: 'percentage' | 'flat';
+  discount_value: number;
 }
 
 // A single, later-stage WhatsApp nudge for carts that are still not
@@ -61,7 +69,24 @@ const emptyStep = (delay_hours: number): CartRecoveryEmailStep => ({
   subject: '',
   html: '',
   coupon_code: '',
+  discount_type: 'percentage',
+  discount_value: 0,
 });
+
+// Shared by the email templates and the WhatsApp message builders so the
+// rupee amount shown to the customer is always computed the same way.
+// discount_value of 0 or less means "no discount configured" — callers
+// should treat that as "don't show a final price".
+export function computeDiscountedPrice(
+  cartValue: number,
+  discountType: 'percentage' | 'flat',
+  discountValue: number
+): number {
+  if (!discountValue || discountValue <= 0) return cartValue;
+  const raw =
+    discountType === 'percentage' ? cartValue - (cartValue * discountValue) / 100 : cartValue - discountValue;
+  return Math.max(0, Math.round(raw));
+}
 
 const DEFAULT_URGENCY_WHATSAPP_SETTINGS: CartRecoveryUrgencyWhatsappSettings = {
   enabled: true,

@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { formatINR } from '@/lib/format';
 import { toPublicMediaUrl } from '@/lib/media-url';
+import { computeDiscountedPrice } from '@/lib/cart-recovery-settings';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -87,6 +88,11 @@ type SequenceStep = {
   subject: string;
   html: string;
   coupon_code: string;
+  // Optional — leave discount_value at 0 to just quote the coupon code
+  // with generic wording (as before). Above 0, the email also shows the
+  // exact rupee amount the customer will pay after the discount.
+  discount_type: 'percentage' | 'flat';
+  discount_value: number;
 };
 
 // Discount + timing for the later-stage "urgency" WhatsApp nudge (see
@@ -117,9 +123,9 @@ const DEFAULT_URGENCY_WHATSAPP_SETTINGS: UrgencyWhatsappSettings = {
 const DEFAULT_SEQUENCE_SETTINGS: SequenceSettings = {
   enabled: true,
   steps: [
-    { enabled: true, delay_hours: 1, subject: '', html: '', coupon_code: '' },
-    { enabled: true, delay_hours: 24, subject: '', html: '', coupon_code: '' },
-    { enabled: true, delay_hours: 72, subject: '', html: '', coupon_code: '' },
+    { enabled: true, delay_hours: 1, subject: '', html: '', coupon_code: '', discount_type: 'percentage', discount_value: 0 },
+    { enabled: true, delay_hours: 24, subject: '', html: '', coupon_code: '', discount_type: 'percentage', discount_value: 0 },
+    { enabled: true, delay_hours: 72, subject: '', html: '', coupon_code: '', discount_type: 'percentage', discount_value: 0 },
   ],
   urgency_whatsapp: DEFAULT_URGENCY_WHATSAPP_SETTINGS,
 };
@@ -210,13 +216,21 @@ function buildUrgencyWhatsAppLink(
   const firstImage = items?.map((it) => toPublicMediaUrl(it?.image_url || it?.image || it?.images?.[0] || null)).find(Boolean);
   const itemLines = (items || []).slice(0, 5).map((it) => `• ${describeItem(it)}`).join('\n');
 
+  const finalPrice = computeDiscountedPrice(cartValue, settings.discount_type, settings.discount_value);
   const discountText =
     settings.discount_type === 'percentage'
       ? `an extra ${settings.discount_value}% off`
       : `an extra ${formatINR(settings.discount_value)} off`;
+  // Showing the exact rupee amount (not just "5% off") is what actually
+  // drives clicks — a customer can act on "pay ₹2,893" immediately,
+  // without doing the maths themselves first.
+  const priceLine =
+    cartValue && settings.discount_value > 0
+      ? ` That brings your total down to just *${formatINR(finalPrice)}* (instead of ${formatINR(cartValue)}).`
+      : '';
   const couponLine = settings.coupon_code
-    ? `Just use the code *${settings.coupon_code}* at checkout.`
-    : `Just reply to this message and we'll apply it for you.`;
+    ? `Just use the code *${settings.coupon_code}* at checkout.${priceLine}`
+    : `Just reply to this message and we'll apply it for you.${priceLine}`;
 
   const messageParts = [
     firstImage ? `${firstImage}` : null,
@@ -376,6 +390,8 @@ function SendCustomEmailDialog({
   const [subject, setSubject] = useState('');
   const [html, setHtml] = useState('');
   const [couponCode, setCouponCode] = useState('');
+  const [discountType, setDiscountType] = useState<'percentage' | 'flat'>('percentage');
+  const [discountValue, setDiscountValue] = useState(0);
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
@@ -383,6 +399,8 @@ function SendCustomEmailDialog({
       setSubject('');
       setHtml('');
       setCouponCode('');
+      setDiscountType('percentage');
+      setDiscountValue(0);
     }
   }, [open, cart?.id]);
 
@@ -399,6 +417,8 @@ function SendCustomEmailDialog({
           subject: subject.trim() || undefined,
           html: html.trim() || undefined,
           coupon_code: couponCode.trim() || undefined,
+          discount_type: couponCode.trim() ? discountType : undefined,
+          discount_value: couponCode.trim() ? discountValue : undefined,
         }),
       });
       if (res.ok) {
@@ -439,6 +459,32 @@ function SendCustomEmailDialog({
               Create this code under Admin &gt; Coupons first so it actually works at checkout.
             </p>
           </div>
+          {couponCode.trim() && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Label>Discount type</Label>
+                <Select value={discountType} onValueChange={(v) => setDiscountType(v as 'percentage' | 'flat')}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="percentage">Percentage (%)</SelectItem>
+                    <SelectItem value="flat">Flat amount (₹)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>{discountType === 'percentage' ? 'Discount (%)' : 'Discount (₹)'}</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={discountValue}
+                  onChange={(e) => setDiscountValue(Number(e.target.value))}
+                  placeholder="0 = just quote the code"
+                />
+              </div>
+            </div>
+          )}
           <div>
             <Label>Custom subject (optional)</Label>
             <Input
@@ -588,6 +634,47 @@ function SequenceSettingsPanel() {
                 </p>
               </div>
             </div>
+            {step.coupon_code.trim() && (
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div>
+                  <Label>Discount type</Label>
+                  <Select
+                    value={step.discount_type}
+                    onValueChange={(v) => updateStep(i, { discount_type: v as 'percentage' | 'flat' })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="percentage">Percentage (%)</SelectItem>
+                      <SelectItem value="flat">Flat amount (₹)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>{step.discount_type === 'percentage' ? 'Discount (%)' : 'Discount (₹)'}</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={step.discount_value}
+                    onChange={(e) => updateStep(i, { discount_value: Number(e.target.value) })}
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    0 = just quote the code, no price shown
+                  </p>
+                </div>
+                {step.discount_value > 0 && (
+                  <div className="flex items-end">
+                    <p className="text-xs text-muted-foreground">
+                      Email will show, e.g. cart {formatINR(2000)} → pay{' '}
+                      <span className="font-medium text-foreground">
+                        {formatINR(computeDiscountedPrice(2000, step.discount_type, step.discount_value))}
+                      </span>
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
             <div>
               <Label>Custom subject (optional)</Label>
               <Input

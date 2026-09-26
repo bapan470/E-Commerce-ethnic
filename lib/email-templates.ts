@@ -2,6 +2,7 @@ import { formatINR } from './format';
 import { getSupabaseAdmin } from './supabase-admin';
 import { getOrCreateReviewToken } from './review-link-tokens';
 import { getReviewRewardSettings } from './review-reward-settings';
+import { computeDiscountedPrice } from './cart-recovery-settings';
 
 const BRAND_COLOR = '#7c3a1d';
 const GOLD_ACCENT = '#c9a15a';
@@ -1030,10 +1031,24 @@ export function restockEmail(product: { name: string; slug: string; price: numbe
 // Settings, or typed in manually when sending one-off from the table).
 export function cartRecoveryEmail(
   cart: { items: any[]; cart_value: number },
-  opts: { couponCode?: string | null; sequenceNumber?: number } = {}
+  opts: {
+    couponCode?: string | null;
+    sequenceNumber?: number;
+    discountType?: 'percentage' | 'flat';
+    discountValue?: number;
+  } = {}
 ) {
   const seq = opts.sequenceNumber || 1;
   const couponCode = opts.couponCode?.trim();
+  const hasDiscount = !!couponCode && !!opts.discountValue && opts.discountValue > 0;
+  const discountLabel = hasDiscount
+    ? opts.discountType === 'flat'
+      ? `${formatINR(opts.discountValue!)} off`
+      : `${opts.discountValue}% off`
+    : '';
+  const finalPrice = hasDiscount
+    ? computeDiscountedPrice(cart.cart_value, opts.discountType || 'percentage', opts.discountValue!)
+    : null;
 
   const heading =
     seq >= 3
@@ -1047,14 +1062,18 @@ export function cartRecoveryEmail(
       : "You left a few items in your cart. They're still waiting for you!";
   const subject =
     seq >= 3
-      ? `Last chance — your cart is waiting${couponCode ? ` (use ${couponCode})` : ''}`
+      ? `Last chance — your cart is waiting${couponCode ? ` (${hasDiscount ? discountLabel : `use ${couponCode}`})` : ''}`
       : seq === 2
-      ? `Still there? Your cart is waiting${couponCode ? ` — here's ${couponCode}` : ''}`
+      ? `Still there? Your cart is waiting${couponCode ? ` — ${hasDiscount ? discountLabel : `here's ${couponCode}`}` : ''}`
       : `You left something behind — complete your order`;
 
   const couponBlock = couponCode
     ? `<p style="text-align:center; margin: 16px 0; padding: 12px; background:#fbf6f0; border:1px dashed ${GOLD_ACCENT}; border-radius:6px;">
-        Use code <strong style="color:${BRAND_COLOR};">${couponCode}</strong> at checkout for a special discount.
+        Use code <strong style="color:${BRAND_COLOR};">${couponCode}</strong> at checkout${
+        hasDiscount
+          ? ` for ${discountLabel} — pay just <strong style="color:${BRAND_COLOR};">${formatINR(finalPrice!)}</strong> instead of ${formatINR(cart.cart_value)}.`
+          : ' for a special discount.'
+      }
       </p>`
     : '';
 
@@ -1081,26 +1100,46 @@ export function cartRecoveryEmail(
 //   {{cart_url}}      -> link back to /cart
 //   {{coupon_code}}   -> the coupon code for this send, or '' if none
 //   {{coupon_line}}   -> a ready-made "use code X" paragraph, or '' if
-//                        no coupon code was set for this send
+//                        no coupon code was set for this send -- includes
+//                        the exact discounted price when discount_value
+//                        is set (see {{final_price}} below)
+//   {{final_price}}   -> the cart total after the configured discount is
+//                        applied, formatted like "₹2,499", or just the
+//                        plain cart total if no discount is configured
 //
 // If the admin left both subject and body blank for a given step,
 // falls back to the default cartRecoveryEmail() above.
 export function renderCartRecoveryEmail(
   cart: { items: any[]; cart_value: number },
-  step: { subject?: string; html?: string; coupon_code?: string | null },
+  step: {
+    subject?: string;
+    html?: string;
+    coupon_code?: string | null;
+    discount_type?: 'percentage' | 'flat';
+    discount_value?: number;
+  },
   sequenceNumber: number
 ) {
   const couponCode = step.coupon_code?.trim() || '';
   const customHtml = step.html?.trim();
   const customSubject = step.subject?.trim();
+  const discountType = step.discount_type || 'percentage';
+  const discountValue = step.discount_value || 0;
+  const hasDiscount = !!couponCode && discountValue > 0;
+  const finalPriceValue = hasDiscount ? computeDiscountedPrice(cart.cart_value, discountType, discountValue) : cart.cart_value;
 
   if (!customHtml && !customSubject) {
-    return cartRecoveryEmail(cart, { couponCode, sequenceNumber });
+    return cartRecoveryEmail(cart, { couponCode, sequenceNumber, discountType, discountValue });
   }
 
   const cartUrl = `${process.env.NEXT_PUBLIC_SITE_URL || ''}/cart`;
+  const discountLabel = discountType === 'flat' ? `${formatINR(discountValue)} off` : `${discountValue}% off`;
   const couponLine = couponCode
-    ? `<p style="text-align:center; margin: 16px 0; padding: 12px; background:#fbf6f0; border:1px dashed ${GOLD_ACCENT}; border-radius:6px;">Use code <strong style="color:${BRAND_COLOR};">${couponCode}</strong> at checkout for a special discount.</p>`
+    ? `<p style="text-align:center; margin: 16px 0; padding: 12px; background:#fbf6f0; border:1px dashed ${GOLD_ACCENT}; border-radius:6px;">Use code <strong style="color:${BRAND_COLOR};">${couponCode}</strong> at checkout${
+        hasDiscount
+          ? ` for ${discountLabel} — pay just <strong style="color:${BRAND_COLOR};">${formatINR(finalPriceValue)}</strong> instead of ${formatINR(cart.cart_value)}.`
+          : ' for a special discount.'
+      }</p>`
     : '';
 
   const applyMergeFields = (text: string) =>
@@ -1109,7 +1148,8 @@ export function renderCartRecoveryEmail(
       .split('{{cart_total}}').join(formatINR(cart.cart_value))
       .split('{{cart_url}}').join(cartUrl)
       .split('{{coupon_code}}').join(couponCode)
-      .split('{{coupon_line}}').join(couponLine);
+      .split('{{coupon_line}}').join(couponLine)
+      .split('{{final_price}}').join(formatINR(finalPriceValue));
 
   const bodyHtml = customHtml ? applyMergeFields(customHtml) : applyMergeFields(`
     <h2 style="margin-top:0; color:${BRAND_COLOR};">Still thinking it over?</h2>
