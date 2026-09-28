@@ -160,12 +160,13 @@ function describeItem(it: any): string {
 // things stand in for "send the image too":
 //   1. The admin panel shows the item's thumbnail right next to this
 //      button (see CartItemsPreview) so the admin can see/forward it.
-//   2. The message includes a direct link to the item's photo as the very
-//      first line — WhatsApp auto-generates a link-preview thumbnail for
-//      an image URL, so the customer sees the picture right in the chat.
+//   2. The message links to /cart-link/<cart id>, whose OG tags carry the
+//      cart's first item photo (JPEG via /api/og/cart/<cart id>), so
+//      WhatsApp's link-preview card shows the exact product the customer
+//      left behind, then the page forwards them on to /cart.
 // The message also proactively answers the three questions shoppers most
 // often hesitate on: how to order, what happens after, and how safe it is.
-function buildWhatsAppRecoveryLink(phone: string, cartValue: number, items: any[] = []): string | null {
+function buildWhatsAppRecoveryLink(cartId: string, phone: string, cartValue: number, items: any[] = []): string | null {
   let digits = phone.replace(/\D/g, '');
   if (digits.startsWith('91') && digits.length === 12) digits = digits.slice(2);
   if (digits.startsWith('0') && digits.length === 11) digits = digits.slice(1);
@@ -173,17 +174,15 @@ function buildWhatsAppRecoveryLink(phone: string, cartValue: number, items: any[
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
 
-  const firstImage = items?.map((it) => toPublicMediaUrl(it?.image_url || it?.image || it?.images?.[0] || null)).find(Boolean);
   const itemLines = (items || []).slice(0, 5).map((it) => `• ${describeItem(it)}`).join('\n');
 
   const messageParts = [
-    firstImage ? `${firstImage}` : null,
     `Hello, this is AruhiHandlooms.`,
     `We noticed you left ${items?.length > 1 ? 'the following items' : 'the following item'} in your cart${
       cartValue ? ` (total value ${formatINR(cartValue)})` : ''
     }:`,
     itemLines || null,
-    `You can complete your order here: ${siteUrl}/cart`,
+    `You can complete your order here: ${siteUrl}/cart-link/${cartId}`,
     `A few quick details, in case they're useful:\n` +
       `*Placing the order:* Open the link above, confirm your address and payment method (Cash on Delivery is available), and you're done — it takes under two minutes.\n` +
       `*After you order:* We pack and dispatch within 2-3 business days, and share a live tracking link by WhatsApp, SMS, and email. Delivery typically takes 3-8 business days.\n` +
@@ -202,6 +201,7 @@ function buildWhatsAppRecoveryLink(phone: string, cartValue: number, items: any[
 // admin-configured discount (percentage or flat rupees) plus a short
 // validity window to create real urgency without sounding pushy.
 function buildUrgencyWhatsAppLink(
+  cartId: string,
   phone: string,
   cartValue: number,
   items: any[] = [],
@@ -213,7 +213,6 @@ function buildUrgencyWhatsAppLink(
   if (!/^[6-9][0-9]{9}$/.test(digits)) return null;
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com';
-  const firstImage = items?.map((it) => toPublicMediaUrl(it?.image_url || it?.image || it?.images?.[0] || null)).find(Boolean);
   const itemLines = (items || []).slice(0, 5).map((it) => `• ${describeItem(it)}`).join('\n');
 
   const finalPrice = computeDiscountedPrice(cartValue, settings.discount_type, settings.discount_value);
@@ -233,14 +232,13 @@ function buildUrgencyWhatsAppLink(
     : `Just reply to this message and we'll apply it for you.${priceLine}`;
 
   const messageParts = [
-    firstImage ? `${firstImage}` : null,
     `Hello again, this is AruhiHandlooms 🙏`,
     `We hope you're doing well! We noticed ${items?.length > 1 ? 'these items are' : 'this item is'} still waiting in your cart${
       cartValue ? ` (total value ${formatINR(cartValue)})` : ''
     }, so we wanted to check in gently:`,
     itemLines || null,
     `As a small thank-you for considering us, we'd love to offer you ${discountText} on this order. ${couponLine}`,
-    `This little offer is valid for a short time only, so we didn't want you to miss it. You can complete your order here whenever it's convenient: ${siteUrl}/cart`,
+    `This little offer is valid for a short time only, so we didn't want you to miss it. You can complete your order here whenever it's convenient: ${siteUrl}/cart-link/${cartId}`,
     `No pressure at all — we're just happy to help if you have any questions. Thank you for shopping with us! 🌸`,
   ].filter(Boolean);
 
@@ -1113,7 +1111,7 @@ function CartsList() {
                           {!c.recovered &&
                             c.phone &&
                             (() => {
-                              const link = buildWhatsAppRecoveryLink(c.phone, c.cart_value, c.items);
+                              const link = buildWhatsAppRecoveryLink(c.id, c.phone, c.cart_value, c.items);
                               if (!link) return null;
                               return (
                                 <Button size="sm" variant="outline" asChild>
@@ -1129,7 +1127,7 @@ function CartsList() {
                             urgencySettings.enabled &&
                             hoursSince(c.last_activity_at) >= urgencySettings.delay_hours &&
                             (() => {
-                              const link = buildUrgencyWhatsAppLink(c.phone, c.cart_value, c.items, urgencySettings);
+                              const link = buildUrgencyWhatsAppLink(c.id, c.phone, c.cart_value, c.items, urgencySettings);
                               if (!link) return null;
                               const discountLabel =
                                 urgencySettings.discount_type === 'percentage'
