@@ -32,7 +32,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const supabase = getSupabaseAdmin();
   const { data: order, error } = await supabase
     .from('orders')
-    .select('id, status, payment_method, items, total_amount, customer_name, customer_email')
+    .select(
+      'id, status, payment_method, items, total_amount, subtotal, shipping_charge, gst_amount, coupon_code, coupon_discount, gift_card_code, gift_card_discount, loyalty_points_redeemed, loyalty_discount, customer_name, customer_email'
+    )
     .eq('id', params.id)
     .maybeSingle();
 
@@ -115,6 +117,19 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     total_amount: newTotal,
     original_total: originalTotal,
     online_payment_discount: onlinePaymentDiscount,
+    // Pass through the order's original checkout-time breakdown so the
+    // email can show it (see lib/email-templates.ts -> codToPrepaidRequestEmail)
+    // instead of folding a coupon/gift-card/loyalty discount silently into
+    // the "COD total" line.
+    subtotal: order.subtotal,
+    shipping_charge: order.shipping_charge,
+    gst_amount: order.gst_amount,
+    coupon_code: order.coupon_code,
+    coupon_discount: order.coupon_discount,
+    gift_card_code: order.gift_card_code,
+    gift_card_discount: order.gift_card_discount,
+    loyalty_points_redeemed: order.loyalty_points_redeemed,
+    loyalty_discount: order.loyalty_discount,
     customer_name: order.customer_name,
     trackingId,
     store,

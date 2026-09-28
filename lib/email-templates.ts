@@ -1230,6 +1230,21 @@ export function codToPrepaidRequestEmail(order: {
   // discount) keep working unchanged.
   original_total?: number;
   online_payment_discount?: number;
+  // Full checkout-time price breakdown, same fields the admin's own "Price
+  // breakdown" reads (see components/admin/orders-panel.tsx) -- when
+  // present, shown as Subtotal / Coupon / Gift card / Loyalty / Shipping /
+  // Tax / Online payment discount instead of a single unlabeled "COD
+  // total" line, so a coupon applied when the order was first placed as
+  // COD doesn't silently disappear once it's converted to prepaid.
+  subtotal?: number | null;
+  shipping_charge?: number | null;
+  gst_amount?: number | null;
+  coupon_code?: string | null;
+  coupon_discount?: number | null;
+  gift_card_code?: string | null;
+  gift_card_discount?: number | null;
+  loyalty_points_redeemed?: number | null;
+  loyalty_discount?: number | null;
   customer_name?: string;
   // The id of the 'email_sent' row in order_payment_request_events for
   // THIS particular send -- when present, the CTA link is routed through
@@ -1281,8 +1296,50 @@ export function codToPrepaidRequestEmail(order: {
     ${itemsTable(order.items)}
     <table role="presentation" style="width:100%; margin: 4px 0 24px;">
       ${
-        order.online_payment_discount && order.online_payment_discount > 0
+        order.subtotal != null
           ? `
+      <tr>
+        <td style="text-align:right; font-size:13px; color:#6b5f57; padding-top: 6px; border-top: 2px solid ${BRAND_COLOR};">
+          Subtotal: ${formatINR(order.subtotal)}
+        </td>
+      </tr>
+      ${
+        order.coupon_discount && order.coupon_discount > 0
+          ? `<tr><td style="text-align:right; font-size:13px; color:#1f7a3d; padding-top: 2px;">Coupon discount${order.coupon_code ? ` (${order.coupon_code})` : ''}: -${formatINR(order.coupon_discount)}</td></tr>`
+          : ''
+      }
+      ${
+        order.gift_card_discount && order.gift_card_discount > 0
+          ? `<tr><td style="text-align:right; font-size:13px; color:#1f7a3d; padding-top: 2px;">Gift card${order.gift_card_code ? ` (${order.gift_card_code})` : ''}: -${formatINR(order.gift_card_discount)}</td></tr>`
+          : ''
+      }
+      ${
+        order.loyalty_discount && order.loyalty_discount > 0
+          ? `<tr><td style="text-align:right; font-size:13px; color:#1f7a3d; padding-top: 2px;">Loyalty points${order.loyalty_points_redeemed ? ` (${order.loyalty_points_redeemed} pts)` : ''}: -${formatINR(order.loyalty_discount)}</td></tr>`
+          : ''
+      }
+      <tr>
+        <td style="text-align:right; font-size:13px; color:#6b5f57; padding-top: 2px;">
+          Shipping: ${order.shipping_charge && order.shipping_charge > 0 ? formatINR(order.shipping_charge) : 'Free'}
+        </td>
+      </tr>
+      <tr>
+        <td style="text-align:right; font-size:13px; color:#6b5f57; padding-top: 2px;">
+          Tax (GST, included): ${formatINR(order.gst_amount ?? 0)}
+        </td>
+      </tr>
+      ${
+        order.online_payment_discount && order.online_payment_discount > 0
+          ? `<tr><td style="text-align:right; font-size:13px; color:#1f7a3d; padding-top: 2px;">Online payment discount: -${formatINR(order.online_payment_discount)}</td></tr>`
+          : ''
+      }
+      <tr>
+        <td style="text-align:right; font-size:16px; font-weight:bold; padding-top: 6px;">
+          Order total: ${formatINR(order.total_amount)}
+        </td>
+      </tr>`
+          : order.online_payment_discount && order.online_payment_discount > 0
+            ? `
       <tr>
         <td style="text-align:right; font-size:13px; color:#6b5f57; padding-top: 6px; border-top: 2px solid ${BRAND_COLOR};">
           COD total: <span style="text-decoration:line-through; color:#a89a8f;">${formatINR(order.original_total ?? order.total_amount + order.online_payment_discount)}</span>
@@ -1298,7 +1355,7 @@ export function codToPrepaidRequestEmail(order: {
           Order total: ${formatINR(order.total_amount)}
         </td>
       </tr>`
-          : `
+            : `
       <tr>
         <td style="text-align:right; font-size:16px; font-weight:bold; padding-top: 6px; border-top: 2px solid ${BRAND_COLOR};">
           Order total: ${formatINR(order.total_amount)}

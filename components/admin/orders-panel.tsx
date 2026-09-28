@@ -659,8 +659,42 @@ function buildPaymentWhatsAppUrl(order: Order): string | null {
   const onlinePrice = Number(order.total_amount || 0);
   const codPrice = onlinePrice + discount;
 
-  const priceBlock =
-    discount > 0
+  // Show every discount that was ALREADY baked into codPrice (coupon, gift
+  // card, loyalty points) before folding in the new online-payment discount
+  // -- otherwise "Cash on Delivery: ~2,970~" silently hides a coupon that
+  // was applied when the order was first placed, and the customer sees a
+  // different-looking total here than the one on their original order
+  // confirmation / the admin's own "Price breakdown" for the same order.
+  const couponDiscountAmt = Number(order.coupon_discount ?? 0);
+  const giftCardDiscountAmt = Number(order.gift_card_discount ?? 0);
+  const loyaltyDiscountAmt = Number(order.loyalty_discount ?? 0);
+  const hasFullBreakdown = order.subtotal != null;
+
+  const priceBlock = hasFullBreakdown
+    ? [
+        `*Price breakdown*`,
+        `Subtotal: ${inr(Number(order.subtotal || 0))}`,
+        ...(couponDiscountAmt > 0
+          ? [`Coupon discount${order.coupon_code ? ` (${order.coupon_code})` : ''}: -${inr(couponDiscountAmt)}`]
+          : []),
+        ...(giftCardDiscountAmt > 0
+          ? [`Gift card${order.gift_card_code ? ` (${order.gift_card_code})` : ''}: -${inr(giftCardDiscountAmt)}`]
+          : []),
+        ...(loyaltyDiscountAmt > 0
+          ? [
+              `Loyalty points${order.loyalty_points_redeemed ? ` (${order.loyalty_points_redeemed} pts)` : ''}: -${inr(
+                loyaltyDiscountAmt
+              )}`,
+            ]
+          : []),
+        `Shipping: ${Number(order.shipping_charge ?? 0) > 0 ? inr(Number(order.shipping_charge)) : 'Free'}`,
+        `Tax (GST, included): ${inr(Number(order.gst_amount ?? 0))}`,
+        ...(discount > 0
+          ? [`Cash on Delivery total: ~${inr(codPrice)}~`, `Online payment discount: -${inr(discount)}`]
+          : []),
+        `*Pay online: ${inr(onlinePrice)}*`,
+      ]
+    : discount > 0
       ? [
           `*Your online price*`,
           `Cash on Delivery: ~${inr(codPrice)}~`,

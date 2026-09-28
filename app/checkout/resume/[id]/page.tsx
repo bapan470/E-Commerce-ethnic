@@ -76,7 +76,7 @@ export default async function ResumePaymentPage({
   const { data: order } = await supabase
     .from('orders')
     .select(
-      'id, status, payment_method, items, total_amount, online_payment_discount, customer_name, customer_email, customer_phone'
+      'id, status, payment_method, items, total_amount, online_payment_discount, subtotal, shipping_charge, gst_amount, coupon_code, coupon_discount, gift_card_code, gift_card_discount, loyalty_points_redeemed, loyalty_discount, customer_name, customer_email, customer_phone'
     )
     .eq('id', params.id)
     .maybeSingle();
@@ -111,6 +111,24 @@ export default async function ResumePaymentPage({
   }
 
   const items = Array.isArray(order.items) ? order.items : [];
+
+  // Same full price breakdown the admin sees for this order (Admin > Orders
+  // > Price breakdown), so the number the customer is asked to pay here is
+  // never a mystery: if a coupon/gift card/loyalty discount was already
+  // applied when the order was first placed, it's shown here too, instead
+  // of being silently folded into an unlabeled "COD total" line.
+  const subtotalAmt = order.subtotal;
+  const couponDiscountAmt = Number(order.coupon_discount ?? 0);
+  const giftCardDiscountAmt = Number(order.gift_card_discount ?? 0);
+  const loyaltyDiscountAmt = Number(order.loyalty_discount ?? 0);
+  const shippingAmt = Number(order.shipping_charge ?? 0);
+  const gstAmt = order.gst_amount;
+  const onlineDiscountAmt = Number(order.online_payment_discount ?? 0);
+  const hasFullBreakdown = subtotalAmt != null;
+  // What the order stood at just before today's online-payment discount --
+  // i.e. after any coupon/gift-card/loyalty discount that already applied
+  // at checkout, same figure the admin's "Ordered at (COD price)" shows.
+  const codTotal = order.total_amount + onlineDiscountAmt;
 
   return (
     <div className="container-boutique max-w-lg py-12">
@@ -149,17 +167,60 @@ export default async function ResumePaymentPage({
             </div>
           );
         })}
-        {order.online_payment_discount > 0 ? (
+        {hasFullBreakdown ? (
+          <div className="space-y-1.5 border-t border-border/60 pt-3 text-sm">
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span>Subtotal</span>
+              <span>{formatINR(subtotalAmt || 0)}</span>
+            </div>
+            {couponDiscountAmt > 0 && (
+              <div className="flex items-center justify-between text-green-700">
+                <span>Coupon discount{order.coupon_code ? ` (${order.coupon_code})` : ''}</span>
+                <span>-{formatINR(couponDiscountAmt)}</span>
+              </div>
+            )}
+            {giftCardDiscountAmt > 0 && (
+              <div className="flex items-center justify-between text-green-700">
+                <span>Gift card{order.gift_card_code ? ` (${order.gift_card_code})` : ''}</span>
+                <span>-{formatINR(giftCardDiscountAmt)}</span>
+              </div>
+            )}
+            {loyaltyDiscountAmt > 0 && (
+              <div className="flex items-center justify-between text-green-700">
+                <span>
+                  Loyalty points{order.loyalty_points_redeemed ? ` (${order.loyalty_points_redeemed} pts)` : ''}
+                </span>
+                <span>-{formatINR(loyaltyDiscountAmt)}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span>Shipping</span>
+              <span>{shippingAmt > 0 ? formatINR(shippingAmt) : 'Free'}</span>
+            </div>
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span>Tax (GST, included)</span>
+              <span>{formatINR(gstAmt || 0)}</span>
+            </div>
+            {onlineDiscountAmt > 0 && (
+              <div className="flex items-center justify-between text-green-700">
+                <span>Online payment discount</span>
+                <span>-{formatINR(onlineDiscountAmt)}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between border-t border-border/60 pt-1.5 text-base font-bold">
+              <span>Total</span>
+              <span>{formatINR(order.total_amount)}</span>
+            </div>
+          </div>
+        ) : onlineDiscountAmt > 0 ? (
           <div className="space-y-1.5 border-t border-border/60 pt-3">
             <div className="flex items-center justify-between text-sm text-muted-foreground">
               <span>COD total</span>
-              <span className="line-through">
-                {formatINR(order.total_amount + order.online_payment_discount)}
-              </span>
+              <span className="line-through">{formatINR(codTotal)}</span>
             </div>
             <div className="flex items-center justify-between text-sm text-green-700">
               <span>Online payment discount</span>
-              <span>-{formatINR(order.online_payment_discount)}</span>
+              <span>-{formatINR(onlineDiscountAmt)}</span>
             </div>
             <div className="flex items-center justify-between text-base font-bold">
               <span>Total</span>
@@ -174,10 +235,9 @@ export default async function ResumePaymentPage({
         )}
       </div>
 
-      {order.online_payment_discount > 0 && (
+      {onlineDiscountAmt > 0 && (
         <p className="mt-3 rounded-md bg-green-50 px-3 py-2 text-center text-xs text-green-800">
-          You&apos;re saving {formatINR(order.online_payment_discount)} by paying online instead of Cash on
-          Delivery.
+          You&apos;re saving {formatINR(onlineDiscountAmt)} by paying online instead of Cash on Delivery.
         </p>
       )}
 

@@ -27,7 +27,7 @@ async function buildPreview(orderId: string, type: string, dateOverride?: string
   const { data: order, error } = await supabase
     .from('orders')
     .select(
-      'id, customer_name, customer_email, tracking_number, courier_name, expected_delivery_date, items, total_amount'
+      'id, customer_name, customer_email, tracking_number, courier_name, expected_delivery_date, items, total_amount, subtotal, shipping_charge, gst_amount, coupon_code, coupon_discount, gift_card_code, gift_card_discount, loyalty_points_redeemed, loyalty_discount, online_payment_discount'
     )
     .eq('id', orderId)
     .maybeSingle();
@@ -98,6 +98,16 @@ async function buildPreview(orderId: string, type: string, dateOverride?: string
         customer_name: order.customer_name,
         items: previewItems,
         total_amount: previewTotal,
+        online_payment_discount: order.online_payment_discount ?? undefined,
+        subtotal: order.subtotal,
+        shipping_charge: order.shipping_charge,
+        gst_amount: order.gst_amount,
+        coupon_code: order.coupon_code,
+        coupon_discount: order.coupon_discount,
+        gift_card_code: order.gift_card_code,
+        gift_card_discount: order.gift_card_discount,
+        loyalty_points_redeemed: order.loyalty_points_redeemed,
+        loyalty_discount: order.loyalty_discount,
         store: (storeSetting?.value as any) || undefined,
       });
     }
