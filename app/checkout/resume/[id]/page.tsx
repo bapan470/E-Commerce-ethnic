@@ -5,6 +5,7 @@ import { CreditCard } from 'lucide-react';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { formatINR } from '@/lib/format';
 import ResumePaymentButton from '@/components/checkout/resume-payment-button';
+import ResumeDiscountSection from '@/components/checkout/resume-discount-section';
 import { isInPaymentRequestFlow, logPaymentRequestEvent, type PaymentRequestSource } from '@/lib/order-payment-events';
 import { toPublicMediaUrl } from '@/lib/media-url';
 
@@ -167,78 +168,52 @@ export default async function ResumePaymentPage({
             </div>
           );
         })}
-        {hasFullBreakdown ? (
-          <div className="space-y-1.5 border-t border-border/60 pt-3 text-sm">
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span>Subtotal</span>
-              <span>{formatINR(subtotalAmt || 0)}</span>
-            </div>
-            {couponDiscountAmt > 0 && (
-              <div className="flex items-center justify-between text-green-700">
-                <span>Coupon discount{order.coupon_code ? ` (${order.coupon_code})` : ''}</span>
-                <span>-{formatINR(couponDiscountAmt)}</span>
+        {!hasFullBreakdown &&
+          (onlineDiscountAmt > 0 ? (
+            <div className="space-y-1.5 border-t border-border/60 pt-3">
+              <div className="flex items-center justify-between text-sm text-muted-foreground">
+                <span>COD total</span>
+                <span className="line-through">{formatINR(codTotal)}</span>
               </div>
-            )}
-            {giftCardDiscountAmt > 0 && (
-              <div className="flex items-center justify-between text-green-700">
-                <span>Gift card{order.gift_card_code ? ` (${order.gift_card_code})` : ''}</span>
-                <span>-{formatINR(giftCardDiscountAmt)}</span>
-              </div>
-            )}
-            {loyaltyDiscountAmt > 0 && (
-              <div className="flex items-center justify-between text-green-700">
-                <span>
-                  Loyalty points{order.loyalty_points_redeemed ? ` (${order.loyalty_points_redeemed} pts)` : ''}
-                </span>
-                <span>-{formatINR(loyaltyDiscountAmt)}</span>
-              </div>
-            )}
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span>Shipping</span>
-              <span>{shippingAmt > 0 ? formatINR(shippingAmt) : 'Free'}</span>
-            </div>
-            <div className="flex items-center justify-between text-muted-foreground">
-              <span>Tax (GST, included)</span>
-              <span>{formatINR(gstAmt || 0)}</span>
-            </div>
-            {onlineDiscountAmt > 0 && (
-              <div className="flex items-center justify-between text-green-700">
+              <div className="flex items-center justify-between text-sm text-green-700">
                 <span>Online payment discount</span>
                 <span>-{formatINR(onlineDiscountAmt)}</span>
               </div>
-            )}
-            <div className="flex items-center justify-between border-t border-border/60 pt-1.5 text-base font-bold">
+              <div className="flex items-center justify-between text-base font-bold">
+                <span>Total</span>
+                <span>{formatINR(order.total_amount)}</span>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between border-t border-border/60 pt-3 text-base font-bold">
               <span>Total</span>
               <span>{formatINR(order.total_amount)}</span>
             </div>
-          </div>
-        ) : onlineDiscountAmt > 0 ? (
-          <div className="space-y-1.5 border-t border-border/60 pt-3">
-            <div className="flex items-center justify-between text-sm text-muted-foreground">
-              <span>COD total</span>
-              <span className="line-through">{formatINR(codTotal)}</span>
-            </div>
-            <div className="flex items-center justify-between text-sm text-green-700">
-              <span>Online payment discount</span>
-              <span>-{formatINR(onlineDiscountAmt)}</span>
-            </div>
-            <div className="flex items-center justify-between text-base font-bold">
-              <span>Total</span>
-              <span>{formatINR(order.total_amount)}</span>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center justify-between border-t border-border/60 pt-3 text-base font-bold">
-            <span>Total</span>
-            <span>{formatINR(order.total_amount)}</span>
-          </div>
-        )}
+          ))}
       </div>
 
-      {onlineDiscountAmt > 0 && (
-        <p className="mt-3 rounded-md bg-green-50 px-3 py-2 text-center text-xs text-green-800">
-          You&apos;re saving {formatINR(onlineDiscountAmt)} by paying online instead of Cash on Delivery.
-        </p>
+      {hasFullBreakdown ? (
+        <ResumeDiscountSection
+          orderId={order.id}
+          subtotal={subtotalAmt || 0}
+          shippingCharge={shippingAmt}
+          loyaltyDiscount={loyaltyDiscountAmt}
+          initial={{
+            couponCode: order.coupon_code,
+            couponDiscount: couponDiscountAmt,
+            giftCardCode: order.gift_card_code,
+            giftCardDiscount: giftCardDiscountAmt,
+            onlinePaymentDiscount: onlineDiscountAmt,
+            gstAmount: gstAmt || 0,
+            totalAmount: order.total_amount,
+          }}
+        />
+      ) : (
+        onlineDiscountAmt > 0 && (
+          <p className="mt-3 rounded-md bg-green-50 px-3 py-2 text-center text-xs text-green-800">
+            You&apos;re saving {formatINR(onlineDiscountAmt)} by paying online instead of Cash on Delivery.
+          </p>
+        )
       )}
 
       <div className="mt-6">
