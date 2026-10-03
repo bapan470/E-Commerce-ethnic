@@ -10,7 +10,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 //      20260921020000_order_status_history.sql) whenever `orders.status`
 //      changes, from ANY code path (admin dropdown, Razorpay
 //      verify-payment, Delhivery create-shipment, etc.).
-//   2. order_payment_request_events, 'requested' rows only -- written by
+//   2. order_payment_request_events, 'requested' + 'reverted_to_cod' rows only -- written by
 //      Admin > "Request Online Payment" itself (see
 //      app/api/admin/orders/[id]/request-online-payment), so that click
 //      shows up on this same timeline with its own time/date instead of
@@ -39,9 +39,9 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
           .order('changed_at', { ascending: true }),
         admin
           .from('order_payment_request_events')
-          .select('id, created_at')
+          .select('id, created_at, event_type')
           .eq('order_id', params.id)
-          .eq('event_type', 'requested')
+          .in('event_type', ['requested', 'reverted_to_cod'])
           .order('created_at', { ascending: true }),
         admin.from('orders').select('original_payment_method').eq('id', params.id).maybeSingle(),
       ]);
@@ -57,7 +57,9 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     }));
     const requestEntries = (requestRows || []).map((row) => ({
       id: row.id,
-      kind: 'payment_request' as const,
+      kind: (row.event_type === 'reverted_to_cod' ? 'reverted_to_cod' : 'payment_request') as
+        | 'payment_request'
+        | 'reverted_to_cod',
       from_status: null,
       to_status: null,
       changed_at: row.created_at,

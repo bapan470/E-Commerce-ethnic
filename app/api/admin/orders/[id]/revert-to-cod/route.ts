@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { logPaymentRequestEvent } from '@/lib/order-payment-events';
 
 // Admin > Orders > "Revert to COD" -- the undo of "Request Online Payment".
 //
@@ -87,6 +88,12 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     console.error('[revert-to-cod] update failed:', updateError);
     return NextResponse.json({ error: 'Failed to revert the order to COD' }, { status: 500 });
   }
+
+  // Shows up on Status History as "Reverted to COD" with its own timestamp.
+  // Best-effort (logPaymentRequestEvent swallows its own errors).
+  await logPaymentRequestEvent(order.id, 'reverted_to_cod', {
+    meta: { restored_total: restoredTotal, removed_discount: discount },
+  });
 
   return NextResponse.json({ success: true, total_amount: restoredTotal });
 }
