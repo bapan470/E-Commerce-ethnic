@@ -442,6 +442,104 @@ export function orderShippedEmail(order: {
   return { subject, html };
 }
 
+// ---------------------------------------------------------------------------
+// Partial / split shipments
+// ---------------------------------------------------------------------------
+// Sent when ONE parcel of a multi-item order leaves the warehouse while the
+// rest is still being prepared. Tells the customer exactly what is in this
+// parcel, what is still to come, roughly when ("4 to 7 days"), and links to
+// the tracking page (which shows every parcel separately).
+export function orderPartialShippedEmail(order: {
+  id: string;
+  customer_name?: string;
+  shipment_no: number;
+  waybill: string;
+  courier_name?: string | null;
+  shipped_items: any[];
+  remaining_items: any[];
+  next_min_days?: number | null;
+  next_max_days?: number | null;
+  cod_amount?: number;
+}) {
+  const shortId = order.id.slice(0, 8);
+  const lo = Number(order.next_min_days || 4);
+  const hi = Number(order.next_max_days || 7);
+  const when = lo === hi ? `within ${lo} days` : `within ${lo} to ${hi} days`;
+  const hasRemaining = order.remaining_items.length > 0;
+  const subject = hasRemaining
+    ? `Part of your order has shipped — #${shortId}`
+    : `The rest of your order has shipped — #${shortId}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">Good news, ${order.customer_name || 'there'} — part of your order is on the way!</h2>
+    <p>Parcel ${order.shipment_no} of your order <strong>#${shortId}</strong> has been shipped${order.courier_name ? ` via ${order.courier_name}` : ''}.</p>
+    <p style="font-size:16px;"><strong>Tracking number:</strong> ${order.waybill}</p>
+    <h3 style="color:${BRAND_COLOR}; margin-bottom:4px;">In this parcel</h3>
+    ${itemsTable(order.shipped_items)}
+    ${
+      order.cod_amount && order.cod_amount > 0
+        ? `<p style="font-size:14px;">Cash on Delivery for this parcel: <strong>${formatINR(order.cod_amount)}</strong>. Please keep this amount ready.</p>`
+        : ''
+    }
+    ${
+      hasRemaining
+        ? `<div style="margin-top:18px; padding:14px 16px; background:#fffaf5; border:1px solid #ecdfd2; border-radius:8px;">
+             <p style="margin:0 0 6px; font-weight:bold; color:${BRAND_COLOR};">Your remaining item${order.remaining_items.length > 1 ? 's' : ''} will follow soon</p>
+             <p style="margin:0 0 8px; font-size:14px;">${order.remaining_items.length > 1 ? 'These items are' : 'This item is'} being prepared for our next lot and should ship <strong>${when}</strong>. We will email you again, with its own tracking number, the moment it leaves us. There is nothing extra to pay and no action needed from you.</p>
+             ${itemsTable(order.remaining_items)}
+           </div>`
+        : ''
+    }
+    <p style="text-align:center; margin-top: 20px;">
+      <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/track/${order.id}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+        Track My Order
+      </a>
+    </p>
+    <p style="font-size:13px; color:#6b5f57; text-align:center;">Every parcel is tracked separately on this page. No login needed.</p>
+  `);
+  return { subject, html };
+}
+
+// Out-for-delivery / delivered email for ONE parcel of a split order.
+export function shipmentLifecycleEmail(order: {
+  id: string;
+  customer_name?: string;
+  kind: 'out_for_delivery' | 'delivered';
+  shipment_no: number;
+  waybill: string;
+  courier_name?: string | null;
+  shipped_items: any[];
+  remaining_count: number;
+  next_min_days?: number | null;
+  next_max_days?: number | null;
+}) {
+  const shortId = order.id.slice(0, 8);
+  const lo = Number(order.next_min_days || 4);
+  const hi = Number(order.next_max_days || 7);
+  const when = lo === hi ? `within ${lo} days` : `within ${lo} to ${hi} days`;
+  const isOfd = order.kind === 'out_for_delivery';
+  const subject = isOfd
+    ? `Parcel ${order.shipment_no} is out for delivery — #${shortId}`
+    : `Parcel ${order.shipment_no} delivered — #${shortId}`;
+  const html = wrapper(`
+    <h2 style="margin-top:0; color:${BRAND_COLOR};">${
+      isOfd ? `Parcel ${order.shipment_no} is out for delivery today` : `Parcel ${order.shipment_no} of your order was delivered`
+    }</h2>
+    <p>Order <strong>#${shortId}</strong> · Tracking number <strong>${order.waybill}</strong>${order.courier_name ? ` (${order.courier_name})` : ''}</p>
+    ${itemsTable(order.shipped_items)}
+    ${
+      !isOfd && order.remaining_count > 0
+        ? `<p style="font-size:14px;">The rest of your order is still on its way and should ship <strong>${when}</strong>. We will email you its tracking number as soon as it leaves us.</p>`
+        : ''
+    }
+    <p style="text-align:center; margin-top: 16px;">
+      <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/track/${order.id}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+        Track My Order
+      </a>
+    </p>
+  `);
+  return { subject, html };
+}
+
 // Generic "your order status changed" email — sent on every status change
 // made from Admin -> Orders (the status dropdown / order detail view),
 // covering statuses that don't already have a dedicated email (paid,

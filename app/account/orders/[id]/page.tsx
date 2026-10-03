@@ -14,6 +14,8 @@ import OrderTracking from '@/components/order/order-tracking';
 import DeliveredItemReview from '@/components/account/delivered-item-review';
 import EditAddressButton from '@/components/order/edit-address-button';
 import { fetchFulfillmentSettings } from '@/lib/marketing-api';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { getUnshippedItemIndexes } from '@/lib/shipments';
 
 export default async function OrderDetailPage({ params }: { params: { id: string } }) {
   const user = await getCurrentUser();
@@ -38,6 +40,16 @@ export default async function OrderDetailPage({ params }: { params: { id: string
     .order('created_at', { ascending: false });
 
   const items = Array.isArray(order.items) ? order.items : [];
+  // Ownership was verified above, so reading this order's parcels with the
+  // service client is safe (order_shipments has no customer RLS policy).
+  const { data: shipmentRows } = await getSupabaseAdmin()
+    .from('order_shipments')
+    .select('item_indexes')
+    .eq('order_id', order.id);
+  const isPartlyShipped =
+    (shipmentRows?.length ?? 0) > 0 &&
+    getUnshippedItemIndexes(items, shipmentRows ?? []).length > 0 &&
+    order.status === 'shipped';
   const daysSinceOrder =
     (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60 * 24);
   const eligibleForReturn =
@@ -65,7 +77,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">
-          <Badge className="bg-muted text-foreground">{order.status}</Badge>
+          <Badge className="bg-muted text-foreground">{isPartlyShipped ? 'partly shipped' : order.status}</Badge>
           <Button asChild size="sm" variant="outline" className="gap-1.5">
             <a href={`/api/invoice/${order.id}`} download>
               <Download className="h-3.5 w-3.5" /> Download Invoice

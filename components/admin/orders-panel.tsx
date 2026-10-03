@@ -38,6 +38,7 @@ const STATUS_BORDER_COLOR: Record<string, string> = {
   failed: 'border-l-neutral-500',
 };
 import DeliveryNotificationTester from '@/components/admin/delivery-notification-tester';
+import { getUnshippedItemIndexes, nextLotPhrase, type OrderShipment } from '@/lib/shipments';
 import CreateShipmentModal, {
   type CreateShipmentPayload,
 } from '@/components/admin/create-shipment-modal';
@@ -75,6 +76,9 @@ type Order = {
   tracking_number?: string | null;
   courier_name?: string | null;
   expected_delivery_date?: string | null;
+  // Every parcel this order has been split into (oldest first). Attached by
+  // fetchOrders() -> attachShipments(). Empty until the first shipment.
+  _shipments?: OrderShipment[];
   // Refund tracking — see lib/orders-api.ts for how these two are kept
   // separate. refund_status is set only by a customer self-CANCELLATION
   // (app/api/orders/[id]/cancel); _return_refund_status is set only when
@@ -208,7 +212,25 @@ export default function OrdersPanel() {
       });
       const body = await res.json().catch(() => null);
       if (res.ok && body?.success) {
-        toast.success(`Shipment created — waybill ${body.waybill}`);
+        const shippedOrder = orders.find((o) => o.id === id);
+        const waUrl =
+          shippedOrder && body.shipment
+            ? buildParcelWhatsAppUrl(shippedOrder, body.shipment, [
+                ...(shippedOrder._shipments || []),
+                body.shipment,
+              ])
+            : null;
+        toast.success(
+          body.partial
+            ? `Parcel ${body.shipment?.shipment_no ?? ''} shipped — waybill ${body.waybill}. ${body.remaining_count} item(s) still to ship; customer emailed.`
+            : `Shipment created — waybill ${body.waybill}`,
+          waUrl
+            ? {
+                duration: 15000,
+                action: { label: 'Send on WhatsApp', onClick: () => window.open(waUrl, '_blank', 'noopener,noreferrer') },
+              }
+            : undefined
+        );
         await load();
         return true;
       }
@@ -599,6 +621,9 @@ export default function OrdersPanel() {
           const mo = orders.find((o) => o.id === shipmentModalOrderId);
           return !!mo && mo.payment_method !== 'cod' && !mo.razorpay_payment_id && mo.status !== 'paid';
         })()}
+        items={orders.find((o) => o.id === shipmentModalOrderId)?.items ?? []}
+        shipments={orders.find((o) => o.id === shipmentModalOrderId)?._shipments ?? []}
+        totalAmount={Number(orders.find((o) => o.id === shipmentModalOrderId)?.total_amount || 0)}
         confirming={creatingShipmentFor === shipmentModalOrderId}
         onConfirm={confirmShipmentFromModal}
       />
@@ -833,6 +858,77 @@ function buildPaidConfirmationWhatsAppUrl(order: Order): string | null {
     `*Team ${STORE_NAME}*`,
   ];
   return `https://wa.me/${digits}?text=${encodeURIComponent(lines.join('\n'))}`;
+}
+
+// ---- WhatsApp update for ONE parcel of a split order ---------------------
+// `allShipments` = every parcel of the order INCLUDING `shipment`, so the
+// message can list what is still unshipped and promise the next lot.
+function buildParcelWhatsAppUrl(
+  order: Order,
+  shipment: OrderShipment,
+  allShipments: OrderShipment[]
+): string | null {
+  const digits = getWhatsAppDigits(order);
+  if (!digits) return null;
+
+  const siteUrl = (
+    process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== 'undefined' ? window.location.origin : '')
+  ).replace(/\/$/, '');
+  const trackLink = `${siteUrl}/track/${order.id}`;
+  const shortId = order.id.slice(0, 8).toUpperCase();
+  const first = (order.customer_name || '').trim().split(/\s+/)[0];
+  const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
+
+  const lines = (list: any[]) =>
+    list.map((it) => {
+      const name = it.product_name || it.name || 'Your selection';
+      const qty = Number(it.quantity ?? 1);
+      const extras = [it.color ? `Color: ${it.color}` : '', it.size ? `Size: ${it.size}` : '', qty > 1 ? `Qty: ${qty}` : '']
+        .filter(Boolean)
+        .join('  ·  ');
+      return `*${name}*${extras ? `\n${extras}` : ''}`;
+    });
+
+  const allItems: any[] = Array.isArray(order.items) ? order.items : [];
+  const remaining = getUnshippedItemIndexes(allItems, allShipments).map((i) => allItems[i]);
+  const shippedItems: any[] = Array.isArray(shipment.items) ? shipment.items : [];
+  const when = nextLotPhrase(shipment.next_shipment_min_days, shipment.next_shipment_max_days);
+
+  const body = [
+    `Dear${first ? ` ${first}` : ''},`,
+    '',
+    remaining.length > 0
+      ? `Good news! *Part of your order #${shortId}* has been shipped.`
+      : `Good news! The *rest of your order #${shortId}* has been shipped.`,
+    '',
+    `*In this parcel (Parcel ${shipment.shipment_no})*`,
+    ...lines(shippedItems),
+    '',
+    `*Shipment details*`,
+    `Courier: ${shipment.courier_name || 'Delhivery'}`,
+    `Tracking number: ${shipment.waybill}`,
+    ...(Number(shipment.cod_amount) > 0
+      ? ['', `Cash on Delivery for this parcel: please keep *${inr(Number(shipment.cod_amount))}* ready.`]
+      : []),
+    '',
+    ...(remaining.length > 0
+      ? [
+          `*Your remaining item${remaining.length > 1 ? 's' : ''}*`,
+          ...lines(remaining),
+          `${remaining.length > 1 ? 'These are' : 'This is'} being prepared in our next lot and will ship *${when}*. We will message you its tracking number the moment it leaves us. No extra charge and nothing for you to do. 🙏`,
+          '',
+        ]
+      : []),
+    `*Track every parcel anytime*`,
+    trackLink,
+    '',
+    `Thank you for your patience.`,
+    '',
+    `Warm regards,`,
+    `*Team ${STORE_NAME}*`,
+  ];
+
+  return `https://wa.me/${digits}?text=${encodeURIComponent(body.join('\n'))}`;
 }
 
 function WhatsAppLinkButton({
@@ -1281,6 +1377,9 @@ function OrderRow({
 }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const remainingToShip =
+    (order._shipments?.length ?? 0) > 0 ? getUnshippedItemIndexes(order.items, order._shipments).length : 0;
+  const isSplitOrder = (order._shipments?.length ?? 0) > 1 || !!order._shipments?.some((x) => x.is_partial);
   // Contact/address edit mode -- only offered while the order hasn't shipped
   // yet (see `canEditDetails` below), so admins can't quietly change the
   // destination on a package that's already with the courier.
@@ -1584,9 +1683,23 @@ function OrderRow({
               <WhatsAppStatusButton order={order} kind="payment_reminder" />
             </div>
           )}
-          {order.status === 'shipped' && (
+          {order.status === 'shipped' && !isSplitOrder && (
             <div className="mt-1.5">
               <WhatsAppStatusButton order={order} kind="shipped" />
+            </div>
+          )}
+          {/* Split order: one WhatsApp message per parcel, each mentioning
+              what is still to come and the "next lot in 4-7 days" promise. */}
+          {isSplitOrder && order.status !== 'cancelled' && order.status !== 'failed' && (
+            <div className="mt-1.5 flex flex-col gap-1">
+              {order._shipments!.map((sh) => (
+                <WhatsAppLinkButton
+                  key={sh.id}
+                  url={buildParcelWhatsAppUrl(order, sh, order._shipments!)}
+                  label={`Send parcel ${sh.shipment_no} update on WhatsApp`}
+                  title="Open WhatsApp with this parcel's shipping update (and what's still to come) ready to send"
+                />
+              ))}
             </div>
           )}
           {order.status === 'delivered' && (
@@ -1640,10 +1753,41 @@ function OrderRow({
           )}
         </td>
         <td className="px-4 py-3 align-top text-sm">
-          {order.tracking_number ? (
-            <div className="flex items-center gap-1.5 text-xs">
-              <Truck className="h-3.5 w-3.5 text-secondary" />
-              <span className="font-medium">{order.tracking_number}</span>
+          {order.tracking_number || (order._shipments?.length ?? 0) > 0 ? (
+            <div className="flex flex-col items-start gap-1.5">
+              {(order._shipments?.length ?? 0) > 0 ? (
+                order._shipments!.map((sh) => (
+                  <div key={sh.id} className="flex items-center gap-1.5 text-xs">
+                    <Truck className="h-3.5 w-3.5 text-secondary" />
+                    {(order._shipments!.length > 1 || sh.is_partial) && (
+                      <span className="rounded bg-muted px-1 text-[10px] font-semibold">P{sh.shipment_no}</span>
+                    )}
+                    <span className="font-medium">{sh.waybill}</span>
+                  </div>
+                ))
+              ) : (
+                <div className="flex items-center gap-1.5 text-xs">
+                  <Truck className="h-3.5 w-3.5 text-secondary" />
+                  <span className="font-medium">{order.tracking_number}</span>
+                </div>
+              )}
+              {remainingToShip > 0 && !['cancelled', 'delivered', 'failed'].includes(order.status) && (
+                <>
+                  <span className="text-[11px] font-medium text-amber-700">
+                    {remainingToShip} item{remainingToShip > 1 ? 's' : ''} not shipped yet
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={creatingShipment}
+                    onClick={() => onCreateShipment(order.id)}
+                    className="h-auto gap-1.5 px-2 py-1 text-[11px]"
+                  >
+                    {creatingShipment ? <Loader2 className="h-3 w-3 animate-spin" /> : <Truck className="h-3 w-3" />}
+                    Ship remaining items
+                  </Button>
+                </>
+              )}
             </div>
           ) : order.status === 'cancelled' ? (
             // Cancelled orders never ship -- showing "Create Shipment" here

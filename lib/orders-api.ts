@@ -164,7 +164,29 @@ export async function fetchOrders() {
   if (error) throw error;
   const withSources = await attachItemSources(supabase, data ?? []);
   const withReturns = await attachReturnRefundStatus(supabase, withSources);
-  return attachReviewRewards(supabase, withReturns);
+  const withRewards = await attachReviewRewards(supabase, withReturns);
+  return attachShipments(supabase, withRewards);
+}
+
+// Adds `_shipments` (every parcel of the order, oldest first) to each order
+// for the Admin > Orders UI. Quietly returns orders untouched if the
+// order_shipments table doesn't exist yet (migration not applied).
+async function attachShipments<T extends { id: string }>(supabase: any, orders: T[]): Promise<(T & { _shipments: any[] })[]> {
+  if (orders.length === 0) return [];
+  const { data, error } = await supabase
+    .from('order_shipments')
+    .select('*')
+    .in('order_id', orders.map((o) => o.id))
+    .order('shipment_no', { ascending: true });
+  const byOrder = new Map<string, any[]>();
+  if (!error) {
+    for (const row of data ?? []) {
+      const list = byOrder.get(row.order_id) ?? [];
+      list.push(row);
+      byOrder.set(row.order_id, list);
+    }
+  }
+  return orders.map((o) => ({ ...o, _shipments: byOrder.get(o.id) ?? [] }));
 }
 
 // Called from Admin -> Orders whenever the admin changes an order's status

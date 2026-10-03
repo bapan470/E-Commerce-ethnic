@@ -4,7 +4,13 @@ import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { createDelhiveryShipment } from '@/lib/delhivery-api';
 import { sendEmail } from '@/lib/email';
-import { orderShippedEmail } from '@/lib/email-templates';
+import { orderShippedEmail, orderPartialShippedEmail } from '@/lib/email-templates';
+import {
+  getUnshippedItemIndexes,
+  suggestCodAmount,
+  DEFAULT_NEXT_LOT_MIN_DAYS,
+  DEFAULT_NEXT_LOT_MAX_DAYS,
+} from '@/lib/shipments';
 
 export async function POST(req: Request) {
   const cookie = cookies().get(ADMIN_SESSION_COOKIE)?.value ?? null;
@@ -30,6 +36,13 @@ export async function POST(req: Request) {
         }
       : undefined;
 
+  // Partial shipment inputs (all optional -- omitted = ship every remaining item).
+  const requestedIndexes: number[] | null = Array.isArray(body?.itemIndexes)
+    ? body.itemIndexes.map((n: any) => Number(n)).filter((n: number) => Number.isInteger(n) && n >= 0)
+    : null;
+  const nextMinDays = Math.max(1, Math.round(Number(body?.nextMinDays) || DEFAULT_NEXT_LOT_MIN_DAYS));
+  const nextMaxDays = Math.max(nextMinDays, Math.round(Number(body?.nextMaxDays) || DEFAULT_NEXT_LOT_MAX_DAYS));
+
   const supabase = getSupabaseAdmin();
 
   try {
@@ -43,12 +56,42 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 
-    if (order.tracking_number) {
+    const { data: existingShipments, error: shipmentsError } = await supabase
+      .from('order_shipments')
+      .select('shipment_no, item_indexes, cod_amount')
+      .eq('order_id', orderId)
+      .order('shipment_no', { ascending: true });
+    if (shipmentsError) throw shipmentsError;
+    const prior = existingShipments ?? [];
+
+    const orderItems: any[] = Array.isArray(order.items) ? order.items : [];
+    const unshipped = getUnshippedItemIndexes(orderItems, prior);
+
+    // Legacy safety net: an order with a waybill but no shipment row (the
+    // migration back-fills these, so this should never happen).
+    if (order.tracking_number && prior.length === 0) {
       return NextResponse.json(
         { error: `Order already has a tracking number (${order.tracking_number})` },
         { status: 400 }
       );
     }
+    if (unshipped.length === 0) {
+      return NextResponse.json({ error: 'All items of this order are already shipped.' }, { status: 400 });
+    }
+
+    const selected = (requestedIndexes ?? unshipped).filter((i, pos, arr) => arr.indexOf(i) === pos);
+    if (selected.length === 0 || selected.some((i) => !unshipped.includes(i))) {
+      return NextResponse.json(
+        { error: 'Pick at least one item that has not been shipped yet.' },
+        { status: 400 }
+      );
+    }
+
+    const isPartial = selected.length < unshipped.length;
+    const isFirst = prior.length === 0;
+    const shipmentNo = prior.reduce((m, x) => Math.max(m, x.shipment_no), 0) + 1;
+    const shipItems = selected.map((i) => orderItems[i]);
+    const remainingIndexes = unshipped.filter((i) => !selected.includes(i));
 
     // Guard: an online order whose payment hasn't been captured would go to
     // Delhivery as Prepaid (cod_amount 0) and the courier would collect no
@@ -66,6 +109,39 @@ export async function POST(req: Request) {
       );
     }
 
+    // COD: split the cash between parcels. Admin may override the suggestion.
+    const suggestedCod = suggestCodAmount({
+      paymentMethod: order.payment_method,
+      totalAmount: order.total_amount,
+      items: orderItems,
+      selectedIndexes: selected,
+      existingShipments: prior,
+    });
+    const priorCod = prior.reduce((sum, x) => sum + Number(x.cod_amount || 0), 0);
+    const maxCod = Math.max(0, Number(order.total_amount || 0) - priorCod);
+    const codAmount =
+      order.payment_method === 'cod'
+        ? body?.codAmount !== undefined && body?.codAmount !== null && body?.codAmount !== ''
+          ? Math.min(maxCod, Math.max(0, Math.round(Number(body.codAmount) || 0)))
+          : suggestedCod
+        : 0;
+
+    // Declared value: whole order for a single parcel, otherwise pro-rata to item value.
+    const lineVal = (it: any) => Number(it?.price || 0) * Number(it?.quantity || 1);
+    const allVal = orderItems.reduce((sum, it) => sum + lineVal(it), 0);
+    const selVal = shipItems.reduce((sum, it) => sum + lineVal(it), 0);
+    const declaredValue =
+      isFirst && !isPartial
+        ? Number(order.total_amount)
+        : allVal > 0
+          ? Math.max(1, Math.round((Number(order.total_amount) * selVal) / allVal))
+          : Number(order.total_amount);
+
+    // Delhivery rejects a re-used `order` reference, so every parcel after
+    // (or alongside) the first needs its own suffix. A normal single-parcel
+    // order keeps the plain order id exactly as before.
+    const orderRef = isFirst && !isPartial ? order.id : `${order.id}-P${shipmentNo}`;
+
     const result = await createDelhiveryShipment(
       {
         id: order.id,
@@ -73,10 +149,11 @@ export async function POST(req: Request) {
         customer_phone: order.customer_phone,
         total_amount: order.total_amount,
         payment_method: order.payment_method,
-        items: Array.isArray(order.items) ? order.items : [],
+        items: orderItems,
         shipping_address: order.shipping_address,
       },
-      packageDetails
+      packageDetails,
+      { orderRef, items: shipItems, codAmount, declaredValue }
     );
 
     if (!result.success || !result.waybill) {
@@ -96,42 +173,84 @@ export async function POST(req: Request) {
     // (delivered/cancelled) or explicitly still awaiting payment collection.
     const nextStatus = ['pending', 'paid'].includes(order.status) ? 'shipped' : order.status;
 
-    const { error: updateError } = await supabase
-      .from('orders')
-      .update({
-        tracking_number: result.waybill,
+    const { data: insertedShipment, error: insertError } = await supabase
+      .from('order_shipments')
+      .insert({
+        order_id: orderId,
+        shipment_no: shipmentNo,
+        waybill: result.waybill,
         courier_name: 'Delhivery',
-        status: nextStatus,
+        shipping_mode: packageDetails?.shipping_mode ?? 'S',
+        weight_grams: packageDetails?.weight_grams ?? null,
+        length_cm: packageDetails?.length_cm ?? null,
+        width_cm: packageDetails?.width_cm ?? null,
+        height_cm: packageDetails?.height_cm ?? null,
+        item_indexes: selected,
+        items: shipItems,
+        cod_amount: codAmount,
+        is_partial: isPartial,
+        next_shipment_min_days: isPartial ? nextMinDays : null,
+        next_shipment_max_days: isPartial ? nextMaxDays : null,
       })
-      .eq('id', orderId);
+      .select('*')
+      .single();
+    if (insertError) {
+      // The waybill already exists at Delhivery -- surface it so it can be fixed by hand.
+      console.error(`[delhivery/create-shipment] waybill ${result.waybill} created but not saved for order ${orderId}`, insertError);
+      throw new Error(`Waybill ${result.waybill} was created at Delhivery but could not be saved: ${insertError.message}`);
+    }
 
+    // orders.tracking_number keeps pointing at the FIRST parcel so everything
+    // that only knows about one waybill (vendor dashboard, returns, invoice,
+    // cancel gating) keeps working. Later parcels live in order_shipments.
+    const orderUpdate: Record<string, any> = { status: nextStatus };
+    if (isFirst) {
+      orderUpdate.tracking_number = result.waybill;
+      orderUpdate.courier_name = 'Delhivery';
+    }
+    const { error: updateError } = await supabase.from('orders').update(orderUpdate).eq('id', orderId);
     if (updateError) throw updateError;
 
     if (order.customer_email) {
-      const { subject, html } = orderShippedEmail({
-        id: order.id,
-        customer_name: order.customer_name,
-        tracking_number: result.waybill,
-        courier_name: 'Delhivery',
-      });
-      // Best-effort — a failed email shouldn't undo the shipment creation.
-      // The sent_at write is separate from (and doesn't block) the send
-      // itself -- if it fails, worst case the Email Log just shows this
-      // send as missing even though it went out, same tradeoff every other
-      // *_email_sent_at column in this codebase already makes.
+      const { subject, html } =
+        isFirst && !isPartial
+          ? orderShippedEmail({
+              id: order.id,
+              customer_name: order.customer_name,
+              tracking_number: result.waybill,
+              courier_name: 'Delhivery',
+            })
+          : orderPartialShippedEmail({
+              id: order.id,
+              customer_name: order.customer_name,
+              shipment_no: shipmentNo,
+              waybill: result.waybill,
+              courier_name: 'Delhivery',
+              shipped_items: shipItems,
+              remaining_items: remainingIndexes.map((i) => orderItems[i]),
+              next_min_days: nextMinDays,
+              next_max_days: nextMaxDays,
+              cod_amount: codAmount,
+            });
+      // Best-effort -- a failed email shouldn't undo the shipment creation.
       sendEmail({ to: order.customer_email, subject, html })
-        .then((result) => {
-          if (result.success) {
-            return supabase
-              .from('orders')
-              .update({ shipped_email_sent_at: new Date().toISOString() })
-              .eq('id', orderId);
-          }
+        .then(async (sent) => {
+          if (!sent.success) return;
+          const nowIso = new Date().toISOString();
+          await supabase.from('order_shipments').update({ shipped_email_sent_at: nowIso }).eq('id', insertedShipment.id);
+          if (isFirst) await supabase.from('orders').update({ shipped_email_sent_at: nowIso }).eq('id', orderId);
         })
         .catch(() => {});
     }
 
-    return NextResponse.json({ success: true, waybill: result.waybill, status: nextStatus });
+    return NextResponse.json({
+      success: true,
+      waybill: result.waybill,
+      status: nextStatus,
+      shipment: insertedShipment,
+      partial: isPartial,
+      remaining_count: remainingIndexes.length,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to create shipment';
     console.error(`[delhivery/create-shipment] threw for order ${orderId}:`, err);

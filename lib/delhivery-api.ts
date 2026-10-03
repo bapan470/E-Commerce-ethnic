@@ -198,9 +198,24 @@ export interface CreateShipmentResult {
  * Creates (manifests) a shipment on Delhivery for the given order and
  * returns the assigned waybill (tracking) number.
  */
+export interface ShipmentOverrides {
+  /**
+   * Delhivery's `order` reference. Must be unique per live waybill, so a
+   * partial shipment uses e.g. `<orderId>-P2`. Defaults to the order id.
+   */
+  orderRef?: string;
+  /** Only these items go in this parcel (partial shipment). Defaults to all items. */
+  items?: Array<{ product_name?: string; quantity?: number }>;
+  /** Cash Delhivery collects for THIS parcel. Defaults to the full order total for COD. */
+  codAmount?: number;
+  /** Declared value of THIS parcel. Defaults to the full order total. */
+  declaredValue?: number;
+}
+
 export async function createDelhiveryShipment(
   order: OrderForShipment,
-  packageDetails?: PackageDetails
+  packageDetails?: PackageDetails,
+  overrides: ShipmentOverrides = {}
 ): Promise<CreateShipmentResult> {
   const settings = await fetchDelhiverySettingsServer();
   if (!settings.enabled) {
@@ -212,7 +227,11 @@ export async function createDelhiveryShipment(
 
   const token = getApiToken();
   const addr = order.shipping_address;
-  const productDesc = order.items.map((i) => `${i.product_name} x${i.quantity}`).join(', ');
+  const shipItems = overrides.items ?? order.items;
+  const productDesc = shipItems.map((i) => `${i.product_name} x${i.quantity}`).join(', ');
+  const isCod = order.payment_method === 'cod';
+  const codAmount = isCod ? Math.max(0, Number(overrides.codAmount ?? order.total_amount)) : 0;
+  const declaredValue = Number(overrides.declaredValue ?? order.total_amount);
 
   const payload = {
     pickup_location: {
@@ -235,12 +254,12 @@ export async function createDelhiveryShipment(
         country: addr?.country || 'India',
         pin: addr?.pincode || '',
         phone: order.customer_phone || '',
-        order: order.id,
-        payment_mode: order.payment_method === 'cod' ? 'COD' : 'Prepaid',
-        cod_amount: order.payment_method === 'cod' ? order.total_amount : 0,
-        total_amount: order.total_amount,
+        order: overrides.orderRef || order.id,
+        payment_mode: isCod ? 'COD' : 'Prepaid',
+        cod_amount: codAmount,
+        total_amount: declaredValue,
         products_desc: productDesc || 'Ethnic wear',
-        quantity: String(order.items.reduce((s, i) => s + (i.quantity || 1), 0)),
+        quantity: String(shipItems.reduce((s, i) => s + (i.quantity || 1), 0)),
         seller_gst_tin: settings.seller_gst_tin || undefined,
         hsn_code: '6204', // Women's ethnic wear/garments — adjust per your product HSN if needed
         // Weight/dimensions from the pre-shipment popup. Delhivery uses these to

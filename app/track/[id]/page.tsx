@@ -11,6 +11,7 @@ import PaymentPendingBanner from '@/components/order/payment-pending-banner';
 import { toPublicMediaUrl } from '@/lib/media-url';
 import { DEFAULT_LOYALTY_SETTINGS, type LoyaltySettings } from '@/lib/loyalty-api';
 import { DEFAULT_REFERRAL_SETTINGS, type ReferralSettings } from '@/lib/referrals-api';
+import { getUnshippedItemIndexes } from '@/lib/shipments';
 
 // Guest-friendly tracking page. Uses the exact same trust model already used
 // by /order-confirmation/[id] and the self-cancel API: the order UUID itself
@@ -59,7 +60,23 @@ export default async function TrackOrderPage({ params }: { params: { id: string 
   const items = Array.isArray(order.items) ? order.items : [];
   const isCancelled = order.status === 'cancelled' || order.status === 'failed';
   const isUnpaidPending = order.status === 'pending' && order.payment_method !== 'cod';
-  const stepIdx = currentStepIndex(order);
+  // Split (partial) shipments: items can leave in different parcels. The big
+  // stepper reflects the order as a whole, so while anything is still unshipped
+  // it stays on "Shipped" (relabelled "Partly Shipped"); per-parcel progress is
+  // shown in the tracking section below.
+  const { data: shipmentRows } = await supabase
+    .from('order_shipments')
+    .select('item_indexes, expected_delivery_date, delivery_status')
+    .eq('order_id', order.id);
+  const shipmentList = shipmentRows ?? [];
+  const unshippedCount = shipmentList.length > 0 ? getUnshippedItemIndexes(items, shipmentList).length : 0;
+  const isPartlyShipped = shipmentList.length > 0 && unshippedCount > 0 && !isCancelled && order.status !== 'delivered';
+  const stepIdx = isPartlyShipped ? 2 : currentStepIndex(order);
+  const steps = STEPS.map((st) => (st.key === 'shipped' && isPartlyShipped ? { ...st, label: 'Partly Shipped' } : st));
+  const nextParcelDate = shipmentList
+    .filter((x: any) => x.expected_delivery_date && x.delivery_status !== 'delivered')
+    .map((x: any) => x.expected_delivery_date as string)
+    .sort()[0];
 
   // Loyalty points preview — mirrors the block on /order-confirmation/[id].
   // Reads settings via the admin client (not fetchLoyaltySettings(), which
@@ -106,8 +123,8 @@ export default async function TrackOrderPage({ params }: { params: { id: string 
     // keep defaults
   }
 
-  const expected = order.expected_delivery_date
-    ? new Date(order.expected_delivery_date).toLocaleDateString('en-IN', {
+  const expected = (nextParcelDate || order.expected_delivery_date)
+    ? new Date((nextParcelDate || order.expected_delivery_date) as string).toLocaleDateString('en-IN', {
         weekday: 'long',
         day: 'numeric',
         month: 'long',
@@ -161,7 +178,7 @@ export default async function TrackOrderPage({ params }: { params: { id: string 
       {/* Status stepper */}
       {!isCancelled ? (
         <div className="mt-8 flex items-start justify-between">
-          {STEPS.map((step, i) => {
+          {steps.map((step, i) => {
             const done = i <= stepIdx;
             const Icon = done ? step.icon : Circle;
             return (
@@ -176,7 +193,7 @@ export default async function TrackOrderPage({ params }: { params: { id: string 
                     <Icon className="h-4 w-4" />
                   </div>
                   <div
-                    className={`h-px flex-1 ${i === STEPS.length - 1 ? 'opacity-0' : i < stepIdx ? 'bg-secondary' : 'bg-border'}`}
+                    className={`h-px flex-1 ${i === steps.length - 1 ? 'opacity-0' : i < stepIdx ? 'bg-secondary' : 'bg-border'}`}
                   />
                 </div>
                 <span className={`mt-2 text-[11px] font-medium leading-tight ${done ? 'text-foreground' : 'text-muted-foreground'}`}>

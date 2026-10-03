@@ -23,6 +23,8 @@
 
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { sendEmail } from '@/lib/email';
+import { shipmentLifecycleEmail } from '@/lib/email-templates';
+import { getUnshippedItemIndexes } from '@/lib/shipments';
 import {
   renderCartRecoveryEmail,
   paymentReminderEmail,
@@ -717,6 +719,17 @@ export async function runReturnPickupTrackingJob() {
 export async function runForwardShipmentTrackingJob() {
   const supabase = getSupabaseAdmin();
 
+  // Orders that went out as several parcels (order_shipments) are tracked
+  // parcel-by-parcel below. Ordinary single-parcel orders keep the original
+  // order-level flow, completely unchanged.
+  const splitResult = await runSplitShipmentTracking().catch((err: any) => ({
+    checked: 0,
+    delivered: 0,
+    rto: 0,
+    errors: [`split-shipments: ${err?.message || err}`],
+    splitOrderIds: new Set<string>(),
+  }));
+
   const { data: allTracked, error } = await supabase
     .from('orders')
     .select(
@@ -730,16 +743,24 @@ export async function runForwardShipmentTrackingJob() {
   // (SQL's `NULL NOT IN (...)` is NULL, not true) — which is exactly the
   // freshly-shipped orders this job most needs to check.
   const orders = (allTracked || []).filter(
-    (o) => o.delivery_status !== 'delivered' && o.delivery_status !== 'rto_delivered'
+    (o) =>
+      o.delivery_status !== 'delivered' &&
+      o.delivery_status !== 'rto_delivered' &&
+      !splitResult.splitOrderIds.has(o.id)
   );
 
   if (orders.length === 0) {
-    return { checked: 0, delivered: 0, rto: 0, errors: [] as string[] };
+    return {
+      checked: splitResult.checked,
+      delivered: splitResult.delivered,
+      rto: splitResult.rto,
+      errors: splitResult.errors,
+    };
   }
 
-  let delivered = 0;
-  let rto = 0;
-  const errors: string[] = [];
+  let delivered = splitResult.delivered;
+  let rto = splitResult.rto;
+  const errors: string[] = [...splitResult.errors];
 
   for (const order of orders) {
     try {
@@ -815,7 +836,173 @@ export async function runForwardShipmentTrackingJob() {
     }
   }
 
-  return { checked: orders.length, delivered, rto, errors };
+  return { checked: orders.length + splitResult.checked, delivered, rto, errors };
+}
+
+// ----------------------- Split (partial) shipment tracking -----------------------
+// An order is "split" when it has more than one parcel, or its only parcel
+// was created as partial (other items still to come). Each parcel has its own
+// waybill + status row in order_shipments. The order itself is only marked
+// delivered once EVERY item has shipped AND every parcel is delivered.
+async function runSplitShipmentTracking() {
+  const supabase = getSupabaseAdmin();
+  const empty = { checked: 0, delivered: 0, rto: 0, errors: [] as string[], splitOrderIds: new Set<string>() };
+
+  const { data: allShipments, error } = await supabase
+    .from('order_shipments')
+    .select('*')
+    .order('shipment_no', { ascending: true });
+  // Table missing (migration not applied yet) -> behave exactly like before.
+  if (error || !allShipments) return empty;
+
+  const byOrder = new Map<string, any[]>();
+  for (const sh of allShipments) {
+    const list = byOrder.get(sh.order_id) ?? [];
+    list.push(sh);
+    byOrder.set(sh.order_id, list);
+  }
+
+  const splitOrderIds = new Set<string>();
+  byOrder.forEach((list, orderId) => {
+    if (list.length > 1 || list.some((x) => x.is_partial)) splitOrderIds.add(orderId);
+  });
+  if (splitOrderIds.size === 0) return empty;
+
+  const ids = Array.from(splitOrderIds);
+  const { data: orderRows } = await supabase
+    .from('orders')
+    .select('id, customer_phone, customer_email, customer_name, status, items, delivery_status')
+    .in('id', ids);
+  const orderById = new Map<string, any>((orderRows || []).map((o: any) => [o.id, o]));
+
+  let checked = 0;
+  let delivered = 0;
+  let rto = 0;
+  const errors: string[] = [];
+
+  for (const orderId of ids) {
+    const order = orderById.get(orderId);
+    if (!order || ['cancelled', 'failed'].includes(order.status)) continue;
+    const shipments = byOrder.get(orderId) ?? [];
+    const remainingCount = getUnshippedItemIndexes(order.items, shipments).length;
+
+    for (const sh of shipments) {
+      if (sh.delivery_status === 'delivered' || sh.delivery_status === 'rto_delivered') continue;
+      checked++;
+      try {
+        const tracking = await trackDelhiveryShipment(sh.waybill);
+        const prevStatus: string | null = sh.delivery_status ?? null;
+        const patch: Record<string, any> = { delivery_last_checked_at: new Date().toISOString() };
+
+        if (tracking.expectedDeliveryDate) {
+          const d = new Date(tracking.expectedDeliveryDate);
+          if (!isNaN(d.getTime())) patch.expected_delivery_date = d.toISOString().slice(0, 10);
+        }
+
+        let nextStatus: string | null = sh.delivery_status;
+        let isOfd = false;
+        if (tracking.tracked && tracking.currentStatus) {
+          const t = tracking.currentStatus.toLowerCase();
+          if (t.includes('rto')) nextStatus = t.includes('deliver') ? 'rto_delivered' : 'rto_initiated';
+          else if (t.includes('deliver')) nextStatus = 'delivered';
+          else if (t.includes('out for delivery')) {
+            nextStatus = 'in_transit';
+            isOfd = true;
+          } else if (t.includes('transit') || t.includes('dispatch') || t.includes('pending')) nextStatus = 'in_transit';
+        }
+        if (nextStatus !== sh.delivery_status) {
+          patch.delivery_status = nextStatus;
+          patch.delivery_status_updated_at = new Date().toISOString();
+        }
+        if (isOfd) patch.out_for_delivery = true;
+        await supabase.from('order_shipments').update(patch).eq('id', sh.id);
+        Object.assign(sh, patch);
+
+        const emailCtx = {
+          id: order.id,
+          customer_name: order.customer_name,
+          shipment_no: sh.shipment_no,
+          waybill: sh.waybill,
+          courier_name: sh.courier_name,
+          shipped_items: Array.isArray(sh.items) ? sh.items : [],
+          remaining_count: remainingCount,
+          next_min_days: sh.next_shipment_min_days,
+          next_max_days: sh.next_shipment_max_days,
+        };
+
+        if (isOfd && !sh.out_for_delivery_email_sent_at && order.customer_email) {
+          const { subject, html } = shipmentLifecycleEmail({ ...emailCtx, kind: 'out_for_delivery' });
+          const sent = await sendEmail({ to: order.customer_email, subject, html }).catch(() => null);
+          if (sent?.success) {
+            const at = new Date().toISOString();
+            await supabase.from('order_shipments').update({ out_for_delivery_email_sent_at: at }).eq('id', sh.id);
+            sh.out_for_delivery_email_sent_at = at;
+          }
+        }
+
+        const isRtoNow = nextStatus === 'rto_initiated' || nextStatus === 'rto_delivered';
+        const wasRto = prevStatus === 'rto_initiated' || prevStatus === 'rto_delivered';
+        const becameRto = isRtoNow && !wasRto;
+        if (becameRto) {
+          rto++;
+          recordReturnRiskIncident(supabase, order.customer_phone, 'rto').catch(() => {});
+        }
+
+        if (nextStatus === 'delivered') {
+          delivered++;
+          const allShipped = remainingCount === 0;
+          const allDelivered = shipments.every((x) => x.delivery_status === 'delivered');
+          if (allShipped && allDelivered) {
+            // Last parcel in: whole order is delivered. Same path the
+            // single-parcel flow uses (flips status + sends "Delivered!").
+            await supabase
+              .from('orders')
+              .update({ delivery_status: 'delivered', delivery_status_updated_at: new Date().toISOString() })
+              .eq('id', order.id);
+            if (order.status !== 'delivered') {
+              await sendDeliveredNotification(order.id).catch((err) =>
+                errors.push(`order ${order.id} delivered-email: ${err?.message || err}`)
+              );
+            }
+            await supabase
+              .from('order_shipments')
+              .update({ delivered_email_sent_at: new Date().toISOString() })
+              .eq('id', sh.id);
+          } else if (!sh.delivered_email_sent_at && order.customer_email) {
+            const { subject, html } = shipmentLifecycleEmail({ ...emailCtx, kind: 'delivered' });
+            const sent = await sendEmail({ to: order.customer_email, subject, html }).catch(() => null);
+            if (sent?.success) {
+              await supabase
+                .from('order_shipments')
+                .update({ delivered_email_sent_at: new Date().toISOString() })
+                .eq('id', sh.id);
+            }
+          }
+        }
+      } catch (err: any) {
+        errors.push(`order ${orderId} shipment ${sh.waybill}: ${err?.message || err}`);
+      }
+    }
+
+    // Whole order bounced back only when every parcel did.
+    if (
+      remainingCount === 0 &&
+      shipments.length > 0 &&
+      shipments.every((x) => x.delivery_status === 'rto_initiated' || x.delivery_status === 'rto_delivered') &&
+      order.delivery_status !== 'rto_initiated' &&
+      order.delivery_status !== 'rto_delivered'
+    ) {
+      await supabase
+        .from('orders')
+        .update({
+          delivery_status: shipments.every((x) => x.delivery_status === 'rto_delivered') ? 'rto_delivered' : 'rto_initiated',
+          delivery_status_updated_at: new Date().toISOString(),
+        })
+        .eq('id', orderId);
+    }
+  }
+
+  return { checked, delivered, rto, errors, splitOrderIds };
 }
 
 // -------------------- Review-request emails --------------------
