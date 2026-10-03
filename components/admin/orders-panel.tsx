@@ -331,10 +331,13 @@ export default function OrdersPanel() {
   // back to COD (restores the COD price) so it can be shipped via Delhivery
   // as a normal COD parcel. See app/api/admin/orders/[id]/revert-to-cod.
   const [revertingToCodFor, setRevertingToCodFor] = useState<string | null>(null);
+  // Orders reverted during this session -> their row shows the dedicated
+  // "reverted to COD" WhatsApp message instead of the generic COD-confirmed one.
+  const [revertedIds, setRevertedIds] = useState<Set<string>>(new Set());
   const revertToCod = async (id: string) => {
     if (
       !window.confirm(
-        'Revert this order to COD? The online-payment discount will be removed and the customer will pay the original COD price on delivery.'
+        'Revert this order to COD? The online-payment discount will be removed, the customer will pay the original COD price on delivery, and an email telling them no online payment is needed will be sent.'
       )
     ) {
       return;
@@ -344,7 +347,12 @@ export default function OrdersPanel() {
       const res = await fetch(`/api/admin/orders/${id}/revert-to-cod`, { method: 'POST' });
       const body = await res.json().catch(() => ({}));
       if (res.ok && body.success) {
-        toast.success('Order reverted to COD — you can create the shipment now');
+        setRevertedIds((prev) => new Set(prev).add(id));
+        if (body.emailed) {
+          toast.success('Order reverted to COD — customer emailed. Send the WhatsApp message too, then create the shipment.');
+        } else {
+          toast.warning('Order reverted to COD, but the email could not be sent — use the WhatsApp message button.');
+        }
         await load();
       } else {
         toast.error(body.error || 'Failed to revert to COD');
@@ -566,6 +574,7 @@ export default function OrdersPanel() {
                   onRequestOnlinePayment={requestOnlinePayment}
                   onRevertToCod={revertToCod}
                   revertingToCod={revertingToCodFor === o.id}
+                  justRevertedToCod={revertedIds.has(o.id)}
                   requestingOnlinePayment={requestingOnlinePaymentFor === o.id}
                   onUpdateDetails={updateOrderDetails}
                   savingDetails={savingDetailsFor === o.id}
@@ -894,6 +903,7 @@ function WhatsAppPaidConfirmationButton({ order, className = '' }: { order: Orde
 // Each message carries at most ONE link so WhatsApp shows a clean preview.
 type StatusWhatsAppKind =
   | 'cod_confirmed'
+  | 'cod_reverted'
   | 'payment_reminder'
   | 'shipped'
   | 'delivered'
@@ -904,6 +914,10 @@ const STATUS_WA_META: Record<StatusWhatsAppKind, { label: string; title: string 
   cod_confirmed: {
     label: 'Send order confirmation on WhatsApp',
     title: 'Open WhatsApp with the COD order-confirmed message ready to send',
+  },
+  cod_reverted: {
+    label: 'Tell customer: COD, no online payment needed',
+    title: 'Open WhatsApp with the "no online payment needed, shipping as COD" message ready to send',
   },
   payment_reminder: {
     label: 'Send payment reminder on WhatsApp',
@@ -974,6 +988,21 @@ function buildStatusWhatsAppUrl(
       '',
       `*What happens next*`,
       `Our team will prepare your order. Processing takes ${PROCESSING_TIME}, then we dispatch it. We will email you every update until it reaches your hands.`,
+      '',
+      `*Track your order anytime*`,
+      trackLink,
+      '',
+      `Thank you for your trust and patience.`,
+    ];
+  } else if (kind === 'cod_reverted') {
+    body = [
+      `Earlier we had requested online payment for your order *#${shortId}*. Good news: *you no longer need to pay online.* We are shipping it as *Cash on Delivery*, as you originally placed it. Please ignore the earlier payment link, and we apologise for the confusion. 🙏`,
+      '',
+      `*Your order*`,
+      ...itemLines,
+      '',
+      `*Payment*`,
+      `Cash on Delivery: *${inr(total)}*. Please keep this amount ready at the time of delivery.`,
       '',
       `*Track your order anytime*`,
       trackLink,
@@ -1170,6 +1199,54 @@ function getRefundBadge(order: Order): { label: string; className: string } | nu
   return STYLES[status] ?? { label: `Refund: ${status}`, className: 'bg-muted text-muted-foreground' };
 }
 
+// Product-column thumbnails: one image per line item (up to 3, then a "+N"
+// tile) so a multi-saree order is obvious at a glance without opening it.
+// Every thumbnail carries its own quantity badge when qty > 1.
+function OrderItemThumbs({ items }: { items: any[] }) {
+  const list = Array.isArray(items) ? items : [];
+  const MAX = 3;
+  const shown = list.slice(0, MAX);
+  const extra = list.length - shown.length;
+  const box = 'h-9 w-9 flex-shrink-0 rounded-md border border-border/60 object-cover';
+  if (shown.length === 0) {
+    return <div className={`${box} bg-muted`} />;
+  }
+  return (
+    <div className="flex flex-shrink-0 items-center gap-1">
+      {shown.map((it, idx) => {
+        const qty = Number(it?.quantity ?? 1);
+        return (
+          <div key={idx} className="relative" title={`${it?.product_name || 'Item'}${qty > 1 ? ` × ${qty}` : ''}`}>
+            {it?.image_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={it.image_url}
+                alt={it.product_name || 'Item'}
+                className={box}
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                  e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                }}
+              />
+            ) : null}
+            <div className={`${it?.image_url ? 'hidden ' : ''}${box} bg-muted`} />
+            {qty > 1 && (
+              <span className="absolute -right-1 -top-1 rounded-full bg-primary px-1 text-[9px] font-semibold leading-4 text-primary-foreground">
+                ×{qty}
+              </span>
+            )}
+          </div>
+        );
+      })}
+      {extra > 0 && (
+        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted text-[11px] font-semibold text-muted-foreground">
+          +{extra}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OrderRow({
   order,
   selected,
@@ -1180,6 +1257,7 @@ function OrderRow({
   onRequestOnlinePayment,
   onRevertToCod,
   revertingToCod,
+  justRevertedToCod,
   requestingOnlinePayment,
   onUpdateDetails,
   savingDetails,
@@ -1193,6 +1271,7 @@ function OrderRow({
   onRequestOnlinePayment: (id: string) => void;
   onRevertToCod: (id: string) => void;
   revertingToCod: boolean;
+  justRevertedToCod: boolean;
   requestingOnlinePayment: boolean;
   onUpdateDetails: (
     id: string,
@@ -1375,23 +1454,7 @@ function OrderRow({
         </td>
         <td className="px-4 py-3 align-top">
           <div className="flex items-center gap-2">
-            {order.items[0]?.image_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={order.items[0].image_url}
-                alt={order.items[0].product_name}
-                className="h-9 w-9 flex-shrink-0 rounded-md border border-border/60 object-cover"
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).style.display = 'none';
-                  e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                }}
-              />
-            ) : null}
-            {order.items[0]?.image_url ? (
-              <div className="hidden h-9 w-9 flex-shrink-0 rounded-md border border-border/60 bg-muted" />
-            ) : (
-              <div className="h-9 w-9 flex-shrink-0 rounded-md border border-border/60 bg-muted" />
-            )}
+            <OrderItemThumbs items={order.items} />
             <div className="text-xs">
               {order.items[0]?.slug ? (
                 <Link
@@ -1407,7 +1470,9 @@ function OrderRow({
                 <div className="max-w-[9rem] truncate font-medium">{order.items[0]?.product_name || '—'}</div>
               )}
               {order.items.length > 1 && (
-                <div className="text-muted-foreground">+{order.items.length - 1} more</div>
+                <div className="font-medium text-primary">
+                  {order.items.length} items in this order
+                </div>
               )}
               {order.items[0]?.product_id && order._item_sources?.[order.items[0].product_id]?.source_name && (
                 <div
@@ -1511,7 +1576,7 @@ function OrderRow({
               (pending+converted-from-COD and paid are handled just above.) */}
           {order.status === 'pending' && isCod && (
             <div className="mt-1.5">
-              <WhatsAppStatusButton order={order} kind="cod_confirmed" />
+              <WhatsAppStatusButton order={order} kind={justRevertedToCod ? 'cod_reverted' : 'cod_confirmed'} />
             </div>
           )}
           {order.status === 'pending' && !isCod && !wasConvertedFromCod && isAwaitingOnlinePayment && (

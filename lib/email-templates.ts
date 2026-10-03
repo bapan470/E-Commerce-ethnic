@@ -1406,6 +1406,60 @@ export function codToPrepaidRequestEmail(order: {
   return { subject, html };
 }
 
+// Sent by Admin > Orders > "Revert to COD" (see
+// app/api/admin/orders/[id]/revert-to-cod/route.ts): the admin had asked
+// the customer to pay online, then decided to ship it as Cash on Delivery
+// after all. Tells the customer the pay-online link is no longer needed
+// and exactly what to pay on delivery.
+export function codRevertedEmail(order: {
+  id: string;
+  items: any[];
+  total_amount: number;
+  customer_name?: string;
+  store?: { address?: string; gstin?: string; support_email?: string; support_phone?: string };
+}) {
+  const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
+  const name = order.customer_name || 'there';
+  const subject = `Update on your order ${shortId} — no online payment needed`;
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';
+  const html = wrapper(
+    `
+    <h2 style="margin:0 0 4px; color:${BRAND_COLOR}; font-size: 21px;">Hi ${name}, good news about your order</h2>
+    <p style="margin: 0 0 18px; color:#6b5f57; font-size: 13px;">
+      Order <strong style="color:#2b2320;">${shortId}</strong> · placed with ${SITE_NAME}
+    </p>
+
+    <table role="presentation" style="width:100%; border-collapse:collapse; margin: 0 0 20px; background:#f0f9f1; border:1px solid #d5ecd8; border-left: 4px solid #1f7a3d; border-radius: 6px;">
+      <tr>
+        <td style="padding: 14px 16px; font-size: 14px; color:#2b2320; line-height:1.55;">
+          Earlier we had requested you to pay online for this order. <strong>You no longer need to pay online</strong> —
+          we are shipping your order as <strong>Cash on Delivery</strong>, exactly as you originally placed it.
+          Please ignore the earlier payment link. We apologise for the confusion and thank you for your patience.
+        </td>
+      </tr>
+    </table>
+
+    <p style="margin: 0 0 4px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #a89a8f;">Order Summary</p>
+    ${itemsTable(order.items)}
+    <table role="presentation" style="width:100%; margin: 4px 0 20px;">
+      <tr>
+        <td style="text-align:right; font-size:16px; font-weight:bold; padding-top: 6px; border-top: 2px solid ${BRAND_COLOR};">
+          Pay on delivery: ${formatINR(order.total_amount)}
+        </td>
+      </tr>
+    </table>
+
+    <p style="text-align:center; font-size:13px; color:#6b5f57; margin: 0;">
+      Please keep <strong style="color:#2b2320;">${formatINR(order.total_amount)}</strong> ready at the time of delivery.
+      You can track your order anytime from
+      <a href="${siteUrl}/account/orders/${order.id}" style="color:${BRAND_COLOR}; font-weight:bold;">My Orders → ${shortId}</a>.
+    </p>
+  `,
+    { store: order.store }
+  );
+  return { subject, html };
+}
+
 export function welcomeSeriesEmail(user: { full_name?: string; coupon_code?: string }) {
   const subject = `Welcome to ${SITE_NAME}${user.coupon_code ? " — here's 10% off" : ''}`;
   const html = wrapper(`

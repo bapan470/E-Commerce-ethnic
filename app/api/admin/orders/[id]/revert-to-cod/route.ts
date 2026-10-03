@@ -3,6 +3,8 @@ import { cookies } from 'next/headers';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { logPaymentRequestEvent } from '@/lib/order-payment-events';
+import { sendEmail } from '@/lib/email';
+import { codRevertedEmail } from '@/lib/email-templates';
 
 // Admin > Orders > "Revert to COD" -- the undo of "Request Online Payment".
 //
@@ -34,7 +36,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   const { data: order, error } = await supabase
     .from('orders')
     .select(
-      'id, status, payment_method, original_payment_method, total_amount, online_payment_discount, razorpay_payment_id, tracking_number'
+      'id, status, payment_method, original_payment_method, total_amount, online_payment_discount, razorpay_payment_id, tracking_number, items, customer_name, customer_email'
     )
     .eq('id', params.id)
     .maybeSingle();
@@ -95,5 +97,30 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     meta: { restored_total: restoredTotal, removed_discount: discount },
   });
 
-  return NextResponse.json({ success: true, total_amount: restoredTotal });
+  // Tell the customer they no longer need to pay online. Best-effort: the
+  // revert itself has already succeeded, so a mail failure is only reported
+  // back (emailed:false) and never rolls anything back.
+  let emailed = false;
+  if (order.customer_email) {
+    try {
+      const { data: storeSetting } = await supabase
+        .from('settings')
+        .select('value')
+        .eq('key', 'store_info')
+        .maybeSingle();
+      const { subject, html } = codRevertedEmail({
+        id: order.id,
+        items: Array.isArray(order.items) ? order.items : [],
+        total_amount: restoredTotal,
+        customer_name: order.customer_name,
+        store: (storeSetting?.value as any) || undefined,
+      });
+      const sendResult = await sendEmail({ to: order.customer_email, subject, html });
+      emailed = !!sendResult.success;
+    } catch (err) {
+      console.error('[revert-to-cod] email failed:', err);
+    }
+  }
+
+  return NextResponse.json({ success: true, total_amount: restoredTotal, emailed });
 }
