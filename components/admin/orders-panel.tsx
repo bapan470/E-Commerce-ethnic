@@ -327,6 +327,35 @@ export default function OrdersPanel() {
     }
   };
 
+  // Undo of "Request Online Payment": puts an unpaid, originally-COD order
+  // back to COD (restores the COD price) so it can be shipped via Delhivery
+  // as a normal COD parcel. See app/api/admin/orders/[id]/revert-to-cod.
+  const [revertingToCodFor, setRevertingToCodFor] = useState<string | null>(null);
+  const revertToCod = async (id: string) => {
+    if (
+      !window.confirm(
+        'Revert this order to COD? The online-payment discount will be removed and the customer will pay the original COD price on delivery.'
+      )
+    ) {
+      return;
+    }
+    setRevertingToCodFor(id);
+    try {
+      const res = await fetch(`/api/admin/orders/${id}/revert-to-cod`, { method: 'POST' });
+      const body = await res.json().catch(() => ({}));
+      if (res.ok && body.success) {
+        toast.success('Order reverted to COD — you can create the shipment now');
+        await load();
+      } else {
+        toast.error(body.error || 'Failed to revert to COD');
+      }
+    } catch {
+      toast.error('Failed to revert to COD');
+    } finally {
+      setRevertingToCodFor(null);
+    }
+  };
+
   // ---- Select rows + bulk delete ----
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
@@ -535,6 +564,8 @@ export default function OrdersPanel() {
                   onCreateShipment={openShipmentModal}
                   creatingShipment={creatingShipmentFor === o.id}
                   onRequestOnlinePayment={requestOnlinePayment}
+                  onRevertToCod={revertToCod}
+                  revertingToCod={revertingToCodFor === o.id}
                   requestingOnlinePayment={requestingOnlinePaymentFor === o.id}
                   onUpdateDetails={updateOrderDetails}
                   savingDetails={savingDetailsFor === o.id}
@@ -555,6 +586,10 @@ export default function OrdersPanel() {
         }}
         destinationPincode={orders.find((o) => o.id === shipmentModalOrderId)?.shipping_address?.pincode}
         paymentMethod={orders.find((o) => o.id === shipmentModalOrderId)?.payment_method}
+        awaitingOnlinePayment={(() => {
+          const mo = orders.find((o) => o.id === shipmentModalOrderId);
+          return !!mo && mo.payment_method !== 'cod' && !mo.razorpay_payment_id && mo.status !== 'paid';
+        })()}
         confirming={creatingShipmentFor === shipmentModalOrderId}
         onConfirm={confirmShipmentFromModal}
       />
@@ -1143,6 +1178,8 @@ function OrderRow({
   onCreateShipment,
   creatingShipment,
   onRequestOnlinePayment,
+  onRevertToCod,
+  revertingToCod,
   requestingOnlinePayment,
   onUpdateDetails,
   savingDetails,
@@ -1154,6 +1191,8 @@ function OrderRow({
   onCreateShipment: (id: string) => void;
   creatingShipment: boolean;
   onRequestOnlinePayment: (id: string) => void;
+  onRevertToCod: (id: string) => void;
+  revertingToCod: boolean;
   requestingOnlinePayment: boolean;
   onUpdateDetails: (
     id: string,
@@ -1447,6 +1486,17 @@ function OrderRow({
           {wasConvertedFromCod && isAwaitingOnlinePayment && order.status === 'pending' && (
             <div className="mt-1.5">
               <WhatsAppPaymentButton order={order} />
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={revertingToCod}
+                onClick={() => onRevertToCod(order.id)}
+                className="mt-1.5 block h-auto w-fit gap-1 px-2 py-1 text-[11px] leading-tight"
+                title="Customer didn't pay online — put this order back to COD so it can be shipped as COD"
+              >
+                {revertingToCod ? <Loader2 className="inline h-3 w-3 animate-spin" /> : null} Revert to COD
+              </Button>
             </div>
           )}
           {/* Customer has paid -> reassure them on WhatsApp too (many people

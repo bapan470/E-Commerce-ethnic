@@ -32,6 +32,7 @@ export default function CreateShipmentModal({
   onOpenChange,
   destinationPincode,
   paymentMethod,
+  awaitingOnlinePayment,
   onConfirm,
   confirming,
 }: {
@@ -39,6 +40,7 @@ export default function CreateShipmentModal({
   onOpenChange: (open: boolean) => void;
   destinationPincode?: string;
   paymentMethod?: string | null;
+  awaitingOnlinePayment?: boolean;
   onConfirm: (payload: CreateShipmentPayload) => void;
   confirming: boolean;
 }) {
@@ -111,6 +113,14 @@ export default function CreateShipmentModal({
             <Package className="h-5 w-5" /> Box &amp; Shipping Details
           </DialogTitle>
         </DialogHeader>
+
+        {awaitingOnlinePayment && (
+          <div className="rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            This order is marked <b>online / unpaid</b>, so Delhivery would treat it as Prepaid
+            (no cash collected). To ship it as COD, close this popup and click{' '}
+            <b>Revert to COD</b> on the order first.
+          </div>
+        )}
 
         <div className="grid gap-4">
           <div>

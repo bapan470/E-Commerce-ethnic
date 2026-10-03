@@ -50,6 +50,22 @@ export async function POST(req: Request) {
       );
     }
 
+    // Guard: an online order whose payment hasn't been captured would go to
+    // Delhivery as Prepaid (cod_amount 0) and the courier would collect no
+    // money. Typical case: "Request Online Payment" was clicked but the
+    // customer never paid. Admin must either wait for payment or use
+    // "Revert to COD" first.
+    if (order.payment_method !== 'cod' && !order.razorpay_payment_id && order.status !== 'paid') {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'This order is marked online but unpaid — Delhivery would not collect any cash. Click "Revert to COD" on the order first (or wait for the customer to pay).',
+        },
+        { status: 200 }
+      );
+    }
+
     const result = await createDelhiveryShipment(
       {
         id: order.id,
