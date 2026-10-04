@@ -3,6 +3,7 @@ import { sendEmail } from './email';
 import { orderStatusUpdateEmail } from './email-templates';
 import { isInPaymentRequestFlow } from './order-payment-events';
 import { refundRazorpayPayment } from './razorpay-refund';
+import { awardLoyaltyPointsForDeliveredOrder } from './loyalty-award';
 
 // SECURITY NOTE: this now uses the service-role client instead of the
 // anon-key client. Both callers of this file (app/api/admin/orders and
@@ -271,6 +272,14 @@ export async function updateOrderStatus(id: string, status: string) {
         refundOutcome = { status: 'failed', amount: existing!.total_amount };
       }
     }
+  }
+
+  // Loyalty points are credited only once the order is actually delivered.
+  // Best-effort and idempotent -- never blocks the status update.
+  if (status === 'delivered' && existing?.status !== 'delivered') {
+    awardLoyaltyPointsForDeliveredOrder(id).catch((err) => {
+      console.error('[updateOrderStatus] loyalty award failed:', err);
+    });
   }
 
   if (existing && existing.status !== status && existing.customer_email) {

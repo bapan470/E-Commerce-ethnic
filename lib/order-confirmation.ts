@@ -156,62 +156,36 @@ export async function runOrderConfirmationSideEffects(orderId: string) {
 
   // 3. Loyalty points -- logged-in customers only.
   if (order.user_id) {
-    const { data: existingEntries } = await supabase
-      .from('loyalty_points_ledger')
-      .select('id')
-      .eq('order_id', order.id)
-      .limit(1);
+    // Redeemed points are already deducted at checkout (place_order_with_items
+    // writes the -points ledger row). This is only a safety net for orders
+    // created without that row.
+    if (order.loyalty_points_redeemed > 0) {
+      const { data: existingRedeem } = await supabase
+        .from('loyalty_points_ledger')
+        .select('id')
+        .eq('order_id', order.id)
+        .eq('type', 'redeem')
+        .limit(1);
 
-    if (!existingEntries || existingEntries.length === 0) {
-      const { data: settingsRow } = await supabase
-        .from('settings')
-        .select('value')
-        .eq('key', 'loyalty_program')
-        .maybeSingle();
-      const loyaltySettings: LoyaltySettings = {
-        ...DEFAULT_LOYALTY_SETTINGS,
-        ...((settingsRow?.value as Partial<LoyaltySettings>) ?? {}),
-      };
-
-      if (loyaltySettings.enabled) {
-        if (order.loyalty_points_redeemed > 0) {
-          const { error: ledgerError } = await supabase.from('loyalty_points_ledger').insert({
-            user_id: order.user_id,
-            order_id: order.id,
-            points: -order.loyalty_points_redeemed,
-            type: 'redeem',
-            reason: `Redeemed on order #${order.id.slice(0, 8)}`,
-          });
-          if (ledgerError) {
-            console.error('[loyalty-redeem] Ledger insert failed:', ledgerError);
-          }
-        }
-
-        const pointsEarned = Math.floor((order.total_amount * loyaltySettings.points_per_100_rupees) / 100);
-
-        if (pointsEarned > 0) {
-          const { error: earnError } = await supabase.from('loyalty_points_ledger').insert({
-            user_id: order.user_id,
-            order_id: order.id,
-            points: pointsEarned,
-            type: 'earn',
-            reason: `Order #${order.id.slice(0, 8)}`,
-          });
-
-          if (!earnError) {
-            const { error: earnedUpdateError } = await supabase
-              .from('orders')
-              .update({ loyalty_points_earned: pointsEarned })
-              .eq('id', order.id);
-            if (earnedUpdateError) {
-              console.error('[loyalty-earn] Failed to record loyalty_points_earned on order:', earnedUpdateError);
-            }
-          } else {
-            console.error('[loyalty-earn] Ledger insert failed:', earnError);
-          }
+      if (!existingRedeem || existingRedeem.length === 0) {
+        const { error: ledgerError } = await supabase.from('loyalty_points_ledger').insert({
+          user_id: order.user_id,
+          order_id: order.id,
+          points: -order.loyalty_points_redeemed,
+          type: 'redeem',
+          reason: `Redeemed on order #${order.id.slice(0, 8)}`,
+        });
+        if (ledgerError) {
+          console.error('[loyalty-redeem] Ledger insert failed:', ledgerError);
         }
       }
     }
+
+    // EARNING points is NOT done here any more. Points for a purchase are
+    // credited only after the order is delivered -- see
+    // lib/loyalty-award.ts, called from updateOrderStatus() in lib/orders-api.ts.
+    // (Crediting at placement let customers spend points from COD orders
+    // that were never shipped, cancelled or returned.)
 
     // 4. Referral reward -- only fires on the referred customer's FIRST
     // completed order.
