@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { PlayCircle, X } from 'lucide-react';
 import VideoReels, { type ReelItem } from './video-reels';
 import { guessVideoMime } from '@/lib/video-mime';
+import responsiveImageLoader from '@/lib/cloudflare-image-loader';
 
 /**
  * Small floating "peek" preview of the product video, pinned to the
@@ -194,6 +195,14 @@ export default function ProductVideoPeek({
 
   if (dismissed) return null;
 
+  // The bubble is only ~80-96px wide, but `posterUrl` is the full-size cover
+  // photo -- and because the <video> has preload="none", the browser fetches
+  // the poster immediately, so a second, large copy of the cover photo was
+  // downloading in parallel with the main (LCP) photo. Use the small (-sm)
+  // resized file instead. Same URL as before when the Responsive Images
+  // toggle is off; the original posterUrl is still used for the reels view.
+  const bubblePoster = posterUrl ? responsiveImageLoader({ src: posterUrl, width: 200 }) : undefined;
+
   return (
     <>
       <div ref={containerRef} className="absolute bottom-3 left-3 z-20 h-24 w-20 sm:h-28 sm:w-24">
@@ -211,7 +220,7 @@ export default function ProductVideoPeek({
             // eslint-disable-next-line react/no-unknown-property
             webkit-playsinline="true"
             preload="none"
-            poster={posterUrl}
+            poster={bubblePoster}
             aria-hidden="true"
             className="h-full w-full object-cover"
           >

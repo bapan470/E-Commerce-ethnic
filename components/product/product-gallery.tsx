@@ -148,16 +148,24 @@ export default function ProductGallery({
 
   const clamp = useCallback((idx: number) => (idx + valid.length) % valid.length, [valid.length]);
 
-  // Fixes the "blank/white frame while swiping" issue: every image except
-  // the very first one was purely lazy-loaded, so the browser only started
-  // fetching it once it scrolled into view -- exactly when the shopper was
-  // already looking at it. Here we preload the photo on either side of the
-  // current one the moment `active` changes (and on first mount), so by the
-  // time a swipe finishes the next photo is already sitting in the browser
-  // cache and just paints instantly instead of popping in late.
+  // LCP FIX. The first photo is this page's Largest Contentful Paint, and on
+  // a slow phone connection every other byte competes with it. Before, the
+  // page started downloading the other gallery photos at the same moment
+  // (both neighbours were marked `priority`, a second effect <link
+  // rel="preload">ed the ORIGINAL full-size files -- not even the resized
+  // ones the <Image> uses, so they were downloaded twice -- and Chrome also
+  // starts lazy images that sit within ~1250px, which a side-by-side strip
+  // always does).
+  //
+  // Now only photo #1 is rendered/fetched at first, with top priority. The
+  // other photos are added once photo #1 has finished loading (or after a
+  // safety timeout), and from then on the photo on either side of the one
+  // being viewed loads eagerly so swiping still never shows a blank frame.
+  const [warmReady, setWarmReady] = useState(false);
   useEffect(() => {
-    preloadImages([valid[clamp(active + 1)], valid[clamp(active - 1)]]);
-  }, [active, valid, clamp]);
+    const t = window.setTimeout(() => setWarmReady(true), 6000);
+    return () => window.clearTimeout(t);
+  }, []);
 
   // `goTo` now drives the native scroller instead of a JS transform — it
   // scrolls the stage to the target photo and lets the browser animate it,
@@ -310,11 +318,17 @@ export default function ProductGallery({
                     // between photos never accidentally opens the lightbox.
                     onClick={() => setLightboxOpen(true)}
                   >
+                    {(idx === 0 || warmReady) && (
                     <Image
                       src={img}
                       alt={`${alt} - ${angleLabel(idx)}`}
                       fill
-                      priority={Math.abs(idx - active) <= 1}
+                      priority={idx === 0}
+                      // Photos 2+ only mount after photo 1 has loaded (see
+                      // warmReady above); the two next to the viewed one
+                      // load right away, the rest wait until scrolled near.
+                      loading={idx === 0 ? undefined : Math.abs(idx - active) <= 1 ? 'eager' : 'lazy'}
+                      onLoad={idx === 0 ? () => setWarmReady(true) : undefined}
                       // The image actually on screen is this page's LCP
                       // (Largest Contentful Paint) element — fetchPriority
                       // "high" tells the browser to fetch THIS byte stream
@@ -325,7 +339,7 @@ export default function ProductGallery({
                       // alone produces). The neighbours keep normal
                       // priority so they don't steal bandwidth from the
                       // one photo the shopper is actually looking at.
-                      fetchPriority={idx === active ? 'high' : 'auto'}
+                      fetchPriority={idx === 0 ? 'high' : 'auto'}
                       draggable={false}
                       sizes="(max-width: 1024px) 100vw, 50vw"
                       quality={80}
@@ -336,6 +350,7 @@ export default function ProductGallery({
                         idx === active && zooming ? 'sm:opacity-0' : 'opacity-100'
                       )}
                     />
+                    )}
                   </div>
                 ))}
               </div>
