@@ -694,6 +694,59 @@ interface ProductsContextValue {
 
 const ProductsContext = createContext<ProductsContextValue | undefined>(undefined);
 
+// ---------------------------------------------------------------------
+// Egress saver: the full catalog (~100 kB) used to be re-downloaded from
+// Supabase on EVERY product-page / categories-page view. Now it is kept in
+// memory + sessionStorage for 10 minutes and shared between concurrent
+// callers, so a shopper browsing 10 products downloads it once, not 10x.
+// Cache is cleared automatically when the tab/session ends or after TTL.
+// refresh() (used by admin screens) can force a fresh download.
+// ---------------------------------------------------------------------
+const PRODUCTS_CACHE_KEY = 'aruhi:products-catalog:v1';
+const PRODUCTS_CACHE_TTL_MS = 10 * 60 * 1000;
+let productsMemo: { data: Product[]; expiresAt: number } | null = null;
+let productsInFlight: Promise<Product[]> | null = null;
+
+async function loadProductsCached(force = false): Promise<Product[]> {
+  const now = Date.now();
+  if (!force) {
+    if (productsMemo && productsMemo.expiresAt > now) return productsMemo.data;
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = window.sessionStorage.getItem(PRODUCTS_CACHE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as { data: Product[]; expiresAt: number };
+          if (parsed && Array.isArray(parsed.data) && parsed.expiresAt > now) {
+            productsMemo = parsed;
+            return parsed.data;
+          }
+        }
+      } catch {
+        /* sessionStorage unavailable or corrupt -- fall through to network */
+      }
+    }
+    if (productsInFlight) return productsInFlight;
+  }
+  const promise = fetchProducts()
+    .then((prods) => {
+      const entry = { data: prods, expiresAt: Date.now() + PRODUCTS_CACHE_TTL_MS };
+      productsMemo = entry;
+      if (typeof window !== 'undefined') {
+        try {
+          window.sessionStorage.setItem(PRODUCTS_CACHE_KEY, JSON.stringify(entry));
+        } catch {
+          /* quota exceeded / private mode -- memory cache still works */
+        }
+      }
+      return prods;
+    })
+    .finally(() => {
+      if (productsInFlight === promise) productsInFlight = null;
+    });
+  productsInFlight = promise;
+  return promise;
+}
+
 export function ProductsProvider({ children }: { children: React.ReactNode }) {
   const { categories } = useCategories();
   const [products, setProducts] = useState<Product[]>([]);
@@ -704,7 +757,7 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      const prods = await fetchProducts();
+      const prods = await loadProductsCached(true);
       setProducts(prods);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load products');
@@ -714,8 +767,25 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    // First load may use the shared cache; explicit refresh() always re-fetches.
+    let cancelled = false;
+    (async () => {
+      try {
+        const prods = await loadProductsCached(false);
+        if (!cancelled) {
+          setProducts(prods);
+          setError(null);
+        }
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load products');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const getBySlug = useCallback(
     (slug: string) => products.find((p) => p.slug === slug),
