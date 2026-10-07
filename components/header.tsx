@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
 import { useState, useMemo, useRef, useEffect, useCallback, FormEvent } from 'react';
 import { Search, ShoppingBag, Menu, User, Heart, ArrowLeft, Camera, Loader2, Clock, Sparkles, ChevronRight, ChevronDown, BookOpen, Info, Users, Phone } from 'lucide-react';
-import { useCart, useCategories } from '@/lib/cart-context';
+import { useCart, useCategories, loadProductsCached } from '@/lib/cart-context';
 import { useAuth } from '@/lib/auth-context';
 import { getCheckoutReturnPath, isCheckoutReturnFromBuyNow, clearCheckoutReturnBuyNowFlag } from '@/lib/checkout-return';
 import { rankProductIdsByImage, createSearchThumbnail } from '@/lib/image-search';
@@ -49,7 +49,6 @@ function bumpTokenPrefs(text: string) {
     localStorage.setItem(TOKEN_PREFS_KEY, JSON.stringify(prefs));
   } catch { /* localStorage unavailable — preference personalisation just no-ops */ }
 }
-import { fetchProducts } from '@/lib/products-api';
 import { expandProductVariants } from '@/lib/expand-product-variants';
 import { Product } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -94,7 +93,7 @@ export default function Header() {
   const ensureProductsLoaded = useCallback((): Promise<Product[]> => {
     if (productsLoadedRef.current) return Promise.resolve(products);
     if (productsPromiseRef.current) return productsPromiseRef.current;
-    const promise = fetchProducts()
+    const promise = loadProductsCached()
       .then((prods) => {
         productsLoadedRef.current = true;
         setProducts(prods);

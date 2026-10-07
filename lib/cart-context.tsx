@@ -707,7 +707,7 @@ const PRODUCTS_CACHE_TTL_MS = 10 * 60 * 1000;
 let productsMemo: { data: Product[]; expiresAt: number } | null = null;
 let productsInFlight: Promise<Product[]> | null = null;
 
-async function loadProductsCached(force = false): Promise<Product[]> {
+export async function loadProductsCached(force = false): Promise<Product[]> {
   const now = Date.now();
   if (!force) {
     if (productsMemo && productsMemo.expiresAt > now) return productsMemo.data;
