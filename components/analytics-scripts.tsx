@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import Script from 'next/script';
 import { usePathname } from 'next/navigation';
 
@@ -10,17 +11,32 @@ interface AnalyticsScriptsProps {
   pixelId: string;
 }
 
+// Pages where tracking must start immediately (conversion pages).
+const LOAD_NOW_PREFIXES = ['/checkout', '/order-confirmation'];
+
+// If the visitor does nothing at all, still load tracking after this
+// many ms (after the page's own load event) so bounce sessions are counted.
+const FALLBACK_DELAY_MS = 6000;
+
+const INTERACTION_EVENTS = ['pointerdown', 'touchstart', 'keydown', 'scroll', 'mousemove'] as const;
+
 /**
  * Loads GTM / GA4 (gtag.js) / Meta Pixel — but never on /admin/** routes.
  *
- * Previously these scripts lived directly in the root layout's <head>,
- * which meant every admin panel page load also fired a GA4 pageview,
- * a GTM container load, and a Meta Pixel PageView event. That polluted
- * analytics (e.g. "Admin Panel | AruhiHandlooms" showing up as a top
- * page in GA4 Realtime) and could double-count ad conversions.
+ * PERFORMANCE (Task 3): the heavy third-party files (gtm.js, gtag.js,
+ * fbevents.js) used to download + execute right after hydration, which
+ * is what inflated Total Blocking Time. They are now loaded on the FIRST
+ * of: user interaction (tap / scroll / key / mouse), or FALLBACK_DELAY_MS
+ * after page load. Conversion pages (/checkout, /order-confirmation)
+ * load them immediately.
  *
- * Gating on pathname here keeps the fix in one place and requires no
- * changes to middleware.ts or the existing admin-auth guard.
+ * Nothing is lost: a tiny inline stub defines window.dataLayer and
+ * window.gtag right away, so any event fired before gtag.js arrives
+ * (add_to_cart, purchase, ...) is queued in dataLayer and processed as
+ * soon as gtag.js loads. lib/gtag-track.ts keeps working unchanged.
+ *
+ * Admin gating is unchanged (see original note: keeps GA4 pageviews from
+ * admin panel pages out of analytics).
  */
 export default function AnalyticsScripts({
   gaId,
@@ -30,15 +46,62 @@ export default function AnalyticsScripts({
 }: AnalyticsScriptsProps) {
   const pathname = usePathname();
   const isAdminRoute = pathname?.startsWith('/admin');
+  const loadNow = LOAD_NOW_PREFIXES.some((p) => pathname?.startsWith(p));
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (isAdminRoute || ready) return;
+    if (loadNow) {
+      setReady(true);
+      return;
+    }
+
+    let done = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const cleanup = () => {
+      INTERACTION_EVENTS.forEach((e) => window.removeEventListener(e, trigger));
+      window.removeEventListener('load', startTimer);
+      if (timer) clearTimeout(timer);
+    };
+    const trigger = () => {
+      if (done) return;
+      done = true;
+      cleanup();
+      setReady(true);
+    };
+    const startTimer = () => {
+      if (done) return;
+      timer = setTimeout(trigger, FALLBACK_DELAY_MS);
+    };
+
+    INTERACTION_EVENTS.forEach((e) =>
+      window.addEventListener(e, trigger, { passive: true, once: true })
+    );
+    if (document.readyState === 'complete') startTimer();
+    else window.addEventListener('load', startTimer, { once: true });
+
+    return cleanup;
+  }, [isAdminRoute, loadNow, ready]);
 
   if (isAdminRoute) return null;
 
   return (
     <>
-      {/* Google Tag Manager — loads GTM container which manages GA4 +
-          Google Ads + all other tags from the GTM dashboard.
-          Set Container ID in Admin > Marketing > Analytics. */}
-      {gtmId && (
+      {/* Tiny queue stub: runs immediately so early events are never lost.
+          Real gtag.js / gtm.js / fbevents.js load later (below). */}
+      {(gtmId || gaId) && (
+        <Script id="gtag-queue-stub" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            ${!gtmId ? 'window.gtag = window.gtag || function(){dataLayer.push(arguments);};' : ''}
+          `}
+        </Script>
+      )}
+
+      {/* Google Tag Manager — manages GA4 + Google Ads + other tags from
+          the GTM dashboard. Container ID in Admin > Marketing > Analytics. */}
+      {ready && gtmId && (
         <Script id="gtm-init" strategy="afterInteractive">
           {`
             (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
@@ -50,24 +113,29 @@ export default function AnalyticsScripts({
         </Script>
       )}
 
-      {/* GA4 + Google Ads gtag.js — used when GTM is NOT configured.
-          If GTM is set above, manage GA4 and Ads from GTM instead. */}
+      {/* GA4 + Google Ads gtag.js — used when GTM is NOT configured. */}
       {!gtmId && gaId && (
         <>
-          <Script src={`https://www.googletagmanager.com/gtag/js?id=${gaId}`} strategy="afterInteractive" />
           <Script id="ga4-init" strategy="afterInteractive">
             {`
               window.dataLayer = window.dataLayer || [];
               function gtag(){dataLayer.push(arguments);}
+              window.gtag = window.gtag || gtag;
               gtag('js', new Date());
               gtag('config', '${gaId}');
               ${googleAdsId ? `gtag('config', '${googleAdsId}');` : ''}
             `}
           </Script>
+          {ready && (
+            <Script
+              src={`https://www.googletagmanager.com/gtag/js?id=${gaId}`}
+              strategy="afterInteractive"
+            />
+          )}
         </>
       )}
 
-      {pixelId && (
+      {ready && pixelId && (
         <Script id="meta-pixel-init" strategy="afterInteractive">
           {`
             !function(f,b,e,v,n,t,s)
