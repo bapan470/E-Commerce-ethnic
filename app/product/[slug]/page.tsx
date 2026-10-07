@@ -1,7 +1,7 @@
 import { Metadata } from 'next';
 import { ProductsProvider } from '@/lib/cart-context';
 import { fetchProductBySlugServer } from '@/lib/products-api-server';
-import { fetchVariantBySlug, VariantWithSizes } from '@/lib/variants-api';
+import { fetchVariantBySlug, fetchVariantsForProductServer, VariantWithSizes, ProductVariant } from '@/lib/variants-api';
 import { safeJsonLd } from '@/lib/json-ld';
 import { fetchFulfillmentSettings } from '@/lib/marketing-api';
 import { fetchShippingSettings } from '@/lib/pincode-api';
@@ -196,6 +196,19 @@ export default async function ProductPage({ params, searchParams }: Params) {
   // product-gallery.tsx (Part 2).
   const blurPreviews = Object.fromEntries(await getBlurPreviews(videoThumbnails));
 
+  // Colour swatches, fetched here on the server (same query the browser used
+  // to run after load) so they are part of the first HTML and the page
+  // doesn't jump when they appear. A failure just means no swatches in the
+  // first HTML -- the client component then falls back to its own fetch.
+  let initialVariants: ProductVariant[] | undefined;
+  if (product) {
+    try {
+      initialVariants = await fetchVariantsForProductServer(product.id);
+    } catch {
+      initialVariants = undefined;
+    }
+  }
+
   const jsonLd = product
     ? {
         '@context': 'https://schema.org',
@@ -314,7 +327,12 @@ export default async function ProductPage({ params, searchParams }: Params) {
             into a <link rel="preload">) is present in the very first HTML
             response, so the browser can start fetching the photo
             immediately in parallel with hydration. */}
-        <ProductDetail initialProduct={product} initialVariant={variant} blurPreviews={blurPreviews} />
+        <ProductDetail
+          initialProduct={product}
+          initialVariant={variant}
+          blurPreviews={blurPreviews}
+          initialVariants={initialVariants}
+        />
       </ProductsProvider>
     </>
   );

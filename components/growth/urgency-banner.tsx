@@ -28,11 +28,12 @@ function iconFor(segment: string): LucideIcon {
  * Permanent, not dismissible — the free-shipping / COD / returns message
  * stays visible for the whole visit instead of vanishing after one tap.
  */
-export default function UrgencyBanner() {
+export default function UrgencyBanner({ initialSettings }: { initialSettings?: GrowthSettings }) {
   const pathname = usePathname();
-  const [settings, setSettings] = useState<GrowthSettings | null>(null);
+  const [settings, setSettings] = useState<GrowthSettings | null>(initialSettings ?? null);
 
   useEffect(() => {
+    if (initialSettings) return; // already provided by the server
     let cancelled = false;
     fetchGrowthSettings()
       .then((s) => {
@@ -42,7 +43,7 @@ export default function UrgencyBanner() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [initialSettings]);
 
   // Hidden on admin (own dashboard chrome), product pages, and checkout —
   // keeps focus on the product / on completing the order, same reasoning

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Image from 'next/image';
 import Link from 'next/link';
-import { fetchSiteBanner } from '@/lib/settings-api';
+import { fetchSiteBanner, type SiteBanner as SiteBannerSettings } from '@/lib/settings-api';
 import { toPublicMediaUrl } from '@/lib/media-url';
 
 /**
@@ -17,14 +17,19 @@ import { toPublicMediaUrl } from '@/lib/media-url';
  * page (shop, category, etc.) always shows the banner whenever one is
  * set, exactly like before these toggles existed.
  */
-export default function SiteBanner() {
+export default function SiteBanner({ initialBanner }: { initialBanner?: SiteBannerSettings }) {
   const pathname = usePathname();
-  const [imageUrl, setImageUrl] = useState('');
-  const [linkUrl, setLinkUrl] = useState('');
-  const [showOnHome, setShowOnHome] = useState(false);
-  const [showOnProduct, setShowOnProduct] = useState(false);
+  // `initialBanner` is read on the server (app/layout.tsx), so the banner is
+  // already in the first HTML -- it no longer pops in after hydration and
+  // pushes the page down. The client fetch below only runs as a fallback if
+  // this component is ever mounted without it.
+  const [imageUrl, setImageUrl] = useState(initialBanner?.image_url || '');
+  const [linkUrl, setLinkUrl] = useState(initialBanner?.link_url || '');
+  const [showOnHome, setShowOnHome] = useState(!!initialBanner?.show_on_home);
+  const [showOnProduct, setShowOnProduct] = useState(!!initialBanner?.show_on_product);
 
   useEffect(() => {
+    if (initialBanner) return;
     fetchSiteBanner()
       .then((b) => {
         setImageUrl(b.image_url || '');
@@ -33,7 +38,7 @@ export default function SiteBanner() {
         setShowOnProduct(!!b.show_on_product);
       })
       .catch(() => {});
-  }, []);
+  }, [initialBanner]);
 
   const isCheckout = pathname?.startsWith('/checkout');
   const isHome = pathname === '/';

@@ -89,6 +89,7 @@ export default function ProductDetail({
   initialProduct = null,
   initialVariant = null,
   blurPreviews,
+  initialVariants,
 }: {
   initialProduct?: Product | null;
   initialVariant?: VariantWithSizes | null;
@@ -97,6 +98,9 @@ export default function ProductDetail({
    *  lib/blur-preview.ts. Optional -- ProductGallery falls back to the
    *  generic shimmer for any image not present here. */
   blurPreviews?: Record<string, string>;
+  /** Colour swatches fetched on the server so they're in the first HTML
+   *  (no pop-in / layout shift). Optional -- falls back to a client fetch. */
+  initialVariants?: ProductVariant[];
 } = {}) {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
@@ -781,6 +785,7 @@ export default function ProductDetail({
           <div className="min-w-0 px-4 sm:px-0">
             <VariantSwatches
               productId={baseProduct.id}
+              initialVariants={initialVariants}
               activeSlug={variant?.slug ?? baseProduct.slug}
               onSelect={handleSelectVariant}
               baseVariant={baseVariant}

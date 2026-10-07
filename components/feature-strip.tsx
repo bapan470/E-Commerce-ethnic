@@ -22,12 +22,21 @@ interface Feature {
  * is left blank in Growth Tools, so it can never drift out of sync with
  * checkout.
  */
-export default function FeatureStrip() {
+export default function FeatureStrip({
+  initialGrowth,
+  initialThreshold,
+}: {
+  initialGrowth?: GrowthSettings;
+  initialThreshold?: number;
+}) {
   const pathname = usePathname();
-  const [threshold, setThreshold] = useState<number | null>(null);
-  const [growth, setGrowth] = useState<GrowthSettings | null>(null);
+  const [threshold, setThreshold] = useState<number | null>(initialThreshold ?? null);
+  const [growth, setGrowth] = useState<GrowthSettings | null>(initialGrowth ?? null);
 
   useEffect(() => {
+    // Both values come from the server (app/layout.tsx) -- skip the two
+    // browser requests entirely when they are present.
+    if (initialGrowth && initialThreshold !== undefined) return;
     let cancelled = false;
     fetchShippingSettings()
       .then((s) => {
@@ -46,7 +55,7 @@ export default function FeatureStrip() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [initialGrowth, initialThreshold]);
 
   // Hidden on admin (own dashboard chrome), product pages, and checkout —
   // keeps focus on the product / on completing the order, same reasoning

@@ -14,16 +14,17 @@ function splitTime(ms: number) {
   };
 }
 
-export default function SaleCountdownBar() {
+export default function SaleCountdownBar({ initialSettings }: { initialSettings?: GrowthSettings }) {
   const pathname = usePathname();
-  const [settings, setSettings] = useState<GrowthSettings | null>(null);
+  const [settings, setSettings] = useState<GrowthSettings | null>(initialSettings ?? null);
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
+    if (initialSettings) return; // already provided by the server
     fetchGrowthSettings()
       .then(setSettings)
       .catch(() => {});
-  }, []);
+  }, [initialSettings]);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -44,7 +45,9 @@ export default function SaleCountdownBar() {
     <div className="flex items-center justify-center gap-2 bg-secondary px-4 py-2 text-xs font-medium text-secondary-foreground sm:text-sm">
       <Clock className="h-4 w-4 shrink-0" />
       <span>{settings.sale_countdown_text}</span>
-      <span className="font-mono font-bold tabular-nums">
+      {/* suppressHydrationWarning: the server's clock and the browser's differ by a
+          few seconds, so the digits legitimately differ on first paint. */}
+      <span className="font-mono font-bold tabular-nums" suppressHydrationWarning>
         {pad(hours)}:{pad(minutes)}:{pad(seconds)}
       </span>
     </div>

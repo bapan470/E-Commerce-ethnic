@@ -6,6 +6,7 @@ import Providers from '@/components/providers';
 import AnalyticsScripts from '@/components/analytics-scripts';
 import BlurPlaceholderSync from '@/components/blur-placeholder-sync';
 import { getServerSupabase } from '@/lib/supabase-server';
+import { getStorefrontChromeSettings } from '@/lib/storefront-settings-server';
 import { SeoSettings, AnalyticsSettings } from '@/lib/marketing-api';
 import { PaymentDiscountSettings, DEFAULT_PAYMENT_DISCOUNT_SETTINGS } from '@/lib/settings-api';
 import { getResponsiveImagesEnabledServer, syncResponsiveImagesServerGlobal } from '@/lib/responsive-images-flag';
@@ -188,6 +189,9 @@ export default async function RootLayout({
 }) {
   const analytics = await getAnalyticsSettings();
   const initialPaymentDiscount = await getPaymentDiscountSettings();
+  // Banner / countdown / strips: read once on the server so they are in the
+  // first HTML instead of popping in after hydration (layout shift).
+  const chrome = await getStorefrontChromeSettings();
   // Responsive Images admin toggle (Admin > Settings). Read once per
   // request, then made available to lib/cloudflare-image-loader.js both
   // on the server (Node global, set below, before children render) and
@@ -256,7 +260,14 @@ export default async function RootLayout({
            beforeInteractive script above isn't enough on its own.
            Renders nothing. */}
         <BlurPlaceholderSync />
-        <Providers initialPaymentDiscount={initialPaymentDiscount}>{children}</Providers>
+        <Providers
+          initialPaymentDiscount={initialPaymentDiscount}
+          initialSiteBanner={chrome.siteBanner}
+          initialGrowth={chrome.growth}
+          initialFreeShippingThreshold={chrome.freeShippingThreshold}
+        >
+          {children}
+        </Providers>
       </body>
     </html>
   );

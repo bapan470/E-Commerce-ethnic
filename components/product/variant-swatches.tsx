@@ -9,11 +9,15 @@ import { THUMB_BLUR_DATA_URL, isShimmerEnabled } from '@/lib/image-placeholder';
 
 export default function VariantSwatches({
   productId,
+  initialVariants,
   activeSlug,
   onSelect,
   baseVariant,
 }: {
   productId: string;
+  /** Server-fetched swatches (see app/product/[slug]/page.tsx). When present
+   *  they render in the first HTML and the browser skips its own request. */
+  initialVariants?: ProductVariant[];
   /** Currently viewed variant slug, or undefined when on the base product page. */
   activeSlug?: string;
   /** Called with the clicked variant; the parent swaps images/price/sizes in place — no page navigation. */
@@ -29,7 +33,7 @@ export default function VariantSwatches({
    */
   baseVariant: ProductVariant | null;
 }) {
-  const [fetchedVariants, setFetchedVariants] = useState<ProductVariant[]>([]);
+  const [fetchedVariants, setFetchedVariants] = useState<ProductVariant[]>(initialVariants ?? []);
 
   // Background-preload the OTHER colours' photos the moment this page is
   // viewed, so the very first colour switch is instant instead of showing
@@ -55,10 +59,25 @@ export default function VariantSwatches({
     return () => cancelIdle(handle);
   }, []);
 
+  // Only hit the network when the server didn't hand us this product's
+  // swatches (e.g. client-side navigation to another product). Tracks which
+  // product the current list belongs to so a stale list is never reused.
+  const loadedForRef = useRef<string | null>(initialVariants ? productId : null);
   useEffect(() => {
+    if (loadedForRef.current === productId) return;
+    let cancelled = false;
     fetchVariantsForProduct(productId)
-      .then(setFetchedVariants)
-      .catch(() => setFetchedVariants([]));
+      .then((v) => {
+        if (cancelled) return;
+        loadedForRef.current = productId;
+        setFetchedVariants(v);
+      })
+      .catch(() => {
+        if (!cancelled) setFetchedVariants([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [productId]);
 
   // Prepend the base product's own colour, unless a real variant row

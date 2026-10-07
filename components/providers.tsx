@@ -4,7 +4,8 @@ import React from 'react';
 import dynamic from 'next/dynamic';
 import { usePathname } from 'next/navigation';
 import { CartProvider, CategoriesProvider, PaymentDiscountProvider } from '@/lib/cart-context';
-import type { PaymentDiscountSettings } from '@/lib/settings-api';
+import type { PaymentDiscountSettings, SiteBanner as SiteBannerSettings } from '@/lib/settings-api';
+import type { GrowthSettings } from '@/lib/growth-api';
 import { AuthProvider } from '@/lib/auth-context';
 import { Toaster } from 'sonner';
 import CartDrawer from './cart-drawer';
@@ -14,6 +15,11 @@ import Footer from './footer';
 import MobileBottomNav from './mobile-bottom-nav';
 import SiteBanner from './site-banner';
 import WhatsAppButton from './whatsapp-button';
+// These two used to be dynamic(..., { ssr: false }), so they only appeared
+// after hydration and pushed the page down. They are tiny, and now get
+// their data from the server as props, so they render in the first HTML.
+import UrgencyBanner from './growth/urgency-banner';
+import SaleCountdownBar from './growth/sale-countdown-bar';
 
 // These were all previously imported statically, which meant their JS
 // shipped in the initial bundle for EVERY page load and had to be
@@ -25,20 +31,28 @@ import WhatsAppButton from './whatsapp-button';
 const LiveChatWidget = dynamic(() => import('./live-chat-widget'), { ssr: false });
 const ActivityTracker = dynamic(() => import('./activity-tracker'), { ssr: false });
 const AffiliateTracker = dynamic(() => import('./affiliate-tracker'), { ssr: false });
-const UrgencyBanner = dynamic(() => import('./growth/urgency-banner'), { ssr: false });
-const SaleCountdownBar = dynamic(() => import('./growth/sale-countdown-bar'), { ssr: false });
 const ExitIntentModal = dynamic(() => import('./growth/exit-intent-modal'), { ssr: false });
 const SocialProofToast = dynamic(() => import('./growth/social-proof-toast'), { ssr: false });
 
 export default function Providers({
   children,
   initialPaymentDiscount,
+  initialSiteBanner,
+  initialGrowth,
+  initialFreeShippingThreshold,
 }: {
   children: React.ReactNode;
   /** Server-fetched so the payment-discount badge is correct in the very
    *  first paint — see app/layout.tsx. Optional only so the type still
    *  works for any other place Providers might be mounted without it. */
   initialPaymentDiscount?: PaymentDiscountSettings;
+  /** Server-read banner / growth / free-shipping values so the bars below
+   *  are in the first HTML and never pop in later (see
+   *  lib/storefront-settings-server.ts). All optional: if missing, each
+   *  component falls back to its old client-side fetch. */
+  initialSiteBanner?: SiteBannerSettings;
+  initialGrowth?: GrowthSettings;
+  initialFreeShippingThreshold?: number;
 }) {
   const pathname = usePathname();
   const isHome = pathname === '/';
@@ -82,11 +96,11 @@ export default function Providers({
             <ActivityTracker />
             <AffiliateTracker />
             <div className="flex min-h-screen flex-col bg-background">
-              <UrgencyBanner />
-              <SaleCountdownBar />
+              <UrgencyBanner initialSettings={initialGrowth} />
+              <SaleCountdownBar initialSettings={initialGrowth} />
               <Header />
-              <FeatureStrip />
-              <SiteBanner />
+              <FeatureStrip initialGrowth={initialGrowth} initialThreshold={initialFreeShippingThreshold} />
+              <SiteBanner initialBanner={initialSiteBanner} />
               <main className={`flex-1 ${isHome ? 'pb-16 md:pb-0' : ''}`}>{children}</main>
               <Footer />
               <CartDrawer />

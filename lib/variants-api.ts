@@ -57,6 +57,23 @@ export async function fetchVariantsForProduct(productId: string): Promise<Produc
 }
 
 /**
+ * Same query as fetchVariantsForProduct above, but run on the server (from
+ * app/product/[slug]/page.tsx) so the colour swatches are in the first HTML
+ * instead of popping in after hydration (layout shift) and each visitor
+ * skips one Supabase request.
+ */
+export async function fetchVariantsForProductServer(productId: string): Promise<ProductVariant[]> {
+  const supabase = getServerSupabase();
+  const { data, error } = await supabase
+    .from('product_variants')
+    .select('*')
+    .eq('product_id', productId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as ProductVariant[];
+}
+
+/**
  * Look up a variant by its own SEO slug and return it together with its
  * parent product and per-size stock. Used for /product/[slug] when the
  * slug doesn't match a base product (i.e. it's a colour-specific page).
