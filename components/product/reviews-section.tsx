@@ -101,6 +101,18 @@ function firstName(name: string) {
   return parts[0] ?? name;
 }
 
+
+// 64px thumbnails should not download the full-size review photo. New
+// uploads get a "<name>-sm.webp" (480px) sibling (see
+// app/api/upload-review-photo/route.ts); older photos get one from the
+// admin "Resize backfill". The <img> falls back to the original on error.
+function reviewThumbUrl(src: string): string {
+  const full = toPublicMediaUrl(src) || src;
+  const dot = full.lastIndexOf('.');
+  if (dot === -1 || full.includes('data:') || full.startsWith('blob:')) return full;
+  return `${full.slice(0, dot)}-sm.webp`;
+}
+
 export default function ReviewsSection({
   productId,
   productSlug,
@@ -560,10 +572,20 @@ export default function ReviewsSection({
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
-                              src={toPublicMediaUrl(src) || src}
+                              src={reviewThumbUrl(src)}
                               alt={`Photo from ${firstName(r.customer_name)}'s review`}
+                              width={64}
+                              height={64}
                               loading="lazy"
                               decoding="async"
+                              onError={(e) => {
+                                // Old photos have no -sm.webp until the Resize
+                                // backfill runs -- fall back to the original once.
+                                const img = e.currentTarget;
+                                if (img.dataset.fallback) return;
+                                img.dataset.fallback = '1';
+                                img.src = toPublicMediaUrl(src) || src;
+                              }}
                               className="h-full w-full object-cover"
                             />
                           </button>

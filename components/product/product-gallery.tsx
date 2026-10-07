@@ -256,6 +256,7 @@ export default function ProductGallery({
                     draggable={false}
                     sizes="72px"
                     quality={50}
+                    fetchPriority="low"
                     placeholder={blurDataUrlFor(img, blurPreviews, THUMB_BLUR_DATA_URL) ? 'blur' : undefined}
                     blurDataURL={blurDataUrlFor(img, blurPreviews, THUMB_BLUR_DATA_URL)}
                     className="select-none object-cover"
@@ -902,6 +903,7 @@ function Lightbox({
                 draggable={false}
                 sizes="56px"
                 quality={50}
+                fetchPriority="low"
                 placeholder={blurDataUrlFor(img, blurPreviews, THUMB_BLUR_DATA_URL) ? 'blur' : undefined}
                 blurDataURL={blurDataUrlFor(img, blurPreviews, THUMB_BLUR_DATA_URL)}
                 className="select-none object-cover"

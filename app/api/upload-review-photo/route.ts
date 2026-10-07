@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import sharp from 'sharp';
 import { getSupabaseServer } from '@/lib/supabase-server-auth';
 import { uploadToStorage } from '@/lib/storage';
 import { storeBlurPreview } from '@/lib/blur-preview';
@@ -70,6 +71,26 @@ export async function POST(req: Request) {
       buffer,
       contentType: file.type || 'image/jpeg',
     });
+
+    // 480px WebP thumbnail next to the original ("<name>-sm.webp"), used
+    // by the review thumbnails. Best-effort: a failure here never blocks
+    // or fails the upload -- the page falls back to the original photo.
+    try {
+      const base = path.slice(0, path.lastIndexOf('.'));
+      const smBuffer = await sharp(buffer, { failOn: 'none' })
+        .rotate()
+        .resize({ width: 480, height: 480, fit: 'inside', withoutEnlargement: true })
+        .webp({ quality: 80 })
+        .toBuffer();
+      await uploadToStorage({
+        bucket: 'review-images',
+        path: `${base}-sm.webp`,
+        buffer: smBuffer,
+        contentType: 'image/webp',
+      });
+    } catch (smErr) {
+      console.error('[upload-review-photo] -sm variant failed (ignored):', smErr);
+    }
 
     // Real per-image blur preview (LQIP), keyed by the same canonical
     // URL just stored. storeBlurPreview never throws, so this can never

@@ -237,6 +237,9 @@ function VariantSwatchList({
                     onDragStart={(e) => e.preventDefault()}
                     sizes="56px"
                     quality={60}
+                    // Below-the-fold-ish helper images: let the hero photo (LCP)
+                    // win the bandwidth race on slow phones.
+                    fetchPriority="low"
                     placeholder={blurEnabled ? 'blur' : undefined}
                     blurDataURL={blurEnabled ? THUMB_BLUR_DATA_URL : undefined}
                     className="select-none object-cover"
