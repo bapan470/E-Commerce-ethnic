@@ -73,7 +73,27 @@ export default function ProductVideoPeek({
   const [dismissed, setDismissed] = useState(false);
   const [idle, setIdle] = useState(false);
   const [inView, setInView] = useState(false);
-  const canLoad = idle && inView;
+  // Gate 3 -- bandwidth saver. The clip is often several MB (one real file
+  // here is ~4.7 MB), and it used to download on EVERY product-page view.
+  // Now it only auto-plays on a fast, non-metered connection. On mobile
+  // data, Data-Saver, slow networks, or browsers that don't expose the
+  // connection (iOS Safari) the bubble stays a poster + play icon, and the
+  // video downloads only when the shopper taps it.
+  const [goodNetwork, setGoodNetwork] = useState(false);
+  useEffect(() => {
+    const conn = (navigator as unknown as {
+      connection?: { saveData?: boolean; effectiveType?: string; type?: string };
+    }).connection;
+    if (!conn) {
+      setGoodNetwork(false);
+      return;
+    }
+    const saveData = !!conn.saveData;
+    const slow = !!conn.effectiveType && conn.effectiveType !== '4g';
+    const cellular = conn.type === 'cellular';
+    setGoodNetwork(!saveData && !slow && !cellular);
+  }, []);
+  const canLoad = idle && inView && goodNetwork;
 
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<ReelItem[] | null>(null);
