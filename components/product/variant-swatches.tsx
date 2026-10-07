@@ -55,8 +55,28 @@ export default function VariantSwatches({
     const idle =
       (window as any).requestIdleCallback ?? ((cb: () => void) => window.setTimeout(cb, 1200));
     const cancelIdle = (window as any).cancelIdleCallback ?? window.clearTimeout;
-    const handle = idle(() => setPreloadReady(true));
-    return () => cancelIdle(handle);
+
+    // PERF (Task 4): previously this started on idle right after load, which
+    // downloaded 2 full-size photos for EVERY other colour even if the
+    // visitor never touched a swatch (hundreds of KiB, flagged by
+    // PageSpeed "Improve image delivery" / "Avoid enormous network
+    // payloads"). Now it waits for the first real interaction (tap,
+    // scroll, key, mouse move) and only then warms the other colours, so
+    // the first swatch switch is still fast for anyone actually browsing.
+    const EVENTS = ['pointerdown', 'touchstart', 'keydown', 'scroll', 'mousemove'] as const;
+    let handle: any;
+    let fired = false;
+    const onInteract = () => {
+      if (fired) return;
+      fired = true;
+      EVENTS.forEach((e) => window.removeEventListener(e, onInteract));
+      handle = idle(() => setPreloadReady(true));
+    };
+    EVENTS.forEach((e) => window.addEventListener(e, onInteract, { passive: true }));
+    return () => {
+      EVENTS.forEach((e) => window.removeEventListener(e, onInteract));
+      if (handle !== undefined) cancelIdle(handle);
+    };
   }, []);
 
   // Only hit the network when the server didn't hand us this product's

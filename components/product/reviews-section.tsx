@@ -562,6 +562,8 @@ export default function ReviewsSection({
                             <img
                               src={toPublicMediaUrl(src) || src}
                               alt={`Photo from ${firstName(r.customer_name)}'s review`}
+                              loading="lazy"
+                              decoding="async"
                               className="h-full w-full object-cover"
                             />
                           </button>
