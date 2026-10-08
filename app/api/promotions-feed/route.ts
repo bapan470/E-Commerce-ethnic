@@ -24,10 +24,26 @@ interface CouponRow {
   times_used: number | null;
   expires_at: string | null;
   is_active: boolean;
+  created_at: string | null;
 }
 
 const IST_OFFSET_MIN = 330; // +05:30
-const DEFAULT_WINDOW_DAYS = 30; // used for coupons with no expiry date
+const DAY_MS = 86_400_000;
+// Coupons with no expiry date run in fixed windows so the dates Google
+// already has never change underneath it (see "STABLE DATES" below).
+const WINDOW_DAYS = 180; // length of one window (Google max is ~6 months)
+const WINDOW_STEP_DAYS = 150; // a new window starts every 150 days (overlap = safe renewal)
+
+// Bump this ONLY if Google ever rejects the feed again and you need to
+// force brand-new promotions. It is part of every promotion_id.
+const ID_VERSION = 'V2';
+
+// STABLE DATES (fixes "Promotion invalid Update"):
+// Merchant Center does not allow the START date of a promotion that has
+// already started to change, and it cannot update a stopped promotion.
+// The old feed used "start of today" as the start date, so it moved
+// forward every day and the second upload was rejected. The start date is
+// now derived from the coupon's created_at, which never changes.
 
 const COLUMNS = [
   'promotion_id',
@@ -57,7 +73,7 @@ export async function GET() {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from('coupons')
-    .select('id, code, discount_type, discount_value, min_order_value, usage_limit, times_used, expires_at, is_active')
+    .select('id, code, discount_type, discount_value, min_order_value, usage_limit, times_used, expires_at, is_active, created_at')
     .eq('show_in_google_promotions', true)
     .eq('is_active', true);
 
@@ -79,7 +95,28 @@ export async function GET() {
     if (c.usage_limit != null && (c.times_used ?? 0) >= c.usage_limit) continue; // used up
     if (!c.discount_value || c.discount_value <= 0) continue;
 
-    const end = expiresAt ?? new Date(startOfToday.getTime() + DEFAULT_WINDOW_DAYS * 86_400_000);
+    // Stable start: IST midnight of the day the coupon was created.
+    const createdMs = c.created_at ? new Date(c.created_at).getTime() : NaN;
+    const createdDay = Number.isNaN(createdMs)
+      ? startOfToday
+      : (() => {
+          const d = new Date(createdMs + IST_OFFSET_MIN * 60_000);
+          d.setUTCHours(0, 0, 0, 0);
+          return new Date(d.getTime() - IST_OFFSET_MIN * 60_000);
+        })();
+
+    let start = createdDay;
+    let end: Date;
+    let cycle = 0;
+    if (expiresAt) {
+      end = expiresAt;
+    } else {
+      const elapsedDays = Math.max(0, Math.floor((startOfToday.getTime() - createdDay.getTime()) / DAY_MS));
+      cycle = Math.floor(elapsedDays / WINDOW_STEP_DAYS);
+      start = new Date(createdDay.getTime() + cycle * WINDOW_STEP_DAYS * DAY_MS);
+      end = new Date(start.getTime() + WINDOW_DAYS * DAY_MS);
+    }
+    if (end.getTime() <= start.getTime()) continue;
     const code = clean(c.code);
     const minOrder = c.min_order_value && c.min_order_value > 0 ? `${c.min_order_value} INR` : '';
 
@@ -97,11 +134,11 @@ export async function GET() {
 
     rows.push(
       [
-        `COUPON-${code}`.slice(0, 50).replace(/[^A-Za-z0-9_-]/g, '-'),
+        `COUPON-${code}-${ID_VERSION}${cycle > 0 ? `-${cycle}` : ''}`.slice(0, 50).replace(/[^A-Za-z0-9_-]/g, '-'),
         'ALL_PRODUCTS',
         'GENERIC_CODE',
         clean(title).slice(0, 60),
-        `${toIst(startOfToday)}/${toIst(end)}`,
+        `${toIst(start)}/${toIst(end)}`,
         'ONLINE',
         code,
         percentOff,
