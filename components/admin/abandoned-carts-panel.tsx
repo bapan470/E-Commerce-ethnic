@@ -195,7 +195,7 @@ function buildWhatsAppRecoveryLink(
     }:`,
     itemLines || null,
     couponCode
-      ? `As a small thank-you for your interest, we have kept a special offer for you: *${couponCode}*. It is added automatically when you open the link below, on top of any coupon already in your cart. 🎁`
+      ? `As a small thank-you for your interest, we have kept a special offer for you: *${couponCode}*. It is added automatically when you open the link below, on top of any coupon already in your cart.`
       : null,
     `You can complete your order here: ${siteUrl}/cart-link/${cartId}${couponQuery(couponCode)}`,
     `A few quick details, in case they're useful:\n` +
