@@ -1122,13 +1122,13 @@ export function restockEmail(product: { name: string; slug: string; price: numbe
   return { subject, html };
 }
 
-// Link used by the "Complete your purchase" button. When the email carries a coupon,
-// the code rides along as ?coupon=CODE so /cart auto-applies it (see CartProvider in
-// lib/cart-context.tsx) -- the customer doesn't have to type it in.
+// Link used by the "Complete your purchase" button. When the email carries a coupon it
+// points at the dedicated /recover/<CODE> page, which adds that code as an EXTRA
+// discount on top of whatever coupon the customer already has in their cart.
 export function cartUrlWithCoupon(couponCode?: string | null): string {
-  const base = `${process.env.NEXT_PUBLIC_SITE_URL || ''}/cart`;
+  const site = process.env.NEXT_PUBLIC_SITE_URL || '';
   const code = (couponCode || '').trim();
-  return code ? `${base}?coupon=${encodeURIComponent(code)}` : base;
+  return code ? `${site}/recover/${encodeURIComponent(code)}` : `${site}/cart`;
 }
 
 // sequenceNumber: 1 = first nudge (~1hr later, soft), 2 = second email
@@ -1176,10 +1176,10 @@ export function cartRecoveryEmail(
 
   const couponBlock = couponCode
     ? `<p style="text-align:center; margin: 16px 0; padding: 12px; background:#fbf6f0; border:1px dashed ${GOLD_ACCENT}; border-radius:6px;">
-        Use code <strong style="color:${BRAND_COLOR};">${couponCode}</strong> at checkout${
+        Your extra offer <strong style="color:${BRAND_COLOR};">${couponCode}</strong> is added automatically when you tap the button below${
         hasDiscount
-          ? ` for ${discountLabel} — pay just <strong style="color:${BRAND_COLOR};">${formatINR(finalPrice!)}</strong> instead of ${formatINR(cart.cart_value)}.`
-          : ' for a special discount.'
+          ? ` — ${discountLabel}, on top of any coupon you have already added.`
+          : ' — an additional discount on top of any coupon you have already added.'
       }
       </p>`
     : '';
@@ -1242,10 +1242,10 @@ export function renderCartRecoveryEmail(
   const cartUrl = cartUrlWithCoupon(couponCode);
   const discountLabel = discountType === 'flat' ? `${formatINR(discountValue)} off` : `${discountValue}% off`;
   const couponLine = couponCode
-    ? `<p style="text-align:center; margin: 16px 0; padding: 12px; background:#fbf6f0; border:1px dashed ${GOLD_ACCENT}; border-radius:6px;">Use code <strong style="color:${BRAND_COLOR};">${couponCode}</strong> at checkout${
+    ? `<p style="text-align:center; margin: 16px 0; padding: 12px; background:#fbf6f0; border:1px dashed ${GOLD_ACCENT}; border-radius:6px;">Your extra offer <strong style="color:${BRAND_COLOR};">${couponCode}</strong> is added automatically when you tap the button below${
         hasDiscount
-          ? ` for ${discountLabel} — pay just <strong style="color:${BRAND_COLOR};">${formatINR(finalPriceValue)}</strong> instead of ${formatINR(cart.cart_value)}.`
-          : ' for a special discount.'
+          ? ` — ${discountLabel}, on top of any coupon you have already added.`
+          : ' — an additional discount on top of any coupon you have already added.'
       }</p>`
     : '';
 

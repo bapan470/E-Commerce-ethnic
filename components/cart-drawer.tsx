@@ -58,6 +58,8 @@ export default function CartDrawer() {
     count,
     appliedCoupon,
     couponDiscount,
+    recoveryOffer,
+    recoveryDiscount,
     applyCoupon,
     removeCoupon,
     bogoDiscount,
@@ -789,12 +791,20 @@ export default function CartDrawer() {
                       <span className="text-muted-foreground">Subtotal</span>
                       <span>{formatINR(subtotal)}</span>
                     </div>
-                    {appliedCoupon && couponDiscount > 0 && (
+                    {appliedCoupon && couponDiscount - recoveryDiscount > 0 && (
                       <div className="flex items-center justify-between text-secondary-foreground">
                         <span className="flex items-center gap-1.5">
                           <Tag className="h-3.5 w-3.5" /> {appliedCoupon.code}
                         </span>
-                        <span>-{formatINR(couponDiscount)}</span>
+                        <span>-{formatINR(couponDiscount - recoveryDiscount)}</span>
+                      </div>
+                    )}
+                    {recoveryOffer && recoveryDiscount > 0 && (
+                      <div className="flex items-center justify-between font-medium text-emerald-700">
+                        <span className="flex items-center gap-1.5">
+                          <Tag className="h-3.5 w-3.5" /> Extra offer {recoveryOffer.code}
+                        </span>
+                        <span>-{formatINR(recoveryDiscount)}</span>
                       </div>
                     )}
                     {bogoDiscount > 0 && (

@@ -145,6 +145,9 @@ export default function CheckoutPage() {
     updateQuantity,
     appliedCoupon,
     couponDiscount: cartCouponDiscount,
+    primaryCouponDiscount: cartPrimaryCouponDiscount,
+    recoveryOffer: cartRecoveryOffer,
+    recoveryDiscount: cartRecoveryDiscount,
     applyCoupon,
     removeCoupon,
     bogoDiscount: cartBogoDiscount,
@@ -164,6 +167,9 @@ export default function CheckoutPage() {
   const subtotal = isBuyNow
     ? items.reduce((sum, i) => sum + i.product.price * i.quantity, 0)
     : cartSubtotal;
+  // The abandoned-cart recovery offer only stacks on normal cart checkouts, not Buy Now.
+  const recoveryOffer = isBuyNow ? null : cartRecoveryOffer;
+  const recoveryDiscount = isBuyNow ? 0 : cartRecoveryDiscount;
   const couponDiscount = isBuyNow
     ? appliedCoupon && subtotal >= appliedCoupon.min_order_value
       ? computeCouponDiscount(appliedCoupon, subtotal, items.length)
@@ -874,7 +880,14 @@ export default function CheckoutPage() {
   // see exactly where the savings came from without cluttering the top banner.
   const discountBreakdown: { label: string; amount: number }[] = [
     ...(couponDiscount > 0
-      ? [{ label: `Coupon${appliedCoupon?.code ? ` (${appliedCoupon.code})` : ''}`, amount: couponDiscount }]
+      ? [
+          ...(couponDiscount - recoveryDiscount > 0
+            ? [{ label: `Coupon${appliedCoupon?.code ? ` (${appliedCoupon.code})` : ''}`, amount: couponDiscount - recoveryDiscount }]
+            : []),
+          ...(recoveryOffer && recoveryDiscount > 0
+            ? [{ label: `Extra offer (${recoveryOffer.code})`, amount: recoveryDiscount }]
+            : []),
+        ]
       : []),
     ...(bogoDiscount > 0 ? [{ label: 'BOGO offer applied', amount: bogoDiscount }] : []),
     ...(clampedGiftCardDiscount > 0
@@ -1251,6 +1264,9 @@ export default function CheckoutPage() {
             // inflating every order by the GST amount (~4.76% at 5%).
             gst_amount: tax,
             coupon_code: appliedCoupon?.code ?? null,
+            // Abandoned-cart recovery offer, stacked on top of coupon_code. The server
+            // (place_order_with_items) re-validates it and recomputes the amount itself.
+            recovery_coupon_code: recoveryOffer && recoveryDiscount > 0 ? recoveryOffer.code : null,
             coupon_discount: couponDiscount,
             // Sent for parity/debugging only — place_order_with_items()
             // recomputes the BOGO discount itself from the `promotions`
@@ -2366,10 +2382,16 @@ export default function CheckoutPage() {
                 <span className="text-muted-foreground">Subtotal</span>
                 <span>{formatINR(subtotal)}</span>
               </div>
-              {couponDiscount > 0 && (
+              {couponDiscount - recoveryDiscount > 0 && (
                 <div className="flex justify-between text-secondary-foreground">
-                  <span>Coupon discount</span>
-                  <span>-{formatINR(couponDiscount)}</span>
+                  <span>Coupon discount{appliedCoupon ? ` (${appliedCoupon.code})` : ''}</span>
+                  <span>-{formatINR(couponDiscount - recoveryDiscount)}</span>
+                </div>
+              )}
+              {recoveryOffer && recoveryDiscount > 0 && (
+                <div className="flex justify-between font-medium text-emerald-700">
+                  <span>Extra offer ({recoveryOffer.code})</span>
+                  <span>-{formatINR(recoveryDiscount)}</span>
                 </div>
               )}
               {bogoDiscount > 0 && (

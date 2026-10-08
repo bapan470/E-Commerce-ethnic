@@ -277,7 +277,7 @@ interface CartContextValue {
   setCartOpen: (open: boolean) => void;
   /** Coupon currently applied to the cart, shared across cart drawer, cart page & checkout. */
   appliedCoupon: Coupon | null;
-  /** Rupee amount saved by the applied coupon, recalculated live against the current subtotal. */
+  /** Total rupee amount saved by coupons (applied coupon + recovery offer), recalculated live. */
   couponDiscount: number;
   applyCoupon: (code: string, overrideSubtotal?: number, overrideItemCount?: number) => Promise<CouponResult>;
   removeCoupon: () => void;
@@ -287,6 +287,14 @@ interface CartContextValue {
    * coupon this keeps whichever of the two saves the customer more money.
    */
   applyCouponIfBetter: (code: string) => Promise<ApplyIfBetterResult>;
+  /** Abandoned-cart "recovery offer" (from an email / WhatsApp link). Unlike a normal coupon it is
+   *  stacked ON TOP of whatever coupon is already applied, and computed on the amount left after it. */
+  recoveryOffer: Coupon | null;
+  /** Rupee amount the recovery offer takes off (0 when none / not eligible). Already included in couponDiscount. */
+  recoveryDiscount: number;
+  /** Discount from the normal applied coupon only (couponDiscount minus recoveryDiscount). */
+  primaryCouponDiscount: number;
+  removeRecoveryOffer: () => void;
   /** Currently-active BOGO promotions, fetched once on mount — exposed so pages that need to
    * recompute the discount against a different item set (e.g. checkout's Buy Now flow) can call
    * computeBogoDiscount() themselves instead of refetching. */
@@ -310,6 +318,7 @@ const COUPON_STORAGE_KEY = 'saaj-cart-coupon-v1';
 // Coupon code carried in by an abandoned-cart email / WhatsApp link (?coupon=CODE). Kept in
 // localStorage until the cart has items to validate it against.
 const PENDING_COUPON_KEY = 'saaj-pending-coupon-v1';
+const RECOVERY_OFFER_STORAGE_KEY = 'saaj-recovery-offer-v1';
 const PENDING_COUPON_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 const COUPON_PARAM_RE = /^[A-Za-z0-9_-]{2,40}$/;
 
@@ -323,7 +332,7 @@ export interface ApplyIfBetterResult {
   discount?: number;
 }
 
-/** Remember a coupon code (from a ?coupon= link) so CartProvider auto-applies it. */
+/** Remember a recovery-offer code (from /recover/CODE or ?offer=CODE links) so CartProvider auto-applies it. */
 export function queuePendingCoupon(code: string | null | undefined) {
   try {
     const c = (code || '').trim();
@@ -340,6 +349,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const [isCartOpen, setCartOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
+  const [recoveryOffer, setRecoveryOffer] = useState<Coupon | null>(null);
   const [buyNowItem, setBuyNowItem] = useState<CartItem | null>(null);
   const [activePromotions, setActivePromotions] = useState<ActivePromotion[]>([]);
 
@@ -353,6 +363,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const rawCoupon = localStorage.getItem(COUPON_STORAGE_KEY);
       if (rawCoupon) {
         setAppliedCoupon(JSON.parse(rawCoupon) as Coupon);
+      }
+      const rawRecovery = localStorage.getItem(RECOVERY_OFFER_STORAGE_KEY);
+      if (rawRecovery) {
+        setRecoveryOffer(JSON.parse(rawRecovery) as Coupon);
       }
       // sessionStorage (not localStorage) — a Buy Now selection should only
       // survive the current tab/session, e.g. a checkout page refresh, not
@@ -396,6 +410,19 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
   }, [appliedCoupon, hydrated]);
 
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      if (recoveryOffer) {
+        localStorage.setItem(RECOVERY_OFFER_STORAGE_KEY, JSON.stringify(recoveryOffer));
+      } else {
+        localStorage.removeItem(RECOVERY_OFFER_STORAGE_KEY);
+      }
+    } catch {
+      // ignore
+    }
+  }, [recoveryOffer, hydrated]);
+
   const addItem = useCallback(
     (product: Product, size: string, quantity?: number, options?: { silent?: boolean; isBump?: boolean; feedItemId?: string }) => {
       const qty = quantity ?? 1;
@@ -433,6 +460,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const clearCart = useCallback(() => {
     dispatch({ type: 'CLEAR' });
     setAppliedCoupon(null);
+    setRecoveryOffer(null);
   }, []);
 
   const count = useMemo(
@@ -449,11 +477,24 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   // anywhere in the app — cart drawer, cart page, or checkout. Flat
   // coupons are priced per distinct product line, so adding/removing a
   // product updates the discount too, not just changing quantities.
-  const couponDiscount = useMemo(() => {
+  const primaryCouponDiscount = useMemo(() => {
     if (!appliedCoupon || subtotal <= 0) return 0;
     if (subtotal < appliedCoupon.min_order_value) return 0;
     return computeCouponDiscount(appliedCoupon, subtotal, state.items.length);
   }, [appliedCoupon, subtotal, state.items.length]);
+
+  // Abandoned-cart recovery offer: stacked ON TOP of the normal coupon, priced on what is
+  // left after it (same order the server uses in place_order_with_items()).
+  const recoveryDiscount = useMemo(() => {
+    if (!recoveryOffer || subtotal <= 0) return 0;
+    if (subtotal < recoveryOffer.min_order_value) return 0;
+    if (appliedCoupon && appliedCoupon.code.toUpperCase() === recoveryOffer.code.toUpperCase()) return 0;
+    return computeCouponDiscount(recoveryOffer, Math.max(0, subtotal - primaryCouponDiscount), state.items.length);
+  }, [recoveryOffer, appliedCoupon, subtotal, primaryCouponDiscount, state.items.length]);
+
+  // Everything downstream (cart drawer, cart page, checkout totals) already subtracts
+  // `couponDiscount`, so it now carries both discounts.
+  const couponDiscount = primaryCouponDiscount + recoveryDiscount;
 
   // BOGO discount, recomputed live off the current cart items and active promotions —
   // same "always live, never a frozen number" reasoning as couponDiscount above. A coupon
@@ -503,6 +544,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   );
 
   const removeCoupon = useCallback(() => setAppliedCoupon(null), []);
+  const removeRecoveryOffer = useCallback(() => setRecoveryOffer(null), []);
 
   const applyCouponIfBetter = useCallback(
     async (code: string): Promise<ApplyIfBetterResult> => {
@@ -526,15 +568,16 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     [subtotal, state.items.length, appliedCoupon, couponDiscount]
   );
 
-  // Pick up ?coupon=CODE from the URL (abandoned-cart email / WhatsApp links land on
-  // /cart?coupon=CODE or /cart-link/<id>?coupon=CODE) and queue it.
+  // Pick up ?offer=CODE from the URL (abandoned-cart WhatsApp links land on
+  // /cart-link/<id>?offer=CODE; emails use /recover/CODE) and queue it.
   useEffect(() => {
     if (!hydrated) return;
     try {
       const url = new URL(window.location.href);
-      const c = url.searchParams.get('coupon');
+      const c = url.searchParams.get('offer') || url.searchParams.get('coupon');
       if (c) {
         queuePendingCoupon(c);
+        url.searchParams.delete('offer');
         url.searchParams.delete('coupon');
         window.history.replaceState(null, '', url.pathname + url.search + url.hash);
       }
@@ -563,7 +606,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     if (subtotal <= 0) {
       if (!pendingNotifiedEmptyRef.current) {
         pendingNotifiedEmptyRef.current = true;
-        toast.info(`Coupon "${pending.code}" is saved — it will apply as soon as you add items to your cart.`);
+        toast.info(`Offer "${pending.code}" is saved — it will be added as soon as you add items to your cart.`);
       }
       return;
     }
@@ -571,22 +614,21 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     const code = pending.code;
     (async () => {
       try {
-        const r = await applyCouponIfBetter(code);
+        const r = await validateCoupon(code, subtotal, state.items.length);
         try { localStorage.removeItem(PENDING_COUPON_KEY); } catch {}
-        if (!r.ok) {
-          toast.error(`Coupon "${code}" couldn't be applied: ${r.error}`);
-        } else if (r.outcome === 'applied') {
-          toast.success(`Coupon "${code}" applied — you save ₹${r.discount ?? 0}`);
-        } else if (r.outcome === 'replaced') {
-          toast.success(`Coupon "${code}" applied — it saves more than your previous coupon`);
-        } else if (r.outcome === 'kept') {
-          toast.info(`"${r.coupon?.code}" already gives you a bigger discount than "${code}", so we kept it.`);
+        if (!r.ok || !r.coupon) {
+          toast.error(`Offer "${code}" couldn't be applied: ${r.error}`);
+        } else if (appliedCoupon && appliedCoupon.code.toUpperCase() === r.coupon.code.toUpperCase()) {
+          toast.info(`"${r.coupon.code}" is already applied to your cart.`);
+        } else {
+          setRecoveryOffer(r.coupon);
+          toast.success(`Extra offer "${r.coupon.code}" added on top of your cart discounts!`);
         }
       } finally {
         pendingBusyRef.current = false;
       }
     })();
-  }, [hydrated, subtotal, applyCouponIfBetter]);
+  }, [hydrated, subtotal, state.items.length, appliedCoupon]);
 
   const startBuyNow = useCallback(
     (product: Product, size: string, quantity?: number, feedItemId?: string) => {
@@ -640,6 +682,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     applyCoupon,
     removeCoupon,
     applyCouponIfBetter,
+    recoveryOffer,
+    recoveryDiscount,
+    primaryCouponDiscount,
+    removeRecoveryOffer,
     activePromotions,
     bogoDiscount,
     buyNowItem,

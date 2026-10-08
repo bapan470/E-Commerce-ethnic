@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { toPublicMediaUrl } from '@/lib/media-url';
-import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Tag, X, Loader2, PartyPopper, Wallet, Gift, ChevronDown, ChevronRight } from 'lucide-react';
+import { Minus, Plus, Trash2, ShoppingBag, ArrowRight, Tag, X, Loader2, PartyPopper, Sparkles, Wallet, Gift, ChevronDown, ChevronRight } from 'lucide-react';
 import {
   useCart,
   usePaymentDiscount,
@@ -38,6 +38,10 @@ export default function CartPage() {
     clearCart,
     appliedCoupon,
     couponDiscount,
+    primaryCouponDiscount,
+    recoveryOffer,
+    recoveryDiscount,
+    removeRecoveryOffer,
     applyCoupon,
     applyCouponIfBetter,
     removeCoupon,
@@ -197,6 +201,8 @@ export default function CartPage() {
       ? 0
       : shippingSettings.flat_rate;
   const discountedSubtotal = Math.max(0, subtotal - couponDiscount - bogoDiscount);
+  const priceBeforeRecovery = Math.max(0, subtotal - primaryCouponDiscount - bogoDiscount);
+  const priceAfterRecovery = Math.max(0, priceBeforeRecovery - recoveryDiscount);
   const clampedGiftCardDiscount = Math.min(giftCardDiscount, discountedSubtotal);
   const total = discountedSubtotal - clampedGiftCardDiscount + shipping;
   const onlinePaymentSavings =
@@ -209,6 +215,58 @@ export default function CartPage() {
       <h1 className="mb-6 font-serif text-3xl font-bold text-primary sm:text-4xl">
         Shopping Cart
       </h1>
+
+      {recoveryOffer && (
+        <div className="mb-6 overflow-hidden rounded-lg border border-amber-300 bg-gradient-to-r from-amber-50 to-rose-50 p-4 sm:p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2 font-serif text-lg font-bold text-primary">
+              <Sparkles className="h-5 w-5 shrink-0 text-amber-600" />
+              {recoveryDiscount > 0
+                ? `Extra offer unlocked: ${recoveryOffer.code}`
+                : `Offer ${recoveryOffer.code} is saved`}
+            </div>
+            <button
+              type="button"
+              onClick={removeRecoveryOffer}
+              aria-label="Remove extra offer"
+              className="text-muted-foreground hover:text-destructive"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          {recoveryDiscount > 0 ? (
+            <div className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
+              <div className="rounded-md bg-white/70 p-3">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                  {appliedCoupon && primaryCouponDiscount > 0 ? `After ${appliedCoupon.code}` : 'Your price'}
+                </div>
+                <div className="text-lg font-semibold line-through decoration-muted-foreground/60">
+                  {formatINR(priceBeforeRecovery)}
+                </div>
+              </div>
+              <div className="rounded-md bg-white/70 p-3">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Extra {recoveryOffer.code}
+                </div>
+                <div className="text-lg font-semibold text-emerald-700">-{formatINR(recoveryDiscount)}</div>
+              </div>
+              <div className="rounded-md bg-white/70 p-3 ring-1 ring-emerald-300">
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">You now pay</div>
+                <div className="text-lg font-bold text-primary">{formatINR(priceAfterRecovery)}</div>
+              </div>
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-muted-foreground">
+              Add items worth ₹{recoveryOffer.min_order_value} or more to unlock this extra discount.
+            </p>
+          )}
+          {appliedCoupon && primaryCouponDiscount > 0 && recoveryDiscount > 0 && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Your coupon {appliedCoupon.code} (-{formatINR(primaryCouponDiscount)}) stays applied — this offer is added on top of it.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="grid gap-8 lg:grid-cols-3">
         <div className="lg:col-span-2">
@@ -440,7 +498,7 @@ export default function CartPage() {
                     {couponError && <p className="text-xs text-destructive">{couponError}</p>}
                     {appliedCoupon && !couponError && (
                       <p className="text-xs text-muted-foreground">
-                        One coupon per order — we automatically keep whichever saves you more.
+                        Only one regular coupon per order — we keep whichever saves you more. An extra recovery offer, if you have one, is added on top.
                       </p>
                     )}
                   </div>
@@ -519,10 +577,16 @@ export default function CartPage() {
                 <span className="text-muted-foreground">Subtotal</span>
                 <span className="font-medium">{formatINR(subtotal)}</span>
               </div>
-              {couponDiscount > 0 && (
+              {primaryCouponDiscount > 0 && (
                 <div className="flex justify-between text-secondary-foreground">
-                  <span>Coupon discount</span>
-                  <span>-{formatINR(couponDiscount)}</span>
+                  <span>Coupon discount{appliedCoupon ? ` (${appliedCoupon.code})` : ''}</span>
+                  <span>-{formatINR(primaryCouponDiscount)}</span>
+                </div>
+              )}
+              {recoveryOffer && recoveryDiscount > 0 && (
+                <div className="flex justify-between font-medium text-emerald-700">
+                  <span>Extra offer ({recoveryOffer.code})</span>
+                  <span>-{formatINR(recoveryDiscount)}</span>
                 </div>
               )}
               {bogoDiscount > 0 && (

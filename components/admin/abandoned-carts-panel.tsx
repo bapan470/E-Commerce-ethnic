@@ -166,10 +166,10 @@ function describeItem(it: any): string {
 //      left behind, then the page forwards them on to /cart.
 // The message also proactively answers the three questions shoppers most
 // often hesitate on: how to order, what happens after, and how safe it is.
-// ?coupon=CODE makes /cart-link/<id> -> /cart auto-apply the code on arrival.
+// ?offer=CODE makes /cart-link/<id> -> /cart add the code as an extra discount on arrival.
 function couponQuery(code?: string | null): string {
   const c = (code || '').trim();
-  return c ? `?coupon=${encodeURIComponent(c)}` : '';
+  return c ? `?offer=${encodeURIComponent(c)}` : '';
 }
 
 function buildWhatsAppRecoveryLink(
@@ -194,7 +194,7 @@ function buildWhatsAppRecoveryLink(
       cartValue ? ` (total value ${formatINR(cartValue)})` : ''
     }:`,
     itemLines || null,
-    couponCode ? `Use code *${couponCode}* at checkout — it is applied automatically when you open the link below.` : null,
+    couponCode ? `Use code *${couponCode}* at checkout — it is added automatically as an extra discount when you open the link below.` : null,
     `You can complete your order here: ${siteUrl}/cart-link/${cartId}${couponQuery(couponCode)}`,
     `A few quick details, in case they're useful:\n` +
       `*Placing the order:* Open the link above, confirm your address and payment method (Cash on Delivery is available), and you're done — it takes under two minutes.\n` +
@@ -241,7 +241,7 @@ function buildUrgencyWhatsAppLink(
       ? ` That brings your total down to just *${formatINR(finalPrice)}* (instead of ${formatINR(cartValue)}).`
       : '';
   const couponLine = settings.coupon_code
-    ? `Just use the code *${settings.coupon_code}* at checkout (it is applied automatically when you open the link below).${priceLine}`
+    ? `Just use the code *${settings.coupon_code}* at checkout (it is added automatically as an extra discount when you open the link below).${priceLine}`
     : `Just reply to this message and we'll apply it for you.${priceLine}`;
 
   const messageParts = [
