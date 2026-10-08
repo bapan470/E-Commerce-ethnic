@@ -166,7 +166,19 @@ function describeItem(it: any): string {
 //      left behind, then the page forwards them on to /cart.
 // The message also proactively answers the three questions shoppers most
 // often hesitate on: how to order, what happens after, and how safe it is.
-function buildWhatsAppRecoveryLink(cartId: string, phone: string, cartValue: number, items: any[] = []): string | null {
+// ?coupon=CODE makes /cart-link/<id> -> /cart auto-apply the code on arrival.
+function couponQuery(code?: string | null): string {
+  const c = (code || '').trim();
+  return c ? `?coupon=${encodeURIComponent(c)}` : '';
+}
+
+function buildWhatsAppRecoveryLink(
+  cartId: string,
+  phone: string,
+  cartValue: number,
+  items: any[] = [],
+  couponCode?: string | null
+): string | null {
   let digits = phone.replace(/\D/g, '');
   if (digits.startsWith('91') && digits.length === 12) digits = digits.slice(2);
   if (digits.startsWith('0') && digits.length === 11) digits = digits.slice(1);
@@ -182,7 +194,8 @@ function buildWhatsAppRecoveryLink(cartId: string, phone: string, cartValue: num
       cartValue ? ` (total value ${formatINR(cartValue)})` : ''
     }:`,
     itemLines || null,
-    `You can complete your order here: ${siteUrl}/cart-link/${cartId}`,
+    couponCode ? `Use code *${couponCode}* at checkout — it is applied automatically when you open the link below.` : null,
+    `You can complete your order here: ${siteUrl}/cart-link/${cartId}${couponQuery(couponCode)}`,
     `A few quick details, in case they're useful:\n` +
       `*Placing the order:* Open the link above, confirm your address and payment method (Cash on Delivery is available), and you're done — it takes under two minutes.\n` +
       `*After you order:* We pack and dispatch within 2-3 business days, and share a live tracking link by WhatsApp, SMS, and email. Delivery typically takes 3-8 business days.\n` +
@@ -228,7 +241,7 @@ function buildUrgencyWhatsAppLink(
       ? ` That brings your total down to just *${formatINR(finalPrice)}* (instead of ${formatINR(cartValue)}).`
       : '';
   const couponLine = settings.coupon_code
-    ? `Just use the code *${settings.coupon_code}* at checkout.${priceLine}`
+    ? `Just use the code *${settings.coupon_code}* at checkout (it is applied automatically when you open the link below).${priceLine}`
     : `Just reply to this message and we'll apply it for you.${priceLine}`;
 
   const messageParts = [
@@ -238,7 +251,7 @@ function buildUrgencyWhatsAppLink(
     }, so we wanted to check in gently:`,
     itemLines || null,
     `As a small thank-you for considering us, we'd love to offer you ${discountText} on this order. ${couponLine}`,
-    `This little offer is valid for a short time only, so we didn't want you to miss it. You can complete your order here whenever it's convenient: ${siteUrl}/cart-link/${cartId}`,
+    `This little offer is valid for a short time only, so we didn't want you to miss it. You can complete your order here whenever it's convenient: ${siteUrl}/cart-link/${cartId}${couponQuery(settings.coupon_code)}`,
     `No pressure at all — we're just happy to help if you have any questions. Thank you for shopping with us! 🌸`,
   ].filter(Boolean);
 
@@ -818,6 +831,10 @@ function CartsList() {
     DEFAULT_URGENCY_WHATSAPP_SETTINGS
   );
 
+  // Coupon code (first step of the email sequence that has one) that the plain
+  // "Send WhatsApp" message carries in its link so it auto-applies on click.
+  const [whatsappCoupon, setWhatsappCoupon] = useState<string>('');
+
   useEffect(() => {
     (async () => {
       try {
@@ -825,6 +842,8 @@ function CartsList() {
         if (res.ok) {
           const body = await res.json();
           if (body.settings?.urgency_whatsapp) setUrgencySettings(body.settings.urgency_whatsapp);
+          const firstCoupon = (body.settings?.steps || []).find((st: any) => st?.coupon_code?.trim())?.coupon_code;
+          if (firstCoupon) setWhatsappCoupon(String(firstCoupon).trim());
         }
       } catch {
         // Non-fatal — the extra button just won't appear until this loads.
@@ -1111,7 +1130,7 @@ function CartsList() {
                           {!c.recovered &&
                             c.phone &&
                             (() => {
-                              const link = buildWhatsAppRecoveryLink(c.id, c.phone, c.cart_value, c.items);
+                              const link = buildWhatsAppRecoveryLink(c.id, c.phone, c.cart_value, c.items, whatsappCoupon);
                               if (!link) return null;
                               return (
                                 <Button size="sm" variant="outline" asChild>

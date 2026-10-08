@@ -6,6 +6,7 @@ import React, {
   useEffect,
   useMemo,
   useReducer,
+  useRef,
   useState,
   useCallback,
 } from 'react';
@@ -280,6 +281,12 @@ interface CartContextValue {
   couponDiscount: number;
   applyCoupon: (code: string, overrideSubtotal?: number, overrideItemCount?: number) => Promise<CouponResult>;
   removeCoupon: () => void;
+  /**
+   * Tries a coupon on top of whatever is already applied. The store supports ONE coupon per order
+   * (orders/invoices store a single coupon_code), so instead of blindly replacing the current
+   * coupon this keeps whichever of the two saves the customer more money.
+   */
+  applyCouponIfBetter: (code: string) => Promise<ApplyIfBetterResult>;
   /** Currently-active BOGO promotions, fetched once on mount — exposed so pages that need to
    * recompute the discount against a different item set (e.g. checkout's Buy Now flow) can call
    * computeBogoDiscount() themselves instead of refetching. */
@@ -300,6 +307,32 @@ interface CartContextValue {
 const CartContext = createContext<CartContextValue | undefined>(undefined);
 const STORAGE_KEY = 'saaj-cart-v1';
 const COUPON_STORAGE_KEY = 'saaj-cart-coupon-v1';
+// Coupon code carried in by an abandoned-cart email / WhatsApp link (?coupon=CODE). Kept in
+// localStorage until the cart has items to validate it against.
+const PENDING_COUPON_KEY = 'saaj-pending-coupon-v1';
+const PENDING_COUPON_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
+const COUPON_PARAM_RE = /^[A-Za-z0-9_-]{2,40}$/;
+
+export interface ApplyIfBetterResult {
+  ok: boolean;
+  error?: string;
+  coupon?: Coupon;
+  /** applied = nothing was applied before; replaced = new coupon beat the old one;
+   *  kept = the existing coupon is better so it stays; same = that coupon is already applied. */
+  outcome?: 'applied' | 'replaced' | 'kept' | 'same';
+  discount?: number;
+}
+
+/** Remember a coupon code (from a ?coupon= link) so CartProvider auto-applies it. */
+export function queuePendingCoupon(code: string | null | undefined) {
+  try {
+    const c = (code || '').trim();
+    if (!COUPON_PARAM_RE.test(c)) return;
+    localStorage.setItem(PENDING_COUPON_KEY, JSON.stringify({ code: c.toUpperCase(), ts: Date.now() }));
+  } catch {
+    // ignore
+  }
+}
 const BUY_NOW_STORAGE_KEY = 'saaj-buy-now-v1';
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
@@ -471,6 +504,90 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const removeCoupon = useCallback(() => setAppliedCoupon(null), []);
 
+  const applyCouponIfBetter = useCallback(
+    async (code: string): Promise<ApplyIfBetterResult> => {
+      const result = await validateCoupon(code, subtotal, state.items.length);
+      if (!result.ok || !result.coupon) return { ok: false, error: result.error || 'Invalid coupon code' };
+      const next = result.coupon;
+      const nextDiscount = result.discount ?? 0;
+      if (appliedCoupon && appliedCoupon.code.toUpperCase() === next.code.toUpperCase()) {
+        return { ok: true, coupon: appliedCoupon, outcome: 'same', discount: couponDiscount };
+      }
+      if (!appliedCoupon) {
+        setAppliedCoupon(next);
+        return { ok: true, coupon: next, outcome: 'applied', discount: nextDiscount };
+      }
+      if (nextDiscount > couponDiscount) {
+        setAppliedCoupon(next);
+        return { ok: true, coupon: next, outcome: 'replaced', discount: nextDiscount };
+      }
+      return { ok: true, coupon: appliedCoupon, outcome: 'kept', discount: couponDiscount };
+    },
+    [subtotal, state.items.length, appliedCoupon, couponDiscount]
+  );
+
+  // Pick up ?coupon=CODE from the URL (abandoned-cart email / WhatsApp links land on
+  // /cart?coupon=CODE or /cart-link/<id>?coupon=CODE) and queue it.
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      const url = new URL(window.location.href);
+      const c = url.searchParams.get('coupon');
+      if (c) {
+        queuePendingCoupon(c);
+        url.searchParams.delete('coupon');
+        window.history.replaceState(null, '', url.pathname + url.search + url.hash);
+      }
+    } catch {
+      // ignore
+    }
+  }, [hydrated]);
+
+  // Auto-apply the queued coupon as soon as the cart has items (min-order checks need a subtotal).
+  const pendingBusyRef = useRef(false);
+  const pendingNotifiedEmptyRef = useRef(false);
+  useEffect(() => {
+    if (!hydrated || pendingBusyRef.current) return;
+    let pending: { code: string; ts: number } | null = null;
+    try {
+      const raw = localStorage.getItem(PENDING_COUPON_KEY);
+      if (raw) pending = JSON.parse(raw);
+    } catch {
+      pending = null;
+    }
+    if (!pending || !pending.code) return;
+    if (Date.now() - (pending.ts || 0) > PENDING_COUPON_MAX_AGE_MS) {
+      try { localStorage.removeItem(PENDING_COUPON_KEY); } catch {}
+      return;
+    }
+    if (subtotal <= 0) {
+      if (!pendingNotifiedEmptyRef.current) {
+        pendingNotifiedEmptyRef.current = true;
+        toast.info(`Coupon "${pending.code}" is saved — it will apply as soon as you add items to your cart.`);
+      }
+      return;
+    }
+    pendingBusyRef.current = true;
+    const code = pending.code;
+    (async () => {
+      try {
+        const r = await applyCouponIfBetter(code);
+        try { localStorage.removeItem(PENDING_COUPON_KEY); } catch {}
+        if (!r.ok) {
+          toast.error(`Coupon "${code}" couldn't be applied: ${r.error}`);
+        } else if (r.outcome === 'applied') {
+          toast.success(`Coupon "${code}" applied — you save ₹${r.discount ?? 0}`);
+        } else if (r.outcome === 'replaced') {
+          toast.success(`Coupon "${code}" applied — it saves more than your previous coupon`);
+        } else if (r.outcome === 'kept') {
+          toast.info(`"${r.coupon?.code}" already gives you a bigger discount than "${code}", so we kept it.`);
+        }
+      } finally {
+        pendingBusyRef.current = false;
+      }
+    })();
+  }, [hydrated, subtotal, applyCouponIfBetter]);
+
   const startBuyNow = useCallback(
     (product: Product, size: string, quantity?: number, feedItemId?: string) => {
       const qty = quantity ?? 1;
@@ -522,6 +639,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     couponDiscount,
     applyCoupon,
     removeCoupon,
+    applyCouponIfBetter,
     activePromotions,
     bogoDiscount,
     buyNowItem,

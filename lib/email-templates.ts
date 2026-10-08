@@ -1122,6 +1122,15 @@ export function restockEmail(product: { name: string; slug: string; price: numbe
   return { subject, html };
 }
 
+// Link used by the "Complete your purchase" button. When the email carries a coupon,
+// the code rides along as ?coupon=CODE so /cart auto-applies it (see CartProvider in
+// lib/cart-context.tsx) -- the customer doesn't have to type it in.
+export function cartUrlWithCoupon(couponCode?: string | null): string {
+  const base = `${process.env.NEXT_PUBLIC_SITE_URL || ''}/cart`;
+  const code = (couponCode || '').trim();
+  return code ? `${base}?coupon=${encodeURIComponent(code)}` : base;
+}
+
 // sequenceNumber: 1 = first nudge (~1hr later, soft), 2 = second email
 // (~1 day later, a bit more direct), 3 = final email (~3 days later,
 // last-chance framing). Each step can also carry its own coupon code
@@ -1182,7 +1191,7 @@ export function cartRecoveryEmail(
     <p style="text-align:right; font-size:16px; font-weight:bold;">Cart total: ${formatINR(cart.cart_value)}</p>
     ${couponBlock}
     <p style="text-align:center; margin-top: 20px;">
-      <a href="${process.env.NEXT_PUBLIC_SITE_URL || ''}/cart" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px;">
+      <a href="${cartUrlWithCoupon(couponCode)}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px;">
         Complete your purchase
       </a>
     </p>
@@ -1230,7 +1239,7 @@ export function renderCartRecoveryEmail(
     return cartRecoveryEmail(cart, { couponCode, sequenceNumber, discountType, discountValue });
   }
 
-  const cartUrl = `${process.env.NEXT_PUBLIC_SITE_URL || ''}/cart`;
+  const cartUrl = cartUrlWithCoupon(couponCode);
   const discountLabel = discountType === 'flat' ? `${formatINR(discountValue)} off` : `${discountValue}% off`;
   const couponLine = couponCode
     ? `<p style="text-align:center; margin: 16px 0; padding: 12px; background:#fbf6f0; border:1px dashed ${GOLD_ACCENT}; border-radius:6px;">Use code <strong style="color:${BRAND_COLOR};">${couponCode}</strong> at checkout${

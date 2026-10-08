@@ -16,6 +16,7 @@ import { markCheckoutEntry } from '@/lib/checkout-return';
 import { fireGtagEvent } from '@/lib/gtag-track';
 import { formatINR } from '@/lib/format';
 import { validateGiftCard, GiftCard } from '@/lib/giftcards-api';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -38,6 +39,7 @@ export default function CartPage() {
     appliedCoupon,
     couponDiscount,
     applyCoupon,
+    applyCouponIfBetter,
     removeCoupon,
     clearBuyNow,
     activePromotions,
@@ -65,12 +67,26 @@ export default function CartPage() {
   const handleApplyCoupon = async () => {
     setCouponError(null);
     setApplyingCoupon(true);
-    const result = await applyCoupon(couponInput);
+    const result = await applyCouponIfBetter(couponInput);
     setApplyingCoupon(false);
     if (!result.ok) {
       setCouponError(result.error || 'Invalid coupon');
       return;
     }
+    if (result.outcome === 'kept') {
+      // One coupon per order — don't silently swap a bigger discount for a smaller one.
+      setCouponError(`"${result.coupon?.code}" already gives you a bigger discount, so we kept it. Only one coupon can be used per order.`);
+      return;
+    }
+    if (result.outcome === 'same') {
+      setCouponError('This coupon is already applied.');
+      return;
+    }
+    toast.success(
+      result.outcome === 'replaced'
+        ? `"${result.coupon?.code}" applied — it saves more than your previous coupon`
+        : `Coupon "${result.coupon?.code}" applied`
+    );
     setCouponInput('');
     setCouponPanelOpen(false);
   };
@@ -361,14 +377,23 @@ export default function CartPage() {
                   <span className="flex items-center gap-1.5 font-medium text-secondary-foreground">
                     <Tag className="h-3.5 w-3.5" /> {appliedCoupon.code} applied
                   </span>
-                  <button
-                    type="button"
-                    onClick={handleRemoveCoupon}
-                    aria-label="Remove coupon"
-                    className="text-muted-foreground hover:text-destructive"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+                  <span className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setCouponPanelOpen((o) => !o)}
+                      className="text-xs font-medium text-primary hover:underline"
+                    >
+                      Try another code
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleRemoveCoupon}
+                      aria-label="Remove coupon"
+                      className="text-muted-foreground hover:text-destructive"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </span>
                 </div>
               ) : (
                 <button
@@ -392,7 +417,7 @@ export default function CartPage() {
                   )}
                 </button>
               )}
-              {!appliedCoupon && couponPanelOpen && (
+              {couponPanelOpen && (
                 <div className="border-t border-border/60 p-3">
                   <div className="flex flex-col gap-1.5">
                     <div className="flex gap-2">
@@ -413,6 +438,11 @@ export default function CartPage() {
                       </Button>
                     </div>
                     {couponError && <p className="text-xs text-destructive">{couponError}</p>}
+                    {appliedCoupon && !couponError && (
+                      <p className="text-xs text-muted-foreground">
+                        One coupon per order — we automatically keep whichever saves you more.
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
