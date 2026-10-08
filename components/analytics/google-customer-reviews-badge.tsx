@@ -15,7 +15,7 @@ const HIDDEN_PREFIXES = ['/admin', '/vendor', '/checkout'];
  * country), the badge says "Rating not available". To switch it off without a
  * code change, set NEXT_PUBLIC_GCR_BADGE=off in the environment and redeploy.
  *
- * BOTTOM_LEFT: the WhatsApp / live-chat buttons already sit bottom-right.
+ * LEFT_BOTTOM: the WhatsApp / live-chat buttons already sit bottom-right.
  */
 export default function GoogleCustomerReviewsBadge() {
   const pathname = usePathname() || '';
@@ -33,7 +33,7 @@ export default function GoogleCustomerReviewsBadge() {
         w.__gcrBadgeStarted = true; // start() once per page load
         w.merchantwidget.start({
           merchant_id: GCR_MERCHANT_ID,
-          position: 'BOTTOM_LEFT',
+          position: 'LEFT_BOTTOM',
           region: 'IN',
         });
       }}
