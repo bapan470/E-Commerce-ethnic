@@ -222,18 +222,23 @@ export default function CartPage() {
             <div className="flex items-center gap-2 font-serif text-lg font-bold text-primary">
               <Sparkles className="h-5 w-5 shrink-0 text-amber-600" />
               {recoveryDiscount > 0
-                ? `Extra offer unlocked: ${recoveryOffer.code}`
-                : `Offer ${recoveryOffer.code} is saved`}
+                ? 'A little thank-you from us 🎁'
+                : `Your special offer ${recoveryOffer.code} is saved for you`}
             </div>
             <button
               type="button"
               onClick={removeRecoveryOffer}
-              aria-label="Remove extra offer"
+              aria-label="Remove special offer"
               className="text-muted-foreground hover:text-destructive"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
+          {recoveryDiscount > 0 && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              Thank you for your interest in our handlooms. We've added an extra {formatINR(recoveryDiscount)} off your order.
+            </p>
+          )}
           {recoveryDiscount > 0 ? (
             <div className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
               <div className="rounded-md bg-white/70 p-3">
@@ -246,23 +251,23 @@ export default function CartPage() {
               </div>
               <div className="rounded-md bg-white/70 p-3">
                 <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Extra {recoveryOffer.code}
+                  Special offer {recoveryOffer.code}
                 </div>
                 <div className="text-lg font-semibold text-emerald-700">-{formatINR(recoveryDiscount)}</div>
               </div>
               <div className="rounded-md bg-white/70 p-3 ring-1 ring-emerald-300">
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">You now pay</div>
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">Your final price</div>
                 <div className="text-lg font-bold text-primary">{formatINR(priceAfterRecovery)}</div>
               </div>
             </div>
           ) : (
             <p className="mt-2 text-sm text-muted-foreground">
-              Add items worth ₹{recoveryOffer.min_order_value} or more to unlock this extra discount.
+              Add items worth ₹{recoveryOffer.min_order_value} or more and this special offer will be added for you.
             </p>
           )}
           {appliedCoupon && primaryCouponDiscount > 0 && recoveryDiscount > 0 && (
             <p className="mt-2 text-xs text-muted-foreground">
-              Your coupon {appliedCoupon.code} (-{formatINR(primaryCouponDiscount)}) stays applied — this offer is added on top of it.
+              Thank you for coming back! Your coupon {appliedCoupon.code} (-{formatINR(primaryCouponDiscount)}) stays applied, and this is an extra saving on top of it.
             </p>
           )}
         </div>
@@ -498,7 +503,7 @@ export default function CartPage() {
                     {couponError && <p className="text-xs text-destructive">{couponError}</p>}
                     {appliedCoupon && !couponError && (
                       <p className="text-xs text-muted-foreground">
-                        Only one regular coupon per order — we keep whichever saves you more. An extra recovery offer, if you have one, is added on top.
+                        You can use one coupon per order, and we'll keep whichever saves you more. If we've sent you a special offer, it is added on top.
                       </p>
                     )}
                   </div>
@@ -585,7 +590,7 @@ export default function CartPage() {
               )}
               {recoveryOffer && recoveryDiscount > 0 && (
                 <div className="flex justify-between font-medium text-emerald-700">
-                  <span>Extra offer ({recoveryOffer.code})</span>
+                  <span>Special offer ({recoveryOffer.code})</span>
                   <span>-{formatINR(recoveryDiscount)}</span>
                 </div>
               )}

@@ -802,7 +802,7 @@ export default function CartDrawer() {
                     {recoveryOffer && recoveryDiscount > 0 && (
                       <div className="flex items-center justify-between font-medium text-emerald-700">
                         <span className="flex items-center gap-1.5">
-                          <Tag className="h-3.5 w-3.5" /> Extra offer {recoveryOffer.code}
+                          <Tag className="h-3.5 w-3.5" /> Special offer {recoveryOffer.code}
                         </span>
                         <span>-{formatINR(recoveryDiscount)}</span>
                       </div>

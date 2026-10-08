@@ -194,7 +194,9 @@ function buildWhatsAppRecoveryLink(
       cartValue ? ` (total value ${formatINR(cartValue)})` : ''
     }:`,
     itemLines || null,
-    couponCode ? `Use code *${couponCode}* at checkout — it is added automatically as an extra discount when you open the link below.` : null,
+    couponCode
+      ? `As a small thank-you for your interest, we have kept a special offer for you: *${couponCode}*. It is added automatically when you open the link below, on top of any coupon already in your cart. 🎁`
+      : null,
     `You can complete your order here: ${siteUrl}/cart-link/${cartId}${couponQuery(couponCode)}`,
     `A few quick details, in case they're useful:\n` +
       `*Placing the order:* Open the link above, confirm your address and payment method (Cash on Delivery is available), and you're done — it takes under two minutes.\n` +
@@ -241,7 +243,7 @@ function buildUrgencyWhatsAppLink(
       ? ` That brings your total down to just *${formatINR(finalPrice)}* (instead of ${formatINR(cartValue)}).`
       : '';
   const couponLine = settings.coupon_code
-    ? `Just use the code *${settings.coupon_code}* at checkout (it is added automatically as an extra discount when you open the link below).${priceLine}`
+    ? `Your special code *${settings.coupon_code}* is added automatically when you open the link below, on top of any coupon you have already applied.${priceLine}`
     : `Just reply to this message and we'll apply it for you.${priceLine}`;
 
   const messageParts = [

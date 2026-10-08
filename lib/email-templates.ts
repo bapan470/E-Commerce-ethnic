@@ -1176,11 +1176,9 @@ export function cartRecoveryEmail(
 
   const couponBlock = couponCode
     ? `<p style="text-align:center; margin: 16px 0; padding: 12px; background:#fbf6f0; border:1px dashed ${GOLD_ACCENT}; border-radius:6px;">
-        Your extra offer <strong style="color:${BRAND_COLOR};">${couponCode}</strong> is added automatically when you tap the button below${
-        hasDiscount
-          ? ` — ${discountLabel}, on top of any coupon you have already added.`
-          : ' — an additional discount on top of any coupon you have already added.'
-      }
+        As a thank-you for your interest, we have kept a special offer for you: <strong style="color:${BRAND_COLOR};">${couponCode}</strong>${
+        hasDiscount ? ` (${discountLabel})` : ''
+      }. It is added automatically when you tap the button below, on top of any coupon already in your cart.
       </p>`
     : '';
 
@@ -1242,11 +1240,9 @@ export function renderCartRecoveryEmail(
   const cartUrl = cartUrlWithCoupon(couponCode);
   const discountLabel = discountType === 'flat' ? `${formatINR(discountValue)} off` : `${discountValue}% off`;
   const couponLine = couponCode
-    ? `<p style="text-align:center; margin: 16px 0; padding: 12px; background:#fbf6f0; border:1px dashed ${GOLD_ACCENT}; border-radius:6px;">Your extra offer <strong style="color:${BRAND_COLOR};">${couponCode}</strong> is added automatically when you tap the button below${
-        hasDiscount
-          ? ` — ${discountLabel}, on top of any coupon you have already added.`
-          : ' — an additional discount on top of any coupon you have already added.'
-      }</p>`
+    ? `<p style="text-align:center; margin: 16px 0; padding: 12px; background:#fbf6f0; border:1px dashed ${GOLD_ACCENT}; border-radius:6px;">As a thank-you for your interest, we have kept a special offer for you: <strong style="color:${BRAND_COLOR};">${couponCode}</strong>${
+        hasDiscount ? ` (${discountLabel})` : ''
+      }. It is added automatically when you tap the button below, on top of any coupon already in your cart.</p>`
     : '';
 
   const applyMergeFields = (text: string) =>

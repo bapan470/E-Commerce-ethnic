@@ -606,7 +606,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     if (subtotal <= 0) {
       if (!pendingNotifiedEmptyRef.current) {
         pendingNotifiedEmptyRef.current = true;
-        toast.info(`Offer "${pending.code}" is saved — it will be added as soon as you add items to your cart.`);
+        toast.info(`Your special offer "${pending.code}" is saved for you — it will be added as soon as you add an item to your cart.`);
       }
       return;
     }
@@ -617,12 +617,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         const r = await validateCoupon(code, subtotal, state.items.length);
         try { localStorage.removeItem(PENDING_COUPON_KEY); } catch {}
         if (!r.ok || !r.coupon) {
-          toast.error(`Offer "${code}" couldn't be applied: ${r.error}`);
+          toast.error(`Sorry, we couldn't add your offer "${code}": ${r.error}`);
         } else if (appliedCoupon && appliedCoupon.code.toUpperCase() === r.coupon.code.toUpperCase()) {
           toast.info(`"${r.coupon.code}" is already applied to your cart.`);
         } else {
           setRecoveryOffer(r.coupon);
-          toast.success(`Extra offer "${r.coupon.code}" added on top of your cart discounts!`);
+          toast.success(`Thank you for coming back! Your special offer "${r.coupon.code}" has been added.`);
         }
       } finally {
         pendingBusyRef.current = false;

@@ -885,7 +885,7 @@ export default function CheckoutPage() {
             ? [{ label: `Coupon${appliedCoupon?.code ? ` (${appliedCoupon.code})` : ''}`, amount: couponDiscount - recoveryDiscount }]
             : []),
           ...(recoveryOffer && recoveryDiscount > 0
-            ? [{ label: `Extra offer (${recoveryOffer.code})`, amount: recoveryDiscount }]
+            ? [{ label: `Special offer (${recoveryOffer.code})`, amount: recoveryDiscount }]
             : []),
         ]
       : []),
@@ -2390,7 +2390,7 @@ export default function CheckoutPage() {
               )}
               {recoveryOffer && recoveryDiscount > 0 && (
                 <div className="flex justify-between font-medium text-emerald-700">
-                  <span>Extra offer ({recoveryOffer.code})</span>
+                  <span>Special offer ({recoveryOffer.code})</span>
                   <span>-{formatINR(recoveryDiscount)}</span>
                 </div>
               )}
