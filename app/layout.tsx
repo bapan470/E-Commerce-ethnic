@@ -84,6 +84,8 @@ const DEFAULT_ANALYTICS: AnalyticsSettings = {
   meta_pixel_id: '',
   trustpilot_enabled: false,
   trustpilot_integration_key: '',
+  gcr_badge_enabled: true,
+  gcr_optin_enabled: true,
 };
 
 // Reads Admin > Marketing > Analytics settings (Google Analytics + Meta
@@ -263,7 +265,7 @@ export default async function RootLayout({
         <BlurPlaceholderSync />
         {/* Google Customer Reviews badge (store rating). See
            components/analytics/google-customer-reviews-badge.tsx. */}
-        <GoogleCustomerReviewsBadge />
+        <GoogleCustomerReviewsBadge enabled={analytics.gcr_badge_enabled} />
         <Providers
           initialPaymentDiscount={initialPaymentDiscount}
           initialSiteBanner={chrome.siteBanner}

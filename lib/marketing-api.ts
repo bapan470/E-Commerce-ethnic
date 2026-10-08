@@ -524,6 +524,8 @@ export interface AnalyticsSettings {
   meta_pixel_id: string; // numeric Pixel ID
   trustpilot_enabled: boolean;
   trustpilot_integration_key: string; // Trustpilot > Integrations > Ecommerce > JavaScript Integration
+  gcr_badge_enabled: boolean; // Google Customer Reviews badge (store widget) on the storefront
+  gcr_optin_enabled: boolean; // Google Customer Reviews survey popup on the order-confirmation page
 }
 
 const DEFAULT_ANALYTICS_SETTINGS: AnalyticsSettings = {
@@ -536,6 +538,9 @@ const DEFAULT_ANALYTICS_SETTINGS: AnalyticsSettings = {
   meta_pixel_id: '',
   trustpilot_enabled: false,
   trustpilot_integration_key: '',
+  // Both on by default so nothing changes until an admin switches them off.
+  gcr_badge_enabled: true,
+  gcr_optin_enabled: true,
 };
 
 export async function fetchAnalyticsSettings(): Promise<AnalyticsSettings> {

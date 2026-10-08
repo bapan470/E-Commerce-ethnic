@@ -930,6 +930,41 @@ function AnalyticsTab() {
         </div>
       </div>
 
+      <div className="space-y-3 rounded-lg border border-border p-3">
+        <div>
+          <p className="text-sm font-medium">Google Customer Reviews</p>
+          <p className="text-xs text-muted-foreground">
+            Builds your Google store rating. Merchant ID is set in code (5830177505).
+          </p>
+        </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <Label htmlFor="gcr-optin-enabled">Review survey popup (order confirmation page)</Label>
+            <p className="text-xs text-muted-foreground">
+              Google asks the customer if they want a review email after delivery.
+            </p>
+          </div>
+          <Switch
+            id="gcr-optin-enabled"
+            checked={analytics.gcr_optin_enabled}
+            onCheckedChange={(checked) => setAnalytics({ ...analytics, gcr_optin_enabled: checked })}
+          />
+        </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <Label htmlFor="gcr-badge-enabled">Store rating badge (floating, bottom-right)</Label>
+            <p className="text-xs text-muted-foreground">
+              Hidden on checkout and admin pages. Can take up to 30 minutes to update on the site.
+            </p>
+          </div>
+          <Switch
+            id="gcr-badge-enabled"
+            checked={analytics.gcr_badge_enabled}
+            onCheckedChange={(checked) => setAnalytics({ ...analytics, gcr_badge_enabled: checked })}
+          />
+        </div>
+      </div>
+
       <Button type="submit" disabled={saving} className="gap-2 bg-primary">
         <Save className="h-4 w-4" />
         {saving ? 'Saving...' : 'Save Analytics Settings'}

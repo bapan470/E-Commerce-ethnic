@@ -60,6 +60,17 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
   const isExpired = daysSinceOrder > GUEST_LINK_EXPIRY_DAYS;
 
   const fulfillmentSettings = await fetchFulfillmentSettings();
+
+  // Admin > Marketing > Analytics > Google Customer Reviews toggle. On unless
+  // an admin explicitly switched it off (missing setting = on). This page is
+  // force-dynamic, so the toggle takes effect immediately.
+  const { data: analyticsRow } = await supabase
+    .from('settings')
+    .select('value')
+    .eq('key', 'analytics_settings')
+    .maybeSingle();
+  const gcrOptInEnabled =
+    (analyticsRow?.value as { gcr_optin_enabled?: boolean } | null)?.gcr_optin_enabled !== false;
   const { cancellation_window_hours: CANCELLATION_WINDOW_HOURS } = fulfillmentSettings;
   const hoursSinceOrder = (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60);
 
@@ -191,7 +202,7 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
       {/* Google Customer Reviews survey opt-in -> builds the Merchant Center
           store rating. Only for live orders: not cancelled/failed, not an
           unpaid online order, not already delivered. */}
-      {order.customer_email && !isCancelledOrFailed && !isUnpaidPending && order.status !== 'delivered' && (
+      {gcrOptInEnabled && order.customer_email && !isCancelledOrFailed && !isUnpaidPending && order.status !== 'delivered' && (
         <GoogleCustomerReviewsOptIn
           orderId={order.id}
           email={order.customer_email}

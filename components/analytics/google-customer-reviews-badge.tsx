@@ -28,12 +28,15 @@ function setWrapperHidden(hidden: boolean) {
  * On mobile it is lifted to clear the sticky "Add to Bag / Buy" bar on the
  * product page and the bottom nav (see mobileBottomMargin below).
  *
- * To switch it off without a code change, set NEXT_PUBLIC_GCR_BADGE=off in
- * the environment and redeploy.
+ * Switch it on/off from Admin > Marketing > Analytics (takes effect once the
+ * layout re-renders, up to ~30 min, same as the other analytics toggles).
+ * NEXT_PUBLIC_GCR_BADGE=off also forces it off.
  */
-export default function GoogleCustomerReviewsBadge() {
+export default function GoogleCustomerReviewsBadge({ enabled = true }: { enabled?: boolean }) {
   const pathname = usePathname() || '';
-  const disabled = process.env.NEXT_PUBLIC_GCR_BADGE === 'off';
+  // Admin > Marketing > Analytics toggle (passed from app/layout.tsx), plus
+  // the NEXT_PUBLIC_GCR_BADGE=off env flag as a hard kill-switch.
+  const disabled = !enabled || process.env.NEXT_PUBLIC_GCR_BADGE === 'off';
   const hidden = HIDDEN_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
   useEffect(() => {
