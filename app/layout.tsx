@@ -5,6 +5,7 @@ import Script from 'next/script';
 import Providers from '@/components/providers';
 import AnalyticsScripts from '@/components/analytics-scripts';
 import BlurPlaceholderSync from '@/components/blur-placeholder-sync';
+import GoogleCustomerReviewsBadge from '@/components/analytics/google-customer-reviews-badge';
 import { getServerSupabase } from '@/lib/supabase-server';
 import { getStorefrontChromeSettings } from '@/lib/storefront-settings-server';
 import { SeoSettings, AnalyticsSettings } from '@/lib/marketing-api';
@@ -260,6 +261,9 @@ export default async function RootLayout({
            beforeInteractive script above isn't enough on its own.
            Renders nothing. */}
         <BlurPlaceholderSync />
+        {/* Google Customer Reviews badge (store rating). See
+           components/analytics/google-customer-reviews-badge.tsx. */}
+        <GoogleCustomerReviewsBadge />
         <Providers
           initialPaymentDiscount={initialPaymentDiscount}
           initialSiteBanner={chrome.siteBanner}

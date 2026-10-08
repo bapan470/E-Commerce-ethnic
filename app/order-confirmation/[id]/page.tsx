@@ -10,6 +10,8 @@ import OrderTracking from '@/components/order/order-tracking';
 import PurchaseTracker from '@/components/analytics/purchase-tracker';
 import { toPublicMediaUrl } from '@/lib/media-url';
 import TrustpilotInvitation from '@/components/analytics/trustpilot-invitation';
+import GoogleCustomerReviewsOptIn from '@/components/analytics/google-customer-reviews-optin';
+import { estimateDeliveryDate, toCountryCode } from '@/lib/google-customer-reviews';
 import CancelOrHelp from '@/components/order/cancel-or-help';
 import PaymentPendingBanner from '@/components/order/payment-pending-banner';
 import EditAddressButton from '@/components/order/edit-address-button';
@@ -57,7 +59,8 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
   const daysSinceOrder = (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60 * 24);
   const isExpired = daysSinceOrder > GUEST_LINK_EXPIRY_DAYS;
 
-  const { cancellation_window_hours: CANCELLATION_WINDOW_HOURS } = await fetchFulfillmentSettings();
+  const fulfillmentSettings = await fetchFulfillmentSettings();
+  const { cancellation_window_hours: CANCELLATION_WINDOW_HOURS } = fulfillmentSettings;
   const hoursSinceOrder = (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60);
 
   // Loyalty points preview — shows what THIS order earns toward the next
@@ -185,6 +188,21 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
         recipientEmail={order.customer_email}
         recipientName={order.customer_name}
       />
+      {/* Google Customer Reviews survey opt-in -> builds the Merchant Center
+          store rating. Only for live orders: not cancelled/failed, not an
+          unpaid online order, not already delivered. */}
+      {order.customer_email && !isCancelledOrFailed && !isUnpaidPending && order.status !== 'delivered' && (
+        <GoogleCustomerReviewsOptIn
+          orderId={order.id}
+          email={order.customer_email}
+          deliveryCountry={toCountryCode((addr as { country?: string } | null)?.country)}
+          estimatedDeliveryDate={estimateDeliveryDate(
+            order.created_at,
+            fulfillmentSettings.dispatch_days_max,
+            fulfillmentSettings.delivery_other_max,
+          )}
+        />
+      )}
       <div className="flex flex-col items-center gap-3 text-center">
         <div className="rounded-full bg-secondary/20 p-4">
           <CheckCircle2 className="h-10 w-10 text-secondary" />
