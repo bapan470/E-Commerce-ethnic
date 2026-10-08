@@ -11,6 +11,7 @@ import {
   deleteCoupon,
   setCouponActive,
   setCouponShowOnProductPage,
+  setCouponShowInGooglePromotions,
 } from '@/lib/coupons-api';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -44,6 +45,7 @@ const emptyForm: CouponInput = {
   expires_at: null,
   is_active: true,
   show_on_product_page: false,
+  show_in_google_promotions: false,
 };
 
 export default function CouponsPanel() {
@@ -87,6 +89,7 @@ export default function CouponsPanel() {
       expires_at: c.expires_at ? c.expires_at.slice(0, 10) : null,
       is_active: c.is_active,
       show_on_product_page: c.show_on_product_page,
+      show_in_google_promotions: c.show_in_google_promotions ?? false,
     });
     setOpen(true);
   };
@@ -144,6 +147,19 @@ export default function CouponsPanel() {
     }
   };
 
+  const toggleShowInGooglePromotions = async (c: Coupon) => {
+    try {
+      await setCouponShowInGooglePromotions(c.id, !c.show_in_google_promotions);
+      setCoupons((prev) =>
+        prev.map((x) =>
+          x.id === c.id ? { ...x, show_in_google_promotions: !x.show_in_google_promotions } : x
+        )
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update');
+    }
+  };
+
   const confirmDelete = async () => {
     if (!confirmTarget) return;
     try {
@@ -183,6 +199,7 @@ export default function CouponsPanel() {
               <th className="px-4 py-3">Expires</th>
               <th className="px-4 py-3">Active</th>
               <th className="px-4 py-3">Show on Product Page</th>
+              <th className="px-4 py-3">Google Promotions</th>
               <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
@@ -217,6 +234,12 @@ export default function CouponsPanel() {
                   />
                 </td>
                 <td className="px-4 py-3 text-sm">
+                  <Switch
+                    checked={!!c.show_in_google_promotions}
+                    onCheckedChange={() => toggleShowInGooglePromotions(c)}
+                  />
+                </td>
+                <td className="px-4 py-3 text-sm">
                   <div className="flex gap-2">
                     <Button size="sm" variant="outline" onClick={() => openEdit(c)}>
                       <Pencil className="h-3.5 w-3.5" />
@@ -235,7 +258,7 @@ export default function CouponsPanel() {
             ))}
             {!loading && coupons.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">
                   No coupons yet. Add one to run your first offer.
                 </td>
               </tr>
@@ -363,6 +386,22 @@ export default function CouponsPanel() {
                 id="coupon-show-product-page"
                 checked={form.show_on_product_page}
                 onCheckedChange={(v) => setForm((f) => ({ ...f, show_on_product_page: v }))}
+              />
+            </div>
+
+            <div className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2">
+              <div>
+                <Label htmlFor="coupon-google-promotions" className="cursor-pointer">
+                  Show in Google Promotions
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Sends this coupon to Google Merchant Center (Shopping ads / free listings)
+                </p>
+              </div>
+              <Switch
+                id="coupon-google-promotions"
+                checked={form.show_in_google_promotions}
+                onCheckedChange={(v) => setForm((f) => ({ ...f, show_in_google_promotions: v }))}
               />
             </div>
 

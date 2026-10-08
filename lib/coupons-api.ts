@@ -12,6 +12,7 @@ export interface Coupon {
   expires_at: string | null;
   is_active: boolean;
   show_on_product_page: boolean;
+  show_in_google_promotions: boolean;
   created_at?: string;
 }
 
@@ -42,6 +43,7 @@ export interface CouponInput {
   expires_at: string | null;
   is_active: boolean;
   show_on_product_page: boolean;
+  show_in_google_promotions: boolean;
 }
 
 async function adminCouponRequest(url: string, options: RequestInit) {
@@ -83,6 +85,13 @@ export async function setCouponShowOnProductPage(id: string, show_on_product_pag
   await adminCouponRequest(`/api/admin/coupons/${id}`, {
     method: 'PATCH',
     body: JSON.stringify({ show_on_product_page }),
+  });
+}
+
+export async function setCouponShowInGooglePromotions(id: string, show_in_google_promotions: boolean) {
+  await adminCouponRequest(`/api/admin/coupons/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ show_in_google_promotions }),
   });
 }
 
