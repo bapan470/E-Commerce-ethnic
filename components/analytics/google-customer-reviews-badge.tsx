@@ -76,7 +76,7 @@ export default function GoogleCustomerReviewsBadge({ enabled = true }: { enabled
           position: 'RIGHT_BOTTOM',
           region: 'IN',
           // Mobile: keep clear of the sticky cart bar / bottom nav (px).
-          mobileBottomMargin: 110,
+          mobileBottomMargin: 80,
         });
       }}
     />
