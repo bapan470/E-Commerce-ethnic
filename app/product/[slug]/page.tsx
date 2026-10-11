@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { buildProductMetadata, ProductPageBody } from './product-page-body';
+import { fetchTopProductSlugsServer } from '@/lib/top-products-server';
 
 // ISR: cached page, regenerated at most every 30 min on a visit. Admin
 // edits/deletes purge instantly via revalidatePath (app/api/admin/products/
@@ -12,13 +13,21 @@ export const revalidate = 1800;
 
 type Params = { params: { slug: string } };
 
-// Empty on purpose: pre-renders nothing at build time, but tells Next.js this
-// route is cacheable. Each product page is then rendered on its first visit
-// and served from the ISR cache afterwards. WITHOUT this export, a dynamic
-// [slug] route is treated as fully dynamic (one function run per view) even
-// with `revalidate` set.
+// Pre-renders the N most-viewed live products at build time (see
+// lib/top-products-server.ts) so the busiest pages are already cached the
+// moment a deploy goes live. All other products are rendered + cached on
+// their first visit (dynamicParams defaults to true). WITHOUT this export a
+// dynamic [slug] route is treated as fully dynamic (one function run per
+// view) even with `revalidate` set -- so keep it, even if N is 0.
+//
+// N comes from the PRERENDER_TOP_PRODUCTS env var (Vercel > Settings >
+// Environment Variables). Default 30. Set it to 0 to pre-render nothing
+// (e.g. if a build ever fails because of one product's data).
+const PRERENDER_TOP_PRODUCTS = Number(process.env.PRERENDER_TOP_PRODUCTS ?? 30);
+
 export async function generateStaticParams() {
-  return [];
+  const slugs = await fetchTopProductSlugsServer(PRERENDER_TOP_PRODUCTS);
+  return slugs.map((slug) => ({ slug }));
 }
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
