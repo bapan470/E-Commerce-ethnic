@@ -6,7 +6,7 @@ import ShopContent from '../shop/shop-content';
 // request, but the underlying fetch is cached for 60s at the route level so
 // most visits don't hit Supabase at all.
 // Vercel ISR-writes fix: 60 -> 300 (5 min).
-export const revalidate = 300;
+export const revalidate = 1800;
 
 // Search results get their own URL (/search?q=...) instead of living under
 // /shop?q=... -- /shop stays the pure category/filter browsing page, while

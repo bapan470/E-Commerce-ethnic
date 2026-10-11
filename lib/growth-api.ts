@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { purgeSiteLayoutCache } from './purge-site-cache';
 
 // ---------------------------------------------------------------------
 // Phase 13 — Growth Marketing Toolkit
@@ -103,6 +104,7 @@ export async function saveGrowthSettings(settings: GrowthSettings) {
     .from('settings')
     .upsert({ key: 'growth_settings', value: settings }, { onConflict: 'key' });
   if (error) throw error;
+  await purgeSiteLayoutCache();
 }
 
 // ---------------------------------------------------------------------

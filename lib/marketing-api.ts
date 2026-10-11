@@ -1,4 +1,5 @@
 import { getServerSupabase } from './supabase-server';
+import { purgeSiteLayoutCache } from './purge-site-cache';
 import { fetchShippingSettings, type ShippingSettings } from './pincode-api';
 
 // NOTE: this file is imported from BOTH client components (admin panels,
@@ -508,6 +509,7 @@ export async function saveSeoSettings(settings: SeoSettings) {
     .from('settings')
     .upsert({ key: 'seo_settings', value: settings }, { onConflict: 'key' });
   if (error) throw error;
+  await purgeSiteLayoutCache();
 }
 
 // ---------------------------------------------------------------------
@@ -558,4 +560,5 @@ export async function saveAnalyticsSettings(settings: AnalyticsSettings) {
     .from('settings')
     .upsert({ key: 'analytics_settings', value: settings }, { onConflict: 'key' });
   if (error) throw error;
+  await purgeSiteLayoutCache();
 }

@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { purgeSiteLayoutCache } from './purge-site-cache';
 
 export interface StoreInfo {
   name: string;
@@ -358,6 +359,7 @@ export async function savePaymentDiscountSettings(settings: PaymentDiscountSetti
     .from('settings')
     .upsert({ key: 'payment_discount', value: settings }, { onConflict: 'key' });
   if (error) throw error;
+  await purgeSiteLayoutCache();
 }
 
 // ---------------------------------------------------------------------
@@ -715,6 +717,7 @@ export async function saveSiteBanner(banner: SiteBanner) {
     .from('settings')
     .upsert({ key: 'site_banner', value: banner }, { onConflict: 'key' });
   if (error) throw error;
+  await purgeSiteLayoutCache();
 }
 
 // ---------------------------------------------------------------------

@@ -1,4 +1,5 @@
 import { getServerSupabase } from './supabase-server';
+import { purgeSiteLayoutCache } from './purge-site-cache';
 
 export interface PincodeResult {
   serviceable: boolean;
@@ -233,4 +234,5 @@ export async function saveShippingSettings(settings: ShippingSettings): Promise<
     .from('settings')
     .upsert({ key: 'shipping', value: settings }, { onConflict: 'key' });
   if (error) throw error;
+  await purgeSiteLayoutCache();
 }

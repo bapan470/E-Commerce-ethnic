@@ -15,7 +15,13 @@ import ShopContent from './shop-content';
 // call revalidatePath('/shop') for an instant purge when a product changes
 // (see app/api/admin/products/[id]/route.ts) -- this is just the safety net.
 // Vercel ISR-writes fix: 60 -> 300 (5 min).
-export const revalidate = 300;
+export const revalidate = 1800;
+// NOTE: /shop stays dynamic on purpose (it reads searchParams, and
+// ShopContent uses useSearchParams). Making it static would put only the
+// "Loading..." Suspense fallback into the HTML -- no products for crawlers.
+// 1800 (not 300) keeps the cached Supabase data fresh for 30 min, which
+// cuts Vercel ISR writes; admin product edits still purge it instantly via
+// revalidatePath('/shop').
 
 export const metadata: Metadata = {
   title: 'Shop All Sarees & Ethnic Wear | AruhiHandlooms',

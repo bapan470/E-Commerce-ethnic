@@ -1,5 +1,21 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Replaces the server-side `searchParams` check that used to live in
+  // app/product/[slug]/page.tsx. Reading searchParams makes a page dynamic
+  // (one Vercel function invocation per visit); handling it here at the
+  // routing layer lets the product page be cached.
+  async rewrites() {
+    return [
+      {
+        // Merchant-feed links (/product/x?size=XL) need server-rendered
+        // JSON-LD with that size's price; serve them from a dynamic twin
+        // route. Normal product views (no ?size=) stay on the cached page.
+        source: '/product/:slug',
+        has: [{ type: 'query', key: 'size', value: '.+' }],
+        destination: '/product-size/:slug',
+      },
+    ];
+  },
   eslint: {
     ignoreDuringBuilds: true,
   },

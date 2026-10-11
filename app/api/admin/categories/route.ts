@@ -1,7 +1,19 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { revalidatePath } from 'next/cache';
 import { verifyAdminToken, ADMIN_SESSION_COOKIE } from '@/lib/admin-auth';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+
+// Category add/rename/delete changes the home page category tiles, the
+// /category/[slug] pages, and the /shop filters. Admin writes are rare, so
+// purging these few paths costs next to nothing on Vercel's ISR quota.
+function revalidateCategories() {
+  revalidatePath('/');
+  revalidatePath('/category/[slug]', 'page');
+  revalidatePath('/shop');
+  revalidatePath('/search');
+}
+
 
 // SECURITY: category create/update/delete used to go straight from the
 // browser to Supabase using the anon key (lib/products-api.ts via
@@ -46,5 +58,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  revalidateCategories();
   return NextResponse.json({ category: data });
 }
