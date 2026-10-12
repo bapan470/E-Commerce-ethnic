@@ -65,6 +65,8 @@ export function expandProductVariants(products: Product[], maxPerProduct?: numbe
         default_variant_image: undefined,
         default_variant_color: undefined,
         variant_list: [],
+        // Each exploded colour card reports ITS OWN stock (falls back to the base flag when unknown).
+        inStock: v.inStock ?? product.inStock,
         isVariantCard: true,
       });
     }

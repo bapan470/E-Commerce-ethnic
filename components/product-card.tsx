@@ -63,6 +63,10 @@ export default function ProductCard({
   const { addItem, activePromotions } = useCart();
   const router = useRouter();
   const [notifyOpen, setNotifyOpen] = useState(false);
+  // The card shows (and links to) the default colour variant, so its stock state is that
+  // colour's real stock -- not the base product's flag, which can say "in stock" while this
+  // colour is sold out. Exploded per-colour cards already carry their own `inStock`.
+  const inStock = product.default_variant_in_stock ?? product.inStock;
 
   // Part 4b: tag products currently inside an active BOGO promotion's
   // scope, same "is this product in scope" rule the cart itself uses to
@@ -81,12 +85,12 @@ export default function ProductCard({
   const quickAdd = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!product.inStock) {
+    if (!inStock) {
       router.push(`/product/${product.slug}`);
       return;
     }
     const size = product.sizes[0];
-    addItem(product, size, 1);
+    addItem(inStock ? product : { ...product, inStock: false }, size, 1);
   };
 
   // The category and collection labels sit inside the card's outer <Link>,
@@ -215,18 +219,18 @@ export default function ProductCard({
         <div className="absolute left-3 top-3 flex flex-col items-start gap-1.5">
           {/* Admin toggles "Featured" per product in the dashboard — shown
               here as a Bestseller tag, so it updates the moment they flip it. */}
-          {!product.inStock && (
+          {!inStock && (
             <Badge className="gap-1.5 border-white/10 bg-gradient-to-r from-neutral-900 to-neutral-700 tracking-wide text-white shadow-md hover:from-neutral-900 hover:to-neutral-700">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-rose-400" />
               Out of Stock
             </Badge>
           )}
-          {product.inStock && product.featured && (
+          {inStock && product.featured && (
             <Badge className="bg-emerald-600 text-white shadow-sm hover:bg-emerald-600">
               Bestseller
             </Badge>
           )}
-          {product.inStock && discount > 0 && (
+          {inStock && discount > 0 && (
             <Badge className="border-transparent bg-rose-500 text-white shadow-sm hover:bg-rose-500">
               {discount}% OFF
             </Badge>
@@ -238,10 +242,10 @@ export default function ProductCard({
           )}
         </div>
         <WishlistButton productId={product.id} className="absolute right-3 top-3" />
-        {!product.inStock && (
+        {!inStock && (
           <div className="pointer-events-none absolute inset-0 bg-background/55" />
         )}
-        {product.inStock ? (
+        {inStock ? (
           <Button
             onClick={quickAdd}
             size="sm"
@@ -351,7 +355,7 @@ export default function ProductCard({
         )}
       </div>
     </Link>
-    {notifyOpen && !product.inStock && (
+    {notifyOpen && !inStock && (
       <NotifyMeDialog
         open={notifyOpen}
         onOpenChange={setNotifyOpen}

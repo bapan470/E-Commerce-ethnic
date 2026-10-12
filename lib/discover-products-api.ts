@@ -168,7 +168,7 @@ export async function fetchDiscoverProductsServer(
     let query = db
       .from('discover_picks')
       .select(
-        `position, products!inner(${CUSTOMER_SAFE_PRODUCT_COLUMNS}, product_variants(slug, images, is_default, color))`
+        `position, products!inner(${CUSTOMER_SAFE_PRODUCT_COLUMNS}, product_variants(slug, images, is_default, color, product_variant_sizes(stock_quantity)))`
       )
       .eq('is_active', true)
       .eq('products.approval_status', 'live')
@@ -189,7 +189,7 @@ export async function fetchDiscoverProductsServer(
   // 'auto' mode
   let query = db
     .from('products')
-    .select(`${CUSTOMER_SAFE_PRODUCT_COLUMNS}, product_variants(slug, images, is_default, color)`)
+    .select(`${CUSTOMER_SAFE_PRODUCT_COLUMNS}, product_variants(slug, images, is_default, color, product_variant_sizes(stock_quantity))`)
     .eq('approval_status', 'live')
     .eq('in_stock', true);
 

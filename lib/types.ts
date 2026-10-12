@@ -106,7 +106,7 @@ export interface Product {
    * lose that per-variant identity. Undefined/empty means this product
    * has no added colour variants beyond its own base colour.
    */
-  variant_list?: { slug: string; color: string; image?: string | null }[];
+  variant_list?: { slug: string; color: string; image?: string | null; inStock?: boolean }[];
   /** Slug of this product's default colour variant (if any) -- product
    *  cards on shop/category/home should link here instead of the base
    *  product slug, so shoppers land straight on the colour that's meant
@@ -124,6 +124,10 @@ export interface Product {
    *  whose default variant is "Blue" would show a blue photo captioned
    *  "Maroon ...". */
   default_variant_color?: string | null;
+  /** Real stock state of the default colour variant (sum of its size rows).
+   *  undefined = unknown, fall back to `inStock`. Cards use this so a colour that
+   *  is sold out shows the Out of Stock badge even if the base product isn't. */
+  default_variant_in_stock?: boolean;
   /**
    * Every photo this product has anywhere -- the base product's own
    * `images` plus every image on every `product_variants` row,
@@ -319,7 +323,14 @@ export interface ProductRow {
   /** Embedded via `product_variants(slug, images, is_default, color)` in the
    *  list queries -- used to resolve the default colour variant for cards,
    *  and (via `color`) to build the full swatch-dot list on the card. */
-  product_variants?: { slug: string; images: string[] | null; is_default: boolean; color?: string | null }[] | null;
+  product_variants?: {
+    slug: string;
+    images: string[] | null;
+    is_default: boolean;
+    color?: string | null;
+    /** Embedded size rows -- their stock_quantity sum is that colour's real stock. */
+    product_variant_sizes?: { stock_quantity: number }[] | null;
+  }[] | null;
   stock_quantity: number;
   low_stock_threshold?: number;
   rating: number;

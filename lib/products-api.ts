@@ -83,6 +83,14 @@ function resolveAllColors(row: ProductRow): string[] {
   return all;
 }
 
+/** A colour variant's real stock: sum of its size rows. undefined when the size
+ *  rows weren't loaded/don't exist (caller then falls back to the product's own flag). */
+function variantInStock(v?: { product_variant_sizes?: { stock_quantity: number }[] | null } | null): boolean | undefined {
+  const sizes = v?.product_variant_sizes;
+  if (!Array.isArray(sizes) || sizes.length === 0) return undefined;
+  return sizes.reduce((sum, s) => sum + (s.stock_quantity ?? 0), 0) > 0;
+}
+
 export function mapRowToProduct(row: ProductRow): Product {
   const defaultVariant = resolveDefaultVariant(row);
   return {
@@ -99,7 +107,7 @@ export function mapRowToProduct(row: ProductRow): Product {
     all_colors: resolveAllColors(row),
     variant_list: (row.product_variants ?? [])
       .filter((v) => !!v.color)
-      .map((v) => ({ slug: v.slug, color: v.color as string, image: v.images?.[0] ?? null })),
+      .map((v) => ({ slug: v.slug, color: v.color as string, image: v.images?.[0] ?? null, inStock: variantInStock(v) })),
     sizes: row.sizes ?? ['Free Size'],
     occasion: row.occasion ?? [],
     gender: row.gender || 'female',
@@ -115,6 +123,7 @@ export function mapRowToProduct(row: ProductRow): Product {
     default_variant_slug: defaultVariant?.slug ?? null,
     default_variant_image: defaultVariant?.images?.[0] ?? null,
     default_variant_color: defaultVariant?.color ?? null,
+    default_variant_in_stock: variantInStock(defaultVariant),
     // Preserve a real 0 (no reviews yet) instead of falling back to a fake
     // 4.5 -- `|| 4.5` was overriding a legit 0 because 0 is falsy in JS.
     rating: row.rating != null ? Number(row.rating) : 0,
@@ -151,7 +160,7 @@ async function attachCollections(products: Product[]): Promise<Product[]> {
 export async function fetchProducts(): Promise<Product[]> {
   const { data, error } = await supabase
     .from('products')
-    .select(`${CUSTOMER_SAFE_PRODUCT_COLUMNS}, product_variants(slug, images, is_default, color)`)
+    .select(`${CUSTOMER_SAFE_PRODUCT_COLUMNS}, product_variants(slug, images, is_default, color, product_variant_sizes(stock_quantity))`)
     .eq('approval_status', 'live')
     .order('created_at', { ascending: false });
   if (error) throw error;
@@ -182,7 +191,7 @@ export async function fetchCategoryPrices(category: string): Promise<number[]> {
 export async function fetchProductBySlug(slug: string): Promise<Product | null> {
   const { data, error } = await supabase
     .from('products')
-    .select(`${CUSTOMER_SAFE_PRODUCT_COLUMNS}, product_variants(slug, images, is_default, color)`)
+    .select(`${CUSTOMER_SAFE_PRODUCT_COLUMNS}, product_variants(slug, images, is_default, color, product_variant_sizes(stock_quantity))`)
     .eq('slug', slug)
     .eq('approval_status', 'live')
     .maybeSingle();
