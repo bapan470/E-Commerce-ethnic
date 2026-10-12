@@ -124,7 +124,7 @@ export default function NotifyMeForm({
 
         <div className="mt-3 flex items-stretch overflow-hidden rounded-lg border border-border bg-background focus-within:border-primary focus-within:ring-1 focus-within:ring-primary">
           {channel === 'whatsapp' && (
-            <span className="flex items-center border-r border-border bg-muted/50 px-3 text-sm font-medium text-muted-foreground">
+            <span className="flex items-center border-r border-border bg-muted/50 px-3 text-base font-medium text-muted-foreground sm:text-sm">
               +91
             </span>
           )}
@@ -136,7 +136,7 @@ export default function NotifyMeForm({
             placeholder={channel === 'whatsapp' ? '10-digit WhatsApp number' : 'you@example.com'}
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            className="w-full bg-transparent px-3 py-3 text-sm outline-none placeholder:text-muted-foreground/70"
+            className="w-full bg-transparent px-3 py-3 text-base outline-none placeholder:text-muted-foreground/70 sm:text-sm"
           />
         </div>
 
