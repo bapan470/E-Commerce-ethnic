@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useAdminFocus } from './use-admin-focus';
 import { Loader2, RotateCcw, Truck, IndianRupee, ShieldAlert, Package } from 'lucide-react';
 import { formatINR } from '@/lib/format';
 import {
@@ -98,6 +99,7 @@ const REFUND_COLORS: Record<string, string> = {
 export default function ReturnsPanel() {
   const [returns, setReturns] = useState<ReturnRow[]>([]);
   const [loading, setLoading] = useState(false);
+  useAdminFocus(!loading && returns.length > 0);
   const [automation, setAutomation] = useState<ReturnAutomationSettings | null>(null);
   const [savingAutomation, setSavingAutomation] = useState(false);
 
@@ -190,7 +192,9 @@ export default function ReturnsPanel() {
       ) : (
         <div className="grid gap-4">
           {returns.map((r) => (
-            <ReturnCard key={r.id} r={r} onUpdated={load} />
+            <div key={r.id} data-focus-id={r.id}>
+              <ReturnCard r={r} onUpdated={load} />
+            </div>
           ))}
         </div>
       )}

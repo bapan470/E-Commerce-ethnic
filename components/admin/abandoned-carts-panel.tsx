@@ -1,6 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
+import { useAdminFocus } from './use-admin-focus';
 import {
   Loader2,
   ShoppingCart,
@@ -822,6 +823,14 @@ function CartsList() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'recovered' | 'sent' | 'not_contacted'>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Bell deep link: clear filters so the clicked cart is visible, highlight it.
+  const focusId = useAdminFocus(!loading && carts.length > 0);
+  useEffect(() => {
+    if (!focusId) return;
+    setStatusFilter('all');
+    setSearchQuery('');
+  }, [focusId]);
   const [customizeCart, setCustomizeCart] = useState<AbandonedCart | null>(null);
   // Carts where the admin has explicitly chosen to contact anyway, even
   // though we detected they already have an order — see existing_order.
@@ -1019,7 +1028,7 @@ function CartsList() {
                 const isExpanded = expandedId === c.id;
                 return (
                   <Fragment key={c.id}>
-                    <tr className="border-t">
+                    <tr data-focus-id={c.id} className="border-t">
                       <td className="px-2 py-3 align-top">
                         {stage > 0 && (
                           <button

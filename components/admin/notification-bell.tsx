@@ -44,6 +44,7 @@ interface AdminNotification {
   title: string;
   message: string;
   section: string;
+  ref?: string;
   created_at: string;
 }
 
@@ -69,7 +70,7 @@ const LAST_SEEN_KEY = 'admin_notifications_last_seen';
 const POLL_INTERVAL_MS = 20_000;
 
 interface NotificationBellProps {
-  onNavigate: (section: AdminSection) => void;
+  onNavigate: (section: AdminSection, focusId?: string) => void;
 }
 
 export default function NotificationBell({ onNavigate }: NotificationBellProps) {
@@ -156,8 +157,10 @@ export default function NotificationBell({ onNavigate }: NotificationBellProps) 
     }
   };
 
-  const handleItemClick = (section: string) => {
-    onNavigate(section as AdminSection);
+  const handleItemClick = (n: AdminNotification) => {
+    // Pass the item's id along so the target panel can scroll to and
+    // highlight exactly that order / ticket / review / etc.
+    onNavigate(n.section as AdminSection, n.ref);
     setOpen(false);
   };
 
@@ -204,7 +207,7 @@ export default function NotificationBell({ onNavigate }: NotificationBellProps) 
                   <li key={n.id}>
                     <button
                       type="button"
-                      onClick={() => handleItemClick(n.section)}
+                      onClick={() => handleItemClick(n)}
                       className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-accent"
                     >
                       <span

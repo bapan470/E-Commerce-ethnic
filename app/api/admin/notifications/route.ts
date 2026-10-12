@@ -29,6 +29,9 @@ export type AdminNotification = {
   title: string;
   message: string;
   section: string;
+  // Id of the specific item (order, ticket, review, ...) so the bell can
+  // deep-link straight to it instead of just opening the whole section.
+  ref?: string;
   created_at: string;
 };
 
@@ -98,7 +101,7 @@ export async function GET() {
       // upload-handoff-photo step.
       supabase
         .from('order_items')
-        .select('id, product_name, quantity, pickup_requested_at, vendors(business_name, pickup_address)')
+        .select('id, product_name, quantity, pickup_requested_at, vendors(id, business_name, pickup_address)')
         .eq('stage', 'vendor_accepted')
         .not('pickup_requested_at', 'is', null)
         .order('pickup_requested_at', { ascending: false })
@@ -182,8 +185,9 @@ export async function GET() {
         id: `order-${o.id}`,
         type: 'order',
         title: 'New order received',
-        message: `${o.customer_name || o.customer_email || 'A customer'} placed an order for ₹${o.total_amount}`,
+        message: `${o.customer_name || o.customer_email || 'A customer'} placed order #${String(o.id).slice(0, 8).toUpperCase()} for ₹${o.total_amount}`,
         section: 'orders',
+        ref: o.id,
         created_at: o.created_at,
       });
     });
@@ -202,6 +206,7 @@ export async function GET() {
           discount > 0 ? ` (was ₹${total + discount} COD)` : ''
         } — order #${shortId} is now prepaid, ready to process`,
         section: 'orders',
+        ref: o.id,
         created_at: e.created_at,
       });
     });
@@ -213,6 +218,7 @@ export async function GET() {
         title: 'New contact message',
         message: `${m.name} — ${m.subject}`,
         section: 'contact-messages',
+        ref: m.id,
         created_at: m.created_at,
       });
     });
@@ -224,6 +230,7 @@ export async function GET() {
         title: 'Support ticket opened',
         message: `${t.customer_name || t.customer_email} — ${t.subject}`,
         section: 'support-tickets',
+        ref: t.id,
         created_at: t.created_at,
       });
     });
@@ -235,6 +242,7 @@ export async function GET() {
         title: r.type === 'exchange' ? 'New exchange request' : 'New return request',
         message: r.reason,
         section: 'returns',
+        ref: r.id,
         created_at: r.created_at,
       });
     });
@@ -246,6 +254,7 @@ export async function GET() {
         title: 'Restock request',
         message: `${s.email || (s.phone ? `WhatsApp +${s.phone}` : 'A customer')} wants "${s.products?.name || 'a product'}" back in stock`,
         section: 'restock-alerts',
+        ref: s.id,
         created_at: s.created_at,
       });
     });
@@ -257,6 +266,7 @@ export async function GET() {
         title: 'Cart abandoned',
         message: `${c.email || 'A shopper'} left ₹${c.cart_value} in their cart`,
         section: 'abandoned-carts',
+        ref: c.id,
         created_at: c.last_activity_at,
       });
     });
@@ -268,6 +278,7 @@ export async function GET() {
         title: 'Vendor requested pickup',
         message: `Book pickup for "${p.product_name}" (qty ${p.quantity}) — ${p.vendors?.business_name || 'vendor'} at ${p.vendors?.pickup_address || 'address on file'}`,
         section: 'vendors',
+        ref: p.vendors?.id,
         created_at: p.pickup_requested_at,
       });
     });
@@ -293,6 +304,7 @@ export async function GET() {
         title: 'Return to Vendor — pending',
         message: `${productName} (${r.vendors?.business_name || 'vendor'}) — ${reasonLabel} · pending ${daysPending} din`,
         section: 'vendor-ops',
+        ref: r.id,
         created_at: r.created_at,
       });
     });
@@ -309,6 +321,7 @@ export async function GET() {
           hasWritten ? ` — "${(r.title || r.comment || '').slice(0, 60)}"` : ''
         }`,
         section: 'reviews',
+        ref: r.id,
         created_at: r.created_at,
       });
     });
@@ -320,6 +333,7 @@ export async function GET() {
         title: 'New vendor application',
         message: `${v.business_name || 'A vendor'}${v.owner_name ? ` (${v.owner_name})` : ''} applied — waiting on Approve/Reject`,
         section: 'vendors',
+        ref: v.id,
         created_at: v.created_at,
       });
     });
@@ -332,6 +346,7 @@ export async function GET() {
         title: 'New reseller joined',
         message: `${name} joined the Reseller Program`,
         section: 'resellers',
+        ref: r.id,
         created_at: r.created_at,
       });
     });
@@ -344,6 +359,7 @@ export async function GET() {
         title: 'New affiliate joined',
         message: `${name} joined the Affiliate Program (code ${a.code})`,
         section: 'affiliates',
+        ref: a.id,
         created_at: a.created_at,
       });
     });
@@ -356,6 +372,7 @@ export async function GET() {
         title: 'Order delivered 📦',
         message: `${o.customer_name || o.customer_email || 'A customer'}'s order #${shortId} (₹${o.total_amount}) was delivered`,
         section: 'orders',
+        ref: o.id,
         created_at: o.delivered_email_sent_at,
       });
     });

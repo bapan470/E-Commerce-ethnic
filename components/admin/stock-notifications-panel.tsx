@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useAdminFocus } from './use-admin-focus';
 import { Bell, Loader2, Mail, Trash2, CheckCircle2, MessageCircle } from 'lucide-react';
 import {
   fetchStockNotifications,
@@ -15,6 +16,7 @@ import { toast } from 'sonner';
 export default function StockNotificationsPanel() {
   const [rows, setRows] = useState<StockNotificationRow[]>([]);
   const [loading, setLoading] = useState(false);
+  useAdminFocus(!loading && rows.length > 0);
   const [sendingProductId, setSendingProductId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -180,7 +182,7 @@ export default function StockNotificationsPanel() {
                 <table className="w-full table-auto">
                   <tbody>
                     {group.rows.map((r) => (
-                      <tr key={r.id} className="border-t border-border/40">
+                      <tr key={r.id} data-focus-id={r.id} className="border-t border-border/40">
                         <td className="w-24 px-4 py-2.5">
                           {r.variant_image || r.variant_color ? (
                             <div className="flex items-center gap-2">

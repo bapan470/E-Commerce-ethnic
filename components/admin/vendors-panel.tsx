@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useAdminFocus } from './use-admin-focus';
 import { toast } from 'sonner';
 import {
   Truck,
@@ -199,6 +200,15 @@ export default function VendorsPanel() {
   const [closeAccountTarget, setCloseAccountTarget] = useState<AdminVendorRow | null>(null);
   const [closing, setClosing] = useState(false);
 
+  // Bell deep link: jump to the tab the vendor currently sits in
+  // (Pending Applications / Approved / ...) and highlight their card.
+  const focusId = useAdminFocus(!loading && vendors.length > 0);
+  useEffect(() => {
+    if (!focusId) return;
+    const target = vendors.find((x) => x.id === focusId);
+    if (target) setActiveTab(target.status);
+  }, [focusId, vendors]);
+
   const load = async () => {
     setLoading(true);
     try {
@@ -340,7 +350,7 @@ export default function VendorsPanel() {
             const meta = STATUS_META[v.status];
             const StatusIcon = meta.icon;
             return (
-              <div key={v.id} className="rounded-lg border border-border/60 bg-card p-4">
+              <div key={v.id} data-focus-id={v.id} className="rounded-lg border border-border/60 bg-card p-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2">

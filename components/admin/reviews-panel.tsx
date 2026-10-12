@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useAdminFocus } from './use-admin-focus';
 import Link from 'next/link';
 import { Check, EyeOff, Trash2, Star, Search, X } from 'lucide-react';
 import {
@@ -62,6 +63,18 @@ export default function ReviewsPanel() {
   useEffect(() => {
     load();
   }, []);
+
+  // Bell deep link: switch to the right tab (written review vs star-only
+  // rating), clear filters so it's visible, then highlight it.
+  const focusId = useAdminFocus(!loading && reviews.length > 0);
+  useEffect(() => {
+    if (!focusId) return;
+    const target = reviews.find((x) => x.id === focusId);
+    if (!target) return;
+    setSection(hasWrittenContent(target) ? 'reviews' : 'ratings');
+    setStatusFilter('all');
+    setSearch('');
+  }, [focusId, reviews]);
 
   // Reviews = wrote a title/comment. Ratings = star only, no text.
   const writtenReviews = useMemo(() => reviews.filter(hasWrittenContent), [reviews]);
@@ -154,7 +167,7 @@ export default function ReviewsPanel() {
     return (
       <div className="grid gap-3">
         {list.map((r) => (
-          <div key={r.id} className="rounded-lg border border-border/60 bg-card p-4">
+          <div key={r.id} data-focus-id={r.id} className="rounded-lg border border-border/60 bg-card p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">

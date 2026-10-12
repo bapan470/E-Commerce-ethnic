@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useAdminFocus } from './use-admin-focus';
 import { Loader2, LifeBuoy, Bot, Send, Mail, Paperclip, X, Search, Package } from 'lucide-react';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -51,6 +52,7 @@ const STATUS_COLORS: Record<string, string> = {
 export default function SupportTicketsPanel() {
   const [tickets, setTickets] = useState<TicketRow[]>([]);
   const [loading, setLoading] = useState(false);
+  useAdminFocus(!loading && tickets.length > 0);
 
   const load = async () => {
     setLoading(true);
@@ -107,7 +109,9 @@ export default function SupportTicketsPanel() {
       ) : (
         <div className="grid gap-4">
           {tickets.map((t) => (
-            <TicketCard key={t.id} t={t} onUpdated={load} />
+            <div key={t.id} data-focus-id={t.id}>
+              <TicketCard t={t} onUpdated={load} />
+            </div>
           ))}
         </div>
       )}

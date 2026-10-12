@@ -114,10 +114,14 @@ function AdminPageInner() {
   }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleChange = useCallback(
-    (section: AdminSection) => {
+    (section: AdminSection, focusId?: string) => {
       setActive(section);
       const params = new URLSearchParams(searchParams.toString());
       params.set('section', section);
+      // `focus` = a specific item to scroll to / highlight (set by the
+      // notification bell). Any normal sidebar navigation clears it.
+      if (focusId) params.set('focus', focusId);
+      else params.delete('focus');
       router.replace(`/admin?${params.toString()}`, { scroll: false });
     },
     [router, searchParams]

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useAdminFocus } from './use-admin-focus';
 import { Users2, IndianRupee, ShoppingBag, Ban, CheckCircle2, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,10 @@ export default function AffiliatesPanel() {
   const [totals, setTotals] = useState({ totalAffiliates: 0, totalOrders: 0, totalSales: 0 });
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const focusId = useAdminFocus(!loading && affiliates.length > 0);
+  useEffect(() => {
+    if (focusId) setTab('overview');
+  }, [focusId]);
   const [commissionInputs, setCommissionInputs] = useState<Record<string, string>>({});
 
   const load = async () => {
@@ -159,7 +164,7 @@ export default function AffiliatesPanel() {
                   const badge = STATUS_BADGE[a.status];
                   const Icon = badge.icon;
                   return (
-                    <tr key={a.id} className="border-t align-top">
+                    <tr key={a.id} data-focus-id={a.id} className="border-t align-top">
                       <td className="px-4 py-3 text-sm">
                         <p className="font-medium">{a.name}</p>
                         <p className="text-xs text-muted-foreground">{a.email || a.phone || '—'}</p>

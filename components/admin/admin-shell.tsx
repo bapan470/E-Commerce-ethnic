@@ -175,7 +175,7 @@ const LABELS: Record<AdminSection, string> = Object.fromEntries(
 
 interface AdminShellProps {
   active: AdminSection;
-  onChange: (section: AdminSection) => void;
+  onChange: (section: AdminSection, focusId?: string) => void;
   children: ReactNode;
 }
 

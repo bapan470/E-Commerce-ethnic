@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useAdminFocus } from './use-admin-focus';
 import { Loader2, Mail, Send, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,6 +33,7 @@ const STATUS_COLORS: Record<string, string> = {
 export default function ContactMessagesPanel() {
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [loading, setLoading] = useState(false);
+  useAdminFocus(!loading && messages.length > 0);
 
   const load = async () => {
     setLoading(true);
@@ -86,7 +88,9 @@ export default function ContactMessagesPanel() {
       ) : (
         <div className="grid gap-4">
           {messages.map((m) => (
-            <MessageCard key={m.id} m={m} onUpdated={load} />
+            <div key={m.id} data-focus-id={m.id}>
+              <MessageCard m={m} onUpdated={load} />
+            </div>
           ))}
         </div>
       )}

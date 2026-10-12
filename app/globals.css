@@ -215,3 +215,19 @@
     }
   }
 }
+
+/* Admin notification-bell deep link: briefly highlights the item that was
+   clicked in the bell (see components/admin/use-admin-focus.ts). */
+@keyframes admin-focus-flash {
+  0%, 60% {
+    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.55);
+    background-color: hsl(var(--primary) / 0.10);
+  }
+  100% {
+    box-shadow: 0 0 0 0 hsl(var(--primary) / 0);
+  }
+}
+.admin-focus-flash {
+  animation: admin-focus-flash 4.5s ease-out;
+  border-radius: 0.5rem;
+}

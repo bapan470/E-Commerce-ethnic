@@ -24,6 +24,7 @@ import {
   DialogClose,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
+import { useAdminFocus } from './use-admin-focus';
 import OrderTracking from '@/components/order/order-tracking';
 import OrderStatusHistory from '@/components/admin/order-status-history';
 
@@ -166,6 +167,16 @@ export default function OrdersPanel() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [paymentFilter, setPaymentFilter] = useState('all');
+
+  // Bell deep link: narrow the list to exactly the clicked order (search
+  // matches on order id) and highlight its row. "Reset" shows everything again.
+  const focusId = useAdminFocus(!loading && orders.length > 0);
+  useEffect(() => {
+    if (!focusId) return;
+    setSearchQuery(focusId);
+    setStatusFilter('all');
+    setPaymentFilter('all');
+  }, [focusId]);
 
   const filteredOrders = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -1498,6 +1509,7 @@ function OrderRow({
   return (
     <>
       <tr
+        data-focus-id={order.id}
         className={`border-t border-l-4 ${STATUS_BORDER_COLOR[order.status] || 'border-l-transparent'} ${
           selected ? 'bg-destructive/5' : order.status === 'cancelled' ? 'bg-red-50/50' : ''
         }`}

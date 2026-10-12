@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useAdminFocus } from './use-admin-focus';
 import { Store, IndianRupee, ShoppingBag, Ban, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -19,6 +20,10 @@ export default function ResellersPanel() {
   const [totals, setTotals] = useState({ totalResellers: 0, totalOrders: 0, totalSales: 0 });
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const focusId = useAdminFocus(!loading && resellers.length > 0);
+  useEffect(() => {
+    if (focusId) setTab('overview');
+  }, [focusId]);
 
   const load = async () => {
     setLoading(true);
@@ -123,7 +128,7 @@ export default function ResellersPanel() {
           </thead>
           <tbody>
             {resellers.map((r) => (
-              <tr key={r.id} className="border-t">
+              <tr key={r.id} data-focus-id={r.id} className="border-t">
                 <td className="px-4 py-3 text-sm">
                   <p className="font-medium">{r.name}</p>
                   <p className="text-xs text-muted-foreground">{r.email || r.phone || '—'}</p>

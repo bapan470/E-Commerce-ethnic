@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useAdminFocus } from './use-admin-focus';
 import { toast } from 'sonner';
 import {
   Loader2,
@@ -89,6 +90,12 @@ export default function VendorOpsPanel() {
   const [performanceRows, setPerformanceRows] = useState<VendorPerformanceRow[]>([]);
   const [staleRows, setStaleRows] = useState<StaleInventoryRow[]>([]);
 
+  // Bell deep link ("Return to Vendor — pending"): open that tab, highlight the row.
+  const focusId = useAdminFocus(!loading && rtvRows.length > 0);
+  useEffect(() => {
+    if (focusId) setTab('return-to-vendor');
+  }, [focusId]);
+
   const load = async (which: TabKey) => {
     setLoading(true);
     try {
@@ -150,6 +157,7 @@ export default function VendorOpsPanel() {
             return (
               <div
                 key={row.id}
+                data-focus-id={row.id}
                 className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/60 bg-card p-3"
               >
                 <div>
