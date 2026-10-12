@@ -31,6 +31,7 @@ import SaleCountdownBar from './growth/sale-countdown-bar';
 const LiveChatWidget = dynamic(() => import('./live-chat-widget'), { ssr: false });
 const ActivityTracker = dynamic(() => import('./activity-tracker'), { ssr: false });
 const AffiliateTracker = dynamic(() => import('./affiliate-tracker'), { ssr: false });
+const AttributionTracker = dynamic(() => import('./attribution-tracker'), { ssr: false });
 const ExitIntentModal = dynamic(() => import('./growth/exit-intent-modal'), { ssr: false });
 const SocialProofToast = dynamic(() => import('./growth/social-proof-toast'), { ssr: false });
 
@@ -95,6 +96,7 @@ export default function Providers({
           <CartProvider>
             <ActivityTracker />
             <AffiliateTracker />
+            <AttributionTracker />
             <div className="flex min-h-screen flex-col bg-background">
               <UrgencyBanner initialSettings={initialGrowth} />
               <SaleCountdownBar initialSettings={initialGrowth} />

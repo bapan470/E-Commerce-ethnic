@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, Truck, Search, X, Copy, Check, Trash2, ExternalLink, Wallet, Download, CheckCircle2, XCircle, MessageCircle } from 'lucide-react';
+import { Loader2, Truck, Search, X, Copy, Check, Trash2, ExternalLink, Wallet, Download, CheckCircle2, XCircle, MessageCircle, Smartphone, Monitor, Tablet } from 'lucide-react';
 import { formatINR } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -104,6 +104,9 @@ type Order = {
   customer_email?: string;
   customer_phone?: string;
   created_at?: string;
+  // Traffic source + device captured at checkout (lib/attribution.ts,
+  // orders.attribution). null/undefined for orders placed before this existed.
+  attribution?: OrderAttributionData;
   is_reseller_order?: boolean;
   reseller_base_cost?: number | null;
   reseller_profit?: number | null;
@@ -136,6 +139,155 @@ type Order = {
     discount_value: number | null;
   }[];
 };
+
+// ---- Copy name / mobile / address -----------------------------------------
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Fall back for browsers/contexts where the async clipboard API is blocked.
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
+function buildCustomerCopyText(order: {
+  customer_name?: string;
+  customer_phone?: string;
+  shipping_address?: any;
+}): string {
+  const a = order.shipping_address || {};
+  const clean = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').replace(/[,\s]+$/, '').trim();
+  const parts = [
+    clean(a.address),
+    clean(a.address2),
+    a.landmark ? `Landmark: ${clean(a.landmark)}` : '',
+    clean(a.city),
+    [clean(a.state), clean(a.pincode)].filter(Boolean).join(' - '),
+    clean(a.country),
+  ].filter(Boolean);
+  return [
+    `Name: ${clean(order.customer_name)}`,
+    `Mobile: ${clean(order.customer_phone)}`,
+    `Address: ${parts.join(', ')}`,
+  ].join('\n');
+}
+
+// ---- Traffic source + device (captured at checkout, see lib/attribution.ts) --
+type AttributionTouchData = {
+  channel: string;
+  source: string;
+  medium: string;
+  campaign?: string;
+  referrer_host?: string;
+  landing_path?: string;
+  at?: string;
+};
+type OrderAttributionData = {
+  first?: AttributionTouchData;
+  last?: AttributionTouchData;
+  device?: { type?: string; os?: string; browser?: string };
+} | null;
+
+function mediumTone(medium?: string): string {
+  switch (medium) {
+    case 'cpc':
+    case 'paid_social':
+      return 'bg-amber-100 text-amber-800';
+    case 'organic':
+      return 'bg-green-100 text-green-800';
+    case 'ai':
+      return 'bg-violet-100 text-violet-800';
+    case 'social':
+      return 'bg-sky-100 text-sky-800';
+    case 'email':
+      return 'bg-teal-100 text-teal-800';
+    case 'referral':
+      return 'bg-slate-200 text-slate-800';
+    default:
+      return 'bg-muted text-muted-foreground';
+  }
+}
+
+function DeviceGlyph({ type }: { type?: string }) {
+  if (type === 'Mobile') return <Smartphone className="h-3 w-3" />;
+  if (type === 'Tablet') return <Tablet className="h-3 w-3" />;
+  return <Monitor className="h-3 w-3" />;
+}
+
+// Small badge under the order date in the main table row.
+function SourceChip({ attribution }: { attribution?: OrderAttributionData }) {
+  const last = attribution?.last;
+  if (!last) return null;
+  const d = attribution?.device;
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1">
+      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${mediumTone(last.medium)}`}>
+        {last.channel}
+      </span>
+      {d?.type && (
+        <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground" title={`${d.type} · ${d.os ?? ''} · ${d.browser ?? ''}`}>
+          <DeviceGlyph type={d.type} />
+          {d.os && d.os !== 'Other' ? d.os : d.type}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// Full detail strip at the top of an expanded order.
+function TrafficSourceBar({ attribution }: { attribution?: OrderAttributionData }) {
+  const last = attribution?.last;
+  const first = attribution?.first;
+  if (!last) {
+    return (
+      <div className="mb-3 rounded-lg border border-dashed border-border/60 bg-white px-4 py-2 text-xs text-muted-foreground">
+        Traffic source: no data (order placed before source tracking was added, or the visitor blocked storage).
+      </div>
+    );
+  }
+  const d = attribution?.device;
+  const showFirst = !!first && (first.channel !== last.channel || (first.campaign || '') !== (last.campaign || ''));
+  return (
+    <div className="mb-3 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-border/60 bg-white px-4 py-2.5 text-xs">
+      <div className="flex items-center gap-2">
+        <span className="text-muted-foreground">Came from</span>
+        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${mediumTone(last.medium)}`}>{last.channel}</span>
+        {last.campaign && <span className="text-muted-foreground">campaign: <span className="font-medium text-foreground">{last.campaign}</span></span>}
+      </div>
+      {showFirst && first && (
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground">First visit via</span>
+          <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${mediumTone(first.medium)}`}>{first.channel}</span>
+        </div>
+      )}
+      {d?.type && (
+        <div className="flex items-center gap-1.5">
+          <DeviceGlyph type={d.type} />
+          <span className="font-medium">{[d.type, d.os && d.os !== 'Other' ? d.os : null, d.browser && d.browser !== 'Other' ? d.browser : null].filter(Boolean).join(' · ')}</span>
+        </div>
+      )}
+      {last.referrer_host && (
+        <div className="text-muted-foreground">via <span className="font-medium text-foreground">{last.referrer_host}</span></div>
+      )}
+      {last.landing_path && (
+        <div className="text-muted-foreground">landed on <span className="font-mono text-foreground">{last.landing_path}</span></div>
+      )}
+    </div>
+  );
+}
 
 export default function OrdersPanel() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -1496,6 +1648,21 @@ function OrderRow({
   const resellerMargin = Number(order.reseller_profit ?? 0);
   const resellerSellingPrice = Number(order.reseller_base_cost ?? order.total_amount) + resellerMargin;
 
+  const [copiedDetails, setCopiedDetails] = useState(false);
+  // One click copies exactly what's needed to paste into a courier form /
+  // WhatsApp: name, mobile and the full address on one line.
+  const copyCustomerDetails = async () => {
+    const text = buildCustomerCopyText(order);
+    const ok = await copyText(text);
+    if (ok) {
+      setCopiedDetails(true);
+      toast.success('Name, mobile & address copied');
+      setTimeout(() => setCopiedDetails(false), 1800);
+    } else {
+      toast.error('Could not copy — please select the text manually');
+    }
+  };
+
   const copyId = async () => {
     try {
       await navigator.clipboard.writeText(order.id);
@@ -1599,7 +1766,10 @@ function OrderRow({
             </div>
           </div>
         </td>
-        <td className="px-4 py-3 align-top text-sm">{order.created_at ? new Date(order.created_at).toLocaleString() : ''}</td>
+        <td className="px-4 py-3 align-top text-sm">
+          <div>{order.created_at ? new Date(order.created_at).toLocaleString() : ''}</div>
+          <SourceChip attribution={order.attribution} />
+        </td>
         <td className="px-4 py-3 align-top text-sm font-medium">
           {showPriceBreakdown ? (
             <div
@@ -1832,6 +2002,7 @@ function OrderRow({
       {open && (
         <tr className="bg-muted/20">
           <td colSpan={10} className="px-4 py-3">
+            <TrafficSourceBar attribution={order.attribution} />
             {/* Price breakdown sits on the left; Items fills the empty space
                 to its right instead of being pushed below as an under-used
                 full-width row. */}
@@ -2021,11 +2192,26 @@ function OrderRow({
                 <div>
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <h4 className="text-sm font-semibold">Contact &amp; Shipping</h4>
-                    {!editingDetails && canEditDetails && (
-                      <Button type="button" variant="outline" size="sm" onClick={startEditingDetails}>
-                        Edit
-                      </Button>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {!editingDetails && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="gap-1"
+                          onClick={copyCustomerDetails}
+                          title="Copy name, mobile number and full address"
+                        >
+                          {copiedDetails ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+                          {copiedDetails ? 'Copied' : 'Copy details'}
+                        </Button>
+                      )}
+                      {!editingDetails && canEditDetails && (
+                        <Button type="button" variant="outline" size="sm" onClick={startEditingDetails}>
+                          Edit
+                        </Button>
+                      )}
+                    </div>
                     {!editingDetails && !canEditDetails && (
                       <span
                         className="text-[11px] text-muted-foreground"

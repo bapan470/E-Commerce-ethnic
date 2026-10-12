@@ -24,6 +24,7 @@ import { fetchAddresses } from '@/lib/addresses-api';
 import { Address } from '@/lib/types';
 import { joinResellerProgram, fetchMyResellerOverview } from '@/lib/reseller-api';
 import { getStoredAffiliateCode, clearStoredAffiliateCode } from '@/lib/affiliate-api';
+import { saveOrderAttribution } from '@/lib/attribution';
 import {
   fetchLoyaltySettings,
   fetchMyLoyaltyBalance,
@@ -1331,6 +1332,10 @@ export default function CheckoutPage() {
       // row by the RPC) — the referral has done its job, so drop it
       // rather than let it linger and get attributed to a later order.
       clearStoredAffiliateCode();
+
+      // Remember which traffic source / device this order came from (shown in
+      // Admin > Orders). Fire-and-forget: it can never block or fail checkout.
+      saveOrderAttribution(internalOrderId);
 
       // 2. Cash on Delivery — no online payment step, order is confirmed as-is
       // and payment is collected at delivery time.
