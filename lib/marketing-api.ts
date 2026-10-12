@@ -234,6 +234,9 @@ We collect information you provide directly to us, including your name, email ad
 
 If you take part in optional programs on our site, we also collect information needed to run them: your loyalty points balance and history if you join our loyalty program; your unique referral code and the status of people you refer if you use our referral program; the recipient's name and email address if you purchase a gift card for someone else; your business name and reseller/wholesale account details if you join our reseller or wholesale programs; and the name, rating, comment, and any photos you submit if you write a product review (which may be displayed publicly on the relevant product page).
 
+How You Found Us and Your Device
+When you place an order, we save basic, non-identifying information on our own servers about how you reached our website (for example Google, Instagram, WhatsApp, an email link or an advertisement), the campaign name if there is one, the first page you landed on, and a general device category (such as Mobile or Desktop, Android or iOS, and your browser). We use this only to understand which channels bring us customers and to improve our website. For this purpose we do not store your IP address, your full browser details, or full web addresses with their tracking parameters.
+
 How We Use Your Information
 We use your information to:
 Process and fulfil your orders, including shipping and delivery
@@ -249,6 +252,9 @@ All payments are processed through secure, PCI-DSS compliant payment gateways (i
 
 Sharing of Information
 We do not sell your personal information. We may share your information with trusted third parties who help us operate our business, including payment processors, shipping and logistics partners (such as Delhivery), and email/SMS service providers, solely for the purpose of fulfilling your order and communicating with you.
+
+Google Customer Reviews
+After you place an order, Google may ask whether you would like to receive a survey about it. If you agree, we share your order number, email address, delivery country and estimated delivery date with Google so that it can send you a review request. Google's use of this information is governed by Google's own Privacy Policy.
 
 Cookies
 Our website uses cookies to remember your cart, preferences, and to understand how visitors use our site. You can disable cookies through your browser settings, though some features of the site may not work correctly as a result.
