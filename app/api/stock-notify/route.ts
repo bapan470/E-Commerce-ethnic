@@ -22,8 +22,14 @@ export async function POST(req: Request) {
 
   const productId = typeof body?.product_id === 'string' ? body.product_id : '';
   const emailRaw = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
-  const email = emailRaw && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw) ? emailRaw : null;
+  const email = emailRaw && /^[^\s@,()]+@[^\s@,()]+\.[^\s@,()]+$/.test(emailRaw) ? emailRaw : null;
   const phone = cleanPhone(body?.phone);
+
+  const clip = (v: unknown, n: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, n) : null);
+  const variantColor = clip(body?.variant_color, 60);
+  const variantSlug = clip(body?.variant_slug, 200);
+  const rawImage = clip(body?.variant_image, 600);
+  const variantImage = rawImage && /^(https?:\/\/|\/)/.test(rawImage) ? rawImage : null;
 
   if (!productId) return NextResponse.json({ error: 'product_id is required' }, { status: 400 });
   if (emailRaw && !email) return NextResponse.json({ error: 'Invalid email address' }, { status: 400 });
@@ -41,24 +47,29 @@ export async function POST(req: Request) {
     const filters: string[] = [];
     if (email) filters.push(`email.eq.${email}`);
     if (phone) filters.push(`phone.eq.${phone}`);
-    const { data: existing } = await supabase
-      .from('stock_notifications')
-      .select('id')
-      .eq('product_id', productId)
-      .or(filters.join(','))
-      .limit(1)
-      .maybeSingle();
+    let lookup = supabase.from('stock_notifications').select('id').eq('product_id', productId);
+    lookup = variantColor ? lookup.eq('variant_color', variantColor) : lookup.is('variant_color', null);
+    const { data: existing } = await lookup.or(filters.join(',')).limit(1).maybeSingle();
 
     if (existing) {
       const patch: Record<string, unknown> = { notified: false, notified_at: null, whatsapp_sent: false };
       if (email) patch.email = email;
       if (phone) patch.phone = phone;
+      if (variantSlug) patch.variant_slug = variantSlug;
+      if (variantImage) patch.variant_image = variantImage;
       const { error } = await supabase.from('stock_notifications').update(patch).eq('id', existing.id);
       if (error) throw error;
     } else {
       const { error } = await supabase
         .from('stock_notifications')
-        .insert({ product_id: productId, email, phone });
+        .insert({
+          product_id: productId,
+          email,
+          phone,
+          variant_color: variantColor,
+          variant_slug: variantSlug,
+          variant_image: variantImage,
+        });
       if (error) throw error;
     }
     return NextResponse.json({ success: true });

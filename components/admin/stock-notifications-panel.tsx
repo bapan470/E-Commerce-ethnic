@@ -9,6 +9,7 @@ import {
   StockNotificationRow,
 } from '@/lib/stock-notify-api';
 import { Button } from '@/components/ui/button';
+import { toPublicMediaUrl } from '@/lib/media-url';
 import { toast } from 'sonner';
 
 export default function StockNotificationsPanel() {
@@ -88,17 +89,18 @@ export default function StockNotificationsPanel() {
 
   // Group by product so admin can trigger one "Notify now" per product,
   // rather than per individual signup row.
-  const byProduct = new Map<string, { name: string; slug: string; inStock: boolean; rows: StockNotificationRow[] }>();
+  const byProduct = new Map<string, { name: string; slug: string; inStock: boolean; image: string | null; rows: StockNotificationRow[] }>();
   for (const r of rows) {
     const key = r.product_id;
     const existing = byProduct.get(key);
     const name = r.products?.name || 'Unknown product';
     const slug = r.products?.slug || '';
     const inStock = !!r.products?.in_stock;
+    const image = toPublicMediaUrl(r.products?.images?.[0]) || null;
     if (existing) {
       existing.rows.push(r);
     } else {
-      byProduct.set(key, { name, slug, inStock, rows: [r] });
+      byProduct.set(key, { name, slug, inStock, image, rows: [r] });
     }
   }
 
@@ -140,7 +142,14 @@ export default function StockNotificationsPanel() {
             return (
               <div key={productId} className="overflow-hidden rounded-lg border border-border/60 bg-card">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 bg-muted/30 px-4 py-3">
-                  <div>
+                  <div className="flex items-center gap-3">
+                    {group.image ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={group.image} alt={group.name} className="h-16 w-12 shrink-0 rounded-md border border-border/60 object-cover" />
+                    ) : (
+                      <div className="h-16 w-12 shrink-0 rounded-md bg-muted" />
+                    )}
+                    <div>
                     <p className="font-medium">{group.name}</p>
                     <p className="text-xs text-muted-foreground">
                       {group.inStock ? (
@@ -151,6 +160,7 @@ export default function StockNotificationsPanel() {
                       {' · '}
                       {pending.length} waiting
                     </p>
+                    </div>
                   </div>
                   <Button
                     size="sm"
@@ -171,6 +181,25 @@ export default function StockNotificationsPanel() {
                   <tbody>
                     {group.rows.map((r) => (
                       <tr key={r.id} className="border-t border-border/40">
+                        <td className="w-24 px-4 py-2.5">
+                          {r.variant_image || r.variant_color ? (
+                            <div className="flex items-center gap-2">
+                              {r.variant_image && (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={toPublicMediaUrl(r.variant_image) || r.variant_image}
+                                  alt={r.variant_color || 'Variation'}
+                                  className="h-12 w-9 rounded border border-border/60 object-cover"
+                                />
+                              )}
+                              {r.variant_color && (
+                                <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium">{r.variant_color}</span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </td>
                         <td className="px-4 py-2.5 text-sm">
                           {r.email && <div>{r.email}</div>}
                           {r.phone && <div className="text-muted-foreground">WhatsApp: +{r.phone}</div>}

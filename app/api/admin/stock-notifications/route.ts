@@ -26,7 +26,7 @@ export async function GET() {
   try {
     const { data, error } = await supabase
       .from('stock_notifications')
-      .select('*, products(name, slug, in_stock)')
+      .select('*, products(name, slug, in_stock, images, colors)')
       .order('created_at', { ascending: false });
     if (error) throw error;
     return NextResponse.json({ notifications: data ?? [] });

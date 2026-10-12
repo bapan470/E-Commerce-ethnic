@@ -11,6 +11,7 @@ import { useCart, getVisibleBogoPromotion, formatBogoLabel, usePaymentDiscount }
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import WishlistButton from '@/components/wishlist-button';
+import NotifyMeDialog from '@/components/product/notify-me-dialog';
 import CatalogCardMedia from '@/components/catalog-card-media';
 import { toPublicMediaUrl, toPublicMediaUrls } from '@/lib/media-url';
 import { preloadImages, preloadImagesOnHover, cancelHoverPreload } from '@/lib/preload-image';
@@ -61,6 +62,7 @@ export default function ProductCard({
 }) {
   const { addItem, activePromotions } = useCart();
   const router = useRouter();
+  const [notifyOpen, setNotifyOpen] = useState(false);
 
   // Part 4b: tag products currently inside an active BOGO promotion's
   // scope, same "is this product in scope" rule the cart itself uses to
@@ -69,6 +71,12 @@ export default function ProductCard({
   // disagree about which products are on offer. Also respects the
   // per-collection "show BOGO badge" toggle (Admin > Collections).
   const bogoPromotion = getVisibleBogoPromotion(product.id, activePromotions);
+
+  const openNotify = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setNotifyOpen(true);
+  };
 
   const quickAdd = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -183,6 +191,7 @@ export default function ProductCard({
   const startPreloadImmediate = () => preloadImages(detailPagePreloadImages);
 
   return (
+    <>
     <Link
       href={href}
       onMouseEnter={startPreload}
@@ -207,7 +216,8 @@ export default function ProductCard({
           {/* Admin toggles "Featured" per product in the dashboard — shown
               here as a Bestseller tag, so it updates the moment they flip it. */}
           {!product.inStock && (
-            <Badge className="border-transparent bg-neutral-800 text-white shadow-sm hover:bg-neutral-800">
+            <Badge className="gap-1.5 border-white/10 bg-gradient-to-r from-neutral-900 to-neutral-700 tracking-wide text-white shadow-md hover:from-neutral-900 hover:to-neutral-700">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-rose-400" />
               Out of Stock
             </Badge>
           )}
@@ -231,15 +241,27 @@ export default function ProductCard({
         {!product.inStock && (
           <div className="pointer-events-none absolute inset-0 bg-background/55" />
         )}
-        <Button
-          onClick={quickAdd}
-          size="sm"
-          className="absolute bottom-3 right-3 hidden gap-1 rounded-full bg-primary/95 opacity-0 shadow-md transition-all duration-300 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100 hover:bg-primary sm:flex"
-          aria-label="Add to bag"
-        >
-          {product.inStock ? <ShoppingBag className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
-          {product.inStock ? 'Add' : 'Notify me'}
-        </Button>
+        {product.inStock ? (
+          <Button
+            onClick={quickAdd}
+            size="sm"
+            className="absolute bottom-3 right-3 hidden gap-1 rounded-full bg-primary/95 opacity-0 shadow-md transition-all duration-300 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100 hover:bg-primary sm:flex"
+            aria-label="Add to bag"
+          >
+            <ShoppingBag className="h-4 w-4" />
+            Add
+          </Button>
+        ) : (
+          <button
+            type="button"
+            onClick={openNotify}
+            aria-label={`Notify me when ${displayName} is back in stock`}
+            className="absolute inset-x-3 bottom-3 z-10 flex items-center justify-center gap-1.5 rounded-full border border-primary/20 bg-white/90 py-2 text-xs font-semibold text-primary shadow-lg backdrop-blur transition hover:bg-white"
+          >
+            <Bell className="h-3.5 w-3.5" />
+            Notify me
+          </button>
+        )}
       </div>
 
       <div className={`flex flex-1 flex-col gap-1 ${compact ? 'p-2.5' : 'p-4'}`}>
@@ -329,5 +351,17 @@ export default function ProductCard({
         )}
       </div>
     </Link>
+    {notifyOpen && !product.inStock && (
+      <NotifyMeDialog
+        open={notifyOpen}
+        onOpenChange={setNotifyOpen}
+        productId={product.id}
+        name={displayName}
+        image={img}
+        color={product.default_variant_color ?? product.colors?.[0] ?? null}
+        slug={product.default_variant_slug || product.slug}
+      />
+    )}
+    </>
   );
 }

@@ -1270,7 +1270,12 @@ function ProductInfo({
       </div>
 
       {/* Right under the disabled Out of Stock button, above Shop by price. */}
-      {!product.inStock && <NotifyMeForm productId={product.id} />}
+      {!product.inStock && (
+        <NotifyMeForm
+          productId={product.id}
+          variant={{ color: product.colors?.[0] ?? null, slug: product.slug, image: product.images?.[0] ?? null }}
+        />
+      )}
 
       {/* On mobile this duplicates what MobileStickyCartBar (fixed at the
           bottom of the screen) already offers -- kept deliberately, since

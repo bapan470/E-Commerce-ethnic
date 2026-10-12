@@ -7,7 +7,18 @@ import { toast } from 'sonner';
 
 type Channel = 'whatsapp' | 'email';
 
-export default function NotifyMeForm({ productId }: { productId: string }) {
+export type NotifyVariant = { color?: string | null; slug?: string | null; image?: string | null };
+
+export default function NotifyMeForm({
+  productId,
+  variant,
+  embedded = false,
+}: {
+  productId: string;
+  variant?: NotifyVariant;
+  /** true inside the popup: no outer card/header, the dialog supplies those */
+  embedded?: boolean;
+}) {
   const [channel, setChannel] = useState<Channel>('whatsapp');
   const [value, setValue] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -31,7 +42,8 @@ export default function NotifyMeForm({ productId }: { productId: string }) {
     try {
       await requestStockNotification(
         productId,
-        channel === 'whatsapp' ? { phone: trimmed } : { email: trimmed }
+        channel === 'whatsapp' ? { phone: trimmed } : { email: trimmed },
+        variant
       );
       setDoneVia(channel);
     } catch (err) {
@@ -43,7 +55,11 @@ export default function NotifyMeForm({ productId }: { productId: string }) {
 
   if (doneVia) {
     return (
-      <div className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-background p-5 text-center shadow-sm">
+      <div
+        className={`text-center ${
+          embedded ? 'py-2' : 'rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-background p-5 shadow-sm'
+        }`}
+      >
         <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
           <CheckCircle2 className="h-6 w-6" />
         </span>
@@ -59,8 +75,13 @@ export default function NotifyMeForm({ productId }: { productId: string }) {
   return (
     <form
       onSubmit={onSubmit}
-      className="overflow-hidden rounded-xl border border-secondary/30 bg-gradient-to-br from-secondary/10 via-card to-card shadow-sm"
+      className={
+        embedded
+          ? ''
+          : 'overflow-hidden rounded-xl border border-secondary/30 bg-gradient-to-br from-secondary/10 via-card to-card shadow-sm'
+      }
     >
+      {!embedded && (
       <div className="flex items-start gap-3 px-4 pb-3 pt-4">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
           <BellRing className="h-5 w-5" />
@@ -72,8 +93,9 @@ export default function NotifyMeForm({ productId }: { productId: string }) {
           </p>
         </div>
       </div>
+      )}
 
-      <div className="px-4 pb-4">
+      <div className={embedded ? '' : 'px-4 pb-4'}>
         <div role="tablist" aria-label="How should we notify you?" className="grid grid-cols-2 gap-1 rounded-lg bg-muted/60 p-1">
           {(
             [
