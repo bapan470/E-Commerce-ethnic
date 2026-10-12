@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, FormEvent } from 'react';
-import { Gift, Sparkles, Save, PlusCircle, MinusCircle } from 'lucide-react';
+import { Gift, Sparkles, Save, PlusCircle, MinusCircle, Download } from 'lucide-react';
 import {
   LoyaltySettings,
   DEFAULT_LOYALTY_SETTINGS,
@@ -103,6 +103,18 @@ export default function LoyaltyPanel() {
           <p className="mt-1 text-sm text-muted-foreground">
             {loading ? 'Loading…' : `${customers.length} customer${customers.length === 1 ? '' : 's'} with a points history`}
           </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button asChild variant="outline" size="sm">
+            <a href="/api/admin/loyalty/export" download>
+              <Download className="mr-1.5 h-4 w-4" /> Google member list (all)
+            </a>
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <a href="/api/admin/loyalty/export?scope=earners" download>
+              <Download className="mr-1.5 h-4 w-4" /> Only point earners
+            </a>
+          </Button>
         </div>
       </div>
 
