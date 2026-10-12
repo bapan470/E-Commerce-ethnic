@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ShoppingBag, Star, Zap } from 'lucide-react';
+import { Bell, ShoppingBag, Star, Zap } from 'lucide-react';
 import { Product } from '@/lib/types';
 import { formatINR, discountPct } from '@/lib/format';
 import { getVariantDisplayName } from '@/lib/variant-display-name';
@@ -73,6 +73,10 @@ export default function ProductCard({
   const quickAdd = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!product.inStock) {
+      router.push(`/product/${product.slug}`);
+      return;
+    }
     const size = product.sizes[0];
     addItem(product, size, 1);
   };
@@ -202,12 +206,17 @@ export default function ProductCard({
         <div className="absolute left-3 top-3 flex flex-col items-start gap-1.5">
           {/* Admin toggles "Featured" per product in the dashboard — shown
               here as a Bestseller tag, so it updates the moment they flip it. */}
-          {product.featured && (
+          {!product.inStock && (
+            <Badge className="border-transparent bg-neutral-800 text-white shadow-sm hover:bg-neutral-800">
+              Out of Stock
+            </Badge>
+          )}
+          {product.inStock && product.featured && (
             <Badge className="bg-emerald-600 text-white shadow-sm hover:bg-emerald-600">
               Bestseller
             </Badge>
           )}
-          {discount > 0 && (
+          {product.inStock && discount > 0 && (
             <Badge className="border-transparent bg-rose-500 text-white shadow-sm hover:bg-rose-500">
               {discount}% OFF
             </Badge>
@@ -220,21 +229,16 @@ export default function ProductCard({
         </div>
         <WishlistButton productId={product.id} className="absolute right-3 top-3" />
         {!product.inStock && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/60">
-            <span className="rounded bg-primary px-3 py-1 text-xs font-semibold uppercase tracking-wider text-primary-foreground">
-              Out of Stock
-            </span>
-          </div>
+          <div className="pointer-events-none absolute inset-0 bg-background/55" />
         )}
         <Button
           onClick={quickAdd}
-          disabled={!product.inStock}
           size="sm"
           className="absolute bottom-3 right-3 hidden gap-1 rounded-full bg-primary/95 opacity-0 shadow-md transition-all duration-300 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100 hover:bg-primary sm:flex"
           aria-label="Add to bag"
         >
-          <ShoppingBag className="h-4 w-4" />
-          Add
+          {product.inStock ? <ShoppingBag className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
+          {product.inStock ? 'Add' : 'Notify me'}
         </Button>
       </div>
 

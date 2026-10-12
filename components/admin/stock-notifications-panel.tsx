@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Bell, Loader2, Mail, Trash2, CheckCircle2 } from 'lucide-react';
+import { Bell, Loader2, Mail, Trash2, CheckCircle2, MessageCircle } from 'lucide-react';
 import {
   fetchStockNotifications,
   deleteStockNotification,
+  markWhatsappSent,
   StockNotificationRow,
 } from '@/lib/stock-notify-api';
 import { Button } from '@/components/ui/button';
@@ -43,7 +44,11 @@ export default function StockNotificationsPanel() {
       const body = await res.json().catch(() => ({}));
       if (res.ok) {
         toast.success(
-          body.sent > 0 ? `Notified ${body.sent} customer${body.sent === 1 ? '' : 's'}` : 'No pending signups for this product'
+          body.sent > 0
+            ? `Emailed ${body.sent} customer${body.sent === 1 ? '' : 's'}${body.whatsappPending ? ` · ${body.whatsappPending} WhatsApp to send below` : ''}`
+            : body.whatsappPending
+              ? `${body.whatsappPending} WhatsApp signup${body.whatsappPending === 1 ? '' : 's'} — tap the WhatsApp button on each row`
+              : 'No pending signups for this product'
         );
         await load();
       } else {
@@ -53,6 +58,19 @@ export default function StockNotificationsPanel() {
       toast.error('Failed to send notifications');
     } finally {
       setSendingProductId(null);
+    }
+  };
+
+  const sendWhatsapp = async (row: StockNotificationRow, productName: string, slug: string) => {
+    const site = (process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== 'undefined' ? window.location.origin : '')).replace(/\/$/, '');
+    const text = `Hi! Good news — ${productName} is back in stock at Aruhi Handlooms. Grab it before it sells out again: ${site}/product/${slug}`;
+    const phone = (row.phone || '').replace(/\D/g, '');
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+    try {
+      await markWhatsappSent(row.id);
+      setRows((prev) => prev.map((r) => (r.id === row.id ? { ...r, notified: true, whatsapp_sent: true } : r)));
+    } catch {
+      toast.error('Opened WhatsApp, but could not mark as sent');
     }
   };
 
@@ -153,7 +171,10 @@ export default function StockNotificationsPanel() {
                   <tbody>
                     {group.rows.map((r) => (
                       <tr key={r.id} className="border-t border-border/40">
-                        <td className="px-4 py-2.5 text-sm">{r.email}</td>
+                        <td className="px-4 py-2.5 text-sm">
+                          {r.email && <div>{r.email}</div>}
+                          {r.phone && <div className="text-muted-foreground">WhatsApp: +{r.phone}</div>}
+                        </td>
                         <td className="px-4 py-2.5 text-sm text-muted-foreground">
                           {new Date(r.created_at).toLocaleDateString('en-IN')}
                         </td>
@@ -169,6 +190,17 @@ export default function StockNotificationsPanel() {
                           )}
                         </td>
                         <td className="px-4 py-2.5 text-right">
+                          {r.phone && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="mr-1 gap-1.5"
+                              onClick={() => sendWhatsapp(r, group.name, group.slug)}
+                            >
+                              <MessageCircle className="h-3.5 w-3.5 text-emerald-600" />
+                              {r.whatsapp_sent ? 'Resend' : 'WhatsApp'}
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant="ghost"

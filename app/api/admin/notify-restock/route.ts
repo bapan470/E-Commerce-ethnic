@@ -41,20 +41,24 @@ export async function POST(req: Request) {
 
     const { data: pending, error: pendingError } = await supabase
       .from('stock_notifications')
-      .select('id, email')
+      .select('id, email, phone')
       .eq('product_id', productId)
       .eq('notified', false);
     if (pendingError) throw pendingError;
 
     if (!pending || pending.length === 0) {
-      return NextResponse.json({ success: true, sent: 0 });
+      return NextResponse.json({ success: true, sent: 0, whatsappPending: 0 });
     }
+    // Rows with only a WhatsApp number can't be emailed — they stay "waiting"
+    // until the admin taps the WhatsApp button in Admin -> Restock Alerts.
+    const whatsappPending = pending.filter((r) => !r.email).length;
 
     const { subject, html } = restockEmail(product);
 
     let sent = 0;
     const notifiedIds: string[] = [];
     for (const row of pending) {
+      if (!row.email) continue;
       const result = await sendEmail({ to: row.email, subject, html });
       if (result.success) {
         sent += 1;
@@ -69,7 +73,7 @@ export async function POST(req: Request) {
         .in('id', notifiedIds);
     }
 
-    return NextResponse.json({ success: true, sent, total: pending.length });
+    return NextResponse.json({ success: true, sent, total: pending.length, whatsappPending });
   } catch (err) {
     return NextResponse.json({ error: 'Failed to send restock notifications' }, { status: 500 });
   }

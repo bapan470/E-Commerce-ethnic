@@ -206,6 +206,7 @@ function cartReducer(state: CartState, action: CartAction): CartState {
       const qty = action.quantity ?? 1;
       const cap = action.maxStock ?? Infinity;
       const color = itemColor(action.product);
+      if (cap <= 0) return state;
       const existing = state.items.find((i) => sameLine(i, action.product.id, action.size, color));
       if (existing) {
         return {
@@ -358,7 +359,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as CartItem[];
-        dispatch({ type: 'HYDRATE', items: parsed });
+        dispatch({ type: 'HYDRATE', items: Array.isArray(parsed) ? parsed.filter((i: CartItem) => (i?.quantity ?? 0) > 0) : parsed });
       }
       const rawCoupon = localStorage.getItem(COUPON_STORAGE_KEY);
       if (rawCoupon) {
@@ -427,6 +428,12 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     (product: Product, size: string, quantity?: number, options?: { silent?: boolean; isBump?: boolean; feedItemId?: string }) => {
       const qty = quantity ?? 1;
       const stock = product.stock_quantity ?? Infinity;
+      // Out-of-stock products can never be added (previously this showed a toast but
+      // still created a 0-quantity / ₹0 line in the bag).
+      if (stock <= 0 || product.inStock === false) {
+        toast.error('This item is out of stock');
+        return;
+      }
       const existing = state.items.find((i) => sameLine(i, product.id, size, itemColor(product)));
       const desired = (existing?.quantity ?? 0) + qty;
       if (stock < Infinity && desired > stock) {
