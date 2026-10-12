@@ -1269,6 +1269,9 @@ function ProductInfo({
         )}
       </div>
 
+      {/* Right under the disabled Out of Stock button, above Shop by price. */}
+      {!product.inStock && <NotifyMeForm productId={product.id} />}
+
       {/* On mobile this duplicates what MobileStickyCartBar (fixed at the
           bottom of the screen) already offers -- kept deliberately, since
           the sticky bar alone was easy for shoppers to miss/scroll past
@@ -1281,8 +1284,6 @@ function ProductInfo({
       <PriceQuickBrowseBar category={product.category} />
 
       <ProductHighlights product={product} />
-
-      {!product.inStock && <NotifyMeForm productId={product.id} />}
 
       <DeliveryInfo />
 

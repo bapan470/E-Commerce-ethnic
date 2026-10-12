@@ -1,34 +1,39 @@
 'use client';
 
 import { useState, FormEvent } from 'react';
-import { Bell, CheckCircle2, Loader2 } from 'lucide-react';
+import { BellRing, CheckCircle2, Loader2, Mail, MessageCircle, ShieldCheck } from 'lucide-react';
 import { requestStockNotification } from '@/lib/stock-notify-api';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 
+type Channel = 'whatsapp' | 'email';
+
 export default function NotifyMeForm({ productId }: { productId: string }) {
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
+  const [channel, setChannel] = useState<Channel>('whatsapp');
+  const [value, setValue] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [done, setDone] = useState(false);
+  const [doneVia, setDoneVia] = useState<Channel | null>(null);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const hasEmail = email.trim().length > 0;
-    const hasPhone = phone.replace(/\D/g, '').length > 0;
-    if (!hasEmail && !hasPhone) {
-      toast.error('Enter your email or WhatsApp number');
+    const trimmed = value.trim();
+    if (channel === 'whatsapp') {
+      const digits = trimmed.replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '').replace(/^0(?=\d{10}$)/, '');
+      if (digits.length !== 10) {
+        toast.error('Please enter a valid 10-digit WhatsApp number');
+        return;
+      }
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      toast.error('Please enter a valid email address');
       return;
     }
+
     setSubmitting(true);
     try {
-      await requestStockNotification(productId, {
-        email: hasEmail ? email : undefined,
-        phone: hasPhone ? phone : undefined,
-      });
-      setDone(true);
-      toast.success("We'll let you know when it's back in stock");
+      await requestStockNotification(
+        productId,
+        channel === 'whatsapp' ? { phone: trimmed } : { email: trimmed }
+      );
+      setDoneVia(channel);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Something went wrong, please try again');
     } finally {
@@ -36,38 +41,97 @@ export default function NotifyMeForm({ productId }: { productId: string }) {
     }
   };
 
-  if (done) {
+  if (doneVia) {
     return (
-      <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
-        <CheckCircle2 className="h-4 w-4 shrink-0" />
-        You&apos;re on the list — we&apos;ll message you the moment it&apos;s back.
+      <div className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-background p-5 text-center shadow-sm">
+        <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+          <CheckCircle2 className="h-6 w-6" />
+        </span>
+        <p className="mt-3 font-serif text-lg font-bold text-emerald-900">You&apos;re on the list!</p>
+        <p className="mt-1 text-sm text-emerald-800/80">
+          We&apos;ll message you on {doneVia === 'whatsapp' ? 'WhatsApp' : 'email'} the moment this saree is back in
+          stock.
+        </p>
       </div>
     );
   }
 
   return (
-    <form onSubmit={onSubmit} className="rounded-lg border border-border/60 bg-card p-4">
-      <p className="text-sm font-semibold">Out of stock? Get notified when it&apos;s back</p>
-      <p className="mt-0.5 text-xs text-muted-foreground">Enter your email, WhatsApp number, or both.</p>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        <Input
-          type="email"
-          placeholder="Email address"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <Input
-          type="tel"
-          inputMode="numeric"
-          placeholder="WhatsApp number (10 digits)"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-        />
+    <form
+      onSubmit={onSubmit}
+      className="overflow-hidden rounded-xl border border-secondary/30 bg-gradient-to-br from-secondary/10 via-card to-card shadow-sm"
+    >
+      <div className="flex items-start gap-3 px-4 pb-3 pt-4">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground shadow">
+          <BellRing className="h-5 w-5" />
+        </span>
+        <div>
+          <p className="font-serif text-base font-bold leading-tight text-primary">Sold out — but not forever</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Tell us where to reach you and we&apos;ll alert you the moment it&apos;s back in stock.
+          </p>
+        </div>
       </div>
-      <Button type="submit" disabled={submitting} size="lg" variant="outline" className="mt-3 w-full gap-2 sm:w-auto">
-        {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bell className="h-4 w-4" />}
-        Notify me
-      </Button>
+
+      <div className="px-4 pb-4">
+        <div role="tablist" aria-label="How should we notify you?" className="grid grid-cols-2 gap-1 rounded-lg bg-muted/60 p-1">
+          {(
+            [
+              { id: 'whatsapp', label: 'WhatsApp', Icon: MessageCircle },
+              { id: 'email', label: 'Email', Icon: Mail },
+            ] as const
+          ).map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={channel === id}
+              onClick={() => {
+                setChannel(id);
+                setValue('');
+              }}
+              className={`flex items-center justify-center gap-1.5 rounded-md py-2 text-sm font-medium transition ${
+                channel === id ? 'bg-background text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Icon className={`h-4 w-4 ${id === 'whatsapp' && channel === id ? 'text-emerald-600' : ''}`} />
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-3 flex items-stretch overflow-hidden rounded-lg border border-border bg-background focus-within:border-primary focus-within:ring-1 focus-within:ring-primary">
+          {channel === 'whatsapp' && (
+            <span className="flex items-center border-r border-border bg-muted/50 px-3 text-sm font-medium text-muted-foreground">
+              +91
+            </span>
+          )}
+          <input
+            key={channel}
+            type={channel === 'whatsapp' ? 'tel' : 'email'}
+            inputMode={channel === 'whatsapp' ? 'numeric' : 'email'}
+            autoComplete={channel === 'whatsapp' ? 'tel-national' : 'email'}
+            placeholder={channel === 'whatsapp' ? '10-digit WhatsApp number' : 'you@example.com'}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            className="w-full bg-transparent px-3 py-3 text-sm outline-none placeholder:text-muted-foreground/70"
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={submitting}
+          className="btn-shine mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-primary py-3 text-sm font-semibold text-primary-foreground shadow transition hover:opacity-95 disabled:opacity-60"
+        >
+          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <BellRing className="h-4 w-4" />}
+          Notify me when available
+        </button>
+
+        <p className="mt-2.5 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
+          <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+          Only used to alert you about this product. No spam.
+        </p>
+      </div>
     </form>
   );
 }

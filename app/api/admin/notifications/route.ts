@@ -82,7 +82,7 @@ export async function GET() {
         .limit(20),
       supabase
         .from('stock_notifications')
-        .select('id, email, created_at, products(name)')
+        .select('id, email, phone, created_at, products(name)')
         .eq('notified', false)
         .order('created_at', { ascending: false })
         .limit(20),
@@ -244,7 +244,7 @@ export async function GET() {
         id: `restock-${s.id}`,
         type: 'restock',
         title: 'Restock request',
-        message: `${s.email} wants "${s.products?.name || 'a product'}" back in stock`,
+        message: `${s.email || (s.phone ? `WhatsApp +${s.phone}` : 'A customer')} wants "${s.products?.name || 'a product'}" back in stock`,
         section: 'restock-alerts',
         created_at: s.created_at,
       });
