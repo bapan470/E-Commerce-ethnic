@@ -95,6 +95,8 @@ export interface Product {
    *  instead of its first image. */
   autoplay_video_in_catalog?: boolean;
   sku?: string | null;
+  /** GST % of this product (products.gst_rate). Used only to show the tax split at checkout. */
+  gstRate?: number;
   highlights?: ProductHighlights | null;
   /**
    * Every colour variation this product has as a distinct row (i.e. every
@@ -319,6 +321,7 @@ export interface ProductRow {
   video_url: string | null;
   autoplay_video_in_catalog: boolean | null;
   sku: string | null;
+  gst_rate?: number | null;
   highlights: ProductHighlights | null;
   /** Embedded via `product_variants(slug, images, is_default, color)` in the
    *  list queries -- used to resolve the default colour variant for cards,

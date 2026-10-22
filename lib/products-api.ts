@@ -18,7 +18,7 @@ const CUSTOMER_SAFE_PRODUCT_COLUMNS = [
   'category_id', 'category_name', 'fabric', 'origin', 'colors', 'sizes',
   'occasion', 'gender', 'age_group', 'material', 'pattern', 'images',
   'video_url', 'autoplay_video_in_catalog', 'sku', 'highlights', 'stock_quantity', 'low_stock_threshold',
-  'rating', 'reviews', 'featured', 'in_stock', 'created_at', 'updated_at',
+  'rating', 'reviews', 'featured', 'in_stock', 'created_at', 'updated_at', 'gst_rate',
 ].join(', ');
 
 /** Pick the default colour variant off the embedded `product_variants` list
@@ -119,6 +119,7 @@ export function mapRowToProduct(row: ProductRow): Product {
     video_url: row.video_url ?? null,
     autoplay_video_in_catalog: row.autoplay_video_in_catalog ?? false,
     sku: row.sku ?? null,
+    gstRate: row.gst_rate != null ? Number(row.gst_rate) : undefined,
     highlights: row.highlights ?? null,
     default_variant_slug: defaultVariant?.slug ?? null,
     default_variant_image: defaultVariant?.images?.[0] ?? null,

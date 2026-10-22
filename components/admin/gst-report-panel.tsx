@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { GstReport } from '@/lib/gst-report';
+import GstItcSection, { type ItcPayload } from './gst-itc-section';
 
 const inr = (n: number) => '₹' + (n ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const thisMonth = () => {
@@ -14,7 +15,7 @@ const thisMonth = () => {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 };
 
-interface ReportResponse { month: string; gstin: string; storeName: string; sellerStateCode: string | null; report: GstReport }
+interface ReportResponse { month: string; gstin: string; storeName: string; sellerStateCode: string | null; report: GstReport; itc: ItcPayload }
 interface ProductRow { id: string; name: string; gst_rate: number | null; hsn_code: string | null }
 
 const th = 'px-3 py-2 text-left text-xs font-medium text-muted-foreground whitespace-nowrap';
@@ -216,6 +217,8 @@ export default function GstReportPanel() {
           )}
         </>
       )}
+
+      {data && <GstItcSection key={data.month + JSON.stringify(data.itc.entries.map((e) => e.id + e.in_gstr2b))} itc={data.itc} month={data.month} output={data.report.net} reload={load} />}
 
       <section className="rounded-lg border bg-card">
         <button type="button" onClick={() => setShowProducts((v) => !v)} className="flex w-full items-center justify-between px-4 py-3 text-left">

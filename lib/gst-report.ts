@@ -52,12 +52,13 @@ export const isValidGstinFormat = (g: string) => /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-
 
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
-export interface GstOrderItem { product_id?: string; quantity?: number; price?: number; product_name?: string }
+export interface GstOrderItem { product_id?: string; quantity?: number; price?: number; product_name?: string; gst_rate?: number | null; hsn_code?: string | null }
 export interface GstOrder {
   id: string; created_at: string; status: string; payment_method: string | null;
   total_amount: number | null; gift_card_discount: number | null; shipping_charge: number | null;
   gst_amount: number | null; items: GstOrderItem[] | null; shipping_address: { state?: string } | null;
   is_reseller_order?: boolean | null; delivery_status?: string | null; customer_name?: string | null;
+  razorpay_payment_id?: string | null; advance_amount?: number | null; tracking_number?: string | null;
 }
 export interface GstProduct { id: string; name?: string; gst_rate: number | null; hsn_code: string | null }
 export interface GstReturn { id: string; order_id: string; type: string; status: string; refund_amount: number | null; resolved_at: string | null; created_at: string }
@@ -112,8 +113,9 @@ export function computeOrderLines(o: GstOrder, products: Map<string, GstProduct>
   if (!posCode) flags.push('State missing/unknown - treated as inter-state (IGST)');
   const lines: LineTax[] = items.map((it, idx) => {
     const p = it.product_id ? products.get(it.product_id) : undefined;
-    const rate = p?.gst_rate != null ? Number(p.gst_rate) : cfg.defaultRate;
-    if (!p) flags.push(`Product ${it.product_name ?? it.product_id ?? '?'} not found - default rate used`);
+    // Prefer the rate snapshotted on the order line at sale time (orders_set_gst trigger).
+    const rate = it.gst_rate != null ? Number(it.gst_rate) : p?.gst_rate != null ? Number(p.gst_rate) : cfg.defaultRate;
+    if (!p && it.gst_rate == null) flags.push(`Product ${it.product_name ?? it.product_id ?? '?'} not found - default rate used`);
     const share = merchGross > 0 ? gross[idx] / merchGross : 1 / Math.max(items.length, 1);
     // discounted line value + pro-rata shipping, both GST-inclusive
     const lineGross = r2(merchNet * share + shipping * share);
@@ -121,7 +123,7 @@ export function computeOrderLines(o: GstOrder, products: Map<string, GstProduct>
     const unitNet = (Number(it.quantity) || 0) > 0 ? (Number(it.price) || 0) * 100 / (100 + rate) : 0;
     if (unitNet > 2500 && rate === 5) flags.push(`${it.product_name ?? 'Item'} unit value > Rs 2,500 at 5% - garments (HSN 61/62) above Rs 2,500 are 18%`);
     return {
-      orderId: o.id, hsn: (p?.hsn_code || cfg.defaultHsn || '').trim(), rate, qty: Number(it.quantity) || 0, gross: lineGross,
+      orderId: o.id, hsn: (it.hsn_code || p?.hsn_code || cfg.defaultHsn || '').trim(), rate, qty: Number(it.quantity) || 0, gross: lineGross,
       pos: posCode, intra, productName: it.product_name ?? p?.name ?? '',
       taxable, igst: intra ? 0 : tax, cgst: intra ? r2(tax / 2) : 0, sgst: intra ? r2(tax - r2(tax / 2)) : 0,
     };
@@ -244,4 +246,98 @@ export function csv3b(rep: GstReport) {
 export function csvOrders(rep: GstReport) {
   return toCsv([['Order ID', 'Date (UTC)', 'Customer', 'Place Of Supply', 'Intra-state', 'Invoice Value', 'Taxable Value', 'IGST', 'CGST', 'SGST', 'GST stored at checkout', 'Difference', 'Notes'],
     ...rep.orders.map((o) => [o.orderId, o.date, o.customer, o.pos, o.intra ? 'Yes' : 'No', o.invoiceValue.toFixed(2), o.taxable.toFixed(2), o.igst.toFixed(2), o.cgst.toFixed(2), o.sgst.toFixed(2), o.storedGst.toFixed(2), o.diff.toFixed(2), Array.from(new Set(o.flags)).join(' | ')])]);
+}
+
+// ---------- Checkout preview (same maths as the orders_set_gst DB trigger) ----------
+export function computeCheckoutGst(
+  lines: { price: number; quantity: number; gstRate?: number }[],
+  invoiceValue: number,
+  defaultRate: number
+): number {
+  const gross = lines.map((l) => (Number(l.price) || 0) * (Number(l.quantity) || 0));
+  const merch = gross.reduce((a, b) => a + b, 0);
+  let tax = 0;
+  lines.forEach((l, i) => {
+    const share = merch > 0 ? gross[i] / merch : 1 / Math.max(lines.length, 1);
+    const v = invoiceValue * share;
+    const rate = l.gstRate != null ? l.gstRate : defaultRate;
+    tax += v - (v * 100) / (100 + rate);
+  });
+  return Math.round(tax);
+}
+
+// ---------- Input tax credit (Delhivery / Razorpay) ----------
+export type ItcVendor = 'delhivery' | 'razorpay' | 'other';
+export interface ItcEntry {
+  id: string; month: string; vendor: ItcVendor; invoice_no: string; invoice_date: string | null;
+  taxable: number; igst: number; cgst: number; sgst: number; in_gstr2b: boolean; note: string | null;
+}
+export interface ItcDefaults {
+  delhivery_gst_rate: number; razorpay_gst_rate: number; razorpay_fee_percent_ex_gst: number; logistics_cost_includes_gst: boolean;
+}
+/** Factory defaults: courier 18% (SAC 996812), Razorpay fee 2% + 18% GST (= 2.36% all-in). */
+export const DEFAULT_ITC_DEFAULTS: ItcDefaults = {
+  delhivery_gst_rate: 18, razorpay_gst_rate: 18, razorpay_fee_percent_ex_gst: 2, logistics_cost_includes_gst: true,
+};
+
+export interface ItcEstimate {
+  razorpay: { orders: number; charged: number; fee: number; gst: number };
+  delhivery: { shipments: number; cost: number; gst: number };
+  totalGst: number;
+}
+
+export interface ItcOrderLite {
+  status: string; payment_method: string | null; total_amount: number | null; advance_amount?: number | null;
+  razorpay_payment_id?: string | null; tracking_number?: string | null;
+}
+
+/** Rough monthly estimate from orders. The real claim is ALWAYS the vendor invoice that shows in GSTR-2B. */
+export function estimateItc(
+  orders: ItcOrderLite[], d: ItcDefaults, logistics: { cod: number; prepaid: number }
+): ItcEstimate {
+  const rz = { orders: 0, charged: 0, fee: 0, gst: 0 };
+  const dl = { shipments: 0, cost: 0, gst: 0 };
+  for (const o of orders) {
+    if (o.razorpay_payment_id && o.status !== 'failed') {
+      const charged = o.payment_method === 'partial' ? Number(o.advance_amount) || 0 : Number(o.total_amount) || 0;
+      if (charged > 0) {
+        const fee = (charged * d.razorpay_fee_percent_ex_gst) / 100;
+        rz.orders += 1; rz.charged += charged; rz.fee += fee; rz.gst += (fee * d.razorpay_gst_rate) / 100;
+      }
+    }
+    if (o.tracking_number && o.status !== 'cancelled') {
+      const cost = o.payment_method === 'cod' ? logistics.cod : logistics.prepaid;
+      if (cost > 0) {
+        dl.shipments += 1; dl.cost += cost;
+        dl.gst += d.logistics_cost_includes_gst ? (cost * d.delhivery_gst_rate) / (100 + d.delhivery_gst_rate) : (cost * d.delhivery_gst_rate) / 100;
+      }
+    }
+  }
+  const out = {
+    razorpay: { orders: rz.orders, charged: r2(rz.charged), fee: r2(rz.fee), gst: r2(rz.gst) },
+    delhivery: { shipments: dl.shipments, cost: r2(dl.cost), gst: r2(dl.gst) },
+    totalGst: 0,
+  };
+  out.totalGst = r2(out.razorpay.gst + out.delhivery.gst);
+  return out;
+}
+
+export interface Head { igst: number; cgst: number; sgst: number }
+export interface ItcSummary {
+  eligible: Head; waiting: Head; eligibleTotal: number; waitingTotal: number;
+  output: Head; cashToPay: Head; carryForward: Head; cashTotal: number;
+}
+
+/** GST utilisation order: IGST credit -> IGST, CGST, SGST; CGST credit -> CGST, IGST; SGST credit -> SGST, IGST. */
+export function summariseItc(entries: ItcEntry[], output: Head): ItcSummary {
+  const sum = (list: ItcEntry[]): Head => list.reduce((a, e) => ({ igst: r2(a.igst + e.igst), cgst: r2(a.cgst + e.cgst), sgst: r2(a.sgst + e.sgst) }), { igst: 0, cgst: 0, sgst: 0 });
+  const eligible = sum(entries.filter((e) => e.in_gstr2b));
+  const waiting = sum(entries.filter((e) => !e.in_gstr2b));
+  const L = { ...output }; const C = { ...eligible };
+  const use = (from: keyof Head, to: keyof Head) => { const u = Math.min(C[from], L[to]); L[to] = r2(L[to] - u); C[from] = r2(C[from] - u); };
+  use('igst', 'igst'); use('igst', 'cgst'); use('igst', 'sgst');
+  use('cgst', 'cgst'); use('cgst', 'igst');
+  use('sgst', 'sgst'); use('sgst', 'igst');
+  const tot = (h: Head) => r2(h.igst + h.cgst + h.sgst);
+  return { eligible, waiting, eligibleTotal: tot(eligible), waitingTotal: tot(waiting), output, cashToPay: L, carryForward: C, cashTotal: tot(L) };
 }

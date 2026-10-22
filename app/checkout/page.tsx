@@ -93,6 +93,7 @@ import {
 import StickyOrderBar from '@/components/checkout/sticky-order-bar';
 import { useForceMobileRepaint } from '@/hooks/use-force-mobile-repaint';
 import { toast } from 'sonner';
+import { computeCheckoutGst } from '@/lib/gst-report';
 
 // All Indian states & union territories, for the Shipping Address "State"
 // dropdown. Pincode auto-fill (via India Post's API) sets this field to
@@ -848,9 +849,13 @@ export default function CheckoutPage() {
   // Prices are GST-inclusive: the tax is already baked into discountedSubtotal,
   // so we only extract it here for display/invoice purposes and do NOT add it
   // on top of the total again.
-  const tax = Math.round(
-    subtotalAfterPaymentDiscount -
-      (subtotalAfterPaymentDiscount * 100) / (100 + shippingSettings.gst_rate_percent)
+  // Each product carries its own GST rate (e.g. sarees 5%, garments above Rs 2,500 18%).
+  // The server recomputes the same split on the order (orders_set_gst trigger), so this is
+  // only the preview; items without a known rate fall back to the flat store rate.
+  const tax = computeCheckoutGst(
+    items.map((i) => ({ price: i.product.price, quantity: i.quantity, gstRate: i.product.gstRate })),
+    subtotalAfterPaymentDiscount + clampedGiftCardDiscount + shipping,
+    shippingSettings.gst_rate_percent
   );
   const total = subtotalAfterPaymentDiscount + shipping;
 
@@ -2576,7 +2581,7 @@ export default function CheckoutPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">
-                  Tax ({shippingSettings.gst_rate_percent}% GST, included)
+                  GST (included in price)
                 </span>
                 <span>{formatINR(tax)}</span>
               </div>

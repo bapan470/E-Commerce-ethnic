@@ -400,7 +400,7 @@ export async function generateInvoicePdf(
     rows.push([label, `-${rupee(order.coupon_discount)}`]);
   }
   rows.push(['Shipping', order.shipping_charge ? rupee(order.shipping_charge) : 'FREE']);
-  rows.push(['GST (5%, included)', rupee(order.gst_amount ?? 0)]);
+  rows.push(['GST (included)', rupee(order.gst_amount ?? 0)]);
   if (isPartialPay) {
     rows.push(['Advance paid online', rupee(Number(order.advance_amount ?? 0))]);
     rows.push(['Balance on delivery', rupee(Number(order.balance_due ?? 0))]);
