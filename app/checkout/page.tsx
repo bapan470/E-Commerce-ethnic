@@ -419,13 +419,20 @@ export default function CheckoutPage() {
   };
 
   const openAddressPicker = () => {
-    setPickerSelectedId(selectedAddressId);
+    // If the shopper had tapped "Add a new address" (selection is 'new'),
+    // start the picker on their default/first saved address instead so
+    // "Select this address" works straight away.
+    const fallback = savedAddresses.find((a) => a.is_default)?.id ?? savedAddresses[0]?.id ?? 'new';
+    setPickerSelectedId(selectedAddressId === 'new' ? fallback : selectedAddressId);
+    setDetailsSheetOpen(false); // never stack the picker on top of the sheet
     setShowAddressPicker(true);
   };
 
   const confirmPickerSelection = () => {
     handleSelectSavedAddress(pickerSelectedId);
     setShowAddressPicker(false);
+    // Picking "+ Add a new address" should land on the empty form sheet.
+    if (pickerSelectedId === 'new') setDetailsSheetOpen(true);
   };
 
   const editPickerSelection = () => {
@@ -446,6 +453,7 @@ export default function CheckoutPage() {
     }
     setShowAddressForm(true);
     setShowAddressPicker(false);
+    setDetailsSheetOpen(true); // edit happens in the delivery-details sheet
   };
 
   useEffect(() => {
@@ -1794,13 +1802,24 @@ export default function CheckoutPage() {
                         {landmark ? ` (Near ${landmark})` : ''}, {city}, {stateName} - {pincode}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setDetailsSheetOpen(true)}
-                      className="flex shrink-0 items-center gap-1 text-sm font-medium text-secondary hover:underline"
-                    >
-                      <Pencil className="h-3.5 w-3.5" /> Edit
-                    </button>
+                    <div className="flex shrink-0 flex-col items-end gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setDetailsSheetOpen(true)}
+                        className="flex items-center gap-1 text-sm font-medium text-secondary hover:underline"
+                      >
+                        <Pencil className="h-3.5 w-3.5" /> Edit
+                      </button>
+                      {user && savedAddresses.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={openAddressPicker}
+                          className="text-xs font-medium text-muted-foreground hover:text-secondary hover:underline"
+                        >
+                          Choose address
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <button
@@ -1818,6 +1837,15 @@ export default function CheckoutPage() {
                     <ChevronRight className="h-5 w-5 text-muted-foreground" />
                   </button>
                 )}
+                {!detailsComplete && user && savedAddresses.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={openAddressPicker}
+                    className="mt-3 w-full rounded-xl border border-secondary/60 py-2.5 text-sm font-medium text-secondary hover:bg-secondary/10"
+                  >
+                    Choose from my saved addresses
+                  </button>
+                )}
               </section>
 
               <Sheet open={detailsSheetOpen} onOpenChange={setDetailsSheetOpen}>
@@ -1828,6 +1856,15 @@ export default function CheckoutPage() {
                   <SheetHeader className="border-b border-border/60 px-5 pb-4 pt-6 text-left">
                     <SheetTitle className="font-serif text-xl font-bold text-primary">Delivery details</SheetTitle>
                     <SheetDescription>Tell us where to send your handcrafted piece.</SheetDescription>
+                    {user && savedAddresses.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={openAddressPicker}
+                        className="self-start text-sm font-medium text-secondary underline-offset-2 hover:underline"
+                      >
+                        Choose from saved addresses
+                      </button>
+                    )}
                   </SheetHeader>
                   <div className="flex-1 overflow-y-auto px-5 py-5">
               {/* Contact */}
