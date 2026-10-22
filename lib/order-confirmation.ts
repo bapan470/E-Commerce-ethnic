@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from './supabase-admin';
 import { sendEmail } from './email';
 import { orderConfirmationEmail, newOrderAdminNotification } from './email-templates';
+import { codConfirmUrl, getOrCreateCodConfirmToken } from './cod-confirmation';
 import { DEFAULT_LOYALTY_SETTINGS, type LoyaltySettings } from './loyalty-api';
 import { DEFAULT_REFERRAL_SETTINGS, type ReferralSettings } from './referrals-api';
 
@@ -31,12 +32,20 @@ export async function runOrderConfirmationSideEffects(orderId: string) {
   // (e.g. once from the client on the happy path, once more from the
   // webhook as a safety net) without double-sending.
   if (order.customer_email && !order.confirmation_email_sent_at) {
+    // COD: add the one-tap confirmation link. Fails soft -- if anything goes
+    // wrong (e.g. migration not run yet) the email is sent exactly as before.
+    let confirmUrl: string | undefined;
+    if (order.payment_method === 'cod') {
+      const token = await getOrCreateCodConfirmToken(order.id);
+      if (token) confirmUrl = codConfirmUrl(token);
+    }
     const { subject, html } = orderConfirmationEmail({
       id: order.id,
       customer_name: order.customer_name,
       items: Array.isArray(order.items) ? order.items : [],
       total_amount: order.total_amount,
       payment_method: order.payment_method,
+      cod_confirm_url: confirmUrl,
     });
 
     sendEmail({ to: order.customer_email, subject, html })

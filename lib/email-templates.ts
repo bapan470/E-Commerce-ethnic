@@ -183,8 +183,14 @@ export function orderConfirmationEmail(order: {
   items: any[];
   total_amount: number;
   payment_method?: string;
+  // COD only: secret one-tap confirmation link (see lib/cod-confirmation.ts).
+  // When absent the email is exactly the same as before.
+  cod_confirm_url?: string;
 }) {
-  const subject = `Order confirmed — #${order.id.slice(0, 8)}`;
+  const codConfirm = order.payment_method === 'cod' && !!order.cod_confirm_url;
+  const subject = codConfirm
+    ? `Please confirm your COD order — #${order.id.slice(0, 8)}`
+    : `Order confirmed — #${order.id.slice(0, 8)}`;
   // Emails can't run JS or POST to our API directly, so this links back to
   // the order-confirmation page (works with no login for guest orders --
   // see app/api/orders/[id]/cancel/route.ts) where the actual Cancel
@@ -193,12 +199,23 @@ export function orderConfirmationEmail(order: {
   const trackUrl = `${process.env.NEXT_PUBLIC_SITE_URL || ''}/track/${order.id}`;
   const html = wrapper(`
     <h2 style="margin-top:0; color:${BRAND_COLOR};">Thank you for your order, ${order.customer_name || 'there'}!</h2>
-    <p>We've received your order <strong>#${order.id.slice(0, 8)}</strong> and it's being prepared.</p>
+    <p>We've received your order <strong>#${order.id.slice(0, 8)}</strong>${codConfirm ? '.' : " and it's being prepared."}</p>
     ${itemsTable(order.items)}
     <p style="text-align:right; font-size:16px; font-weight:bold;">Total: ${formatINR(order.total_amount)}</p>
     <p style="font-size:13px; color:#6b5f57;">
       Payment method: ${order.payment_method === 'cod' ? 'Cash on Delivery' : 'Paid Online'}
     </p>
+    ${
+      codConfirm
+        ? `<div style="margin:20px 0; padding:16px; border:1px solid #e8d9a8; background:#fbf6e6; border-radius:8px; text-align:center;">
+      <p style="margin:0 0 6px; font-weight:bold; color:${BRAND_COLOR};">One quick step: confirm your Cash on Delivery order</p>
+      <p style="margin:0 0 14px; font-size:13px; color:#6b5f57;">Tap once to confirm. No payment is needed now &mdash; you pay when the order arrives.</p>
+      <a href="${order.cod_confirm_url}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
+        Yes, confirm my order
+      </a>
+    </div>`
+        : ''
+    }
     <p style="text-align:center; margin-top: 20px;">
       <a href="${trackUrl}" style="background:${BRAND_COLOR}; color:#fff; padding: 12px 28px; text-decoration:none; border-radius: 4px; font-size: 14px; display:inline-block;">
         Track My Order

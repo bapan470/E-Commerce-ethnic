@@ -30,7 +30,7 @@ export const PAYMENT_COPY = {
   codTitle: 'Cash on Delivery',
   codSub: 'Pay in cash when your order arrives',
   codNote:
-    'COD orders go through a verification step and are dispatched after prepaid orders, so delivery can take a little longer.',
+    'We will send a one-tap confirmation link by email/WhatsApp. COD orders are dispatched after prepaid orders, so delivery can take a little longer.',
 } as const;
 
 const BENEFIT_ICONS = {

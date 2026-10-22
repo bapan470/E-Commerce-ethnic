@@ -44,12 +44,18 @@ import CreateShipmentModal, {
   type CreateShipmentPayload,
 } from '@/components/admin/create-shipment-modal';
 
+import CodConfirmationControls from '@/components/admin/cod-confirmation-controls';
+
 type Order = {
   id: string;
   items: any[];
   total_amount: number;
   status: string;
   payment_method?: string;
+  // COD one-tap confirmation (see lib/cod-confirmation.ts). Informational
+  // only -- never changes order status.
+  cod_confirmed_at?: string | null;
+  cod_confirmed_via?: string | null;
   // Set once at order-placement time by a DB trigger and never touched
   // again -- survives "Request Online Payment" flipping payment_method
   // 'cod' -> 'online', so the admin can still tell this order was
@@ -763,6 +769,7 @@ export default function OrdersPanel() {
                   requestingOnlinePayment={requestingOnlinePaymentFor === o.id}
                   onUpdateDetails={updateOrderDetails}
                   savingDetails={savingDetailsFor === o.id}
+                  onReload={load}
                 />
               ))
             )}
@@ -1520,6 +1527,7 @@ function OrderRow({
   requestingOnlinePayment,
   onUpdateDetails,
   savingDetails,
+  onReload,
 }: {
   order: Order;
   selected: boolean;
@@ -1537,6 +1545,7 @@ function OrderRow({
     details: { customer_email?: string; customer_phone?: string; shipping_address?: Record<string, any> }
   ) => Promise<boolean>;
   savingDetails: boolean;
+  onReload: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -1849,15 +1858,35 @@ function OrderRow({
               never open the confirmation email). Disappears once the order
               moves on from 'paid' (shipped, delivered, ...). */}
           {order.status === 'paid' && (
-            <div className="mt-1.5">
+            <div className="mt-1.5 flex flex-col gap-1.5">
+              <span className="inline-flex w-fit items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+                Prepaid · ship first
+              </span>
               <WhatsAppPaidConfirmationButton order={order} />
             </div>
           )}
           {/* Every other status gets its own polite WhatsApp message too.
               (pending+converted-from-COD and paid are handled just above.) */}
           {order.status === 'pending' && isCod && (
-            <div className="mt-1.5">
-              <WhatsAppStatusButton order={order} kind={justRevertedToCod ? 'cod_reverted' : 'cod_confirmed'} />
+            <div className="mt-1.5 flex flex-col gap-1.5">
+              {justRevertedToCod ? (
+                <WhatsAppStatusButton order={order} kind="cod_reverted" />
+              ) : (
+                <>
+                  <CodConfirmationControls
+                    orderId={order.id}
+                    whatsappDigits={getWhatsAppDigits(order)}
+                    firstName={(order.customer_name || '').trim().split(/\s+/)[0]}
+                    shortId={order.id.slice(0, 8).toUpperCase()}
+                    total={Number(order.total_amount || 0)}
+                    storeName={STORE_NAME}
+                    confirmedAt={order.cod_confirmed_at}
+                    confirmedVia={order.cod_confirmed_via}
+                    onChanged={onReload}
+                  />
+                  {order.cod_confirmed_at && <WhatsAppStatusButton order={order} kind="cod_confirmed" />}
+                </>
+              )}
             </div>
           )}
           {order.status === 'pending' && !isCod && !wasConvertedFromCod && isAwaitingOnlinePayment && (

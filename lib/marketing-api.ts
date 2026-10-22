@@ -178,6 +178,13 @@ We ship using trusted logistics partners such as Delhivery and Shiprocket (and o
 Order Processing
 Orders are processed and dispatched within {{dispatch_days}} business days of order confirmation, excluding Sundays and public holidays. During sale periods, processing may take slightly longer.
 
+Prepaid and Cash on Delivery (COD) Orders
+Prepaid orders (UPI, cards, netbanking) are confirmed instantly on successful payment and are packed and dispatched ahead of Cash on Delivery orders in our processing queue.
+
+COD orders are confirmed when you tap the one-tap confirmation link we send by email/WhatsApp (or when our team confirms with you by phone/WhatsApp). Confirmed COD orders are dispatched after prepaid orders, so they may take slightly longer to reach you. We may hold an unconfirmed COD order until it is confirmed.
+
+Where an online-payment discount applies, it is shown at checkout before you pay. Product prices and delivery charges are otherwise the same for both payment methods, and the delivery timelines below apply from the date of dispatch for both.
+
 Delivery Timelines
 Metro cities: {{metro_days}} business days after dispatch
 Other cities/towns: {{other_days}} business days after dispatch
