@@ -94,7 +94,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   // Shows up on Status History as "Reverted to COD" with its own timestamp.
   // Best-effort (logPaymentRequestEvent swallows its own errors).
   await logPaymentRequestEvent(order.id, 'reverted_to_cod', {
-    meta: { restored_total: restoredTotal, removed_discount: discount },
+    meta: { restored_total: restoredTotal, removed_discount: discount, by: 'admin' },
   });
 
   // Tell the customer they no longer need to pay online. Best-effort: the

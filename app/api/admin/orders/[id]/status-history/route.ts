@@ -39,9 +39,9 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
           .order('changed_at', { ascending: true }),
         admin
           .from('order_payment_request_events')
-          .select('id, created_at, event_type')
+          .select('id, created_at, event_type, meta')
           .eq('order_id', params.id)
-          .in('event_type', ['requested', 'reverted_to_cod'])
+          .in('event_type', ['requested', 'reverted_to_cod', 'customer_cancelled'])
           .order('created_at', { ascending: true }),
         admin.from('orders').select('original_payment_method').eq('id', params.id).maybeSingle(),
       ]);
@@ -57,9 +57,14 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     }));
     const requestEntries = (requestRows || []).map((row) => ({
       id: row.id,
-      kind: (row.event_type === 'reverted_to_cod' ? 'reverted_to_cod' : 'payment_request') as
-        | 'payment_request'
-        | 'reverted_to_cod',
+      kind: (row.event_type === 'reverted_to_cod'
+        ? 'reverted_to_cod'
+        : row.event_type === 'customer_cancelled'
+          ? 'customer_cancelled'
+          : 'payment_request') as 'payment_request' | 'reverted_to_cod' | 'customer_cancelled',
+      // Who did it: 'customer' (from the payment page) or 'admin'. Older
+      // revert rows have no meta.by, so this stays null for them.
+      by: ((row.meta as any)?.by ?? null) as 'customer' | 'admin' | null,
       from_status: null,
       to_status: null,
       changed_at: row.created_at,

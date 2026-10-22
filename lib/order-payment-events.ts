@@ -15,7 +15,8 @@ export type PaymentRequestEventType =
   | 'payment_attempt_created'
   | 'payment_verified'
   | 'payment_failed'
-  | 'reverted_to_cod';
+  | 'reverted_to_cod'
+  | 'customer_cancelled';
 
 export type PaymentRequestSource = 'email' | 'account';
 

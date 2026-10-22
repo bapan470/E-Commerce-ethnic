@@ -5,7 +5,8 @@ import { Loader2, Circle } from 'lucide-react';
 
 interface HistoryEntry {
   id: string;
-  kind: 'status' | 'payment_request' | 'reverted_to_cod';
+  kind: 'status' | 'payment_request' | 'reverted_to_cod' | 'customer_cancelled';
+  by?: 'customer' | 'admin' | null;
   from_status: string | null;
   to_status: string | null;
   changed_at: string;
@@ -70,8 +71,13 @@ export default function OrderStatusHistory({ orderId }: { orderId: string }) {
     originalPaymentMethod === 'cod' ? 'Order placed (COD)' : 'Order placed (Prepaid)';
 
   const labelFor = (entry: HistoryEntry) => {
-    if (entry.kind === 'payment_request') return 'Requested online payment';
-    if (entry.kind === 'reverted_to_cod') return 'Reverted to COD';
+    if (entry.kind === 'payment_request') return 'Admin requested online payment';
+    if (entry.kind === 'reverted_to_cod') {
+      if (entry.by === 'customer') return 'Customer chose to keep COD';
+      if (entry.by === 'admin') return 'Admin reverted to COD';
+      return 'Reverted to COD';
+    }
+    if (entry.kind === 'customer_cancelled') return 'Customer cancelled (from payment page)';
     if (entry.to_status === 'pending' && entry.from_status === null) return orderPlacedLabel;
     return (entry.to_status && STATUS_LABELS[entry.to_status]) || entry.to_status || '—';
   };

@@ -104,6 +104,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (cErr || !cancelled?.length) {
     return NextResponse.json({ error: 'Could not cancel your order. Please try again.' }, { status: 500 });
   }
+  // Shows on the admin's Status History as "Customer cancelled from payment page".
+  // (Needs 20261023000000_customer_cancelled_event.sql; fails soft without it.)
+  await logPaymentRequestEvent(order.id, 'customer_cancelled', { meta: { by: 'customer' } });
   if (order.customer_email) {
     try {
       const { subject, html } = orderCancelledByCustomerEmail({
