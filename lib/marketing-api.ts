@@ -178,15 +178,15 @@ We ship using trusted logistics partners such as Delhivery and Shiprocket (and o
 Order Processing
 Orders are processed and dispatched within {{dispatch_days}} business days of order confirmation, excluding Sundays and public holidays. During sale periods, processing may take slightly longer.
 
-Prepaid and Cash on Delivery (COD) Orders
+Prepaid, Partial Pay and Cash on Delivery (COD) Orders
 Prepaid orders (UPI, cards, netbanking) are confirmed instantly on successful payment and are packed and dispatched ahead of Cash on Delivery orders in our processing queue.
 
-COD orders are confirmed when you tap the one-tap confirmation link we send by email/WhatsApp (or when our team confirms with you by phone/WhatsApp). Confirmed COD orders are dispatched after prepaid orders, so they may take slightly longer to reach you. We may hold an unconfirmed COD order until it is confirmed.
+COD orders are confirmed when you tap the one-tap confirmation link we send by email/WhatsApp (or when our team confirms with you by phone/WhatsApp). Confirmed COD orders are dispatched after prepaid and Partial Pay orders, so they may take slightly longer to reach you. We may hold an unconfirmed COD order until it is confirmed.
 
 Partial Pay Orders
-Where Partial Pay is offered at checkout, you pay a part of the order total online as an advance (the exact amount is shown at checkout before you pay) and the remaining balance in cash or UPI to our delivery partner when the order arrives. The order is confirmed once the advance is received and is dispatched along with prepaid orders. Please keep the balance amount ready at the time of delivery. If delivery is refused or the balance is not paid at the door, the order may be returned to us and the advance is retained as per our Refund & Cancellation Policy.
+Where Partial Pay is offered at checkout, you pay a part of the order total online as an advance (the exact amount is shown at checkout before you pay) and the remaining balance in cash or UPI to our delivery partner when the order arrives. A Partial Pay order is confirmed as soon as the advance is received, and it is packed and dispatched along with prepaid orders, ahead of Cash on Delivery orders. Please keep the balance amount ready at the time of delivery. If delivery is refused or the balance is not paid at the door, the order is returned to us and the advance is treated as described in our Refund & Cancellation Policy.
 
-Where an online-payment discount applies, it is shown at checkout before you pay. Product prices and delivery charges are otherwise the same for both payment methods, and the delivery timelines below apply from the date of dispatch for both.
+Where an online-payment discount applies, it is shown at checkout before you pay and applies to full online payment only (not to Partial Pay or COD). Product prices and delivery charges are otherwise the same for every payment method, and the delivery timelines below apply from the date of dispatch for all of them.
 
 Delivery Timelines
 Metro cities: {{metro_days}} business days after dispatch
@@ -232,7 +232,13 @@ Damaged or Defective Items
 If you receive a damaged, defective, or wrong item, please reach out within 48 hours of delivery with clear photos/video, and we will offer a free replacement or full refund, whichever you prefer.
 
 Partial Pay Orders and Advance Payment
-For orders placed using Partial Pay, only the advance you paid online is ever collected before delivery. If you cancel such an order within {{cancellation_hours}} hours of placing it and before it has shipped, the advance is refunded to your original payment method within 5-7 business days (we may change this setting from time to time; the policy shown at checkout applies). If a Partial Pay order is refused at the time of delivery, is not accepted by you, or is returned to us because the balance was not paid, the advance paid is non-refundable, as it covers the outbound and return courier costs we have already incurred. If you return an eligible item after accepting delivery, the amount you actually paid (the advance plus the balance paid on delivery) is refunded as described under Refunds above.`;
+For orders placed using Partial Pay, only the advance is collected online before delivery; the balance is paid on delivery.
+
+Cancellation: if you cancel a Partial Pay order within {{cancellation_hours}} hours of placing it and before it has shipped, the advance you paid is refunded to your original payment method within 5-7 business days.
+
+Refused or undelivered orders: if a Partial Pay order is refused at the time of delivery, is not accepted by you, or is returned to us because the balance was not paid, the advance is non-refundable, as it covers the outbound and return courier and handling costs we have already incurred.
+
+Returns after delivery: if you return an eligible item after accepting delivery, you are refunded the amount you actually paid for it. The part paid online (the advance) goes back to your original payment method, and the part you paid in cash or UPI on delivery is refunded via bank transfer or store credit, as per your preference.`;
 
 // AruhiHandlooms-specific ready-to-paste templates for Privacy Policy and
 // Terms & Conditions. These don't currently carry {{fulfillment}} tokens
@@ -261,7 +267,7 @@ Improve our website, products, and customer experience
 Detect and prevent fraud, including misuse of discounts, referral codes, or gift cards
 
 Payment Information
-All payments are processed through secure, PCI-DSS compliant payment gateways (including Razorpay). We do not store your full card details on our servers. Where we offer an additional discount for paying online instead of Cash on Delivery, this is applied at checkout only and does not involve collecting any extra personal information beyond your chosen payment method.
+All payments are processed through secure, PCI-DSS compliant payment gateways (including Razorpay). We do not store your full card details on our servers. This includes advance payments made under our Partial Pay option. Where we offer an additional discount for paying online in full instead of Cash on Delivery, this is applied at checkout only and does not involve collecting any extra personal information beyond your chosen payment method.
 
 Sharing of Information
 We do not sell your personal information. We may share your information with trusted third parties who help us operate our business, including payment processors, shipping and logistics partners (such as Delhivery), and email/SMS service providers, solely for the purpose of fulfilling your order and communicating with you.
@@ -302,13 +308,13 @@ Pricing and Payment
 All prices listed on the website are in Indian Rupees (INR) and are inclusive of applicable taxes unless stated otherwise. We accept payments through the payment methods listed at checkout. We reserve the right to change prices at any time without prior notice, though this will not affect orders already confirmed.
 
 Partial Pay
-Where offered at checkout, Partial Pay lets you pay an advance online (the amount is shown before you pay) and the remaining balance in cash or UPI on delivery. The order is confirmed when the advance is received. If you refuse delivery, are unreachable, or do not pay the balance at the door, the order may be returned to us and the advance may be retained to cover courier costs, as described in our Refund & Cancellation Policy. Cancelling before dispatch within the cancellation window entitles you to a refund of the advance.
+Where offered at checkout, Partial Pay lets you pay an advance online (the amount is shown before you pay) and the remaining balance in cash or UPI on delivery. The order is confirmed when the advance is received and is dispatched along with prepaid orders, ahead of Cash on Delivery orders. If you refuse delivery, are unreachable, or do not pay the balance at the door, the order is returned to us and the advance is retained to cover courier and handling costs, as described in our Refund & Cancellation Policy. If you cancel before dispatch within the cancellation window, the advance is refunded. The online-payment discount does not apply to Partial Pay orders.
 
 Order Confirmation
-A prepaid order is confirmed once your online payment is successful and you receive an order confirmation email/message from us. A Cash on Delivery (COD) order is confirmed when you confirm it using the link we send by email/WhatsApp, or when our team confirms it with you by phone/WhatsApp; we may hold dispatch of a COD order until it is confirmed and may cancel it if we are unable to confirm it with you within a reasonable time. We reserve the right to cancel any order due to stock unavailability, pricing errors, or suspected fraudulent activity, in which case any amount you have paid will be refunded in full.
+A prepaid order, or a Partial Pay order, is confirmed once your online payment (in full, or the advance) is successful and you receive an order confirmation email/message from us. A Cash on Delivery (COD) order is confirmed when you confirm it using the link we send by email/WhatsApp, or when our team confirms it with you by phone/WhatsApp; we may hold dispatch of a COD order until it is confirmed and may cancel it if we are unable to confirm it with you within a reasonable time. We reserve the right to cancel any order due to stock unavailability, pricing errors, or suspected fraudulent activity, in which case any amount you have paid will be refunded in full.
 
 Discounts, Coupons and Online Payment Discount
-From time to time we may offer coupon codes, checkout add-on offers, or an additional discount for choosing to pay online instead of Cash on Delivery. Any such discount is shown to you at checkout before you complete your order and applies only to that order; it is not a permanent price reduction, cannot be combined with other offers unless stated, has no cash value, and may be changed, withdrawn, or restricted (including by order value, product, or payment method) at our discretion without prior notice.
+From time to time we may offer coupon codes, checkout add-on offers, or an additional discount for choosing to pay online in full instead of Cash on Delivery. Any such discount is shown to you at checkout before you complete your order and applies only to that order; it is not a permanent price reduction, cannot be combined with other offers unless stated, has no cash value, and may be changed, withdrawn, or restricted (including by order value, product, or payment method) at our discretion without prior notice.
 
 Promotional Offers (e.g. "Buy 2 Get 1 Free")
 From time to time we may run bundle offers such as "Buy 2 Get 1 Free," "Buy 3 Get 1 Free," or similar. Unless stated otherwise on the offer banner, the lowest-priced eligible item in your qualifying combination is the one provided free of cost; the offer applies only to the products/categories specified in the promotion and is valid only for the period displayed on the site. Such offers cannot be combined with other coupon codes or discounts unless explicitly stated, are subject to stock availability, and may be modified, withdrawn, or restricted at our discretion without prior notice, though this will not affect orders already confirmed. If any item from a qualifying bundle is returned, the refund will be recalculated based on the actual price paid for the remaining items (i.e. the discount/free-item benefit tied to the returned item will be adjusted accordingly).

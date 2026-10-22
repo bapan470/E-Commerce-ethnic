@@ -29,10 +29,15 @@ export const PAYMENT_COPY = {
   ],
   codTitle: 'Cash on Delivery',
   codSub: 'Pay in cash when your order arrives',
+  partialBenefits: [
+    { icon: 'check', title: 'Confirmed instantly', sub: 'On advance payment' },
+    { icon: 'zap', title: 'Dispatched first', sub: 'Ships before COD' },
+  ],
+  codQueueNote: 'Dispatched after Online & Partial Pay orders',
   partialNote:
-    'Your order is confirmed once the advance is paid. The balance is paid to the delivery partner in cash or UPI. The online-payment discount applies only to full prepaid orders.',
+    'Confirmed as soon as the advance is paid and dispatched along with prepaid orders, ahead of COD. Pay the balance to the delivery partner in cash or UPI. The online-payment discount applies only to full online payment.',
   codNote:
-    'We will send a one-tap confirmation link by email/WhatsApp. COD orders are dispatched after prepaid orders, so delivery can take a little longer.',
+    'We will send a one-tap confirmation link by email/WhatsApp. COD orders are dispatched after Online and Partial Pay orders, so delivery can take a little longer.',
 } as const;
 
 const BENEFIT_ICONS = {
@@ -121,14 +126,14 @@ export default function PaymentMethodSelector({
           className={`relative w-full overflow-hidden rounded-xl border-2 p-4 pt-5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
             online
               ? 'border-primary bg-gradient-to-br from-primary/[0.07] via-card to-secondary/15 shadow-[0_10px_30px_-14px_hsl(var(--primary)/0.55)]'
-              : 'border-secondary/50 bg-card hover:border-primary/50'
+              : 'border-primary/50 bg-gradient-to-br from-primary/[0.04] via-card to-card shadow-sm hover:border-primary'
           }`}
         >
           {/* gold sweep only while it is NOT selected, to draw the eye */}
           {!online && hasSavings && (
             <span
               aria-hidden
-              className="pointer-events-none absolute inset-y-0 left-0 w-1/3 animate-shine-sweep bg-gradient-to-r from-transparent via-secondary/35 to-transparent motion-reduce:animate-none"
+              className="pointer-events-none absolute inset-y-0 left-0 w-1/3 animate-shine-sweep bg-gradient-to-r from-transparent via-secondary/20 to-transparent motion-reduce:animate-none"
             />
           )}
 
@@ -199,7 +204,9 @@ export default function PaymentMethodSelector({
                 </p>
               </div>
               <div className="shrink-0 text-right">
-                <p className="font-serif text-lg font-bold leading-tight text-foreground">{formatINR(partial.advance)}</p>
+                <p className={`font-serif text-lg font-bold leading-tight ${part ? 'text-primary' : 'text-foreground/80'}`}>
+                  {formatINR(partial.advance)}
+                </p>
                 <p className="text-[10px] text-muted-foreground">now</p>
               </div>
             </div>
@@ -213,6 +220,26 @@ export default function PaymentMethodSelector({
                 <p className="text-[10px] text-muted-foreground">Pay on delivery</p>
                 <p className="text-sm font-semibold text-foreground">{formatINR(partial.balance)}</p>
               </div>
+            </div>
+
+            <div className="mt-2.5 grid grid-cols-2 gap-2">
+              {PAYMENT_COPY.partialBenefits.map((b) => {
+                const Icon = BENEFIT_ICONS[b.icon];
+                return (
+                  <div
+                    key={b.title}
+                    className={`flex items-center gap-1.5 rounded-lg border px-2 py-1.5 transition-colors ${
+                      part ? 'border-secondary/50 bg-secondary/10' : 'border-border/60 bg-muted/30'
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0 text-secondary" />
+                    <span className="min-w-0 text-left">
+                      <span className="block text-[11px] font-semibold leading-tight text-foreground">{b.title}</span>
+                      <span className="block text-[10px] leading-tight text-muted-foreground">{b.sub}</span>
+                    </span>
+                  </div>
+                );
+              })}
             </div>
 
             {part && (
@@ -245,10 +272,15 @@ export default function PaymentMethodSelector({
               <p className="font-serif text-base font-bold text-foreground">{PAYMENT_COPY.codTitle}</p>
               <p className="mt-0.5 text-xs text-muted-foreground">{PAYMENT_COPY.codSub}</p>
             </div>
-            <p className="shrink-0 font-serif text-lg font-bold leading-tight text-foreground">
+            <p className={`shrink-0 font-serif text-lg font-bold leading-tight ${cod ? 'text-foreground' : 'text-foreground/70'}`}>
               {formatINR(codTotal)}
             </p>
           </div>
+
+          <p className="mt-2.5 inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted/40 px-2.5 py-1 text-[10px] font-medium text-muted-foreground">
+            <Truck className="h-3 w-3" />
+            {PAYMENT_COPY.codQueueNote}
+          </p>
 
           {cod && (
             <p className="mt-3 flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-snug text-amber-900">
