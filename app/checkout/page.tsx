@@ -81,6 +81,7 @@ import {
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
 import TrustBadges from '@/components/checkout/trust-badges';
+import PaymentMethodSelector from '@/components/checkout/payment-method-selector';
 import StickyOrderBar from '@/components/checkout/sticky-order-bar';
 import { useForceMobileRepaint } from '@/hooks/use-force-mobile-repaint';
 import { toast } from 'sonner';
@@ -184,7 +185,10 @@ export default function CheckoutPage() {
     : cartBogoDiscount;
   const [placing, setPlacing] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('cod');
+  // Prepaid is pre-selected: it is the option the product page price ("Get this at ₹X via
+  // online payment") refers to, so the customer never sees the price jump up at checkout.
+  // COD stays one tap away and is never hidden.
+  const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('online');
   const { user } = useAuth();
 
   // Same real-device repaint bug as StickyOrderBar (see
@@ -832,6 +836,15 @@ export default function CheckoutPage() {
   // haven't set a price yet (shouldn't normally happen — see validation below).
   const payableTotal = isResale && resaleSellingPriceNum > 0 ? resaleSellingPriceNum : total;
   const resaleProfit = payableTotal - total;
+
+  // What the customer would pay under each payment option — shown side by
+  // side in the Payment card so the price is never a surprise. For resale
+  // orders the payable amount is the reseller's price either way.
+  const codTotalDisplay = isResale ? payableTotal : discountedSubtotal + shipping;
+  const onlineTotalDisplay = isResale
+    ? payableTotal
+    : Math.max(0, discountedSubtotal - potentialOnlinePaymentDiscount) + shipping;
+  const onlineSavingsDisplay = isResale ? 0 : potentialOnlinePaymentDiscount;
 
   // Repaint fix (see hooks/use-force-mobile-repaint.ts) — must sit here,
   // after payableTotal/total/onlinePaymentDiscount exist, not up near the
@@ -1944,69 +1957,13 @@ export default function CheckoutPage() {
               <Lock className="h-3 w-3" /> Choose how you'd like to pay
             </p>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <button
-                type="button"
-                onClick={() => setPaymentMethod('cod')}
-                className={`flex items-start gap-3 rounded-md border p-3 text-left text-sm transition-colors ${
-                  paymentMethod === 'cod'
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border/60 hover:border-primary/40'
-                }`}
-              >
-                <Wallet className="mt-0.5 h-5 w-5 shrink-0 text-secondary" />
-                <div>
-                  <p className="font-medium">Cash on Delivery</p>
-                  <p className="text-xs text-muted-foreground">Pay in cash when your order arrives</p>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setPaymentMethod('online')}
-                className={`relative flex items-start gap-3 overflow-hidden rounded-md border p-3 text-left text-sm transition-colors ${
-                  paymentMethod === 'online'
-                    ? 'border-primary bg-primary/5'
-                    : 'border-secondary/50 bg-secondary/5 hover:border-secondary'
-                }`}
-              >
-                {/* COD is the default now, so this card needs its own pull
-                    to make sure the online-payment discount doesn't get
-                    missed -- a slow gold sweep + a small pulsing badge,
-                    only shown while it isn't already the selected option
-                    and only when there's an actual discount configured
-                    (no point drawing attention to a ₹0 saving). */}
-                {paymentMethod !== 'online' &&
-                  paymentDiscount.enabled &&
-                  potentialOnlinePaymentDiscount > 0 && (
-                    <span
-                      aria-hidden
-                      className="pointer-events-none absolute inset-y-0 left-0 w-1/3 animate-shine-sweep bg-gradient-to-r from-transparent via-secondary/45 to-transparent"
-                    />
-                  )}
-                <CreditCard className="relative z-10 mt-0.5 h-5 w-5 shrink-0 text-secondary" />
-                <div className="relative z-10">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <p className="font-medium">Pay Online</p>
-                    {paymentMethod !== 'online' &&
-                      paymentDiscount.enabled &&
-                      potentialOnlinePaymentDiscount > 0 && (
-                        <span className="animate-badge-pop rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-secondary-foreground">
-                          Save more
-                        </span>
-                      )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Razorpay — card, UPI, netbanking
-                  </p>
-                  {paymentDiscount.enabled && potentialOnlinePaymentDiscount > 0 && (
-                    <p className="mt-0.5 text-xs font-medium text-green-700">
-                      Get {formatINR(potentialOnlinePaymentDiscount)} off — applied automatically
-                    </p>
-                  )}
-                </div>
-              </button>
-            </div>
+            <PaymentMethodSelector
+              value={paymentMethod}
+              onChange={setPaymentMethod}
+              savings={onlineSavingsDisplay}
+              onlineTotal={onlineTotalDisplay}
+              codTotal={codTotalDisplay}
+            />
           </section>
         </div>
 
@@ -2616,8 +2573,8 @@ export default function CheckoutPage() {
                 </>
               ) : (
                 <>
-                  <CreditCard className="mr-2 h-4 w-4" />
-                  Pay {formatINR(payableTotal)}
+                  <Lock className="mr-2 h-4 w-4" />
+                  Pay securely — {formatINR(payableTotal)}
                 </>
               )}
             </Button>
