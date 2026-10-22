@@ -183,6 +183,9 @@ Prepaid orders (UPI, cards, netbanking) are confirmed instantly on successful pa
 
 COD orders are confirmed when you tap the one-tap confirmation link we send by email/WhatsApp (or when our team confirms with you by phone/WhatsApp). Confirmed COD orders are dispatched after prepaid orders, so they may take slightly longer to reach you. We may hold an unconfirmed COD order until it is confirmed.
 
+Partial Pay Orders
+Where Partial Pay is offered at checkout, you pay a part of the order total online as an advance (the exact amount is shown at checkout before you pay) and the remaining balance in cash or UPI to our delivery partner when the order arrives. The order is confirmed once the advance is received and is dispatched along with prepaid orders. Please keep the balance amount ready at the time of delivery. If delivery is refused or the balance is not paid at the door, the order may be returned to us and the advance is retained as per our Refund & Cancellation Policy.
+
 Where an online-payment discount applies, it is shown at checkout before you pay. Product prices and delivery charges are otherwise the same for both payment methods, and the delivery timelines below apply from the date of dispatch for both.
 
 Delivery Timelines
@@ -226,7 +229,10 @@ Refunds
 Once we receive and inspect the returned item, refunds will be processed within 5-7 business days to your original payment method. For Cash on Delivery orders, refunds will be issued via bank transfer or store credit, as per your preference.
 
 Damaged or Defective Items
-If you receive a damaged, defective, or wrong item, please reach out within 48 hours of delivery with clear photos/video, and we will offer a free replacement or full refund, whichever you prefer.`;
+If you receive a damaged, defective, or wrong item, please reach out within 48 hours of delivery with clear photos/video, and we will offer a free replacement or full refund, whichever you prefer.
+
+Partial Pay Orders and Advance Payment
+For orders placed using Partial Pay, only the advance you paid online is ever collected before delivery. If you cancel such an order within {{cancellation_hours}} hours of placing it and before it has shipped, the advance is refunded to your original payment method within 5-7 business days (we may change this setting from time to time; the policy shown at checkout applies). If a Partial Pay order is refused at the time of delivery, is not accepted by you, or is returned to us because the balance was not paid, the advance paid is non-refundable, as it covers the outbound and return courier costs we have already incurred. If you return an eligible item after accepting delivery, the amount you actually paid (the advance plus the balance paid on delivery) is refunded as described under Refunds above.`;
 
 // AruhiHandlooms-specific ready-to-paste templates for Privacy Policy and
 // Terms & Conditions. These don't currently carry {{fulfillment}} tokens
@@ -294,6 +300,9 @@ We make every effort to display our products, including colours and fabric detai
 
 Pricing and Payment
 All prices listed on the website are in Indian Rupees (INR) and are inclusive of applicable taxes unless stated otherwise. We accept payments through the payment methods listed at checkout. We reserve the right to change prices at any time without prior notice, though this will not affect orders already confirmed.
+
+Partial Pay
+Where offered at checkout, Partial Pay lets you pay an advance online (the amount is shown before you pay) and the remaining balance in cash or UPI on delivery. The order is confirmed when the advance is received. If you refuse delivery, are unreachable, or do not pay the balance at the door, the order may be returned to us and the advance may be retained to cover courier costs, as described in our Refund & Cancellation Policy. Cancelling before dispatch within the cancellation window entitles you to a refund of the advance.
 
 Order Confirmation
 A prepaid order is confirmed once your online payment is successful and you receive an order confirmation email/message from us. A Cash on Delivery (COD) order is confirmed when you confirm it using the link we send by email/WhatsApp, or when our team confirms it with you by phone/WhatsApp; we may hold dispatch of a COD order until it is confirmed and may cancel it if we are unable to confirm it with you within a reasonable time. We reserve the right to cancel any order due to stock unavailability, pricing errors, or suspected fraudulent activity, in which case any amount you have paid will be refunded in full.

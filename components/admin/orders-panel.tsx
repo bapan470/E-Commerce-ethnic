@@ -61,6 +61,11 @@ type Order = {
   // 'cod' -> 'online', so the admin can still tell this order was
   // originally COD. See 20260923000000_orders_original_payment_method.sql.
   original_payment_method?: string;
+  // Partial Pay (advance online + balance on delivery) -- see lib/partial-pay.ts
+  advance_percent?: number | null;
+  advance_amount?: number;
+  balance_due?: number;
+  advance_paid_at?: string | null;
   // Amount shaved off total_amount when "Request Online Payment" (or a
   // normal online checkout) applied the online-payment discount. Combined
   // with total_amount this reconstructs the price the order was ORIGINALLY
@@ -350,7 +355,11 @@ export default function OrdersPanel() {
       const matchesStatus = statusFilter === 'all' || o.status === statusFilter;
       const matchesPayment =
         paymentFilter === 'all' ||
-        (paymentFilter === 'cod' ? o.payment_method === 'cod' : o.payment_method !== 'cod');
+        (paymentFilter === 'cod'
+          ? o.payment_method === 'cod'
+          : paymentFilter === 'partial'
+            ? o.payment_method === 'partial'
+            : o.payment_method !== 'cod' && o.payment_method !== 'partial');
 
       return matchesQuery && matchesStatus && matchesPayment;
     });
@@ -709,6 +718,7 @@ export default function OrdersPanel() {
               <SelectItem value="all">All Payments</SelectItem>
               <SelectItem value="cod">COD</SelectItem>
               <SelectItem value="online">Online</SelectItem>
+              <SelectItem value="partial">Partial Pay</SelectItem>
             </SelectContent>
           </SelectRoot>
 
@@ -816,11 +826,16 @@ export default function OrdersPanel() {
         paymentMethod={orders.find((o) => o.id === shipmentModalOrderId)?.payment_method}
         awaitingOnlinePayment={(() => {
           const mo = orders.find((o) => o.id === shipmentModalOrderId);
+          if (mo?.payment_method === 'partial') return !mo.advance_paid_at;
           return !!mo && mo.payment_method !== 'cod' && !mo.razorpay_payment_id && mo.status !== 'paid';
         })()}
         items={orders.find((o) => o.id === shipmentModalOrderId)?.items ?? []}
         shipments={orders.find((o) => o.id === shipmentModalOrderId)?._shipments ?? []}
-        totalAmount={Number(orders.find((o) => o.id === shipmentModalOrderId)?.total_amount || 0)}
+        totalAmount={(() => {
+          const mo = orders.find((o) => o.id === shipmentModalOrderId);
+          // Partial Pay: the courier only collects the balance.
+          return Number(mo?.payment_method === 'partial' ? mo.balance_due || 0 : mo?.total_amount || 0);
+        })()}
         confirming={creatingShipmentFor === shipmentModalOrderId}
         onConfirm={confirmShipmentFromModal}
       />
@@ -940,6 +955,25 @@ function buildPaymentWhatsAppUrl(order: Order): string | null {
     process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== 'undefined' ? window.location.origin : '')
   ).replace(/\/$/, '');
   const onlineTotal = Number(order.total_amount || 0);
+  if (order.payment_method === 'partial') {
+    const advance = Number(order.advance_amount || 0);
+    const balance = Math.max(0, onlineTotal - advance);
+    const inrP = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
+    const partialText = [
+      `Dear${(order.customer_name || '').trim().split(/\s+/)[0] ? ` ${(order.customer_name || '').trim().split(/\s+/)[0]}` : ''},`,
+      '',
+      `Warm greetings from *${STORE_NAME}* 🌸`,
+      '',
+      `Your order *#${order.id.slice(0, 8).toUpperCase()}* is saved. To confirm it, please pay the advance of *${inrP(advance)}* online. The remaining *${inrP(balance)}* you pay when the order is delivered.`,
+      '',
+      `Your secure payment link 👇`,
+      `${siteUrl}/checkout/resume/${order.id}`,
+      '',
+      `With gratitude,`,
+      `*Team ${STORE_NAME}*`,
+    ].join('\n');
+    return `https://wa.me/${digits}?text=${encodeURIComponent(partialText)}`;
+  }
   const text = buildPaymentWhatsAppText({
     firstName: (order.customer_name || '').trim().split(/\s+/)[0],
     shortId: order.id.slice(0, 8).toUpperCase(),
@@ -962,7 +996,8 @@ function buildPaidConfirmationWhatsAppUrl(order: Order): string | null {
   const shortId = order.id.slice(0, 8).toUpperCase();
   const first = (order.customer_name || '').trim().split(/\s+/)[0];
   const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
-  const paid = Number(order.total_amount || 0);
+  const isPartialOrder = order.payment_method === 'partial';
+  const paid = isPartialOrder ? Number(order.advance_amount || 0) : Number(order.total_amount || 0);
   const discount = Number(order.online_payment_discount ?? 0);
   const siteUrl = (
     process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== 'undefined' ? window.location.origin : '')
@@ -982,7 +1017,12 @@ function buildPaidConfirmationWhatsAppUrl(order: Order): string | null {
   const lines = [
     `Dear${first ? ` ${first}` : ''},`,
     '',
-    `Thank you! We have received your payment of *${inr(paid)}* for order *#${shortId}*. Your order is confirmed. ✅`,
+    isPartialOrder
+      ? `Thank you! We have received your advance of *${inr(paid)}* for order *#${shortId}*. Your order is confirmed. ✅`
+      : `Thank you! We have received your payment of *${inr(paid)}* for order *#${shortId}*. Your order is confirmed. ✅`,
+    ...(isPartialOrder
+      ? [`The remaining *${inr(Number(order.balance_due || 0))}* is payable on delivery (cash or UPI). Please keep it ready.`]
+      : []),
     ...(discount > 0 ? [`You saved ${inr(discount)} by paying online.`] : []),
     '',
     `*Your order*`,
@@ -1284,6 +1324,9 @@ function buildStatusWhatsAppUrl(
           ]
         : []),
       ...(order.payment_method === 'cod' ? [`Cash on Delivery: please keep *${inr(total)}* ready at the time of delivery.`, ''] : []),
+      ...(order.payment_method === 'partial' && Number(order.balance_due) > 0
+        ? [`Partial Pay: you have already paid the advance. Please keep the balance of *${inr(Number(order.balance_due))}* ready (cash or UPI) at the time of delivery.`, '']
+        : []),
       `*Track your order anytime*`,
       trackLink,
       '',
@@ -1774,11 +1817,26 @@ function OrderRow({
             className={`rounded-full px-2 py-0.5 text-xs font-medium ${
               order.payment_method === 'cod'
                 ? 'bg-amber-100 text-amber-800'
-                : 'bg-emerald-100 text-emerald-800'
+                : order.payment_method === 'partial'
+                  ? 'bg-sky-100 text-sky-800'
+                  : 'bg-emerald-100 text-emerald-800'
             }`}
           >
-            {order.payment_method === 'cod' ? 'COD' : 'Online'}
+            {order.payment_method === 'cod' ? 'COD' : order.payment_method === 'partial' ? 'Partial' : 'Online'}
           </span>
+          {order.payment_method === 'partial' && (
+            <div className="mt-1 text-[11px] leading-tight text-muted-foreground">
+              {order.advance_paid_at ? (
+                <>
+                  Advance paid {formatINR(order.advance_amount || 0)}
+                  <br />
+                  <span className="font-semibold text-foreground">Collect {formatINR(order.balance_due || 0)} on delivery</span>
+                </>
+              ) : (
+                <>Advance {formatINR(order.advance_amount || 0)} not paid yet</>
+              )}
+            </div>
+          )}
           {wasConvertedFromCod && (
             <span
               className="ml-1 inline-block rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700"

@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, CreditCard, Info, Lock, Sparkles, Truck, Wallet, Zap, BadgeCheck } from 'lucide-react';
+import { Check, CreditCard, Info, Lock, Sparkles, Truck, Wallet, Zap, BadgeCheck, Split } from 'lucide-react';
 import { formatINR } from '@/lib/format';
 
 /**
@@ -29,6 +29,8 @@ export const PAYMENT_COPY = {
   ],
   codTitle: 'Cash on Delivery',
   codSub: 'Pay in cash when your order arrives',
+  partialNote:
+    'Your order is confirmed once the advance is paid. The balance is paid to the delivery partner in cash or UPI. The online-payment discount applies only to full prepaid orders.',
   codNote:
     'We will send a one-tap confirmation link by email/WhatsApp. COD orders are dispatched after prepaid orders, so delivery can take a little longer.',
 } as const;
@@ -39,9 +41,22 @@ const BENEFIT_ICONS = {
   check: BadgeCheck,
 } as const;
 
+export type CheckoutPaymentMethod = 'online' | 'cod' | 'partial';
+
+/** Shown only when Partial Pay is enabled (Admin > Settings) and this order is eligible. */
+export interface PartialPayOption {
+  title: string;
+  percent: number;
+  /** Paid online now. */
+  advance: number;
+  /** Paid to the courier on delivery. */
+  balance: number;
+}
+
 interface PaymentMethodSelectorProps {
-  value: 'online' | 'cod';
-  onChange: (method: 'online' | 'cod') => void;
+  value: CheckoutPaymentMethod;
+  onChange: (method: CheckoutPaymentMethod) => void;
+  partial?: PartialPayOption | null;
   /** Rupees saved by paying online (0 / undefined hides all saving UI). */
   savings: number;
   /** Final amount if the customer pays online. */
@@ -71,12 +86,14 @@ function RadioDot({ selected }: { selected: boolean }) {
 export default function PaymentMethodSelector({
   value,
   onChange,
+  partial,
   savings,
   onlineTotal,
   codTotal,
 }: PaymentMethodSelectorProps) {
   const online = value === 'online';
   const cod = value === 'cod';
+  const part = value === 'partial';
   const hasSavings = savings > 0;
 
   return (
@@ -158,6 +175,56 @@ export default function PaymentMethodSelector({
         </button>
       </div>
 
+      {/* ───────── Partial Pay (advance online, rest on delivery) ───────── */}
+      {partial && (
+        <div>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={part}
+            onClick={() => onChange('partial')}
+            className={`w-full rounded-xl border-2 p-4 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+              part
+                ? 'border-primary bg-gradient-to-br from-primary/[0.06] via-card to-card shadow-[0_10px_30px_-16px_hsl(var(--primary)/0.5)]'
+                : 'border-border/70 bg-card hover:border-primary/40'
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <RadioDot selected={part} />
+              <Split className="mt-0.5 hidden h-5 w-5 shrink-0 text-secondary sm:block" />
+              <div className="min-w-0 flex-1">
+                <p className="font-serif text-base font-bold text-foreground">{partial.title}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Pay {partial.percent}% now, the rest when your order arrives
+                </p>
+              </div>
+              <div className="shrink-0 text-right">
+                <p className="font-serif text-lg font-bold leading-tight text-foreground">{formatINR(partial.advance)}</p>
+                <p className="text-[10px] text-muted-foreground">now</p>
+              </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2 text-center">
+              <div className="rounded-lg border border-border/60 bg-muted/30 px-2 py-2">
+                <p className="text-[10px] text-muted-foreground">Pay online now</p>
+                <p className="text-sm font-semibold text-foreground">{formatINR(partial.advance)}</p>
+              </div>
+              <div className="rounded-lg border border-border/60 bg-muted/30 px-2 py-2">
+                <p className="text-[10px] text-muted-foreground">Pay on delivery</p>
+                <p className="text-sm font-semibold text-foreground">{formatINR(partial.balance)}</p>
+              </div>
+            </div>
+
+            {part && (
+              <p className="mt-3 flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-snug text-amber-900">
+                <Info className="mt-px h-3.5 w-3.5 shrink-0" />
+                {PAYMENT_COPY.partialNote}
+              </p>
+            )}
+          </button>
+        </div>
+      )}
+
       {/* ───────── Cash on Delivery ───────── */}
       <div>
         <button
@@ -205,7 +272,7 @@ export default function PaymentMethodSelector({
       </div>
 
       <p className="text-center text-[11px] text-muted-foreground">
-        Same price either way — the only difference is the online-payment discount shown above.
+        {partial ? 'Same product price on every option — the online-payment discount applies to full online payment only.' : 'Same price either way — the only difference is the online-payment discount shown above.'}
       </p>
     </div>
   );

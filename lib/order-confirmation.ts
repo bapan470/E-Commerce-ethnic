@@ -46,6 +46,8 @@ export async function runOrderConfirmationSideEffects(orderId: string) {
       total_amount: order.total_amount,
       payment_method: order.payment_method,
       cod_confirm_url: confirmUrl,
+      advance_amount: order.advance_amount,
+      balance_due: order.balance_due,
     });
 
     sendEmail({ to: order.customer_email, subject, html })
@@ -120,6 +122,8 @@ export async function runOrderConfirmationSideEffects(orderId: string) {
           items: Array.isArray(order.items) ? order.items : [],
           total_amount: order.total_amount,
           payment_method: order.payment_method,
+          advance_amount: order.advance_amount,
+          balance_due: order.balance_due,
         });
 
         sendEmail({ to: adminEmail, subject: notice.subject, html: notice.html }).catch((err) => {

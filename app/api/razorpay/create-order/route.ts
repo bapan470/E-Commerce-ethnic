@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     const admin = getSupabaseAdmin();
     const { data: order, error: orderError } = await admin
       .from('orders')
-      .select('id, total_amount, status')
+      .select('id, total_amount, status, payment_method, advance_amount')
       .eq('id', internalOrderId)
       .maybeSingle();
 
@@ -36,7 +36,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const amountPaise = Math.round(Number(order.total_amount) * 100);
+    // Partial Pay: only the advance is charged online; the balance is collected on delivery.
+    // advance_amount is computed by the orders_apply_partial_pay() DB trigger, never by the client.
+    const isPartial = order.payment_method === 'partial';
+    const chargeAmount = isPartial ? Number(order.advance_amount) : Number(order.total_amount);
+    const amountPaise = Math.round(chargeAmount * 100);
     if (!amountPaise || amountPaise < 1) {
       return NextResponse.json({ error: 'Order has an invalid amount' }, { status: 400 });
     }
@@ -57,11 +61,12 @@ export async function POST(req: NextRequest) {
     });
 
     const options = {
-      amount: amountPaise, // authoritative amount, in paise, from the DB
+      amount: amountPaise, // authoritative amount, in paise, from the DB (advance only for partial orders)
       currency: 'INR',
       receipt: internalOrderId,
       notes: {
         internal_order_id: internalOrderId,
+        ...(isPartial ? { payment_type: 'partial_advance' } : {}),
       },
     };
 

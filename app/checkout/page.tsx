@@ -82,7 +82,14 @@ import {
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog';
 import TrustBadges from '@/components/checkout/trust-badges';
-import PaymentMethodSelector from '@/components/checkout/payment-method-selector';
+import PaymentMethodSelector, { type CheckoutPaymentMethod } from '@/components/checkout/payment-method-selector';
+import {
+  fetchPartialPaySettings,
+  computeAdvance,
+  isPartialPayEligible,
+  DEFAULT_PARTIAL_PAY_SETTINGS,
+  type PartialPaySettings,
+} from '@/lib/partial-pay';
 import StickyOrderBar from '@/components/checkout/sticky-order-bar';
 import { useForceMobileRepaint } from '@/hooks/use-force-mobile-repaint';
 import { toast } from 'sonner';
@@ -189,7 +196,12 @@ export default function CheckoutPage() {
   // Prepaid is pre-selected: it is the option the product page price ("Get this at ₹X via
   // online payment") refers to, so the customer never sees the price jump up at checkout.
   // COD stays one tap away and is never hidden.
-  const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('online');
+  const [paymentMethod, setPaymentMethod] = useState<CheckoutPaymentMethod>('online');
+  // Partial Pay (advance online, rest on delivery) -- switched on/off and sized in Admin > Settings.
+  const [partialPaySettings, setPartialPaySettings] = useState<PartialPaySettings>(DEFAULT_PARTIAL_PAY_SETTINGS);
+  useEffect(() => {
+    fetchPartialPaySettings().then(setPartialPaySettings).catch(() => {});
+  }, []);
   const { user } = useAuth();
 
   // Same real-device repaint bug as StickyOrderBar (see
@@ -859,6 +871,24 @@ export default function CheckoutPage() {
     : Math.max(0, discountedSubtotal - potentialOnlinePaymentDiscount) + shipping;
   const onlineSavingsDisplay = isResale ? 0 : potentialOnlinePaymentDiscount;
 
+  // Partial Pay is priced like COD (no online-payment discount) and never offered for resale orders.
+  // The advance shown here is display-only: the server (orders_apply_partial_pay trigger) recomputes
+  // it from the stored total and the admin setting, and Razorpay is charged that amount.
+  const partialEligible = !isResale && isPartialPayEligible(partialPaySettings, codTotalDisplay);
+  const partialAmounts = computeAdvance(codTotalDisplay, partialPaySettings.percent);
+  const partialOption = partialEligible
+    ? {
+        title: partialPaySettings.label,
+        percent: partialPaySettings.percent,
+        advance: partialAmounts.advance,
+        balance: partialAmounts.balance,
+      }
+    : null;
+  // If the cart/settings change so Partial Pay no longer applies, fall back to full online payment.
+  useEffect(() => {
+    if (paymentMethod === 'partial' && !partialEligible) setPaymentMethod('online');
+  }, [paymentMethod, partialEligible]);
+
   // Repaint fix (see hooks/use-force-mobile-repaint.ts) — must sit here,
   // after payableTotal/total/onlinePaymentDiscount exist, not up near the
   // other useRef() calls.
@@ -1242,7 +1272,7 @@ export default function CheckoutPage() {
       let internalOrderId: string;
 
       if (
-        paymentMethod === 'online' &&
+        (paymentMethod === 'online' || paymentMethod === 'partial') &&
         pendingOrderRef.current &&
         pendingOrderRef.current.signature === orderSignature
       ) {
@@ -1349,6 +1379,12 @@ export default function CheckoutPage() {
             setPlacing(false);
             return;
           }
+          if (orderError.message?.includes('PARTIAL_PAY_DISABLED') || orderError.message?.includes('PARTIAL_PAY_NOT_ELIGIBLE')) {
+            toast.error('Partial payment is not available for this order. Please choose another payment method.');
+            setPaymentMethod('online');
+            setPlacing(false);
+            return;
+          }
           if (orderError.message?.includes('COD_BLOCKED_RETURN_RISK')) {
             toast.error(
               'Cash on Delivery is temporarily unavailable for this number due to past returns/RTOs. Please pay online to place this order.',
@@ -1360,7 +1396,7 @@ export default function CheckoutPage() {
           throw orderError;
         }
         internalOrderId = newOrderId as string;
-        if (paymentMethod === 'online') {
+        if (paymentMethod === 'online' || paymentMethod === 'partial') {
           pendingOrderRef.current = { id: internalOrderId, signature: orderSignature };
         }
       }
@@ -1453,11 +1489,15 @@ export default function CheckoutPage() {
       trackEvent('purchase', {
         orderId: internalOrderId,
         userId: loggedInUser?.id ?? null,
-        metadata: { total: payableTotal, itemCount: items.length, paymentMethod: 'online', email: customerEmail },
+        metadata: { total: payableTotal, itemCount: items.length, paymentMethod, email: customerEmail },
       });
       // NOTE: GA4/Google Ads "purchase" conversion is intentionally NOT
       // fired here anymore — see the matching note in the COD branch above.
-      toast.success('Payment successful! Order confirmed.');
+      toast.success(
+        paymentMethod === 'partial'
+          ? `Advance paid! Order confirmed — pay the balance on delivery.`
+          : 'Payment successful! Order confirmed.'
+      );
       fetch('/api/order-confirm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2109,6 +2149,7 @@ export default function CheckoutPage() {
             <PaymentMethodSelector
               value={paymentMethod}
               onChange={setPaymentMethod}
+              partial={partialOption}
               savings={onlineSavingsDisplay}
               onlineTotal={onlineTotalDisplay}
               codTotal={codTotalDisplay}
@@ -2696,6 +2737,18 @@ export default function CheckoutPage() {
               </p>
             )}
             <Separator className="my-4" />
+            {paymentMethod === 'partial' && partialOption && (
+              <div className="mb-3 space-y-1 rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
+                <div className="flex items-center justify-between font-semibold text-primary">
+                  <span>Pay now (advance {partialOption.percent}%)</span>
+                  <span>{formatINR(partialOption.advance)}</span>
+                </div>
+                <div className="flex items-center justify-between text-muted-foreground">
+                  <span>Pay on delivery</span>
+                  <span>{formatINR(partialOption.balance)}</span>
+                </div>
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <span className="font-serif text-base font-semibold">Total</span>
               <span
@@ -2719,6 +2772,11 @@ export default function CheckoutPage() {
                 <>
                   <Wallet className="mr-2 h-4 w-4" />
                   Place Order (COD) — {formatINR(payableTotal)}
+                </>
+              ) : paymentMethod === 'partial' && partialOption ? (
+                <>
+                  <Lock className="mr-2 h-4 w-4" />
+                  Pay advance — {formatINR(partialOption.advance)}
                 </>
               ) : (
                 <>

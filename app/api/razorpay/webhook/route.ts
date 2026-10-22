@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
     const { data: order, error: orderError } = await admin
       .from('orders')
       .select(
-        'id, status, razorpay_order_id, total_amount, customer_name, customer_email, tracking_number, courier_name, items'
+        'id, status, razorpay_order_id, total_amount, customer_name, customer_email, tracking_number, courier_name, items, payment_method, advance_amount'
       )
       .eq('razorpay_order_id', razorpayOrderId)
       .maybeSingle();
@@ -116,7 +116,9 @@ export async function POST(req: NextRequest) {
     // Sanity check: captured amount should match what we charged for.
     // Mismatch doesn't necessarily mean fraud (could be a partial capture
     // edge case), but it's worth a loud log rather than silently trusting it.
-    const expectedPaise = Math.round(Number(order.total_amount) * 100);
+    const expectedPaise = Math.round(
+      Number(order.payment_method === 'partial' ? order.advance_amount : order.total_amount) * 100
+    );
     if (amountPaise != null && amountPaise !== expectedPaise) {
       console.error(
         `[razorpay-webhook] amount mismatch for order ${order.id}: expected ${expectedPaise}, got ${amountPaise}`
@@ -128,6 +130,13 @@ export async function POST(req: NextRequest) {
       .update({
         status: 'paid',
         razorpay_payment_id: razorpayPaymentId,
+        ...(order.payment_method === 'partial'
+          ? {
+              advance_payment_id: razorpayPaymentId,
+              advance_paid_at: new Date().toISOString(),
+              balance_due: Math.max(0, Number(order.total_amount) - Number(order.advance_amount)),
+            }
+          : {}),
       })
       .eq('id', order.id)
       .eq('status', 'pending'); // guards against a race with verify-payment
@@ -157,6 +166,8 @@ export async function POST(req: NextRequest) {
         items: order.items,
         total_amount: order.total_amount,
         isPaymentRequestFlow: inPaymentRequestFlow,
+        payment_method: order.payment_method,
+        advance_amount: order.advance_amount,
       });
       sendEmail({ to: order.customer_email, subject, html }).catch((err) => {
         console.error('[razorpay-webhook] payment-confirmed email failed:', err);

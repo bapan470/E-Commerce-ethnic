@@ -98,7 +98,21 @@ export async function POST(req: Request) {
     // money. Typical case: "Request Online Payment" was clicked but the
     // customer never paid. Admin must either wait for payment or use
     // "Revert to COD" first.
-    if (order.payment_method !== 'cod' && !order.razorpay_payment_id && order.status !== 'paid') {
+    const isPartialOrder = order.payment_method === 'partial';
+    if (isPartialOrder && !order.advance_paid_at) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'This is a Partial Pay order but the advance has not been paid yet — Delhivery would collect the wrong amount. Wait for the customer to pay the advance.',
+        },
+        { status: 200 }
+      );
+    }
+    // Amount the courier may collect in total: full total for COD, only the balance for Partial Pay.
+    const collectibleTotal = isPartialOrder ? Number(order.balance_due || 0) : Number(order.total_amount || 0);
+
+    if (order.payment_method !== 'cod' && !isPartialOrder && !order.razorpay_payment_id && order.status !== 'paid') {
       return NextResponse.json(
         {
           success: false,
@@ -112,15 +126,15 @@ export async function POST(req: Request) {
     // COD: split the cash between parcels. Admin may override the suggestion.
     const suggestedCod = suggestCodAmount({
       paymentMethod: order.payment_method,
-      totalAmount: order.total_amount,
+      totalAmount: collectibleTotal,
       items: orderItems,
       selectedIndexes: selected,
       existingShipments: prior,
     });
     const priorCod = prior.reduce((sum, x) => sum + Number(x.cod_amount || 0), 0);
-    const maxCod = Math.max(0, Number(order.total_amount || 0) - priorCod);
+    const maxCod = Math.max(0, collectibleTotal - priorCod);
     const codAmount =
-      order.payment_method === 'cod'
+      order.payment_method === 'cod' || isPartialOrder
         ? body?.codAmount !== undefined && body?.codAmount !== null && body?.codAmount !== ''
           ? Math.min(maxCod, Math.max(0, Math.round(Number(body.codAmount) || 0)))
           : suggestedCod
@@ -149,6 +163,7 @@ export async function POST(req: Request) {
         customer_phone: order.customer_phone,
         total_amount: order.total_amount,
         payment_method: order.payment_method,
+        balance_due: order.balance_due,
         items: orderItems,
         shipping_address: order.shipping_address,
       },
@@ -219,6 +234,7 @@ export async function POST(req: Request) {
               customer_name: order.customer_name,
               tracking_number: result.waybill,
               courier_name: 'Delhivery',
+              balance_due: isPartialOrder ? codAmount : undefined,
             })
           : orderPartialShippedEmail({
               id: order.id,

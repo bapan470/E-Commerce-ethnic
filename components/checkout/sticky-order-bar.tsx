@@ -18,7 +18,7 @@ interface StickyOrderBarProps {
   shipping: number;
   payableTotal: number;
   totalSavings: number;
-  paymentMethod: 'online' | 'cod';
+  paymentMethod: 'online' | 'cod' | 'partial';
   /** Rupee amount of the online-payment incentive (not the raw percent) —
    *  already computed against the current subtotal, so it's ready to show
    *  directly regardless of which payment method is currently selected. */

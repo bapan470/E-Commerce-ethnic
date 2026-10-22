@@ -67,11 +67,14 @@ export default function ResumePaymentButton({
   customerName,
   customerEmail,
   customerPhone,
+  payLabel,
 }: {
   orderId: string;
   customerName?: string;
   customerEmail?: string;
   customerPhone?: string;
+  /** Overrides the button text (e.g. "Pay advance ₹500" for Partial Pay orders). */
+  payLabel?: string;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -158,7 +161,7 @@ export default function ResumePaymentButton({
   return (
     <Button onClick={handlePay} disabled={loading} size="lg" className="w-full gap-2">
       {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-      {loading ? 'Opening payment...' : 'Complete Payment'}
+      {loading ? 'Opening payment...' : payLabel || 'Complete Payment'}
     </Button>
   );
 }

@@ -181,7 +181,7 @@ export async function runPaymentReminderJob() {
 
   const { data: orders, error } = await supabase
     .from('orders')
-    .select('id, items, total_amount, online_payment_discount, customer_name, customer_email, created_at')
+    .select('id, items, total_amount, online_payment_discount, customer_name, customer_email, created_at, payment_method, advance_amount')
     .eq('status', 'pending')
     .neq('payment_method', 'cod')
     .not('razorpay_order_id', 'is', null)
@@ -199,6 +199,8 @@ export async function runPaymentReminderJob() {
       total_amount: order.total_amount,
       online_payment_discount: order.online_payment_discount,
       customer_name: order.customer_name,
+      payment_method: order.payment_method,
+      advance_amount: order.advance_amount,
     });
     const result = await sendEmail({ to: order.customer_email as string, subject, html });
     if (result.success) {

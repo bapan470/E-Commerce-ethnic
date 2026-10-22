@@ -78,7 +78,7 @@ export default async function ResumePaymentPage({
   const { data: order } = await supabase
     .from('orders')
     .select(
-      'id, status, payment_method, original_payment_method, items, total_amount, online_payment_discount, subtotal, shipping_charge, gst_amount, coupon_code, coupon_discount, gift_card_code, gift_card_discount, loyalty_points_redeemed, loyalty_discount, customer_name, customer_email, customer_phone'
+      'id, status, payment_method, original_payment_method, items, total_amount, online_payment_discount, subtotal, shipping_charge, gst_amount, coupon_code, coupon_discount, gift_card_code, gift_card_discount, loyalty_points_redeemed, loyalty_discount, customer_name, customer_email, customer_phone, advance_amount'
     )
     .eq('id', params.id)
     .maybeSingle();
@@ -126,7 +126,10 @@ export default async function ResumePaymentPage({
   const shippingAmt = Number(order.shipping_charge ?? 0);
   const gstAmt = order.gst_amount;
   const onlineDiscountAmt = Number(order.online_payment_discount ?? 0);
-  const hasFullBreakdown = subtotalAmt != null;
+  const isPartialOrder = order.payment_method === 'partial';
+  const advanceAmt = Number(order.advance_amount ?? 0);
+  // Partial Pay orders only owe the advance online; no online-payment discount editor for them.
+  const hasFullBreakdown = subtotalAmt != null && !isPartialOrder;
   // What the order stood at just before today's online-payment discount --
   // i.e. after any coupon/gift-card/loyalty discount that already applied
   // at checkout, same figure the admin's "Ordered at (COD price)" shows.
@@ -169,7 +172,23 @@ export default async function ResumePaymentPage({
             </div>
           );
         })}
-        {!hasFullBreakdown &&
+        {isPartialOrder && (
+          <div className="space-y-1.5 border-t border-border/60 pt-3 text-sm">
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span>Order total</span>
+              <span>{formatINR(order.total_amount)}</span>
+            </div>
+            <div className="flex items-center justify-between text-base font-bold text-primary">
+              <span>Advance to pay now</span>
+              <span>{formatINR(advanceAmt)}</span>
+            </div>
+            <div className="flex items-center justify-between text-muted-foreground">
+              <span>Balance on delivery</span>
+              <span>{formatINR(Math.max(0, order.total_amount - advanceAmt))}</span>
+            </div>
+          </div>
+        )}
+        {!hasFullBreakdown && !isPartialOrder &&
           (onlineDiscountAmt > 0 ? (
             <div className="space-y-1.5 border-t border-border/60 pt-3">
               <div className="flex items-center justify-between text-sm text-muted-foreground">
@@ -223,10 +242,11 @@ export default async function ResumePaymentPage({
           customerName={order.customer_name ?? undefined}
           customerEmail={order.customer_email ?? undefined}
           customerPhone={order.customer_phone ?? undefined}
+          payLabel={isPartialOrder ? `Pay advance ${formatINR(advanceAmt)}` : undefined}
         />
       </div>
 
-      {order.original_payment_method === 'cod' && (
+      {order.original_payment_method === 'cod' && !isPartialOrder && (
         <ResumePaymentChoices orderId={order.id} codTotal={codTotal} />
       )}
     </div>

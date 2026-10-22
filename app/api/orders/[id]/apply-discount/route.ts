@@ -59,7 +59,7 @@ async function loadEditableOrder(admin: ReturnType<typeof getSupabaseAdmin>, id:
   const { data: order, error } = await admin.from('orders').select(ORDER_FIELDS).eq('id', id).maybeSingle();
   if (error || !order) return { order: null as Order | null, errorResponse: NextResponse.json({ error: 'Order not found' }, { status: 404 }) };
 
-  if (order.status !== 'pending' || order.payment_method === 'cod' || order.subtotal == null) {
+  if (order.status !== 'pending' || order.payment_method === 'cod' || order.payment_method === 'partial' || order.subtotal == null) {
     return {
       order: null,
       errorResponse: NextResponse.json(

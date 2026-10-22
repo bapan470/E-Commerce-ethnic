@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
     const { data: order, error: orderError } = await admin
       .from('orders')
       .select(
-        'id, status, razorpay_order_id, total_amount, customer_name, customer_email, tracking_number, courier_name, items'
+        'id, status, razorpay_order_id, total_amount, customer_name, customer_email, tracking_number, courier_name, items, payment_method, advance_amount'
       )
       .eq('id', internalOrderId)
       .maybeSingle();
@@ -94,6 +94,14 @@ export async function POST(req: NextRequest) {
         status: 'paid',
         razorpay_payment_id,
         razorpay_signature,
+        // Partial Pay: record the advance and what is still due on delivery.
+        ...(order.payment_method === 'partial'
+          ? {
+              advance_payment_id: razorpay_payment_id,
+              advance_paid_at: new Date().toISOString(),
+              balance_due: Math.max(0, Number(order.total_amount) - Number(order.advance_amount)),
+            }
+          : {}),
       })
       .eq('id', internalOrderId)
       .eq('status', 'pending');
@@ -132,6 +140,8 @@ export async function POST(req: NextRequest) {
         items: order.items,
         total_amount: order.total_amount,
         isPaymentRequestFlow: inPaymentRequestFlow,
+        payment_method: order.payment_method,
+        advance_amount: order.advance_amount,
       });
       sendEmail({ to: order.customer_email, subject, html }).catch((err) => {
         console.error('[verify-payment] payment-confirmed email failed:', err);

@@ -353,12 +353,28 @@ export default async function OrderConfirmationPage({ params }: { params: { id: 
             <span>
               {order.payment_method === 'cod'
                 ? 'Total (Pay on Delivery)'
-                : isUnpaidPending
+                : order.payment_method === 'partial'
+                  ? 'Order Total'
+                  : isUnpaidPending
                   ? 'Total Due (Payment Pending)'
                   : 'Total Paid'}
             </span>
             <span className="font-serif text-lg text-primary">{formatINR(order.total_amount)}</span>
           </div>
+          {order.payment_method === 'partial' && (
+            <div className="mt-2 space-y-1 rounded-md bg-muted/40 p-3 text-sm font-normal">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">
+                  {order.advance_paid_at ? 'Advance paid online' : 'Advance to pay online'}
+                </span>
+                <span>{formatINR(order.advance_amount ?? 0)}</span>
+              </div>
+              <div className="flex justify-between font-semibold text-foreground">
+                <span>Balance to pay on delivery</span>
+                <span>{formatINR(order.advance_paid_at ? order.balance_due ?? 0 : Math.max(0, order.total_amount - (order.advance_amount ?? 0)))}</span>
+              </div>
+            </div>
+          )}
         </div>
 
         <Separator className="my-4" />

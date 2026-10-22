@@ -105,6 +105,8 @@ export interface OrderForShipment {
   customer_phone?: string | null;
   total_amount: number;
   payment_method?: string | null;
+  /** Partial Pay: what the courier collects on delivery (total minus the advance already paid). */
+  balance_due?: number | null;
   items: Array<{ product_name?: string; quantity?: number }>;
   shipping_address?: {
     address?: string;
@@ -159,7 +161,7 @@ export async function getDelhiveryRateEstimate(params: {
       const qs = new URLSearchParams({
         md: mode,
         ss: 'Delivered',
-        pt: params.payment_method === 'cod' ? 'COD' : 'Pre-paid',
+        pt: params.payment_method === 'cod' || params.payment_method === 'partial' ? 'COD' : 'Pre-paid',
         d_pin: params.destination_pincode,
         o_pin: settings.pickup_pincode,
         cgm: String(params.weight_grams),
@@ -229,8 +231,12 @@ export async function createDelhiveryShipment(
   const addr = order.shipping_address;
   const shipItems = overrides.items ?? order.items;
   const productDesc = shipItems.map((i) => `${i.product_name} x${i.quantity}`).join(', ');
-  const isCod = order.payment_method === 'cod';
-  const codAmount = isCod ? Math.max(0, Number(overrides.codAmount ?? order.total_amount)) : 0;
+  // Partial Pay ships as COD for the BALANCE only (the advance was already paid online).
+  const isPartial = order.payment_method === 'partial';
+  const isCod = order.payment_method === 'cod' || isPartial;
+  const codAmount = isCod
+    ? Math.max(0, Number(overrides.codAmount ?? (isPartial ? order.balance_due ?? 0 : order.total_amount)))
+    : 0;
   const declaredValue = Number(overrides.declaredValue ?? order.total_amount);
 
   const payload = {

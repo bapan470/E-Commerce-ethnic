@@ -214,7 +214,7 @@ export async function updateOrderStatus(id: string, status: string) {
   const { data: existing, error: fetchError } = await supabase
     .from('orders')
     .select(
-      'id, status, customer_email, customer_name, tracking_number, courier_name, items, total_amount, payment_method, razorpay_payment_id'
+      'id, status, customer_email, customer_name, tracking_number, courier_name, items, total_amount, payment_method, razorpay_payment_id, advance_amount, advance_paid_at, advance_refund_id'
     )
     .eq('id', id)
     .maybeSingle();
@@ -228,11 +228,18 @@ export async function updateOrderStatus(id: string, status: string) {
   // (the pre-update row), so this only fires on the paid -> cancelled
   // transition, not e.g. pending -> cancelled or a re-cancel of an
   // already-cancelled order.
+  // Partial Pay: only the advance was ever captured, so only the advance is refunded (an
+  // admin-initiated cancel is the store's call, so unlike an RTO it IS refunded).
+  const isPartialAdvancePaid =
+    existing?.payment_method === 'partial' &&
+    !!existing.advance_paid_at &&
+    !!existing.razorpay_payment_id &&
+    !existing.advance_refund_id;
+  const refundAmount = isPartialAdvancePaid ? Number(existing!.advance_amount) : Number(existing?.total_amount);
   const needsRefund =
     status === 'cancelled' &&
     existing?.status === 'paid' &&
-    existing.payment_method === 'online' &&
-    !!existing.razorpay_payment_id;
+    ((existing.payment_method === 'online' && !!existing.razorpay_payment_id) || isPartialAdvancePaid);
 
   let refundOutcome: {
     status: 'not_applicable' | 'refunded' | 'pending_manual' | 'failed';
@@ -251,17 +258,21 @@ export async function updateOrderStatus(id: string, status: string) {
 
     if (!autoRefundEnabled) {
       await supabase.from('orders').update({ refund_status: 'pending_manual' }).eq('id', id);
-      refundOutcome = { status: 'pending_manual', amount: existing!.total_amount };
+      refundOutcome = { status: 'pending_manual', amount: refundAmount };
     } else {
-      const refundResult = await refundRazorpayPayment(existing!.razorpay_payment_id as string, existing!.total_amount);
+      const refundResult = await refundRazorpayPayment(existing!.razorpay_payment_id as string, refundAmount);
       if (refundResult.success) {
         await supabase
           .from('orders')
-          .update({ refund_status: 'refunded', razorpay_refund_id: refundResult.refundId })
+          .update({
+            refund_status: 'refunded',
+            razorpay_refund_id: refundResult.refundId,
+            ...(isPartialAdvancePaid ? { advance_refund_id: refundResult.refundId } : {}),
+          })
           .eq('id', id);
         refundOutcome = {
           status: 'refunded',
-          amount: existing!.total_amount,
+          amount: refundAmount,
           razorpay_refund_id: refundResult.refundId,
         };
       } else {
@@ -269,7 +280,7 @@ export async function updateOrderStatus(id: string, status: string) {
         // flag it so the admin can see it needs a manual refund instead of
         // it silently getting missed.
         await supabase.from('orders').update({ refund_status: 'failed' }).eq('id', id);
-        refundOutcome = { status: 'failed', amount: existing!.total_amount };
+        refundOutcome = { status: 'failed', amount: refundAmount };
       }
     }
   }
@@ -297,6 +308,8 @@ export async function updateOrderStatus(id: string, status: string) {
       items: existing.items,
       total_amount: existing.total_amount,
       isPaymentRequestFlow,
+      payment_method: existing.payment_method,
+      advance_amount: existing.advance_amount,
       refund: needsRefund ? refundOutcome : undefined,
     });
     // Best-effort -- never let a slow/broken email provider fail the

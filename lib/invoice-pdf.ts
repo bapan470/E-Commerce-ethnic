@@ -31,7 +31,11 @@ interface InvoiceOrder {
   shipping_charge: number | null;
   gst_amount: number | null;
   total_amount: number;
-  payment_method?: string | null; // 'cod' | 'online'
+  payment_method?: string | null; // 'cod' | 'online' | 'partial'
+  // Partial Pay only: advance already paid online / balance to pay on delivery.
+  advance_amount?: number | null;
+  balance_due?: number | null;
+  advance_paid_at?: string | null;
   payment_status?: string | null; // 'pending' | 'paid' | 'cancelled' | 'completed' ...
 }
 
@@ -248,7 +252,11 @@ export async function generateInvoicePdf(
   const status = (order.payment_status || '').toLowerCase();
   let payLabel: string;
   let payColor: ReturnType<typeof rgb>;
-  if (isCod) {
+  const isPartialPay = (order.payment_method || '').toLowerCase() === 'partial';
+  if (isPartialPay) {
+    payLabel = order.advance_paid_at ? 'PARTIAL PAY · ADVANCE PAID' : 'PARTIAL PAY · ADVANCE PENDING';
+    payColor = order.advance_paid_at ? rgb(0.72, 0.45, 0.05) : rgb(0.6, 0.15, 0.15);
+  } else if (isCod) {
     payLabel = 'CASH ON DELIVERY';
     payColor = rgb(0.72, 0.45, 0.05);
   } else if (status === 'paid' || status === 'completed') {
@@ -393,6 +401,10 @@ export async function generateInvoicePdf(
   }
   rows.push(['Shipping', order.shipping_charge ? rupee(order.shipping_charge) : 'FREE']);
   rows.push(['GST (5%, included)', rupee(order.gst_amount ?? 0)]);
+  if (isPartialPay) {
+    rows.push(['Advance paid online', rupee(Number(order.advance_amount ?? 0))]);
+    rows.push(['Balance on delivery', rupee(Number(order.balance_due ?? 0))]);
+  }
 
   const totalsCardHeight = rows.length * 16 + 34;
   page.drawRectangle({

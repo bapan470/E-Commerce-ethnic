@@ -76,6 +76,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
         total_amount: order.total_amount,
         payment_method: order.payment_method,
         payment_status: order.status,
+        advance_amount: order.advance_amount,
+        balance_due: order.balance_due,
+        advance_paid_at: order.advance_paid_at,
       },
       store,
       loyaltySettings.enabled

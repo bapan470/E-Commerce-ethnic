@@ -59,6 +59,7 @@ import {
   fetchBlurPlaceholderSettings,
   saveBlurPlaceholderSettings,
 } from '@/lib/settings-api';
+import { DEFAULT_PARTIAL_PAY_SETTINGS, normalizePartialPay, computeAdvance, type PartialPaySettings } from '@/lib/partial-pay';
 import type { BackfillProgress } from '@/lib/media-backfill';
 import type { ResizeBackfillProgress } from '@/lib/image-resize-backfill';
 import type { BlurBackfillProgress } from '@/lib/blur-preview-backfill';
@@ -129,6 +130,8 @@ export default function SettingsPanel() {
 
   const [paymentDiscountForm, setPaymentDiscountForm] = useState<PaymentDiscountSettings | null>(null);
   const [savingPaymentDiscount, setSavingPaymentDiscount] = useState(false);
+  const [partialPayForm, setPartialPayForm] = useState<PartialPaySettings | null>(null);
+  const [savingPartialPay, setSavingPartialPay] = useState(false);
   const [catalogVideoForm, setCatalogVideoForm] = useState<CatalogVideoSettings | null>(null);
   const [savingCatalogVideo, setSavingCatalogVideo] = useState(false);
   const [catalogListingForm, setCatalogListingForm] = useState<CatalogListingSettings | null>(null);
@@ -198,6 +201,15 @@ export default function SettingsPanel() {
     fetchSocialLinks()
       .then(setSocialForm)
       .catch(() => toast.error('Failed to load social media links'));
+
+    // Partial Pay is read/written through an admin-only route (the advance is derived from it).
+    fetch('/api/admin/settings/partial-pay', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('load failed'))))
+      .then((d) => setPartialPayForm(normalizePartialPay(d.settings)))
+      .catch(() => {
+        setPartialPayForm(DEFAULT_PARTIAL_PAY_SETTINGS);
+        toast.error('Failed to load Partial Pay settings');
+      });
 
     fetchPaymentDiscountSettings()
       .then(setPaymentDiscountForm)
@@ -382,6 +394,27 @@ export default function SettingsPanel() {
       toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSavingSocial(false);
+    }
+  };
+
+  const onSubmitPartialPay = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!partialPayForm) return;
+    setSavingPartialPay(true);
+    try {
+      const res = await fetch('/api/admin/settings/partial-pay', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(partialPayForm),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Save failed');
+      setPartialPayForm(normalizePartialPay(data.settings));
+      toast.success('Partial Pay settings saved');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSavingPartialPay(false);
     }
   };
 
@@ -1652,6 +1685,110 @@ export default function SettingsPanel() {
           <Button type="submit" disabled={savingPaymentDiscount} className="mt-2 w-fit bg-primary">
             <Save className="mr-1.5 h-4 w-4" />{' '}
             {savingPaymentDiscount ? 'Saving…' : 'Save Payment Discount'}
+          </Button>
+        </form>
+      )}
+
+      <div className="mt-8">
+        <h2 className="font-serif text-2xl font-bold text-primary">Partial Pay (Advance + Pay on Delivery)</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Customer pays a part of the order online now (Razorpay) and the rest to the courier on
+          delivery. Delhivery is told to collect only the balance. No online-payment discount is
+          given on Partial Pay orders.
+        </p>
+      </div>
+
+      {!partialPayForm ? (
+        <p className="py-4 text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <form
+          onSubmit={onSubmitPartialPay}
+          className="mt-4 grid max-w-xl gap-4 rounded-lg border border-border/60 bg-card p-5"
+        >
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <Label htmlFor="partial-pay-enabled">Enable Partial Pay at checkout</Label>
+              <p className="text-xs text-muted-foreground">
+                Turn off to hide it from checkout. Orders already placed with it are not affected.
+              </p>
+            </div>
+            <Switch
+              id="partial-pay-enabled"
+              checked={partialPayForm.enabled}
+              onCheckedChange={(checked) => setPartialPayForm((f) => f && { ...f, enabled: checked })}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="partial-pay-percent">Advance to collect online (%)</Label>
+            <Input
+              id="partial-pay-percent"
+              type="number"
+              min={1}
+              max={99}
+              step="1"
+              value={partialPayForm.percent}
+              onChange={(e) => setPartialPayForm((f) => f && { ...f, percent: Number(e.target.value) })}
+            />
+            <p className="text-xs text-muted-foreground">
+              Example: on a ₹1,000 order, {partialPayForm.percent || 0}% = ₹
+              {computeAdvance(1000, partialPayForm.percent || 50).advance} now and ₹
+              {computeAdvance(1000, partialPayForm.percent || 50).balance} on delivery.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="partial-pay-min">Minimum order (₹)</Label>
+              <Input
+                id="partial-pay-min"
+                type="number"
+                min={0}
+                value={partialPayForm.min_order_value}
+                onChange={(e) => setPartialPayForm((f) => f && { ...f, min_order_value: Number(e.target.value) })}
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="partial-pay-max">Maximum order (₹)</Label>
+              <Input
+                id="partial-pay-max"
+                type="number"
+                min={0}
+                value={partialPayForm.max_order_value}
+                onChange={(e) => setPartialPayForm((f) => f && { ...f, max_order_value: Number(e.target.value) })}
+              />
+            </div>
+          </div>
+          <p className="-mt-2 text-xs text-muted-foreground">
+            Only offer Partial Pay for orders between these values. Leave 0 for no limit.
+          </p>
+          <div className="grid gap-1.5">
+            <Label htmlFor="partial-pay-label">Customer-facing title</Label>
+            <Input
+              id="partial-pay-label"
+              value={partialPayForm.label}
+              maxLength={40}
+              onChange={(e) => setPartialPayForm((f) => f && { ...f, label: e.target.value })}
+              placeholder="Partial Pay"
+            />
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <Label htmlFor="partial-pay-refund">Refund the advance if the customer cancels</Label>
+              <p className="text-xs text-muted-foreground">
+                Applies to self-cancel before dispatch (inside the cancellation window). An order that
+                is refused at the door / returned to origin never gets an automatic refund of the
+                advance. Keep your Refund &amp; Cancellation Policy page in line with this.
+              </p>
+            </div>
+            <Switch
+              id="partial-pay-refund"
+              checked={partialPayForm.refund_advance_on_cancel}
+              onCheckedChange={(checked) =>
+                setPartialPayForm((f) => f && { ...f, refund_advance_on_cancel: checked })
+              }
+            />
+          </div>
+          <Button type="submit" disabled={savingPartialPay} className="mt-2 w-fit bg-primary">
+            <Save className="mr-1.5 h-4 w-4" /> {savingPartialPay ? 'Saving…' : 'Save Partial Pay'}
           </Button>
         </form>
       )}

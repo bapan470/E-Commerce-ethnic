@@ -57,7 +57,9 @@ export function suggestCodAmount(params: {
   selectedIndexes: number[];
   existingShipments: Pick<OrderShipment, 'item_indexes' | 'cod_amount'>[];
 }): number {
-  if (params.paymentMethod !== 'cod') return 0;
+  // 'partial' = advance already paid online, so the courier only collects the balance.
+  // Callers pass balance_due as totalAmount for partial orders (see create-shipment).
+  if (params.paymentMethod !== 'cod' && params.paymentMethod !== 'partial') return 0;
   const total = Number(params.totalAmount || 0);
   const alreadyAssigned = params.existingShipments.reduce((s, x) => s + Number(x.cod_amount || 0), 0);
   const remainingCod = Math.max(0, total - alreadyAssigned);

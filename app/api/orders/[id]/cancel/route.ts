@@ -5,6 +5,7 @@ import { fetchFulfillmentSettings } from '@/lib/marketing-api';
 import { refundRazorpayPayment } from '@/lib/razorpay-refund';
 import { sendEmail } from '@/lib/email';
 import { orderCancelledByCustomerEmail } from '@/lib/email-templates';
+import { normalizePartialPay } from '@/lib/partial-pay';
 
 // Statuses a customer is still allowed to self-cancel from. Once an order
 // has moved past this (shipped/delivered/etc.) it must go through the
@@ -28,7 +29,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   const { data: order, error: fetchError } = await admin
     .from('orders')
     .select(
-      'id, user_id, customer_email, customer_name, items, status, created_at, payment_method, razorpay_payment_id, total_amount, tracking_number'
+      'id, user_id, customer_email, customer_name, items, status, created_at, payment_method, razorpay_payment_id, total_amount, tracking_number, advance_amount, advance_paid_at, advance_refund_id'
     )
     .eq('id', params.id)
     .single();
@@ -116,7 +117,31 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   // order, or an "online" order where Razorpay's verify-payment step never
   // ran (no razorpay_payment_id / not actually 'paid'), never took money
   // in the first place — nothing to refund.
-  const needsRefund = order.payment_method === 'online' && order.status === 'paid' && !!order.razorpay_payment_id;
+  const isPartialPaid =
+    order.payment_method === 'partial' && !!order.advance_paid_at && !!order.razorpay_payment_id && !order.advance_refund_id;
+
+  // Partial Pay: only the ADVANCE was ever collected. Whether it is refunded on a self-cancel
+  // before dispatch is the admin's choice (Admin > Settings > Partial Pay). Orders that are
+  // refused at the door / RTO are never auto-refunded -- they don't come through this route.
+  let partialRefundAllowed = false;
+  if (isPartialPaid) {
+    const { data: ppRow } = await admin.from('settings').select('value').eq('key', 'partial_pay').maybeSingle();
+    partialRefundAllowed = normalizePartialPay(ppRow?.value as any).refund_advance_on_cancel;
+  }
+  const refundAmount = isPartialPaid ? Number(order.advance_amount) : Number(order.total_amount);
+
+  const needsRefund =
+    (order.payment_method === 'online' && order.status === 'paid' && !!order.razorpay_payment_id) ||
+    (isPartialPaid && partialRefundAllowed);
+
+  if (isPartialPaid && !partialRefundAllowed) {
+    notifyCustomer({ status: 'not_applicable' });
+    return NextResponse.json({
+      success: true,
+      refunded: false,
+      refundError: 'Your order was cancelled. As per our policy, the advance paid for a Partial Pay order is non-refundable.',
+    });
+  }
 
   if (!needsRefund) {
     notifyCustomer({ status: 'not_applicable' });
@@ -133,7 +158,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
 
   if (!autoRefundEnabled) {
     await admin.from('orders').update({ refund_status: 'pending_manual' }).eq('id', order.id);
-    notifyCustomer({ status: 'pending_manual', amount: order.total_amount });
+    notifyCustomer({ status: 'pending_manual', amount: refundAmount });
     return NextResponse.json({
       success: true,
       refunded: false,
@@ -141,14 +166,18 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     });
   }
 
-  const refundResult = await refundRazorpayPayment(order.razorpay_payment_id, order.total_amount);
+  const refundResult = await refundRazorpayPayment(order.razorpay_payment_id, refundAmount);
 
   if (refundResult.success) {
     await admin
       .from('orders')
-      .update({ refund_status: 'refunded', razorpay_refund_id: refundResult.refundId })
+      .update({
+        refund_status: 'refunded',
+        razorpay_refund_id: refundResult.refundId,
+        ...(isPartialPaid ? { advance_refund_id: refundResult.refundId } : {}),
+      })
       .eq('id', order.id);
-    notifyCustomer({ status: 'refunded', amount: order.total_amount, razorpay_refund_id: refundResult.refundId });
+    notifyCustomer({ status: 'refunded', amount: refundAmount, razorpay_refund_id: refundResult.refundId });
     return NextResponse.json({ success: true, refunded: true });
   }
 
@@ -157,7 +186,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   // flag it so the admin can see it needs a manual refund instead of it
   // silently getting missed.
   await admin.from('orders').update({ refund_status: 'failed' }).eq('id', order.id);
-  notifyCustomer({ status: 'failed', amount: order.total_amount });
+  notifyCustomer({ status: 'failed', amount: refundAmount });
   return NextResponse.json({
     success: true,
     refunded: false,

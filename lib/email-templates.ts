@@ -177,6 +177,12 @@ export function passwordResetEmail(user: { full_name?: string; reset_url: string
   return { subject, html };
 }
 
+function paymentLabel(method?: string | null): string {
+  if (method === 'cod') return 'Cash on Delivery';
+  if (method === 'partial') return 'Partial Pay (advance online + balance on delivery)';
+  return 'Paid Online';
+}
+
 export function orderConfirmationEmail(order: {
   id: string;
   customer_name?: string;
@@ -186,6 +192,9 @@ export function orderConfirmationEmail(order: {
   // COD only: secret one-tap confirmation link (see lib/cod-confirmation.ts).
   // When absent the email is exactly the same as before.
   cod_confirm_url?: string;
+  // Partial Pay only: advance already paid online, balance to pay on delivery.
+  advance_amount?: number;
+  balance_due?: number;
 }) {
   const codConfirm = order.payment_method === 'cod' && !!order.cod_confirm_url;
   const subject = codConfirm
@@ -203,8 +212,17 @@ export function orderConfirmationEmail(order: {
     ${itemsTable(order.items)}
     <p style="text-align:right; font-size:16px; font-weight:bold;">Total: ${formatINR(order.total_amount)}</p>
     <p style="font-size:13px; color:#6b5f57;">
-      Payment method: ${order.payment_method === 'cod' ? 'Cash on Delivery' : 'Paid Online'}
+      Payment method: ${paymentLabel(order.payment_method)}
     </p>
+    ${
+      order.payment_method === 'partial'
+        ? `<div style="margin:16px 0; padding:14px 16px; border:1px solid #d5ecd8; background:#f0f9f1; border-radius:8px; font-size:14px; color:#1a4d2b; line-height:1.7;">
+      <strong>Advance paid online:</strong> ${formatINR(order.advance_amount ?? 0)}<br />
+      <strong>Balance to pay on delivery:</strong> ${formatINR(order.balance_due ?? Math.max(0, order.total_amount - (order.advance_amount ?? 0)))}<br />
+      <span style="font-size:12px; color:#4a3d34;">Please keep the balance ready (cash or UPI) when your order arrives.</span>
+    </div>`
+        : ''
+    }
     ${
       codConfirm
         ? `<div style="margin:20px 0; padding:16px; border:1px solid #e8d9a8; background:#fbf6e6; border-radius:8px; text-align:center;">
@@ -237,16 +255,18 @@ export function newOrderAdminNotification(order: {
   items: any[];
   total_amount: number;
   payment_method?: string;
+  advance_amount?: number;
+  balance_due?: number;
 }) {
   const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
-  const subject = `New order ${shortId} — ${formatINR(order.total_amount)}`;
+  const subject = `New order ${shortId} — ${formatINR(order.total_amount)}${order.payment_method === 'partial' ? ' (Partial Pay)' : ''}`;
   const html = wrapper(`
     <h2 style="margin-top:0; color:${BRAND_COLOR};">You've got a new order!</h2>
     <div style="margin:16px 0; padding:14px 16px; background:#fff; border-left:3px solid ${BRAND_COLOR}; border-radius:4px;">
       <p style="margin:0 0 6px;"><strong>Order:</strong> ${shortId}</p>
       <p style="margin:0 0 6px;"><strong>Customer:</strong> ${order.customer_name || 'Guest'}${order.customer_email ? ` (${order.customer_email})` : ''}</p>
       ${order.customer_phone ? `<p style="margin:0 0 6px;"><strong>Phone:</strong> ${order.customer_phone}</p>` : ''}
-      <p style="margin:0 0 6px;"><strong>Payment:</strong> ${order.payment_method === 'cod' ? 'Cash on Delivery' : 'Paid Online'}</p>
+      <p style="margin:0 0 6px;"><strong>Payment:</strong> ${order.payment_method === 'partial' ? `Partial Pay — advance ${formatINR(order.advance_amount ?? 0)} paid online, ${formatINR(order.balance_due ?? 0)} to collect on delivery` : order.payment_method === 'cod' ? 'Cash on Delivery' : 'Paid Online'}</p>
     </div>
     ${itemsTable(order.items)}
     <p style="text-align:right; font-size:16px; font-weight:bold;">Total: ${formatINR(order.total_amount)}</p>
@@ -437,12 +457,15 @@ export function orderShippedEmail(order: {
   courier_name?: string | null;
   items?: any[];
   total_amount?: number;
+  // Partial Pay: balance the customer pays the courier on delivery.
+  balance_due?: number;
 }) {
   const subject = `Your order has shipped — #${order.id.slice(0, 8)}`;
   const html = wrapper(`
     <h2 style="margin-top:0; color:${BRAND_COLOR};">Good news, ${order.customer_name || 'there'} — it's on the way!</h2>
     <p>Your order <strong>#${order.id.slice(0, 8)}</strong> has been shipped${order.courier_name ? ` via ${order.courier_name}` : ''}.</p>
     ${order.tracking_number ? `<p style="font-size:16px;"><strong>Tracking number:</strong> ${order.tracking_number}</p>` : ''}
+    ${order.balance_due && order.balance_due > 0 ? `<p style="font-size:14px;">Balance to pay on delivery: <strong>${formatINR(order.balance_due)}</strong>. Please keep this amount ready (cash or UPI) for the delivery partner.</p>` : ''}
     ${order.items?.length ? itemsTable(order.items) : ''}
     ${
       order.items?.length && typeof order.total_amount === 'number'
@@ -660,6 +683,9 @@ export function orderStatusUpdateEmail(order: {
   // in" apology -- that line doesn't apply to them and was previously
   // being sent to every "paid" order regardless of flow.
   isPaymentRequestFlow?: boolean;
+  // Partial Pay: the 'paid' copy says "advance received" and shows the balance due on delivery.
+  payment_method?: string | null;
+  advance_amount?: number | null;
   // Only set when this status change is a 'cancelled' transition that was
   // actually checked for a refund (i.e. it was a paid online order). Lets
   // the 'cancelled' copy below state the real outcome instead of the old
@@ -694,7 +720,10 @@ export function orderStatusUpdateEmail(order: {
     paid: {
       subject: `Payment confirmed — ${shortId}`,
       heading: `Thanks, ${name} — payment received!`,
-      body: order.isPaymentRequestFlow
+      body: order.payment_method === 'partial'
+        ? `We've received your advance of <strong>${formatINR(Number(order.advance_amount ?? 0))}</strong> for order <strong>${shortId}</strong> and it's now being prepared.
+        <br /><br />The remaining <strong>${formatINR(Math.max(0, Number(order.total_amount ?? 0) - Number(order.advance_amount ?? 0)))}</strong> is payable on delivery (cash or UPI) — please keep it ready. We'll email you the moment it ships.`
+        : order.isPaymentRequestFlow
         ? `We've confirmed payment for your order <strong>${shortId}</strong> and it's now being prepared.
         <br /><br />
         Sorry for the inconvenience, but a couple of our pieces are made/kept ready only once an order comes
@@ -1306,6 +1335,9 @@ export function paymentReminderEmail(order: {
   // used to show *why* the total is what it is.
   online_payment_discount?: number;
   customer_name?: string;
+  // Partial Pay: only the advance is due now.
+  payment_method?: string | null;
+  advance_amount?: number | null;
 }) {
   const subject = `Your order is waiting — complete your payment`;
   const resumeUrl = `${process.env.NEXT_PUBLIC_SITE_URL || ''}/checkout/resume/${order.id}`;
@@ -1314,6 +1346,11 @@ export function paymentReminderEmail(order: {
     <p>We've saved your order below, but the payment didn't go through. No need to start over — just complete the payment to confirm it.</p>
     ${itemsTable(order.items)}
     <p style="text-align:right; font-size:16px; font-weight:bold;">Order total: ${formatINR(order.total_amount)}</p>
+    ${
+      order.payment_method === 'partial'
+        ? `<p style="text-align:right; font-size:14px; color:#1f7a3d; margin-top:-8px;">Advance to pay now: <strong>${formatINR(Number(order.advance_amount ?? 0))}</strong> · Balance on delivery: ${formatINR(Math.max(0, order.total_amount - Number(order.advance_amount ?? 0)))}</p>`
+        : ''
+    }
     ${
       order.online_payment_discount && order.online_payment_discount > 0
         ? `<p style="text-align:right; font-size:13px; color:#1f7a3d; margin-top:-8px;">Includes ${formatINR(order.online_payment_discount)} off for paying online</p>`
