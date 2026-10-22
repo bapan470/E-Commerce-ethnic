@@ -42,7 +42,7 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
     const shortId = String(order.id).slice(0, 8).toUpperCase();
     const hasImage = items.some((it) => it?.image_url || it?.image || it?.images?.[0]);
 
-    const title = 'Complete your payment · Aruhi Handlooms';
+    const title = 'Complete your payment · AruhiHandlooms';
     const description = `Order #${shortId} · ${itemName}${more} · Tap to pay ${formatINR(order.total_amount || 0)} securely online`;
     const url = `${siteUrl}/checkout/resume/${order.id}`;
 
@@ -54,7 +54,7 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
         title,
         description,
         url,
-        siteName: 'Aruhi Handlooms',
+        siteName: 'AruhiHandlooms',
         type: 'website',
         ...(hasImage
           ? { images: [{ url: `${siteUrl}/api/og/pay/${order.id}`, width: 800, height: 800, alt: itemName }] }

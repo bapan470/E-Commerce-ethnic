@@ -134,6 +134,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     trackingId,
     store,
   });
+  // Returned to the admin panel so it can open a short WhatsApp message
+  // immediately (customer hears about it right away, not only by email).
+  const siteBase = (process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin).replace(/\/$/, '');
+  const waInfo = {
+    payUrl: `${siteBase}/checkout/resume/${order.id}`,
+    onlineTotal: newTotal,
+    codTotal: originalTotal,
+    discount: onlinePaymentDiscount,
+  };
   const sendResult = await sendEmail({ to: order.customer_email, subject, html });
   if (!sendResult.success) {
     await logPaymentRequestEvent(order.id, 'email_send_failed', {
@@ -143,10 +152,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     // leave the admin thinking nothing happened, but don't roll back
     // either (they can use "Send test" / resend some other way).
     return NextResponse.json(
-      { success: true, emailed: false, error: 'error' in sendResult ? sendResult.error : 'Email failed to send' },
+      { success: true, emailed: false, ...waInfo, error: 'error' in sendResult ? sendResult.error : 'Email failed to send' },
       { status: 200 }
     );
   }
 
-  return NextResponse.json({ success: true, emailed: true });
+  return NextResponse.json({ success: true, emailed: true, ...waInfo });
 }

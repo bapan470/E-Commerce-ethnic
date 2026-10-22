@@ -1380,7 +1380,14 @@ export function codToPrepaidRequestEmail(order: {
 }) {
   const shortId = `#${order.id.slice(0, 8).toUpperCase()}`;
   const name = order.customer_name || 'there';
-  const subject = `Action needed on your order ${shortId} — online payment required`;
+  const saving = Number(order.online_payment_discount || 0);
+  const codTotal = order.original_total ?? order.total_amount + saving;
+  // Short + polite on purpose: the customer should understand the ask
+  // (please pay online instead of COD) from the subject line alone.
+  const subject =
+    saving > 0
+      ? `A gentle request on your order ${shortId} — enjoy ${formatINR(saving)} off when you pay online`
+      : `A gentle request regarding your order ${shortId}`;
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || '';
   const directResumeUrl = `${siteUrl}/checkout/resume/${order.id}`;
   const resumeUrl = order.trackingId
@@ -1391,134 +1398,46 @@ export function codToPrepaidRequestEmail(order: {
     : '';
   const html = wrapper(
     `
-    <h2 style="margin:0 0 4px; color:${BRAND_COLOR}; font-size: 21px;">Hi ${name}, one quick thing about your order</h2>
-    <p style="margin: 0 0 18px; color:#6b5f57; font-size: 13px;">
-      Order <strong style="color:#2b2320;">${shortId}</strong> · placed with ${SITE_NAME}
+    <p style="margin: 0 0 4px; color:#a89a8f; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;">Order ${shortId}</p>
+    <h2 style="margin:0 0 14px; color:${BRAND_COLOR}; font-size: 22px; font-weight: normal;">Dear ${name},</h2>
+
+    <p style="margin: 0 0 8px; font-size: 15px; color:#2b2320; line-height:1.7;">
+      Thank you for choosing ${SITE_NAME}. Your piece is handcrafted especially for you, and we would be
+      truly grateful if you could complete your payment <strong>online</strong> instead of Cash on Delivery.
+      Once it is received, we begin preparing your order right away.
     </p>
+
+    ${itemsTable(order.items)}
 
     <table role="presentation" style="width:100%; border-collapse:collapse; margin: 0 0 20px; background:#fbf1e7; border:1px solid #ecdfd2; border-left: 4px solid ${GOLD_ACCENT}; border-radius: 6px;">
       <tr>
-        <td style="padding: 14px 16px; font-size: 14px; color:#4a3d34; line-height:1.55;">
-          Due to high demand on this order, we're currently shipping it on a prepaid basis only —
-          we'll begin preparing and shipping it as soon as payment is received. Thank you so much for
-          your patience and understanding.
+        <td style="padding: 12px 16px; font-size: 14px; color:#4a3d34; line-height:1.6;">
+          ${
+            saving > 0
+              ? `Cash on Delivery: <span style="text-decoration:line-through; color:#a89a8f;">${formatINR(codTotal)}</span><br/>
+          <span style="color:#1f7a3d;">A special saving of ${formatINR(saving)} for paying online</span><br/>`
+              : ''
+          }
+          <strong style="font-size:18px; color:#2b2320;">Amount: ${formatINR(order.total_amount)}</strong>
         </td>
       </tr>
     </table>
-
-    <p style="margin: 0 0 20px; font-size: 13px; color:#6b5f57; line-height:1.55;">
-      Your payment is fully protected — if anything about this order doesn't work out, you'll receive
-      a full refund of <strong style="color:#2b2320;">${formatINR(order.total_amount)}</strong>, covered
-      under our <a href="${siteUrl}/legal/refund-policy" style="color:${BRAND_COLOR}; font-weight:bold;">Refund &amp; Cancellation Policy</a>, and we're always just a message away if you have questions.
-    </p>
-
-    <p style="margin: 0 0 4px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #a89a8f;">Order Summary</p>
-    ${itemsTable(order.items)}
-    <table role="presentation" style="width:100%; margin: 4px 0 24px;">
-      ${
-        order.subtotal != null
-          ? `
-      <tr>
-        <td style="text-align:right; font-size:13px; color:#6b5f57; padding-top: 6px; border-top: 2px solid ${BRAND_COLOR};">
-          Subtotal: ${formatINR(order.subtotal)}
-        </td>
-      </tr>
-      ${
-        order.coupon_discount && order.coupon_discount > 0
-          ? `<tr><td style="text-align:right; font-size:13px; color:#1f7a3d; padding-top: 2px;">Coupon discount${order.coupon_code ? ` (${order.coupon_code})` : ''}: -${formatINR(order.coupon_discount)}</td></tr>`
-          : ''
-      }
-      ${
-        order.gift_card_discount && order.gift_card_discount > 0
-          ? `<tr><td style="text-align:right; font-size:13px; color:#1f7a3d; padding-top: 2px;">Gift card${order.gift_card_code ? ` (${order.gift_card_code})` : ''}: -${formatINR(order.gift_card_discount)}</td></tr>`
-          : ''
-      }
-      ${
-        order.loyalty_discount && order.loyalty_discount > 0
-          ? `<tr><td style="text-align:right; font-size:13px; color:#1f7a3d; padding-top: 2px;">Loyalty points${order.loyalty_points_redeemed ? ` (${order.loyalty_points_redeemed} pts)` : ''}: -${formatINR(order.loyalty_discount)}</td></tr>`
-          : ''
-      }
-      <tr>
-        <td style="text-align:right; font-size:13px; color:#6b5f57; padding-top: 2px;">
-          Shipping: ${order.shipping_charge && order.shipping_charge > 0 ? formatINR(order.shipping_charge) : 'Free'}
-        </td>
-      </tr>
-      <tr>
-        <td style="text-align:right; font-size:13px; color:#6b5f57; padding-top: 2px;">
-          Tax (GST, included): ${formatINR(order.gst_amount ?? 0)}
-        </td>
-      </tr>
-      ${
-        order.online_payment_discount && order.online_payment_discount > 0
-          ? `<tr><td style="text-align:right; font-size:13px; color:#1f7a3d; padding-top: 2px;">Online payment discount: -${formatINR(order.online_payment_discount)}</td></tr>`
-          : ''
-      }
-      <tr>
-        <td style="text-align:right; font-size:16px; font-weight:bold; padding-top: 6px;">
-          Order total: ${formatINR(order.total_amount)}
-        </td>
-      </tr>`
-          : order.online_payment_discount && order.online_payment_discount > 0
-            ? `
-      <tr>
-        <td style="text-align:right; font-size:13px; color:#6b5f57; padding-top: 6px; border-top: 2px solid ${BRAND_COLOR};">
-          COD total: <span style="text-decoration:line-through; color:#a89a8f;">${formatINR(order.original_total ?? order.total_amount + order.online_payment_discount)}</span>
-        </td>
-      </tr>
-      <tr>
-        <td style="text-align:right; font-size:13px; color:#1f7a3d; padding-top: 2px;">
-          Online payment discount: -${formatINR(order.online_payment_discount)}
-        </td>
-      </tr>
-      <tr>
-        <td style="text-align:right; font-size:16px; font-weight:bold; padding-top: 6px;">
-          Order total: ${formatINR(order.total_amount)}
-        </td>
-      </tr>`
-            : `
-      <tr>
-        <td style="text-align:right; font-size:16px; font-weight:bold; padding-top: 6px; border-top: 2px solid ${BRAND_COLOR};">
-          Order total: ${formatINR(order.total_amount)}
-        </td>
-      </tr>`
-      }
-    </table>
-    ${
-      order.online_payment_discount && order.online_payment_discount > 0
-        ? `
-    <table role="presentation" style="width:100%; border-collapse:collapse; margin: 0 0 20px; background:#f0f9f1; border:1px solid #d5ecd8; border-radius: 6px;">
-      <tr>
-        <td style="padding: 10px 14px; font-size: 13px; color:#1f7a3d; line-height:1.5;">
-          You're saving ${formatINR(order.online_payment_discount)} by paying online instead of Cash on Delivery — already applied to the total above.
-        </td>
-      </tr>
-    </table>`
-        : ''
-    }
 
     <table role="presentation" style="width:100%;">
       <tr>
         <td align="center">
           <a href="${resumeUrl}" style="background:${BRAND_COLOR}; color:#fff; padding: 14px 36px; text-decoration:none; border-radius: 6px; font-size: 15px; font-weight:bold; display:inline-block; letter-spacing:0.02em;">
-            Pay Online to Confirm This Order →
+            Complete Payment · ${formatINR(order.total_amount)}
           </a>
         </td>
       </tr>
     </table>
 
-    <p style="text-align:center; font-size:12px; color:#9a8f87; margin: 12px 0 0;">
-      Prefer not to click email links? Log in to your account and open
-      <a href="${siteUrl}/account/orders/${order.id}" style="color:${BRAND_COLOR}; font-weight:bold;">My Orders → ${shortId}</a> to pay from there instead.
+    <p style="text-align:center; font-size:12px; color:#9a8f87; margin: 14px 0 0; line-height:1.6;">
+      Your payment is fully protected — 7-day returns and a full refund should anything go amiss
+      (<a href="${siteUrl}/legal/refund-policy" style="color:${BRAND_COLOR};">our policy</a>).<br/>
+      With gratitude, <strong style="color:${BRAND_COLOR};">Team ${SITE_NAME}</strong>
     </p>
-
-    <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #ecdfd2; text-align:center;">
-      <p style="font-size:13px; color:#6b5f57; margin: 0;">
-        Once we receive the payment, we'll start preparing your order right away — thank you for your patience.
-      </p>
-      <p style="font-size:11px; color:#a89a8f; margin: 10px 0 0;">
-        For your security, this link only opens the payment step for order ${shortId} — it will never ask for your ${SITE_NAME} password.
-      </p>
-    </div>
     ${pixel}
   `,
     { store: order.store }

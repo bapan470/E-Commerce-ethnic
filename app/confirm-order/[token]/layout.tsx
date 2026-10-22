@@ -19,7 +19,7 @@ export async function generateMetadata({ params }: { params: { token: string } }
       description: preview.description,
       openGraph: {
         type: 'website',
-        siteName: 'Aruhi Handlooms',
+        siteName: 'AruhiHandlooms',
         title: preview.title,
         description: preview.description,
         ...(preview.imageUrl ? { images: [{ url: preview.imageUrl, alt: preview.description }] } : {}),

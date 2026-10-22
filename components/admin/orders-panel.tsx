@@ -498,20 +498,47 @@ export default function OrdersPanel() {
   const [requestingOnlinePaymentFor, setRequestingOnlinePaymentFor] = useState<string | null>(null);
   const requestOnlinePayment = async (id: string) => {
     setRequestingOnlinePaymentFor(id);
+    // Open the WhatsApp tab synchronously (inside the click) so popup
+    // blockers allow it; it is pointed at the message once the API replies.
+    const target = orders.find((o) => o.id === id);
+    const digits = target ? getWhatsAppDigits(target) : null;
+    const win = digits ? window.open('', '_blank') : null;
     try {
       const res = await fetch(`/api/admin/orders/${id}/request-online-payment`, { method: 'POST' });
       const body = await res.json().catch(() => ({}));
       if (res.ok && body.success) {
-        if (body.emailed) {
-          toast.success('Order converted to online payment — email sent to the customer');
+        if (digits && body.payUrl && target) {
+          const text = buildPaymentWhatsAppText({
+            firstName: (target.customer_name || '').trim().split(/\s+/)[0],
+            shortId: id.slice(0, 8).toUpperCase(),
+            payUrl: body.payUrl,
+            onlineTotal: Number(body.onlineTotal || 0),
+            codTotal: Number(body.codTotal || 0),
+          });
+          const wa = `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
+          if (win) win.location.href = wa;
+          else window.open(wa, '_blank');
         } else {
-          toast.warning('Order converted, but the email failed to send — try "Send test" from Test Notifications');
+          win?.close();
+        }
+        if (body.emailed) {
+          toast.success(
+            digits
+              ? 'Converted to online payment — email sent. Press Send in WhatsApp to message the customer too.'
+              : 'Order converted to online payment — email sent to the customer'
+          );
+        } else {
+          toast.warning(
+            'Order converted, but the email failed to send — use the WhatsApp message or "Send test" from Test Notifications'
+          );
         }
         await load();
       } else {
+        win?.close();
         toast.error(body.error || 'Failed to request online payment');
       }
     } catch {
+      win?.close();
       toast.error('Failed to request online payment');
     } finally {
       setRequestingOnlinePaymentFor(null);
@@ -859,7 +886,7 @@ export default function OrdersPanel() {
 // publishes og:title/description/image (photo served from our own domain, see
 // app/checkout/resume/[id]/page.tsx and app/api/og/pay/[id]/route.ts). Keep
 // the payment link as the ONLY link in this message so its card is the one shown.
-const STORE_NAME = 'Aruhi Handlooms';
+const STORE_NAME = 'AruhiHandlooms';
 // Made-to-order processing time quoted to the customer (before dispatch).
 const PROCESSING_TIME = '4-7 days';
 
@@ -873,108 +900,52 @@ function getWhatsAppDigits(order: Order): string | null {
   return digits.length < 11 ? null : digits;
 }
 
+// Short, polite "please pay online" message. Deliberately brief so the
+// customer understands the ask at a glance; the payment link is the ONLY link
+// so WhatsApp's preview card (saree photo + amount) is the one shown.
+function buildPaymentWhatsAppText(p: {
+  firstName: string;
+  shortId: string;
+  payUrl: string;
+  onlineTotal: number;
+  codTotal: number;
+}): string {
+  const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
+  const saving = Math.max(0, p.codTotal - p.onlineTotal);
+  return [
+    `Dear${p.firstName ? ` ${p.firstName}` : ''},`,
+    '',
+    `Warm greetings from *${STORE_NAME}* 🌸`,
+    '',
+    `Thank you for choosing us. Your order *#${p.shortId}* is handcrafted especially for you, and we would be truly grateful if you could complete the payment online instead of Cash on Delivery.`,
+    '',
+    `*Amount: ${inr(p.onlineTotal)}*${saving > 0 ? `  _(a special saving of ${inr(saving)} for you)_` : ''}`,
+    '',
+    `Your secure payment link 👇`,
+    p.payUrl,
+    '',
+    `Once the payment is received, we begin preparing your piece right away. Your payment is fully protected, with 7-day returns and a full refund should anything go amiss.`,
+    '',
+    `With gratitude,`,
+    `*Team ${STORE_NAME}*`,
+  ].join('\n');
+}
+
 function buildPaymentWhatsAppUrl(order: Order): string | null {
   const digits = getWhatsAppDigits(order);
   if (!digits) return null;
-
-  const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== 'undefined' ? window.location.origin : '');
-  const payLink = `${siteUrl}/checkout/resume/${order.id}`;
-  const shortId = order.id.slice(0, 8).toUpperCase();
-  const first = (order.customer_name || '').trim().split(/\s+/)[0];
-  const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
-
-  const items: any[] = Array.isArray(order.items) ? order.items : [];
-  const itemLines = items.map((it) => {
-    const name = it.product_name || it.name || 'Your selection';
-    const qty = Number(it.quantity ?? 1);
-    const extras = [it.color ? `Color: ${it.color}` : '', it.size ? `Size: ${it.size}` : '', qty > 1 ? `Qty: ${qty}` : '']
-      .filter(Boolean)
-      .join('  ·  ');
-    return `*${name}*${extras ? `\n${extras}` : ''}`;
+  const siteUrl = (
+    process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== 'undefined' ? window.location.origin : '')
+  ).replace(/\/$/, '');
+  const onlineTotal = Number(order.total_amount || 0);
+  const text = buildPaymentWhatsAppText({
+    firstName: (order.customer_name || '').trim().split(/\s+/)[0],
+    shortId: order.id.slice(0, 8).toUpperCase(),
+    payUrl: `${siteUrl}/checkout/resume/${order.id}`,
+    onlineTotal,
+    codTotal: onlineTotal + Number(order.online_payment_discount ?? 0),
   });
-
-  const discount = Number(order.online_payment_discount ?? 0);
-  const onlinePrice = Number(order.total_amount || 0);
-  const codPrice = onlinePrice + discount;
-
-  // Show every discount that was ALREADY baked into codPrice (coupon, gift
-  // card, loyalty points) before folding in the new online-payment discount
-  // -- otherwise "Cash on Delivery: ~2,970~" silently hides a coupon that
-  // was applied when the order was first placed, and the customer sees a
-  // different-looking total here than the one on their original order
-  // confirmation / the admin's own "Price breakdown" for the same order.
-  const couponDiscountAmt = Number(order.coupon_discount ?? 0);
-  const giftCardDiscountAmt = Number(order.gift_card_discount ?? 0);
-  const loyaltyDiscountAmt = Number(order.loyalty_discount ?? 0);
-  const hasFullBreakdown = order.subtotal != null;
-
-  const priceBlock = hasFullBreakdown
-    ? [
-        `*Price breakdown*`,
-        `Subtotal: ${inr(Number(order.subtotal || 0))}`,
-        ...(couponDiscountAmt > 0
-          ? [`Coupon discount${order.coupon_code ? ` (${order.coupon_code})` : ''}: -${inr(couponDiscountAmt)}`]
-          : []),
-        ...(giftCardDiscountAmt > 0
-          ? [`Gift card${order.gift_card_code ? ` (${order.gift_card_code})` : ''}: -${inr(giftCardDiscountAmt)}`]
-          : []),
-        ...(loyaltyDiscountAmt > 0
-          ? [
-              `Loyalty points${order.loyalty_points_redeemed ? ` (${order.loyalty_points_redeemed} pts)` : ''}: -${inr(
-                loyaltyDiscountAmt
-              )}`,
-            ]
-          : []),
-        `Shipping: ${Number(order.shipping_charge ?? 0) > 0 ? inr(Number(order.shipping_charge)) : 'Free'}`,
-        `Tax (GST, included): ${inr(Number(order.gst_amount ?? 0))}`,
-        ...(discount > 0
-          ? [`Cash on Delivery total: ~${inr(codPrice)}~`, `Online payment discount: -${inr(discount)}`]
-          : []),
-        `*Pay online: ${inr(onlinePrice)}*`,
-      ]
-    : discount > 0
-      ? [
-          `*Your online price*`,
-          `Cash on Delivery: ~${inr(codPrice)}~`,
-          `Online payment discount: -${inr(discount)}`,
-          `*Pay online: ${inr(onlinePrice)}*`,
-        ]
-      : [`*Amount payable online: ${inr(onlinePrice)}*`];
-
-  const lines = [
-    `Dear${first ? ` ${first}` : ''},`,
-    '',
-    `Thank you for choosing *${STORE_NAME}*.`,
-    '',
-    `*Your order  ·  #${shortId}*`,
-    ...itemLines,
-    '',
-    `*Why we request online payment*`,
-    `Each piece is made to order and is in high demand. We begin production only once an order is confirmed, so prepaid orders come first and Cash on Delivery orders follow. This order may take a little longer to ship than some of our other products: processing takes ${PROCESSING_TIME}, then we dispatch it.`,
-    '',
-    `Given this product's demand and limited availability, we are sure you will understand. Thank you for your patience.`,
-    '',
-    ...priceBlock,
-    '',
-    `*Complete your payment securely*`,
-    payLink,
-    '',
-    `*What happens after you pay*`,
-    `Your same order simply changes from COD to prepaid. You will receive a payment confirmation email from us, and a payment confirmation from Razorpay too.`,
-    '',
-    `*Track your order anytime*`,
-    `No account? Don't worry. Log in with the same email you ordered with (OTP or Google login) to see your order status. We will also email you every update until your order reaches your hands.`,
-    '',
-    `*Our promise to you*`,
-    `• 7-day returns & exchanges, free reverse pickup (where serviceable)`,
-    `• Damaged or wrong item: free replacement or full refund (report within 48 hours)`,
-    `• Refunds in 5-7 business days to your original payment method`,
-    '',
-    `Warm regards,`,
-    `*Team ${STORE_NAME}*`,
-  ];
-  return `https://wa.me/${digits}?text=${encodeURIComponent(lines.join('\n'))}`;
+  return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
 }
 
 // ---- WhatsApp "payment received" confirmation ------------------------------
@@ -1826,7 +1797,7 @@ function OrderRow({
               disabled={requestingOnlinePayment}
               onClick={() => onRequestOnlinePayment(order.id)}
               className="mt-1.5 block h-auto w-fit gap-1 px-2 py-1 text-[11px] leading-tight"
-              title="Item needs prep time — ask the customer to pay online first instead of COD"
+              title="Converts to online payment, emails the customer and opens a short WhatsApp message — ask them to pay online instead of COD"
             >
               {requestingOnlinePayment ? (
                 <Loader2 className="h-3 w-3 animate-spin" />
