@@ -6,7 +6,8 @@ import Image from 'next/image';
 import { toPublicMediaUrl } from '@/lib/media-url';
 import NextScript from 'next/script';
 import { useRouter } from 'next/navigation';
-import { Lock, Loader2, CreditCard, Tag, X, Wallet, Sparkles, Gift, Store, Minus, Plus, ChevronRight, ChevronDown, BadgePercent, BadgeCheck } from 'lucide-react';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Lock, Loader2, CreditCard, Tag, X, Wallet, Sparkles, Gift, Store, Minus, Plus, ChevronRight, ChevronDown, BadgePercent, BadgeCheck, MapPin, Phone, Pencil } from 'lucide-react';
 import {
   useCart,
   usePaymentDiscount,
@@ -216,6 +217,10 @@ export default function CheckoutPage() {
   // a "+ New Address" option, and an "Edit" action for the highlighted one.
   const [showAddressPicker, setShowAddressPicker] = useState(false);
   const [pickerSelectedId, setPickerSelectedId] = useState<string>('new');
+  // Guest / no-saved-address flow: contact + address fields live in a bottom
+  // sheet (opened from the "Delivery details" card) instead of two long inline
+  // sections -- no OTP or account needed.
+  const [detailsSheetOpen, setDetailsSheetOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -1099,6 +1104,16 @@ export default function CheckoutPage() {
     // shipping_address.state === "" (as happened for at least one real
     // order), which then breaks anything downstream that assumes state is
     // always present (shipping labels, state-wise reports, etc).
+    // Guest details live in the bottom sheet (no native `required` there), so
+    // make sure they're complete before anything else; reopen the sheet if not.
+    if (!hasSavedAddressSummary) {
+      const detailsError = validateDeliveryDetails();
+      if (detailsError) {
+        toast.error(detailsError);
+        setDetailsSheetOpen(true);
+        return;
+      }
+    }
     if (!stateName.trim()) {
       toast.error('Please select your state');
       return;
@@ -1483,6 +1498,36 @@ export default function CheckoutPage() {
     );
   }
 
+  const detailsComplete = !!(
+    firstName.trim() && email.trim() && shipPhone.trim() && addressLine1.trim() && city.trim() && stateName.trim() && pincode.trim()
+  );
+
+  // Native `required` can't see fields inside the bottom sheet (it renders in
+  // a portal, outside <form>), so validate explicitly here and in onSubmit.
+  const validateDeliveryDetails = (): string | null => {
+    if (!firstName.trim()) return 'Please enter your first name';
+    if (!lastName.trim()) return 'Please enter your last name';
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) return 'Please enter a valid email address';
+    let d = shipPhone.replace(/[^0-9]/g, '');
+    if (d.startsWith('91') && d.length === 12) d = d.slice(2);
+    if (d.startsWith('0') && d.length === 11) d = d.slice(1);
+    if (!/^[6-9][0-9]{9}$/.test(d)) return 'Please enter a valid 10-digit phone number';
+    if (!addressLine1.trim()) return 'Please enter your street address';
+    if (!isValidPincode(pincode)) return 'Please enter a valid 6-digit PIN code';
+    if (!city.trim()) return 'Please enter your city';
+    if (!stateName.trim()) return 'Please select your state';
+    return null;
+  };
+
+  const saveDeliveryDetails = () => {
+    const err = validateDeliveryDetails();
+    if (err) {
+      toast.error(err);
+      return;
+    }
+    setDetailsSheetOpen(false);
+  };
+
   // Show a compact read-only summary (name, phone, email, address) instead
   // of the full form when the customer is logged in and has a saved
   // address selected. "Change address" (rendered on the right) reveals the
@@ -1729,8 +1774,64 @@ export default function CheckoutPage() {
             </section>
           ) : (
             <>
+              {/* Delivery details card -- tap to open the bottom sheet */}
+              <section className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm">
+                {detailsComplete ? (
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-secondary/10 text-secondary">
+                      <MapPin className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 flex-1 text-sm">
+                      <p className="font-semibold text-foreground">
+                        {firstName} {lastName}
+                      </p>
+                      <p className="mt-0.5 flex items-center gap-1 text-muted-foreground">
+                        <Phone className="h-3 w-3" /> {shipPhone}
+                      </p>
+                      <p className="mt-1 text-muted-foreground">
+                        {addressLine1}
+                        {addressLine2 ? `, ${addressLine2}` : ''}
+                        {landmark ? ` (Near ${landmark})` : ''}, {city}, {stateName} - {pincode}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDetailsSheetOpen(true)}
+                      className="flex shrink-0 items-center gap-1 text-sm font-medium text-secondary hover:underline"
+                    >
+                      <Pencil className="h-3.5 w-3.5" /> Edit
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setDetailsSheetOpen(true)}
+                    className="flex w-full items-center gap-3 rounded-xl border border-dashed border-secondary/50 p-4 text-left transition-colors hover:bg-secondary/5"
+                  >
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-secondary/10 text-secondary">
+                      <MapPin className="h-5 w-5" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-serif text-base font-bold text-primary">Add delivery details</p>
+                      <p className="text-xs text-muted-foreground">Name, phone &amp; address — no account or OTP needed</p>
+                    </div>
+                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                  </button>
+                )}
+              </section>
+
+              <Sheet open={detailsSheetOpen} onOpenChange={setDetailsSheetOpen}>
+                <SheetContent
+                  side="bottom"
+                  className="mx-auto flex max-h-[92vh] max-w-lg flex-col gap-0 rounded-t-3xl p-0"
+                >
+                  <SheetHeader className="border-b border-border/60 px-5 pb-4 pt-6 text-left">
+                    <SheetTitle className="font-serif text-xl font-bold text-primary">Delivery details</SheetTitle>
+                    <SheetDescription>Tell us where to send your handcrafted piece.</SheetDescription>
+                  </SheetHeader>
+                  <div className="flex-1 overflow-y-auto px-5 py-5">
               {/* Contact */}
-              <section className="rounded-lg border border-border/60 bg-card p-5">
+              <section>
                 <h2 className="mb-4 font-serif text-lg font-bold text-primary">
                   Contact Information
                 </h2>
@@ -1792,7 +1893,7 @@ export default function CheckoutPage() {
           </section>
 
           {/* Shipping */}
-          <section className="mt-4 rounded-lg border border-border/60 bg-card p-5">
+          <section className="mt-7">
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="font-serif text-lg font-bold text-primary">Shipping Address</h2>
             </div>
@@ -1943,6 +2044,17 @@ export default function CheckoutPage() {
               </div>
             </div>
           </section>
+                  </div>
+                  <div className="border-t border-border/60 bg-card px-5 pb-6 pt-4">
+                    <Button type="button" className="w-full" size="lg" onClick={saveDeliveryDetails}>
+                      Save &amp; continue
+                    </Button>
+                    <p className="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
+                      <Lock className="h-3 w-3" /> Your details are used only to deliver this order.
+                    </p>
+                  </div>
+                </SheetContent>
+              </Sheet>
             </>
           )}
 
