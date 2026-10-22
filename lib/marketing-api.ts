@@ -232,15 +232,17 @@ Damaged or Defective Items
 If you receive a damaged, defective, or wrong item, please reach out within 48 hours of delivery with clear photos/video, and we will offer a free replacement or full refund, whichever you prefer.
 
 Partial Pay Orders and Advance Payment
-For orders placed using Partial Pay, only the advance is collected online before delivery; the balance is paid on delivery.
+For orders placed using Partial Pay, only the advance is collected online before delivery; the balance is paid on delivery. When the advance is refundable depends on what happens to the order:
 
-Cancellation: you may still cancel a Partial Pay order within {{cancellation_hours}} hours of placing it and before it has shipped, and you will not be asked to pay the remaining balance. However, the advance paid online is non-refundable, as it covers payment-gateway charges, order processing and handling costs. Please place a Partial Pay order only if you are sure about it.
+1. Cancelled by you before delivery: you may cancel within {{cancellation_hours}} hours of placing the order and before it has shipped, and you will not be asked to pay the balance. The advance is non-refundable in this case, as it covers payment-gateway charges, order processing and handling costs.
 
-Refused or undelivered orders: if a Partial Pay order is refused at the time of delivery, is not accepted by you, or is returned to us because the balance was not paid, the advance is likewise non-refundable, as it covers the outbound and return courier and handling costs we have already incurred.
+2. Refused or undelivered: if the order is refused at the time of delivery, is not accepted by you, or is returned to us because the balance was not paid, the advance is non-refundable, as it covers the outbound and return courier and handling costs we have already incurred.
 
-If we cancel: if we cancel your order (for example due to stock unavailability or a pricing error), the advance you paid is refunded in full to your original payment method within 5-7 business days.
+3. Returned after delivery: if you accept delivery and then return an eligible item as per the Returns and Exchanges section above, you are refunded the amount you actually paid for it. The part paid online (the advance) goes back to your original payment method within 5-7 business days after we receive and inspect the item, and the part you paid in cash or UPI on delivery is refunded via bank transfer or store credit, as per your preference.
 
-Returns after delivery: if you return an eligible item after accepting delivery, you are refunded the amount you actually paid for it. The part paid online (the advance) goes back to your original payment method, and the part you paid in cash or UPI on delivery is refunded via bank transfer or store credit, as per your preference.`;
+4. Cancelled by us: if we cancel your order (for example due to stock unavailability or a pricing error), or you receive a damaged, defective or wrong item, the advance is refunded in full to your original payment method within 5-7 business days.
+
+In exceptional cases we may, at our discretion, refund the advance even where it is otherwise non-refundable.`;
 
 // AruhiHandlooms-specific ready-to-paste templates for Privacy Policy and
 // Terms & Conditions. These don't currently carry {{fulfillment}} tokens
@@ -310,7 +312,7 @@ Pricing and Payment
 All prices listed on the website are in Indian Rupees (INR) and are inclusive of applicable taxes unless stated otherwise. We accept payments through the payment methods listed at checkout. We reserve the right to change prices at any time without prior notice, though this will not affect orders already confirmed.
 
 Partial Pay
-Where offered at checkout, Partial Pay lets you pay an advance online (the amount is shown before you pay) and the remaining balance in cash or UPI on delivery. The order is confirmed when the advance is received and is dispatched along with prepaid orders, ahead of Cash on Delivery orders. If you refuse delivery, are unreachable, or do not pay the balance at the door, the order is returned to us and the advance is retained to cover courier and handling costs, as described in our Refund & Cancellation Policy. If you cancel the order yourself, including before dispatch, the advance is non-refundable (and the balance is not charged); if we cancel the order, the advance is refunded in full. The online-payment discount does not apply to Partial Pay orders.
+Where offered at checkout, Partial Pay lets you pay an advance online (the amount is shown before you pay) and the remaining balance in cash or UPI on delivery. The order is confirmed when the advance is received and is dispatched along with prepaid orders, ahead of Cash on Delivery orders. If you refuse delivery, are unreachable, or do not pay the balance at the door, the order is returned to us and the advance is retained to cover courier and handling costs, as described in our Refund & Cancellation Policy. If you cancel the order yourself before delivery, or refuse delivery, the advance is non-refundable (and the balance is not charged). The advance is refunded if we cancel the order, if you receive a damaged, defective or wrong item, or if you return an eligible item after delivery, as described in our Refund & Cancellation Policy. The online-payment discount does not apply to Partial Pay orders.
 
 Order Confirmation
 A prepaid order, or a Partial Pay order, is confirmed once your online payment (in full, or the advance) is successful and you receive an order confirmation email/message from us. A Cash on Delivery (COD) order is confirmed when you confirm it using the link we send by email/WhatsApp, or when our team confirms it with you by phone/WhatsApp; we may hold dispatch of a COD order until it is confirmed and may cancel it if we are unable to confirm it with you within a reasonable time. We reserve the right to cancel any order due to stock unavailability, pricing errors, or suspected fraudulent activity, in which case any amount you have paid will be refunded in full.
