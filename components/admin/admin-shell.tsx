@@ -83,6 +83,7 @@ export type AdminSection =
   | 'vendor-reports'
   | 'product-sources'
   | 'cache-warm'
+  | 'gst-report'
   | 'settings';
 
 interface NavItem {
@@ -163,6 +164,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Configuration',
     items: [
+      { value: 'gst-report', label: 'GST Report', icon: IndianRupee },
       { value: 'settings', label: 'Settings', icon: Settings },
       { value: 'cache-warm', label: 'Cache Warm', icon: Flame },
     ],

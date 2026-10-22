@@ -16,6 +16,7 @@ import HomepageTilesPanel from '@/components/admin/homepage-tiles-panel';
 import DiscoverProductsPanel from '@/components/admin/discover-products-panel';
 import HeroBannersPanel from '@/components/admin/hero-banners-panel';
 import SettingsPanel from '@/components/admin/settings-panel';
+import GstReportPanel from '@/components/admin/gst-report-panel';
 import ReturnsPanel from '@/components/admin/returns-panel';
 import SupportTicketsPanel from '@/components/admin/support-tickets-panel';
 import ContactMessagesPanel from '@/components/admin/contact-messages-panel';
@@ -78,6 +79,7 @@ const PANELS: Record<AdminSection, React.ComponentType> = {
   'vendor-reports': VendorReportsPanel,
   'product-sources': ProductSourcesPanel,
   settings: SettingsPanel,
+  'gst-report': GstReportPanel,
   'cache-warm': CacheWarmPanel,
 };
 
