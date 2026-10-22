@@ -146,3 +146,26 @@ export async function confirmCodOrderById(orderId: string, via: CodConfirmVia): 
     .select('id');
   return !error && !!data && data.length > 0;
 }
+
+/**
+ * Link-preview data (WhatsApp / social cards) for /confirm-order/[token].
+ * Uses the order's first item so the preview shows the exact saree ordered.
+ * Never throws; returns null when nothing sensible can be shown.
+ */
+export async function getCodConfirmPreview(
+  token: string,
+): Promise<{ title: string; description: string; imageUrl: string | null } | null> {
+  const found = await lookupCodConfirmToken(token);
+  if (!('summary' in found)) return null;
+  const { summary } = found;
+  const first = summary.items?.[0];
+  const site = (process.env.NEXT_PUBLIC_SITE_URL || 'https://www.aruhihandlooms.com').replace(/\/$/, '');
+  let imageUrl = first?.imageUrl || null;
+  if (imageUrl && imageUrl.startsWith('/')) imageUrl = `${site}${imageUrl}`;
+  const more = summary.itemCount > 1 ? ` + ${summary.itemCount - 1} more` : '';
+  return {
+    title: `Confirm your order #${summary.shortId}`,
+    description: `${first?.name || 'Your order'}${more} · Cash on Delivery`,
+    imageUrl,
+  };
+}
