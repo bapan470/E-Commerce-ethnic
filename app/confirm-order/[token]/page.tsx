@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { BadgeCheck, CheckCircle2, Loader2, Package, ShieldCheck, Wallet, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatINR } from '@/lib/format';
 
-type Summary = { id: string; shortId: string; firstName: string; total: number; itemNames: string[]; itemCount: number };
+type Summary = { id: string; shortId: string; firstName: string; total: number; itemNames: string[]; items?: { name: string; imageUrl: string | null; size: string | null; quantity: number; lineTotal: number }[]; itemCount: number };
 type Lookup =
   | { state: 'invalid' | 'expired' | 'cancelled' | 'not_cod' }
   | { state: 'ok' | 'confirmed' | 'processing'; summary: Summary };
@@ -108,12 +109,37 @@ export default function ConfirmOrderPage({ params }: { params: { token: string }
                   <Package className="h-4 w-4 text-secondary" />
                   {summary.itemCount} {summary.itemCount === 1 ? 'item' : 'items'}
                 </div>
-                <ul className="mt-2 space-y-1 text-sm">
-                  {summary.itemNames.map((n, i) => (
-                    <li key={i} className="line-clamp-1">{n}</li>
+                <ul className="mt-3 space-y-3 text-sm">
+                  {(summary.items && summary.items.length > 0
+                    ? summary.items
+                    : summary.itemNames.map((n) => ({ name: n, imageUrl: null, size: null, quantity: 1, lineTotal: 0 }))
+                  ).map((it, i) => (
+                    <li key={i} className="flex items-center gap-3">
+                      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border/60 bg-muted">
+                        <Image
+                          src={it.imageUrl || 'https://placehold.co/80x80?text=No+Image'}
+                          alt={it.name}
+                          fill
+                          sizes="64px"
+                          className="object-cover"
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="line-clamp-2 font-medium leading-snug">{it.name}</p>
+                        {(it.size || it.quantity > 1) && (
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {it.size ? `Size: ${it.size}` : ''}
+                            {it.size && it.quantity > 1 ? ' · ' : ''}
+                            {it.quantity > 1 ? `Qty: ${it.quantity}` : ''}
+                          </p>
+                        )}
+                      </div>
+                    </li>
                   ))}
-                  {summary.itemCount > summary.itemNames.length && (
-                    <li className="text-xs text-muted-foreground">+ {summary.itemCount - summary.itemNames.length} more</li>
+                  {summary.itemCount > (summary.items?.length ?? summary.itemNames.length) && (
+                    <li className="text-xs text-muted-foreground">
+                      + {summary.itemCount - (summary.items?.length ?? summary.itemNames.length)} more
+                    </li>
                   )}
                 </ul>
                 <div className="mt-3 flex items-center justify-between border-t border-border/60 pt-3">

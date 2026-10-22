@@ -1,5 +1,6 @@
 import { randomBytes } from 'crypto';
 import { getSupabaseAdmin } from './supabase-admin';
+import { toPublicMediaUrl } from './media-url';
 
 // ---------------------------------------------------------------------
 // COD one-tap confirmation. Purely additive: it only stamps
@@ -47,12 +48,21 @@ export async function getOrCreateCodConfirmToken(orderId: string): Promise<strin
   }
 }
 
+export type CodConfirmItem = {
+  name: string;
+  imageUrl: string | null;
+  size: string | null;
+  quantity: number;
+  lineTotal: number;
+};
+
 export type CodConfirmSummary = {
   id: string;
   shortId: string;
   firstName: string;
   total: number;
   itemNames: string[];
+  items: CodConfirmItem[];
   itemCount: number;
 };
 
@@ -78,6 +88,23 @@ export async function lookupCodConfirmToken(token: string): Promise<CodConfirmLo
       firstName: String(order.customer_name || '').trim().split(/\s+/)[0] || '',
       total: Number(order.total_amount || 0),
       itemNames: items.slice(0, 3).map((it) => String(it?.product_name || it?.name || 'Your selection')),
+      items: items.slice(0, 3).map((it) => {
+        const qty = Number(it?.quantity) > 0 ? Number(it.quantity) : 1;
+        const rawImage = it?.image_url || it?.image || (Array.isArray(it?.images) ? it.images[0] : null) || null;
+        let imageUrl: string | null = null;
+        try {
+          imageUrl = rawImage ? toPublicMediaUrl(String(rawImage)) || null : null;
+        } catch {
+          imageUrl = null;
+        }
+        return {
+          name: String(it?.product_name || it?.name || 'Your selection'),
+          imageUrl,
+          size: it?.size ? String(it.size) : null,
+          quantity: qty,
+          lineTotal: Number(it?.price || 0) * qty,
+        };
+      }),
       itemCount: items.length,
     };
 

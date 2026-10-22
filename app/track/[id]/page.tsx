@@ -38,11 +38,13 @@ const STEPS = [
   { key: 'delivered', label: 'Delivered', icon: Home },
 ] as const;
 
-function currentStepIndex(order: { status: string; out_for_delivery?: boolean; tracking_number?: string | null }) {
+function currentStepIndex(order: { status: string; out_for_delivery?: boolean; tracking_number?: string | null; payment_method?: string | null; cod_confirmed_at?: string | null }) {
   if (order.status === 'delivered') return 4;
   if (order.out_for_delivery) return 3;
   if (order.status === 'shipped' || order.tracking_number) return 2;
   if (order.status === 'paid') return 1;
+  // COD: "Confirmed" only once the customer (or admin) has confirmed the order.
+  if (order.payment_method === 'cod' && order.cod_confirmed_at) return 1;
   return 0;
 }
 
