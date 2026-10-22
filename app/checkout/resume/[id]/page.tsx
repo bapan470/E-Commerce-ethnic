@@ -5,6 +5,7 @@ import { CreditCard } from 'lucide-react';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { formatINR } from '@/lib/format';
 import ResumePaymentButton from '@/components/checkout/resume-payment-button';
+import ResumePaymentChoices from '@/components/checkout/resume-payment-choices';
 import ResumeDiscountSection from '@/components/checkout/resume-discount-section';
 import { isInPaymentRequestFlow, logPaymentRequestEvent, type PaymentRequestSource } from '@/lib/order-payment-events';
 import { toPublicMediaUrl } from '@/lib/media-url';
@@ -77,7 +78,7 @@ export default async function ResumePaymentPage({
   const { data: order } = await supabase
     .from('orders')
     .select(
-      'id, status, payment_method, items, total_amount, online_payment_discount, subtotal, shipping_charge, gst_amount, coupon_code, coupon_discount, gift_card_code, gift_card_discount, loyalty_points_redeemed, loyalty_discount, customer_name, customer_email, customer_phone'
+      'id, status, payment_method, original_payment_method, items, total_amount, online_payment_discount, subtotal, shipping_charge, gst_amount, coupon_code, coupon_discount, gift_card_code, gift_card_discount, loyalty_points_redeemed, loyalty_discount, customer_name, customer_email, customer_phone'
     )
     .eq('id', params.id)
     .maybeSingle();
@@ -224,6 +225,10 @@ export default async function ResumePaymentPage({
           customerPhone={order.customer_phone ?? undefined}
         />
       </div>
+
+      {order.original_payment_method === 'cod' && (
+        <ResumePaymentChoices orderId={order.id} codTotal={codTotal} />
+      )}
     </div>
   );
 }

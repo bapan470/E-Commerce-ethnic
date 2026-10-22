@@ -1433,6 +1433,11 @@ export function codToPrepaidRequestEmail(order: {
       </tr>
     </table>
 
+    <p style="text-align:center; font-size:13px; color:#6b5f57; margin: 18px 0 0; line-height:1.6;">
+      Prefer not to pay online? You may instead keep Cash on Delivery (${formatINR(codTotal)}) or cancel the order —
+      <a href="${directResumeUrl}" style="color:${BRAND_COLOR};">choose on the same page</a>.
+    </p>
+
     <p style="text-align:center; font-size:12px; color:#9a8f87; margin: 14px 0 0; line-height:1.6;">
       Your payment is fully protected — 7-day returns and a full refund should anything go amiss
       (<a href="${siteUrl}/legal/refund-policy" style="color:${BRAND_COLOR};">our policy</a>).<br/>
