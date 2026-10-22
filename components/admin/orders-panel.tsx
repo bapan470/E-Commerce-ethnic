@@ -926,7 +926,7 @@ function buildPaymentWhatsAppText(p: {
     '',
     `Once the payment is received, we begin preparing your piece right away. Your payment is fully protected, with 7-day returns and a full refund should anything go amiss.`,
     '',
-    `Prefer not to pay online? On the same page you may also choose to keep Cash on Delivery (${inr(p.codTotal)}) or cancel the order.`,
+    `Prefer not to pay online? On the same page you may also choose to keep Cash on Delivery (${inr(p.codTotal)}) or cancel the order. (Prepaid orders are dispatched first, so Cash on Delivery may take a little longer.)`,
     '',
     `With gratitude,`,
     `*Team ${STORE_NAME}*`,
