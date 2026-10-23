@@ -2144,10 +2144,10 @@ export default function CheckoutPage() {
           <section
             ref={paymentSectionRef}
             style={{ transform: 'translateZ(0)', WebkitBackfaceVisibility: 'hidden', backfaceVisibility: 'hidden' }}
-            className="mt-4 rounded-lg border border-border/60 bg-card p-5"
+            className="mt-4 rounded-lg border border-border/60 bg-card p-3.5 sm:p-5"
           >
-            <h2 className="mb-1 font-serif text-lg font-bold text-primary">Payment</h2>
-            <p className="mb-3 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <h2 className="mb-0.5 font-serif text-lg font-bold text-primary">Payment</h2>
+            <p className="mb-2.5 flex items-center gap-1.5 text-xs text-muted-foreground">
               <Lock className="h-3 w-3" /> Choose how you'd like to pay
             </p>
 
