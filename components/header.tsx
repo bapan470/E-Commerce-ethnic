@@ -172,6 +172,12 @@ export default function Header() {
   // (including ones with zero stock) while loading.
   const categoriesLoading = !productsLoadedRef.current;
 
+  // Mobile-only: on the main /checkout page the header shows the word
+  // "Checkout" instead of the logo, and the order summary pill (rendered by
+  // StickyOrderBar through a portal into #checkout-header-slot) instead of
+  // the search / wishlist / account / cart icons. Desktop is unchanged.
+  const onCheckoutPage = (pathname || '').replace(/\/+$/, '') === '/checkout';
+
   const showBackButton =
     pathname === '/shop' ||
     pathname.startsWith('/cart') ||
@@ -489,7 +495,11 @@ export default function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-border/60 bg-background/85 backdrop-blur-md">
+    <header
+      className={`sticky top-0 z-40 w-full border-b border-border/60 bg-background/85 backdrop-blur-md ${
+        onCheckoutPage ? 'max-md:bg-background max-md:shadow-sm max-md:backdrop-blur-none' : ''
+      }`}
+    >
       <input
         ref={imageInputRef}
         type="file"
@@ -688,7 +698,10 @@ export default function Header() {
           </Sheet>
           )}
 
-          <Link href="/" className="flex shrink-0 items-center gap-0">
+          {onCheckoutPage && (
+            <span className="font-serif text-lg font-bold text-primary md:hidden">Checkout</span>
+          )}
+          <Link href="/" className={`${onCheckoutPage ? 'hidden md:flex' : 'flex'} shrink-0 items-center gap-0`}>
             <span className="whitespace-nowrap font-serif text-lg font-bold tracking-tight text-primary sm:text-2xl">
               Aruhi
             </span>
@@ -923,7 +936,10 @@ export default function Header() {
           )}
         </div>
 
-        <div className="flex items-center gap-1 md:gap-1.5">
+        {onCheckoutPage && (
+          <div id="checkout-header-slot" className="flex min-w-0 flex-1 justify-end md:hidden" />
+        )}
+        <div className={`${onCheckoutPage ? 'hidden md:flex' : 'flex'} items-center gap-1 md:gap-1.5`}>
           <span className="hidden h-6 w-px shrink-0 bg-border/70 md:block md:mr-1" />
 
           <Button
