@@ -3888,7 +3888,7 @@ export default function CheckoutPage() {
                   <ChevronDown className="h-3.5 w-3.5 rotate-180" />
                 </button>
               )}
-              <div className="flex items-center gap-3 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
+              <div className="flex items-center gap-3 px-4 pb-[max(0.375rem,env(safe-area-inset-bottom))] pt-1.5">
               {checkoutButtons.sticky_price_bar_enabled && (
               <div className="shrink-0">
                 <p className="font-serif text-xl font-bold leading-tight text-primary">

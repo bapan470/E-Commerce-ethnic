@@ -36,6 +36,7 @@ export default function CartPage() {
     removeItem,
     subtotal,
     clearCart,
+    cartReady,
     appliedCoupon,
     couponDiscount,
     primaryCouponDiscount,
@@ -175,6 +176,17 @@ export default function CartPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items.length]);
+
+  // Saved cart is read from the browser a moment after load; don't flash
+  // "Your cart is empty" before it arrives.
+  if (!cartReady) {
+    return (
+      <div className="container-boutique flex flex-col items-center gap-3 py-24 text-center" aria-busy="true">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">Loading your cart…</p>
+      </div>
+    );
+  }
 
   if (items.length === 0) {
     return (
@@ -437,8 +449,15 @@ export default function CartPage() {
               <div>
               {appliedCoupon ? (
                 <div className="flex items-center justify-between p-3 text-sm">
-                  <span className="flex items-center gap-1.5 font-medium text-secondary-foreground">
-                    <Tag className="h-3.5 w-3.5" /> {appliedCoupon.code} applied
+                  <span className="flex flex-col">
+                    <span className="flex items-center gap-1.5 font-medium text-secondary-foreground">
+                      <Tag className="h-3.5 w-3.5" /> {appliedCoupon.code} applied
+                    </span>
+                    {primaryCouponDiscount > 0 && (
+                      <span className="pl-5 text-xs font-medium text-emerald-700">
+                        You saved {formatINR(primaryCouponDiscount)}
+                      </span>
+                    )}
                   </span>
                   <span className="flex items-center gap-3">
                     <button
@@ -624,7 +643,7 @@ export default function CartPage() {
               </div>
               {shipping > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  Add {formatINR(2000 - subtotal)} more for free shipping.
+                  Add {formatINR(Math.max(0, shippingSettings.free_shipping_threshold - subtotal))} more for free shipping.
                 </p>
               )}
             </div>
