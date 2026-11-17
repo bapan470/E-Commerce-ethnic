@@ -1,6 +1,7 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import Image from 'next/image';
 import { ChevronDown } from 'lucide-react';
@@ -49,6 +50,27 @@ export default function StickyOrderBar({
   const [open, setOpen] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
 
+  // Mobile (< md): the collapsed bar is rendered INSIDE the site header (right
+  // side, replacing the search / wishlist / account / cart icons) through a
+  // portal into #checkout-header-slot, and the full summary drops down under
+  // the header. Desktop / no slot: the original sticky bar below is used.
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    let tries = 0;
+    const find = () => {
+      const el = document.getElementById('checkout-header-slot');
+      if (el) setSlot(el);
+      else if (tries++ < 10) window.setTimeout(find, 150);
+    };
+    find();
+    return () => mq.removeEventListener('change', update);
+  }, []);
+
   // See hooks/use-force-mobile-repaint.ts — without this, switching
   // Pay Online <-> Cash on Delivery updates this bar's price instantly in
   // desktop DevTools' mobile emulation, but on a real phone the new price
@@ -61,42 +83,13 @@ export default function StickyOrderBar({
 
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
 
-  return (
-    <div
-      ref={barRef}
-      style={{ transform: 'translateZ(0)', WebkitBackfaceVisibility: 'hidden', backfaceVisibility: 'hidden' }}
-      className="sticky top-12 z-30 -mx-4 mb-6 border-b border-border/60 bg-background/95 shadow-sm backdrop-blur-md sm:mx-0 sm:rounded-lg sm:border"
-    >
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 px-4 py-2.5"
-      >
-        <span className="text-xs font-medium text-muted-foreground">
-          {itemCount} item{itemCount > 1 ? 's' : ''}
-          {totalSavings > 0 && (
-            <span className="ml-2 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold text-green-700">
-              You save {formatINR(totalSavings)}
-            </span>
-          )}
-        </span>
-        <span className="flex items-center gap-1.5">
-          {mrpTotal > payableTotal && (
-            <span className="font-serif text-xs text-muted-foreground line-through sm:text-sm">
-              {formatINR(mrpTotal)}
-            </span>
-          )}
-          <span className="font-serif text-base font-bold text-primary sm:text-lg">
-            {formatINR(payableTotal)}
-          </span>
-          <ChevronDown
-            className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`}
-          />
-        </span>
-      </button>
+  // Header pill: show up to 2 product photos (overlapped) and "+N" for any more.
+  const thumbs = items
+    .slice(0, 2)
+    .map((it) => toPublicMediaUrl(it.product.images?.[0]) || 'https://placehold.co/56x64?text=No+Image');
+  const extraProducts = Math.max(0, items.length - 2);
 
-      {open && (
+  const panel = (
         <div className="border-t border-border/60 px-4 pb-4 pt-3">
           <ul className="flex flex-col gap-3">
             {items.map((item) => {
@@ -178,7 +171,110 @@ export default function StickyOrderBar({
             </span>
           </div>
         </div>
-      )}
+  );
+
+  if (slot && isMobile) {
+    return (
+      <>
+        {createPortal(
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            aria-label="Order summary"
+            className="flex max-w-full min-w-0 items-center gap-1.5 py-1 pl-1"
+          >
+            <span className="relative flex shrink-0 items-center">
+              {thumbs.map((src, i) => (
+                <span
+                  key={i}
+                  className={`relative h-8 w-7 overflow-hidden rounded bg-muted ring-2 ring-background ${i > 0 ? '-ml-2.5' : ''}`}
+                  style={{ zIndex: 2 - i }}
+                >
+                  <Image src={src} alt="" fill sizes="28px" className="object-cover" />
+                </span>
+              ))}
+              {extraProducts > 0 && (
+                <span className="absolute -bottom-1 -right-1.5 z-10 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold leading-none text-primary-foreground ring-2 ring-background">
+                  +{extraProducts}
+                </span>
+              )}
+            </span>
+            <span className="flex min-w-0 flex-col items-start leading-tight">
+              <span className="text-[11px] font-medium text-muted-foreground">
+                {itemCount} item{itemCount > 1 ? 's' : ''}
+              </span>
+              {totalSavings > 0 && (
+                <span className="whitespace-nowrap rounded-full bg-green-100 px-1.5 py-px text-[10px] font-semibold text-green-700">
+                  You save {formatINR(totalSavings)}
+                </span>
+              )}
+            </span>
+            <span className="flex shrink-0 flex-col items-end leading-tight">
+              {mrpTotal > payableTotal && (
+                <span className="font-serif text-[10px] text-muted-foreground line-through max-[379px]:hidden">{formatINR(mrpTotal)}</span>
+              )}
+              <span className="font-serif text-sm font-bold text-primary">{formatINR(payableTotal)}</span>
+            </span>
+            <ChevronDown
+              className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`}
+            />
+          </button>,
+          slot
+        )}
+        {open && (
+          <>
+            <button
+              type="button"
+              aria-label="Close order summary"
+              onClick={() => setOpen(false)}
+              className="fixed inset-0 top-12 z-30 bg-black/30"
+            />
+            <div className="fixed inset-x-0 top-12 z-40 max-h-[75vh] overflow-y-auto border-b border-border/60 bg-background shadow-lg">
+              {panel}
+            </div>
+          </>
+        )}
+      </>
+    );
+  }
+
+  return (
+    <div
+      ref={barRef}
+      style={{ transform: 'translateZ(0)', WebkitBackfaceVisibility: 'hidden', backfaceVisibility: 'hidden' }}
+      className="sticky top-12 z-30 -mx-4 mb-6 border-b border-border/60 bg-background/95 shadow-sm backdrop-blur-md sm:mx-0 sm:rounded-lg sm:border"
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-3 px-4 py-2.5"
+      >
+        <span className="text-xs font-medium text-muted-foreground">
+          {itemCount} item{itemCount > 1 ? 's' : ''}
+          {totalSavings > 0 && (
+            <span className="ml-2 rounded-full bg-green-100 px-1.5 py-0.5 text-[10px] font-semibold text-green-700">
+              You save {formatINR(totalSavings)}
+            </span>
+          )}
+        </span>
+        <span className="flex items-center gap-1.5">
+          {mrpTotal > payableTotal && (
+            <span className="font-serif text-xs text-muted-foreground line-through sm:text-sm">
+              {formatINR(mrpTotal)}
+            </span>
+          )}
+          <span className="font-serif text-base font-bold text-primary sm:text-lg">
+            {formatINR(payableTotal)}
+          </span>
+          <ChevronDown
+            className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`}
+          />
+        </span>
+      </button>
+
+      {open && panel}
     </div>
   );
 }

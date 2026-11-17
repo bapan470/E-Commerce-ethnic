@@ -11,6 +11,8 @@ import {
   deleteCoupon,
   setCouponActive,
   setCouponShowOnProductPage,
+  setCouponShowOnCheckout,
+  setCouponShowOnCart,
   setCouponShowInGooglePromotions,
 } from '@/lib/coupons-api';
 import { formatINR } from '@/lib/format';
@@ -45,6 +47,8 @@ const emptyForm: CouponInput = {
   expires_at: null,
   is_active: true,
   show_on_product_page: false,
+  show_on_checkout: false,
+  show_on_cart: false,
   show_in_google_promotions: false,
 };
 
@@ -89,6 +93,8 @@ export default function CouponsPanel() {
       expires_at: c.expires_at ? c.expires_at.slice(0, 10) : null,
       is_active: c.is_active,
       show_on_product_page: c.show_on_product_page,
+      show_on_checkout: !!c.show_on_checkout,
+      show_on_cart: !!c.show_on_cart,
       show_in_google_promotions: c.show_in_google_promotions ?? false,
     });
     setOpen(true);
@@ -147,6 +153,28 @@ export default function CouponsPanel() {
     }
   };
 
+  const toggleShowOnCart = async (c: Coupon) => {
+    try {
+      await setCouponShowOnCart(c.id, !c.show_on_cart);
+      setCoupons((prev) =>
+        prev.map((x) => (x.id === c.id ? { ...x, show_on_cart: !x.show_on_cart } : x))
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update');
+    }
+  };
+
+  const toggleShowOnCheckout = async (c: Coupon) => {
+    try {
+      await setCouponShowOnCheckout(c.id, !c.show_on_checkout);
+      setCoupons((prev) =>
+        prev.map((x) => (x.id === c.id ? { ...x, show_on_checkout: !x.show_on_checkout } : x))
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update');
+    }
+  };
+
   const toggleShowInGooglePromotions = async (c: Coupon) => {
     try {
       await setCouponShowInGooglePromotions(c.id, !c.show_in_google_promotions);
@@ -199,6 +227,8 @@ export default function CouponsPanel() {
               <th className="px-4 py-3">Expires</th>
               <th className="px-4 py-3">Active</th>
               <th className="px-4 py-3">Show on Product Page</th>
+              <th className="px-4 py-3">Show in Cart</th>
+              <th className="px-4 py-3">Show on Checkout</th>
               <th className="px-4 py-3">Google Promotions</th>
               <th className="px-4 py-3">Actions</th>
             </tr>
@@ -235,6 +265,18 @@ export default function CouponsPanel() {
                 </td>
                 <td className="px-4 py-3 text-sm">
                   <Switch
+                    checked={!!c.show_on_cart}
+                    onCheckedChange={() => toggleShowOnCart(c)}
+                  />
+                </td>
+                <td className="px-4 py-3 text-sm">
+                  <Switch
+                    checked={!!c.show_on_checkout}
+                    onCheckedChange={() => toggleShowOnCheckout(c)}
+                  />
+                </td>
+                <td className="px-4 py-3 text-sm">
+                  <Switch
                     checked={!!c.show_in_google_promotions}
                     onCheckedChange={() => toggleShowInGooglePromotions(c)}
                   />
@@ -258,7 +300,7 @@ export default function CouponsPanel() {
             ))}
             {!loading && coupons.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                <td colSpan={11} className="px-4 py-8 text-center text-sm text-muted-foreground">
                   No coupons yet. Add one to run your first offer.
                 </td>
               </tr>
@@ -386,6 +428,38 @@ export default function CouponsPanel() {
                 id="coupon-show-product-page"
                 checked={form.show_on_product_page}
                 onCheckedChange={(v) => setForm((f) => ({ ...f, show_on_product_page: v }))}
+              />
+            </div>
+
+            <div className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2">
+              <div>
+                <Label htmlFor="coupon-show-cart" className="cursor-pointer">
+                  Show in Cart
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Lists this coupon in the side cart / shopping bag (Coupons &amp; Offers)
+                </p>
+              </div>
+              <Switch
+                id="coupon-show-cart"
+                checked={!!form.show_on_cart}
+                onCheckedChange={(v) => setForm((f) => ({ ...f, show_on_cart: v }))}
+              />
+            </div>
+
+            <div className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2">
+              <div>
+                <Label htmlFor="coupon-show-checkout" className="cursor-pointer">
+                  Show on Checkout
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Shows this coupon in the offer banner and coupon list on the checkout page
+                </p>
+              </div>
+              <Switch
+                id="coupon-show-checkout"
+                checked={!!form.show_on_checkout}
+                onCheckedChange={(v) => setForm((f) => ({ ...f, show_on_checkout: v }))}
               />
             </div>
 

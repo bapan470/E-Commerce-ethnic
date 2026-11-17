@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, useEffect, useRef, FormEvent } from 'react';
+import { useState, useEffect, useRef, FormEvent, CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import Image from 'next/image';
 import { toPublicMediaUrl } from '@/lib/media-url';
 import NextScript from 'next/script';
 import { useRouter } from 'next/navigation';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { Lock, Loader2, CreditCard, Tag, X, Wallet, Sparkles, Gift, Store, Minus, Plus, ChevronRight, ChevronDown, BadgePercent, BadgeCheck, MapPin, Phone, Pencil } from 'lucide-react';
+import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Lock, Check, Loader2, CreditCard, Tag, X, AlertCircle, Wallet, Sparkles, Gift, Store, Minus, Plus, ChevronRight, ChevronDown, BadgePercent, BadgeCheck, MapPin, Phone, Pencil } from 'lucide-react';
 import {
   useCart,
   usePaymentDiscount,
@@ -20,7 +21,7 @@ import { formatINR } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 import { getSupabaseBrowser } from '@/lib/supabase-browser';
 import { validateGiftCard, GiftCard } from '@/lib/giftcards-api';
-import { computeCouponDiscount, fetchProductPageCoupons, Coupon } from '@/lib/coupons-api';
+import { computeCouponDiscount, fetchCheckoutCoupons, Coupon } from '@/lib/coupons-api';
 import { fetchAddresses } from '@/lib/addresses-api';
 import { Address } from '@/lib/types';
 import { joinResellerProgram, fetchMyResellerOverview } from '@/lib/reseller-api';
@@ -91,9 +92,23 @@ import {
   type PartialPaySettings,
 } from '@/lib/partial-pay';
 import StickyOrderBar from '@/components/checkout/sticky-order-bar';
+import {
+  DEFAULT_CHECKOUT_BUTTONS_SETTINGS,
+  fetchCheckoutButtonsSettings,
+  resolveCheckoutButtons,
+  type CheckoutButtonsSettings,
+} from '@/lib/checkout-buttons-settings';
+import PriceDetailsSheet from '@/components/checkout/price-details-sheet';
 import { useForceMobileRepaint } from '@/hooks/use-force-mobile-repaint';
+import { usePaymentGateway } from '@/hooks/use-payment-gateway';
+import { payWithCashfree } from '@/lib/cashfree-client';
 import { toast } from 'sonner';
 import { computeCheckoutGst } from '@/lib/gst-report';
+import { useIntlConfig } from '@/hooks/use-intl-config';
+import { isValidIntlPhone, isValidIntlPostal, estimateIntlShipping, formatEta } from '@/lib/intl-checkout';
+import { previewInrToMinor, formatMinor } from '@/lib/intl-api';
+import { setDisplayCurrency, getProviderDisplay, restoreProviderDisplay } from '@/lib/intl-pricing';
+import { TOTAL_DELIVERY_LABEL } from '@/lib/store-policy';
 
 // All Indian states & union territories, for the Shipping Address "State"
 // dropdown. Pincode auto-fill (via India Post's API) sets this field to
@@ -145,12 +160,97 @@ declare global {
   }
 }
 
+// ---------------------------------------------------------------------
+// Coupon area styling + celebration — pure CSS (no library). The confetti
+// overlay is mounted for ~3s only after a coupon is applied; the idle
+// shimmer/ring animations are skipped for "reduce motion" users.
+// ---------------------------------------------------------------------
+const COUPON_CSS =
+  '@keyframes ssFall{0%{transform:translate3d(0,-30px,0) rotate(0deg);opacity:1}85%{opacity:1}100%{transform:translate3d(var(--dx),108vh,0) rotate(var(--rot));opacity:0}}' +
+  '@keyframes ssPop{0%{transform:scale(.97)}40%{transform:scale(1.03)}100%{transform:scale(1)}}' +
+  '@keyframes ssBadge{0%{transform:scale(.3);opacity:0}60%{transform:scale(1.3);opacity:1}100%{transform:scale(1)}}' +
+  '@keyframes ssRise{0%{transform:translateY(8px);opacity:0}100%{transform:translateY(0);opacity:1}}' +
+  '@keyframes ssSweep{0%{transform:translateX(-120%) skewX(-18deg)}55%,100%{transform:translateX(340%) skewX(-18deg)}}' +
+  '@keyframes ssRing{0%{transform:scale(1);opacity:.55}100%{transform:scale(1.9);opacity:0}}' +
+  '@media (prefers-reduced-motion:no-preference){.ss-sweep{animation:ssSweep 3.2s ease-in-out infinite}.ss-ring{animation:ssRing 2s ease-out infinite}}';
+
+const CONFETTI_COLORS = ['#721D32', '#DAAA2F', '#16a34a', '#e11d48', '#f59e0b', '#2563eb', '#db2777'];
+const seeded = (n: number) => {
+  const x = Math.sin(n * 9301 + 49297) * 233280;
+  return x - Math.floor(x);
+};
+const CONFETTI = Array.from({ length: 56 }, (_, i) => ({
+  x: Math.round(seeded(i + 1) * 100),
+  delay: Math.round(seeded(i + 7) * 700),
+  dur: 1900 + Math.round(seeded(i + 13) * 1100),
+  dx: Math.round((seeded(i + 19) - 0.5) * 160),
+  rot: 360 + Math.round(seeded(i + 23) * 720),
+  w: 5 + Math.round(seeded(i + 29) * 5),
+  h: 8 + Math.round(seeded(i + 31) * 8),
+  c: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+  round: i % 3 === 0,
+}));
+
+/** Full-screen confetti, falls from the top like a celebration; never blocks taps. */
+function CouponConfetti() {
+  return (
+    <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-[60] overflow-hidden">
+      {CONFETTI.map((p, i) => (
+        <span
+          key={i}
+          style={
+            {
+              position: 'absolute',
+              left: `${p.x}%`,
+              top: 0,
+              width: p.w,
+              height: p.round ? p.w : p.h,
+              background: p.c,
+              borderRadius: p.round ? '50%' : 1,
+              opacity: 0,
+              '--dx': `${p.dx}px`,
+              '--rot': `${p.rot}deg`,
+              animation: `ssFall ${p.dur}ms ${p.delay}ms cubic-bezier(.25,.6,.4,1) forwards`,
+            } as CSSProperties
+          }
+        />
+      ))}
+    </div>
+  );
+}
+
+// Smoothly counts a rupee amount up/down when it changes (not on first load).
+function useCountUp(target: number, ms = 700) {
+  const [val, setVal] = useState(target);
+  const prev = useRef(target);
+  useEffect(() => {
+    const from = prev.current;
+    prev.current = target;
+    if (from === target || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setVal(target);
+      return;
+    }
+    let raf = 0;
+    const t0 = performance.now();
+    const step = (t: number) => {
+      const k = Math.min(1, (t - t0) / ms);
+      const e = 1 - Math.pow(1 - k, 3);
+      setVal(Math.round(from + (target - from) * e));
+      if (k < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target, ms]);
+  return val;
+}
+
 export default function CheckoutPage() {
   const router = useRouter();
   const {
     items: cartItems,
     subtotal: cartSubtotal,
     clearCart,
+    cartReady,
     addItem,
     removeItem,
     updateQuantity,
@@ -198,12 +298,31 @@ export default function CheckoutPage() {
   // online payment") refers to, so the customer never sees the price jump up at checkout.
   // COD stays one tap away and is never hidden.
   const [paymentMethod, setPaymentMethod] = useState<CheckoutPaymentMethod>('online');
+  // Admin > Settings > Checkout Pay Buttons (payment-section buttons +
+  // mobile sticky button). Defaults to both ON until the setting loads.
+  const [checkoutButtons, setCheckoutButtons] = useState<CheckoutButtonsSettings>(
+    DEFAULT_CHECKOUT_BUTTONS_SETTINGS
+  );
+  useEffect(() => {
+    let cancelled = false;
+    fetchCheckoutButtonsSettings()
+      .then((s) => {
+        if (!cancelled) setCheckoutButtons(resolveCheckoutButtons(s));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // Partial Pay (advance online, rest on delivery) -- switched on/off and sized in Admin > Settings.
   const [partialPaySettings, setPartialPaySettings] = useState<PartialPaySettings>(DEFAULT_PARTIAL_PAY_SETTINGS);
   useEffect(() => {
     fetchPartialPaySettings().then(setPartialPaySettings).catch(() => {});
   }, []);
   const { user } = useAuth();
+  // Admin > Settings > Payment Gateways: which gateway (Razorpay / Cashfree) takes online payments, or none (COD only).
+  const gateway = usePaymentGateway();
+  const onlineAvailable = !gateway.loaded || gateway.active !== null;
 
   // Same real-device repaint bug as StickyOrderBar (see
   // hooks/use-force-mobile-repaint.ts): the Payment section's selected-card
@@ -226,6 +345,13 @@ export default function CheckoutPage() {
   // read-only summary instead of the full editable form. "Change address"
   // flips this to true to reveal the picker + editable fields again.
   const [showAddressForm, setShowAddressForm] = useState(false);
+  // "Resell this product" is for resellers only — keep it tucked away so retail
+  // customers aren't confused by it mid-checkout.
+  const [showResellBox, setShowResellBox] = useState(false);
+  // Mobile sticky pay bar: price-details popup + portal mount flag.
+  const [priceSheetOpen, setPriceSheetOpen] = useState(false);
+  const [barMounted, setBarMounted] = useState(false);
+  useEffect(() => setBarMounted(true), []);
   // "Choose Address" opens a dialog with a radio list of saved addresses,
   // a "+ New Address" option, and an "Edit" action for the highlighted one.
   const [showAddressPicker, setShowAddressPicker] = useState(false);
@@ -234,11 +360,31 @@ export default function CheckoutPage() {
   // sheet (opened from the "Delivery details" card) instead of two long inline
   // sections -- no OTP or account needed.
   const [detailsSheetOpen, setDetailsSheetOpen] = useState(false);
-  // PHONES: the delivery form is NOT a fixed popup. A fixed popup is what the
-  // iPhone/Android keyboard kept pushing up and down while typing. On phones
-  // the form opens as a normal part of the page (the rest of checkout is just
-  // hidden meanwhile), so the browser scrolls it natively like any other page.
-  // Tablets/desktop keep the rounded bottom sheet.
+  // Validation message shown INSIDE the delivery-details sheet (above the title
+  // and close button) instead of a floating toast that used to cover them.
+  // `visible` toggles the banner open/closed with a height transition (the text
+  // stays mounted while it collapses) — so the form below never jumps when the
+  // message appears or disappears.
+  const [sheetError, setSheetError] = useState<{ message: string; nonce: number; visible: boolean } | null>(null);
+  const [invalidField, setInvalidField] = useState<string | null>(null);
+  const hideSheetError = () => {
+    setSheetError((e) => (e ? { ...e, visible: false } : e));
+    setInvalidField(null);
+  };
+  useEffect(() => {
+    if (!sheetError?.visible) return;
+    const t = setTimeout(() => {
+      setSheetError((e) => (e ? { ...e, visible: false } : e));
+      setInvalidField(null);
+    }, 5000);
+    return () => clearTimeout(t);
+  }, [sheetError?.nonce, sheetError?.visible]);
+
+  // PHONES: the delivery form is NOT a fixed popup any more. A fixed popup is
+  // what the iPhone/Android keyboard kept pushing up and down. On phones the
+  // form now opens as a normal part of the page (the checkout content is just
+  // hidden meanwhile), so the browser scrolls it natively like any other web
+  // page, which is rock solid. Tablets/desktop keep the rounded popup.
   const [isPhone, setIsPhone] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 639px)');
@@ -248,17 +394,26 @@ export default function CheckoutPage() {
     return () => mq.removeEventListener('change', update);
   }, []);
   const phoneFormOpen = detailsSheetOpen && isPhone;
+  const [phoneHeaderH, setPhoneHeaderH] = useState(0);
   const savedScrollY = useRef(0);
   useEffect(() => {
     if (!phoneFormOpen) return;
     savedScrollY.current = window.scrollY;
     window.scrollTo(0, 0);
     document.body.setAttribute('data-delivery-open', '');
+    setPhoneHeaderH(document.querySelector('header')?.getBoundingClientRect().height ?? 0);
     return () => {
       document.body.removeAttribute('data-delivery-open');
       window.scrollTo(0, savedScrollY.current);
     };
   }, [phoneFormOpen]);
+  // Mark the offending field red (aria-invalid) while the banner is showing.
+  useEffect(() => {
+    if (!invalidField) return;
+    const el = document.getElementById(invalidField);
+    el?.setAttribute('aria-invalid', 'true');
+    return () => el?.removeAttribute('aria-invalid');
+  }, [invalidField]);
   const [email, setEmail] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -270,6 +425,39 @@ export default function CheckoutPage() {
   const [stateName, setStateName] = useState('');
   const [pincode, setPincode] = useState('');
   const [country, setCountry] = useState('India');
+  // International selling (Admin > Settings > International Selling). While the master switch is off,
+  // or card payments are not configured, `intl.active` is false and checkout is India-only as before.
+  const intl = useIntlConfig();
+  const [dutyAccepted, setDutyAccepted] = useState(false);
+  const selectedIntlCountry = intl.active ? intl.countries.find((c) => c.name === country) ?? null : null;
+  const isIntl = !!selectedIntlCountry;
+  const intlZone = selectedIntlCountry ? intl.zones.find((z) => z.countries.includes(selectedIntlCountry.code)) ?? null : null;
+  const intlStateOptional = !!selectedIntlCountry && !selectedIntlCountry.requires_state;
+  const intlPostalOptional = !!selectedIntlCountry && !selectedIntlCountry.postal_regex;
+  const intlDutyMode = intl.settings.default_duty_mode;
+  // Prices on this page follow the country picked HERE (formatINR reads it). Set during render on purpose,
+  // so every price in this same render already uses the right currency; restored when leaving checkout.
+  if (intl.loaded) {
+    setDisplayCurrency(
+      selectedIntlCountry
+        ? { countryCode: selectedIntlCountry.code, countryName: selectedIntlCountry.name, currency: selectedIntlCountry.currency, settings: intl.settings }
+        : null,
+      'checkout',
+    );
+  }
+  useEffect(() => () => restoreProviderDisplay(), []);
+  // A visitor who browsed in e.g. USD (country switcher / Google Shopping ?cc=US) starts checkout in that country.
+  const preselectedCountryRef = useRef(false);
+  useEffect(() => {
+    if (preselectedCountryRef.current || !intl.loaded || !intl.active) return;
+    preselectedCountryRef.current = true;
+    const d = getProviderDisplay();
+    if (d && intl.countries.some((c) => c.name === d.countryName)) setCountry((cur) => (cur === 'India' ? d.countryName : cur));
+  }, [intl.loaded, intl.active, intl.countries]);
+  // A restored draft / old session may hold a country that is no longer enabled -> fall back to India.
+  useEffect(() => {
+    if (intl.loaded && country !== 'India' && !selectedIntlCountry) setCountry('India');
+  }, [intl.loaded, country, selectedIntlCountry]);
   const [deliveryEstimate, setDeliveryEstimate] = useState<PincodeResult | null>(null);
   const [verifyingPincode, setVerifyingPincode] = useState(false);
   // Tracks whether the current city/state values were filled in by us (from
@@ -428,6 +616,7 @@ export default function CheckoutPage() {
     setCity(addr.city || '');
     setStateName(addr.state || '');
     setPincode(addr.pincode || '');
+    setCountry('India'); // saved addresses are Indian addresses
     // A real saved address is now in place — any leftover guest draft from
     // earlier in this tab's session (e.g. typed before logging in) is now
     // stale and must not survive to confuse a later reload/remount.
@@ -555,14 +744,37 @@ export default function CheckoutPage() {
   const [availableCoupons, setAvailableCoupons] = useState<Coupon[]>([]);
   const [applyingFromList, setApplyingFromList] = useState<string | null>(null);
   // Collapsed by default — the coupon banner shows just the single best
-  // offer (fetchProductPageCoupons already sorts by discount_value desc),
+  // offer (fetchCheckoutCoupons already sorts by discount_value desc),
   // and "View all coupons" expands to the full list + manual code entry.
   const [showAllCoupons, setShowAllCoupons] = useState(false);
+  // "View all coupons" now opens one bottom sheet with every coupon, gift card,
+  // reward points and payment offer (see <Sheet open={offersOpen}> below).
+  const [offersOpen, setOffersOpen] = useState(false);
+  // Coupon-applied celebration (confetti + shine + pop), on for ~2.4s.
+  const [celebrate, setCelebrate] = useState(false);
+  const celebrateTimer = useRef<number | null>(null);
+  const triggerCelebrate = () => {
+    if (typeof window === 'undefined') return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    try {
+      navigator.vibrate?.(25);
+    } catch {
+      /* not supported */
+    }
+    setCelebrate(true);
+    if (celebrateTimer.current) window.clearTimeout(celebrateTimer.current);
+    celebrateTimer.current = window.setTimeout(() => setCelebrate(false), 3400);
+  };
+  useEffect(
+    () => () => {
+      if (celebrateTimer.current) window.clearTimeout(celebrateTimer.current);
+    },
+    []
+  );
 
   useEffect(() => {
-    if (appliedCoupon) return;
     let cancelled = false;
-    fetchProductPageCoupons()
+    fetchCheckoutCoupons()
       .then((c) => {
         if (!cancelled) setAvailableCoupons(c);
       })
@@ -638,7 +850,7 @@ export default function CheckoutPage() {
   // right on the checkout page, so shipping timing isn't a surprise after
   // they've already placed the order.
   useEffect(() => {
-    if (!/^[1-9][0-9]{5}$/.test(pincode.trim())) {
+    if (isIntl || !/^[1-9][0-9]{5}$/.test(pincode.trim())) {
       setDeliveryEstimate(null);
       setVerifyingPincode(false);
       return;
@@ -667,7 +879,7 @@ export default function CheckoutPage() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pincode]);
+  }, [pincode, isIntl]);
 
   useEffect(() => {
     fetchLoyaltySettings().then(setLoyaltySettings).catch(() => {
@@ -827,7 +1039,7 @@ export default function CheckoutPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items.length]);
 
-  const shipping =
+  const indiaShipping =
     shippingSettings.free_shipping_threshold > 0 &&
     subtotal >= shippingSettings.free_shipping_threshold
       ? 0
@@ -856,18 +1068,28 @@ export default function CheckoutPage() {
       : 0;
 
   const discountedSubtotal = Math.max(0, afterGiftCardSubtotal - loyaltyDiscount);
+  // International: shipping comes from the admin's shipping zone (the server recomputes the same
+  // amount and ignores anything sent from here). India keeps the flat-rate / free-threshold logic.
+  const shipping = isIntl
+    ? estimateIntlShipping(
+        intlZone,
+        items.reduce((n, i) => n + i.quantity, 0),
+        intl.settings.default_item_weight_grams,
+        discountedSubtotal,
+      )
+    : indiaShipping;
   // Extra incentive discount, only applied once the customer actually
   // chooses to pay online (never for COD) — computed on the merchandise
   // subtotal after coupon/gift card/loyalty, before shipping/tax.
   const onlinePaymentDiscount =
-    paymentMethod === 'online' && paymentDiscount.enabled && paymentDiscount.percent > 0
+    paymentMethod === 'online' && !isIntl && paymentDiscount.enabled && paymentDiscount.percent > 0
       ? Math.round((discountedSubtotal * paymentDiscount.percent) / 100)
       : 0;
   // Same discount, computed regardless of which payment method is currently
   // selected — used to show the customer the actual rupee amount (not just
   // the percent) next to "Pay Online", even before they've picked it.
   const potentialOnlinePaymentDiscount =
-    paymentDiscount.enabled && paymentDiscount.percent > 0
+    !isIntl && paymentDiscount.enabled && paymentDiscount.percent > 0
       ? Math.round((discountedSubtotal * paymentDiscount.percent) / 100)
       : 0;
   const subtotalAfterPaymentDiscount = Math.max(0, discountedSubtotal - onlinePaymentDiscount);
@@ -877,7 +1099,8 @@ export default function CheckoutPage() {
   // Each product carries its own GST rate (e.g. sarees 5%, garments above Rs 2,500 18%).
   // The server recomputes the same split on the order (orders_set_gst trigger), so this is
   // only the preview; items without a known rate fall back to the flat store rate.
-  const tax = computeCheckoutGst(
+  // Exports are supplied under LUT: no GST is charged on international orders.
+  const tax = isIntl ? 0 : computeCheckoutGst(
     items.map((i) => ({ price: i.product.price, quantity: i.quantity, gstRate: i.product.gstRate })),
     subtotalAfterPaymentDiscount + clampedGiftCardDiscount + shipping,
     shippingSettings.gst_rate_percent
@@ -891,6 +1114,23 @@ export default function CheckoutPage() {
   // haven't set a price yet (shouldn't normally happen — see validation below).
   const payableTotal = isResale && resaleSellingPriceNum > 0 ? resaleSellingPriceNum : total;
   const resaleProfit = payableTotal - total;
+  // What the international customer will be charged in their own currency (preview of the server maths).
+  const intlChargeEstimate = selectedIntlCountry
+    ? formatMinor(
+        previewInrToMinor(
+          payableTotal * (1 + intl.settings.intl_price_markup_percent / 100),
+          selectedIntlCountry.currency,
+          intl.settings,
+        ),
+        selectedIntlCountry.currency,
+      )
+    : null;
+  const intlEta = formatEta(intlZone);
+  const intlBlocked =
+    isIntl &&
+    (!intlZone ||
+      (intlZone.min_order_inr > 0 && discountedSubtotal < intlZone.min_order_inr) ||
+      (intlDutyMode === 'DAP' && !dutyAccepted));
 
   // What the customer would pay under each payment option — shown side by
   // side in the Payment card so the price is never a surprise. For resale
@@ -904,7 +1144,7 @@ export default function CheckoutPage() {
   // Partial Pay is priced like COD (no online-payment discount) and never offered for resale orders.
   // The advance shown here is display-only: the server (orders_apply_partial_pay trigger) recomputes
   // it from the stored total and the admin setting, and Razorpay is charged that amount.
-  const partialEligible = !isResale && isPartialPayEligible(partialPaySettings, codTotalDisplay);
+  const partialEligible = !isResale && !isIntl && onlineAvailable && isPartialPayEligible(partialPaySettings, codTotalDisplay);
   const partialAmounts = computeAdvance(codTotalDisplay, partialPaySettings.percent);
   const partialOption = partialEligible
     ? {
@@ -918,6 +1158,17 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (paymentMethod === 'partial' && !partialEligible) setPaymentMethod('online');
   }, [paymentMethod, partialEligible]);
+  // All online gateways switched off by the admin -> only Cash on Delivery is possible.
+  useEffect(() => {
+    if (!isIntl && !onlineAvailable && paymentMethod !== 'cod') setPaymentMethod('cod');
+  }, [onlineAvailable, paymentMethod, isIntl]);
+  // International orders are prepaid by card only (no COD, no partial pay, no resale).
+  useEffect(() => {
+    if (!isIntl) return;
+    if (paymentMethod !== 'online') setPaymentMethod('online');
+    if (isResale) setIsResale(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isIntl, paymentMethod, isResale]);
 
   // Repaint fix (see hooks/use-force-mobile-repaint.ts) — must sit here,
   // after payableTotal/total/onlinePaymentDiscount exist, not up near the
@@ -959,6 +1210,8 @@ export default function CheckoutPage() {
     clampedGiftCardDiscount +
     loyaltyDiscount +
     onlinePaymentDiscount;
+  const animatedSavings = useCountUp(totalSavings);
+  const animatedCouponSaving = useCountUp(couponDiscount);
   const resalePriceTooLow = isResale && resaleSellingPriceNum > 0 && resaleSellingPriceNum < total;
 
   // Every individual discount that's actually active right now (coupon,
@@ -1026,6 +1279,11 @@ export default function CheckoutPage() {
     router.push('/login?next=/checkout');
   };
 
+  const goToSignupFromCheckout = () => {
+    saveAddressDraft(false);
+    router.push('/signup?next=/checkout');
+  };
+
   const goToResaleSignup = () => {
     saveAddressDraft();
     setShowResaleLoginPrompt(false);
@@ -1050,7 +1308,7 @@ export default function CheckoutPage() {
       setCouponError(result.error || 'Invalid coupon');
       return;
     }
-    toast.success(`Coupon "${result.coupon.code}" applied`);
+    triggerCelebrate();
   };
 
   const handleApplyFromList = async (c: Coupon) => {
@@ -1061,7 +1319,7 @@ export default function CheckoutPage() {
       if (!result.ok || !result.coupon) {
         setCouponError(result.error || 'Could not apply this coupon');
       } else {
-        toast.success(`Coupon "${result.coupon.code}" applied`);
+        triggerCelebrate();
       }
     } finally {
       setApplyingFromList(null);
@@ -1177,13 +1435,13 @@ export default function CheckoutPage() {
     if (!hasSavedAddressSummary) {
       const detailsError = validateDeliveryDetails();
       if (detailsError) {
-        toast.error(detailsError);
-        setDetailsSheetOpen(true);
+        showSheetError(detailsError);
+        if (!inlineForm) setDetailsSheetOpen(true);
         return;
       }
     }
-    if (!stateName.trim()) {
-      toast.error('Please select your state');
+    if (!stateName.trim() && !intlStateOptional) {
+      toast.error(isIntl ? 'Please enter your state / province' : 'Please select your state');
       return;
     }
 
@@ -1196,14 +1454,51 @@ export default function CheckoutPage() {
     // means the courier/admin can't reach the customer, and a bad PIN
     // code means Delhivery will reject the shipment later at dispatch
     // time instead of catching it here where the shopper can still fix it.
+    if (isIntl) {
+      if (!isValidIntlPhone(shipPhone)) {
+        toast.error('Please enter your phone number with country code, e.g. +1 202 555 0100');
+        return;
+      }
+      if (!isValidIntlPostal(selectedIntlCountry?.postal_regex, pincode)) {
+        toast.error(`Please enter a valid postal code for ${country}`);
+        return;
+      }
+      if (!intlZone) {
+        toast.error('Shipping is not available to this country right now.');
+        return;
+      }
+      if (intlZone.min_order_inr > 0 && discountedSubtotal < intlZone.min_order_inr) {
+        toast.error(`Minimum order value for ${country} is ${formatINR(intlZone.min_order_inr)}.`);
+        return;
+      }
+      if (intlDutyMode === 'DAP' && !dutyAccepted) {
+        toast.error('Please accept the import duty & tax notice to continue');
+        return;
+      }
+      // Products flagged "export blocked" cannot go abroad: tell the customer before any order is created.
+      try {
+        const chk = await fetch('/api/international/blocked-items', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productIds: items.map((i) => i.product.id) }),
+        });
+        const chkData = await chk.json().catch(() => ({}));
+        if (Array.isArray(chkData.blocked) && chkData.blocked.length) {
+          toast.error(`Not available for international delivery: ${chkData.blocked.map((b: { name: string }) => b.name).join(', ')}. Please remove it from your cart.`, { duration: 8000 });
+          return;
+        }
+      } catch {
+        // Network hiccup: the server still blocks payment for these products in create-session.
+      }
+    }
     let phoneDigits = shipPhone.replace(/[^0-9]/g, '');
     if (phoneDigits.startsWith('91') && phoneDigits.length === 12) phoneDigits = phoneDigits.slice(2);
     if (phoneDigits.startsWith('0') && phoneDigits.length === 11) phoneDigits = phoneDigits.slice(1);
-    if (!/^[6-9][0-9]{9}$/.test(phoneDigits)) {
+    if (!isIntl && !/^[6-9][0-9]{9}$/.test(phoneDigits)) {
       toast.error('Please enter a valid 10-digit phone number');
       return;
     }
-    if (!isValidPincode(pincode)) {
+    if (!isIntl && !isValidPincode(pincode)) {
       toast.error('Please enter a valid 6-digit PIN code');
       return;
     }
@@ -1215,13 +1510,13 @@ export default function CheckoutPage() {
     // already fetched by the effect above when it matches the current
     // pincode, so this is usually instant with no extra network call).
     let pincodeCheck = deliveryEstimate;
-    if (!pincodeCheck || pincodeCheck.pincode !== pincode.trim()) {
+    if (!isIntl && (!pincodeCheck || pincodeCheck.pincode !== pincode.trim())) {
       setVerifyingPincode(true);
       pincodeCheck = await checkPincodeServiceability(pincode);
       setDeliveryEstimate(pincodeCheck);
       setVerifyingPincode(false);
     }
-    if (pincodeCheck.verified === 'no') {
+    if (!isIntl && pincodeCheck?.verified === 'no') {
       toast.error("This PIN code doesn't exist. Please double-check it and try again.");
       return;
     }
@@ -1245,6 +1540,24 @@ export default function CheckoutPage() {
     };
 
     setPlacing(true);
+
+    // Re-check the admin's gateway choice right now (the page may have been open for a while),
+    // BEFORE an order row is created, so a switched-off gateway never leaves an orphan order.
+    let activeGateway = gateway.active;
+    if (!isIntl && (paymentMethod === 'online' || paymentMethod === 'partial')) {
+      try {
+        const gw = await fetch('/api/payment-gateways', { cache: 'no-store' }).then((r) => r.json());
+        activeGateway = gw?.active ?? null;
+      } catch {
+        // keep the last known value
+      }
+      if (!activeGateway) {
+        setPaymentMethod('cod');
+        toast.error('Online payment is unavailable right now. Please choose Cash on Delivery.');
+        setPlacing(false);
+        return;
+      }
+    }
 
     try {
       // 1. Create internal order in Supabase with status 'pending'
@@ -1392,6 +1705,10 @@ export default function CheckoutPage() {
             // supabase/migrations/20260913000000_affiliate_program.sql);
             // we never trust or compute a commission amount here.
             affiliate_code: getStoredAffiliateCode(),
+            // International: the server re-checks the country, computes shipping from the zone and
+            // converts to the charge currency itself (see migration 20261102000000).
+            country_code: isIntl ? selectedIntlCountry?.code ?? 'IN' : 'IN',
+            duty_notice_accepted: isIntl && (dutyAccepted || intlDutyMode === 'DDP'),
           },
           p_items: orderItems,
         });
@@ -1412,6 +1729,11 @@ export default function CheckoutPage() {
           if (orderError.message?.includes('PARTIAL_PAY_DISABLED') || orderError.message?.includes('PARTIAL_PAY_NOT_ELIGIBLE')) {
             toast.error('Partial payment is not available for this order. Please choose another payment method.');
             setPaymentMethod('online');
+            setPlacing(false);
+            return;
+          }
+          if (orderError.message?.includes('INTL_')) {
+            toast.error(orderError.message.replace(/^.*?INTL_[A-Z_]+:\s*/, ''), { duration: 8000 });
             setPlacing(false);
             return;
           }
@@ -1475,37 +1797,70 @@ export default function CheckoutPage() {
         return;
       }
 
-      // 3. Create Razorpay order via API route
-      // SECURITY: amount is no longer sent from the client — create-order
-      // looks up the authoritative total_amount from the `orders` row
-      // itself using internalOrderId, so a tampered client can't change
-      // what gets charged.
-      const createOrderRes = await fetch('/api/razorpay/create-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ internalOrderId }),
-      });
-      const createOrderData = await createOrderRes.json();
-      if (!createOrderRes.ok) {
-        // Mark order as failed (server-side — anon no longer has UPDATE
-        // rights on `orders`).
-        fetch('/api/razorpay/mark-failed', {
+      // International: card payment through Stripe Checkout (route added in the Stripe phase).
+      // The amount is read from the order row on the server, never from here.
+      if (isIntl) {
+        const res = await fetch('/api/stripe/create-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ internalOrderId }),
-        }).catch(() => {});
-        throw new Error(createOrderData.error || 'Failed to create payment order');
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.url) {
+          throw new Error(data.error || 'Could not start the card payment. Please try again.');
+        }
+        window.location.href = data.url as string;
+        return;
       }
 
-      // 4. Open Razorpay checkout popup
-      await openRazorpayCheckout(
-        createOrderData.order.id,
-        createOrderData.keyId,
-        internalOrderId,
-        customerName,
-        customerEmail,
-        customerPhone
-      );
+      // 3. Take the online payment through whichever gateway the admin has switched on.
+      if (activeGateway === 'cashfree') {
+        // Cashfree: create order -> modal -> server-side verification (lib/cashfree-client.ts).
+        try {
+          await payWithCashfree(internalOrderId);
+        } catch (cfErr) {
+          if ((cfErr as { stage?: string })?.stage === 'create') {
+            fetch('/api/razorpay/mark-failed', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ internalOrderId }),
+            }).catch(() => {});
+          }
+          throw cfErr;
+        }
+      } else {
+        // 3. Create Razorpay order via API route
+        // SECURITY: amount is no longer sent from the client — create-order
+        // looks up the authoritative total_amount from the `orders` row
+        // itself using internalOrderId, so a tampered client can't change
+        // what gets charged.
+        const createOrderRes = await fetch('/api/razorpay/create-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ internalOrderId }),
+        });
+        const createOrderData = await createOrderRes.json();
+        if (!createOrderRes.ok) {
+          // Mark order as failed (server-side — anon no longer has UPDATE
+          // rights on `orders`).
+          fetch('/api/razorpay/mark-failed', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ internalOrderId }),
+          }).catch(() => {});
+          throw new Error(createOrderData.error || 'Failed to create payment order');
+        }
+
+        // 4. Open Razorpay checkout popup
+        await openRazorpayCheckout(
+          createOrderData.order.id,
+          createOrderData.keyId,
+          internalOrderId,
+          customerName,
+          customerEmail,
+          customerPhone
+        );
+      }
 
       // 5. Payment succeeded and verified.
       // NOTE: coupon.times_used is NOT incremented here — see the matching
@@ -1560,6 +1915,19 @@ export default function CheckoutPage() {
     );
   }
 
+  // The saved cart is read from the browser a moment after the page appears
+  // (and the server-rendered HTML never has it). Until then `items` is [] —
+  // showing "Your cart is empty" here is what made checkout look empty on
+  // reload / slow networks / coming back from login. Show a loader instead.
+  if (!cartReady) {
+    return (
+      <div className="container-boutique flex flex-col items-center gap-3 py-24 text-center" aria-busy="true">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">Loading your cart…</p>
+      </div>
+    );
+  }
+
   if (items.length === 0) {
     return (
       <div className="container-boutique flex flex-col items-center gap-5 py-24 text-center">
@@ -1577,7 +1945,7 @@ export default function CheckoutPage() {
   }
 
   const detailsComplete = !!(
-    firstName.trim() && email.trim() && shipPhone.trim() && addressLine1.trim() && city.trim() && stateName.trim() && pincode.trim()
+    firstName.trim() && email.trim() && shipPhone.trim() && addressLine1.trim() && city.trim() && (stateName.trim() || intlStateOptional) && (pincode.trim() || intlPostalOptional)
   );
 
   // Native `required` can't see fields inside the bottom sheet (it renders in
@@ -1589,20 +1957,57 @@ export default function CheckoutPage() {
     let d = shipPhone.replace(/[^0-9]/g, '');
     if (d.startsWith('91') && d.length === 12) d = d.slice(2);
     if (d.startsWith('0') && d.length === 11) d = d.slice(1);
-    if (!/^[6-9][0-9]{9}$/.test(d)) return 'Please enter a valid 10-digit phone number';
+    if (isIntl) {
+      if (!isValidIntlPhone(shipPhone)) return 'Please enter a valid phone number with country code';
+    } else if (!/^[6-9][0-9]{9}$/.test(d)) return 'Please enter a valid 10-digit phone number';
     if (!addressLine1.trim()) return 'Please enter your street address';
-    if (!isValidPincode(pincode)) return 'Please enter a valid 6-digit PIN code';
+    if (isIntl) {
+      if (!isValidIntlPostal(selectedIntlCountry?.postal_regex, pincode)) return 'Please enter a valid postal code';
+    } else if (!isValidPincode(pincode)) return 'Please enter a valid 6-digit PIN code';
     if (!city.trim()) return 'Please enter your city';
-    if (!stateName.trim()) return 'Please select your state';
+    if (!stateName.trim() && !intlStateOptional) return isIntl ? 'Please enter your state / province' : 'Please select your state';
     return null;
+  };
+
+  const DELIVERY_ERROR_FIELD: Record<string, string> = {
+    'Please enter your first name': 'firstName',
+    'Please enter your last name': 'lastName',
+    'Please enter a valid email address': 'email',
+    'Please enter a valid 10-digit phone number': 'phone',
+    'Please enter your street address': 'address',
+    'Please enter a valid 6-digit PIN code': 'pincode',
+    'Please enter your city': 'city',
+    'Please select your state': 'state',
+    'Please enter your state / province': 'state',
+    'Please enter a valid phone number with country code': 'phone',
+    'Please enter a valid postal code': 'pincode',
+  };
+
+  // Show the message in the sheet's top banner, mark + focus the field that
+  // needs fixing (scrolled into view so the keyboard never hides it).
+  const showSheetError = (message: string) => {
+    setSheetError({ message, nonce: Date.now(), visible: true });
+    const fieldId = DELIVERY_ERROR_FIELD[message] ?? null;
+    setInvalidField(fieldId);
+    if (fieldId) {
+      // Let the sheet finish opening / the keyboard finish resizing the
+      // viewport first, then focus the field and centre it (no smooth scroll —
+      // animated scrolling fought the keyboard and made the screen shake).
+      setTimeout(() => {
+        const el = document.getElementById(fieldId);
+        el?.focus();
+        setTimeout(() => el?.scrollIntoView({ block: 'center' }), 250);
+      }, 350);
+    }
   };
 
   const saveDeliveryDetails = () => {
     const err = validateDeliveryDetails();
     if (err) {
-      toast.error(err);
+      showSheetError(err);
       return;
     }
+    hideSheetError();
     setDetailsSheetOpen(false);
   };
 
@@ -1613,14 +2018,20 @@ export default function CheckoutPage() {
   const hasSavedAddressSummary =
     !!user && savedAddresses.length > 0 && !showAddressForm && selectedAddressId !== 'new';
 
+  // Guests (and logged-in customers with no saved address) see the delivery
+  // form directly on the page — no extra tap to open a sheet. Logged-in
+  // customers with saved addresses keep the summary + picker + edit sheet.
+  const inlineForm = !hasSavedAddressSummary && !(user && savedAddresses.length > 0);
+  const phoneSheetActive = phoneFormOpen && !inlineForm;
+
   const detailsFields = (
     <>
-              {/* Contact */}
+{/* Contact */}
               <section>
                 <h2 className="mb-4 font-serif text-lg font-bold text-primary">
                   Contact Information
                 </h2>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-2 gap-x-3 gap-y-4 sm:gap-4">
               <div className="grid gap-1.5">
                 <Label htmlFor="firstName">First name *</Label>
                 <Input
@@ -1645,7 +2056,7 @@ export default function CheckoutPage() {
                   onChange={(e) => setLastName(e.target.value)}
                 />
               </div>
-              <div className="grid gap-1.5">
+              <div className="col-span-2 grid gap-1.5 sm:col-span-1">
                 <Label htmlFor="email">Email *</Label>
                 <Input
                   id="email"
@@ -1661,7 +2072,7 @@ export default function CheckoutPage() {
                   }}
                 />
               </div>
-              <div className="grid gap-1.5">
+              <div className="col-span-2 grid gap-1.5 sm:col-span-1">
                 <Label htmlFor="phone">Phone *</Label>
                 <Input
                   id="phone"
@@ -1683,6 +2094,30 @@ export default function CheckoutPage() {
               <h2 className="font-serif text-lg font-bold text-primary">Shipping Address</h2>
             </div>
             <div className="grid gap-4">
+              {intl.active && (
+                <div className="grid gap-1.5">
+                  <Label htmlFor="country">Country *</Label>
+                  <Select
+                    value={country || 'India'}
+                    onValueChange={(v) => {
+                      setCountry(v);
+                      setDutyAccepted(false);
+                    }}
+                  >
+                    <SelectTrigger id="country">
+                      <SelectValue placeholder="Select country" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="India">India</SelectItem>
+                      {intl.countries.map((c) => (
+                        <SelectItem key={c.code} value={c.name}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="grid gap-1.5">
                 <Label htmlFor="address">Street address *</Label>
                 <Input
@@ -1720,14 +2155,14 @@ export default function CheckoutPage() {
                 </p>
               </div>
               <div className="grid gap-1.5">
-                <Label htmlFor="pincode">PIN code *</Label>
+                <Label htmlFor="pincode">{isIntl ? `Postal code${intlPostalOptional ? ' (optional)' : ' *'}` : 'PIN code *'}</Label>
                 <Input
                   id="pincode"
                   name="pincode"
                   autoComplete="postal-code"
-                  required
-                  placeholder="400050"
-                  inputMode="numeric"
+                  required={!isIntl || !intlPostalOptional}
+                  placeholder={isIntl ? '' : '400050'}
+                  inputMode={isIntl ? 'text' : 'numeric'}
                   value={pincode}
                   className={
                     deliveryEstimate?.pincode === pincode.trim() && deliveryEstimate.verified === 'no'
@@ -1787,7 +2222,19 @@ export default function CheckoutPage() {
                   />
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="state">State *</Label>
+                  <Label htmlFor="state">{isIntl ? `State / Province${intlStateOptional ? ' (optional)' : ' *'}` : 'State *'}</Label>
+                  {isIntl ? (
+                    <Input
+                      id="state"
+                      name="state"
+                      autoComplete="address-level1"
+                      value={stateName}
+                      onChange={(e) => {
+                        stateAutoFilledRef.current = false;
+                        setStateName(e.target.value);
+                      }}
+                    />
+                  ) : (
                   <Select
                     value={stateName || undefined}
                     onValueChange={(v) => {
@@ -1812,30 +2259,88 @@ export default function CheckoutPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  )}
                 </div>
               </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor="country">Country *</Label>
-                <Select value={country || 'India'} onValueChange={setCountry}>
-                  <SelectTrigger id="country">
-                    <SelectValue placeholder="Select country" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {/* Only India for now — more countries can be added here
-                        later without changing how this field works. */}
-                    <SelectItem value="India">India</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {/* Country sits at the top of this section when international selling is active. */}
+              {!intl.active && (
+                <div className="grid gap-1.5">
+                  <Label htmlFor="country">Country *</Label>
+                  <Select value={country || 'India'} onValueChange={setCountry}>
+                    <SelectTrigger id="country">
+                      <SelectValue placeholder="Select country" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="India">India</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
           </section>
     </>
   );
 
+  // Pay button for the payment section (Admin > Settings > Checkout Pay Buttons).
+  // Shown inside the selected method's card: Pay Online or Cash on Delivery.
+  const payButtonNode = checkoutButtons.payment_buttons_enabled ? (
+    <Button
+                type="submit"
+                size="lg"
+                disabled={placing || intlBlocked || resalePriceTooLow || (isResale && resaleSellingPriceNum <= 0)}
+                className="h-12 w-full bg-primary text-base"
+              >
+                {placing ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Processing...
+                  </>
+                ) : paymentMethod === 'cod' ? (
+                  <>
+                    <Wallet className="mr-2 h-4 w-4" />
+                    Place Order (COD) — {formatINR(payableTotal)}
+                  </>
+                ) : paymentMethod === 'partial' && partialOption ? (
+                  <>
+                    <Lock className="mr-2 h-4 w-4" />
+                    Pay advance — {formatINR(partialOption.advance)}
+                  </>
+                ) : (
+                  <>
+                    <Lock className="mr-2 h-4 w-4" />
+                    Pay securely — {isIntl && intlChargeEstimate ? intlChargeEstimate : formatINR(payableTotal)}
+                  </>
+                )}
+              </Button>
+  ) : null;
+
   return (
     <>
-      {phoneFormOpen && (
-        <div className="container-boutique pb-10 pt-4 [&_input]:h-11 [&_[role=combobox]]:h-11">
+      {phoneSheetActive && (
+        <div
+          onInputCapture={() => {
+            if (invalidField) hideSheetError();
+          }}
+          className="container-boutique pb-10 pt-4 [&_input]:h-11 [&_[role=combobox]]:h-11 [&_[aria-invalid=true]]:border-red-400 [&_[aria-invalid=true]]:ring-2 [&_[aria-invalid=true]]:ring-red-200"
+        >
+          {sheetError?.visible && (
+            <div
+              role="alert"
+              style={{ top: phoneHeaderH }}
+              className="sticky z-40 mb-3 flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm font-medium text-red-700 shadow-sm"
+            >
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span className="flex-1 leading-snug">{sheetError.message}</span>
+              <button
+                type="button"
+                onClick={hideSheetError}
+                aria-label="Dismiss message"
+                className="-mr-1 rounded-full p-1 text-red-400"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
           <div className="mb-5 flex items-start justify-between gap-3 border-b border-border/60 pb-4">
             <div className="min-w-0 space-y-1">
               <h2 className="font-serif text-xl font-bold text-primary">Delivery details</h2>
@@ -1853,7 +2358,11 @@ export default function CheckoutPage() {
             <button
               type="button"
               aria-label="Close delivery details"
-              onClick={() => setDetailsSheetOpen(false)}
+              onClick={() => {
+                setDetailsSheetOpen(false);
+                setSheetError(null);
+                setInvalidField(null);
+              }}
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-secondary/40 bg-gradient-to-b from-background to-muted text-primary shadow-sm"
             >
               <X className="h-[18px] w-[18px]" strokeWidth={2.25} />
@@ -1870,27 +2379,93 @@ export default function CheckoutPage() {
           </div>
         </div>
       )}
-    <div className={`container-boutique py-8 ${phoneFormOpen ? 'hidden' : ''}`}>
+    <div className={`container-boutique pt-0 pb-8 md:py-8 max-lg:pb-40 ${phoneSheetActive ? 'hidden' : ''}`}>
       {/* Loaded only here (not site-wide in app/layout.tsx) since only the
           checkout page ever opens the Razorpay popup — this used to load
           on every single page load across the whole site for no reason. */}
-      <NextScript src="https://checkout.razorpay.com/v1/checkout.js" strategy="afterInteractive" />
-      <h1 className="mb-2 font-serif text-3xl font-bold text-primary sm:text-4xl">
+      {gateway.active === 'razorpay' && (
+        <NextScript src="https://checkout.razorpay.com/v1/checkout.js" strategy="afterInteractive" />
+      )}
+      {/* Mobile: the header already says "Checkout" and the coupon banner
+          below takes this row's place, so the heading + progress row is
+          desktop-only. A screen-reader-only h1 keeps the page structure. */}
+      <h1 className="sr-only md:hidden">Checkout</h1>
+      <div className="mb-3 flex items-center justify-between gap-3 max-md:hidden">
+      <h1 className="font-serif text-3xl font-bold text-primary sm:text-4xl">
         Checkout
       </h1>
 
-      {/* Top coupon banner — same offer shown lower down inside the Order
-          Summary card, but surfaced here too so it's visible immediately
-          on page load instead of only after scrolling past the whole
-          address form (which is what used to happen on mobile, since the
-          Order Summary card sits after the form in DOM order there).
-          Stays visible after a coupon is applied too — it just switches
-          to the "applied" state instead of disappearing. */}
+      {/* Simple 2-step progress: Delivery -> Payment (sits on the right of the heading) */}
+      <ol className="flex shrink-0 items-center gap-2 text-xs font-medium" aria-label="Checkout progress">
+        <li className="flex items-center gap-1.5 text-primary">
+          <span
+            className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold ${
+              detailsComplete ? 'bg-green-600 text-white' : 'bg-primary text-primary-foreground'
+            }`}
+          >
+            {detailsComplete ? '✓' : '1'}
+          </span>
+          Address
+        </li>
+        <span className={`h-px w-8 ${detailsComplete ? 'bg-green-600' : 'bg-border'}`} aria-hidden="true" />
+        <li className={`flex items-center gap-1.5 ${detailsComplete ? 'text-primary' : 'text-muted-foreground'}`}>
+          <span
+            className={`flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-bold ${
+              detailsComplete ? 'bg-primary text-primary-foreground' : 'border border-border'
+            }`}
+          >
+            2
+          </span>
+          Payment
+        </li>
+      </ol>
+      </div>
+
+      <style>{COUPON_CSS}</style>
+      {celebrate && <CouponConfetti />}
+
+      {/* Savings bar — edge to edge on mobile, always visible (also after a
+          coupon is applied). The amount counts up smoothly when it changes. */}
+      {(totalSavings > 0 || (paymentDiscount.enabled && potentialOnlinePaymentDiscount > 0)) && (
+        <div
+          style={celebrate ? { animation: 'ssPop .55s ease-out' } : undefined}
+          className="-mx-4 mb-3 flex items-center justify-center gap-1.5 bg-primary px-3 py-2 text-center text-xs font-semibold text-primary-foreground sm:mx-0 sm:rounded-lg"
+        >
+          <BadgePercent className="h-3.5 w-3.5" />
+          {totalSavings > 0 ? (
+            <span>
+              You&apos;re saving <span className="tabular-nums">{formatINR(animatedSavings)}</span> on this order
+            </span>
+          ) : (
+            `Upto ${formatINR(potentialOnlinePaymentDiscount)} off on prepaid orders`
+          )}
+        </div>
+      )}
+
+      {/* Coupon card */}
       {appliedCoupon ? (
-        <div className="mb-4 overflow-hidden rounded-lg border border-border/60">
-          <div className="flex items-center justify-between gap-3 bg-card px-3 py-3">
-            <span className="flex items-center gap-1.5 text-sm font-medium text-secondary-foreground">
-              <BadgeCheck className="h-4 w-4 text-green-600" />
+        <div
+          style={celebrate ? { animation: 'ssPop .6s ease-out' } : undefined}
+          className={`mb-4 overflow-hidden rounded-xl border-2 transition-colors duration-500 ${
+            celebrate ? 'border-green-500 bg-green-50' : 'border-green-600/30 bg-card'
+          }`}
+        >
+          {couponDiscount > 0 && (
+            <div
+              style={celebrate ? { animation: 'ssRise .5s ease-out' } : undefined}
+              className="bg-green-100 px-3 py-1.5 text-center text-xs font-bold text-green-800"
+            >
+              You saved <span className="tabular-nums">{formatINR(animatedCouponSaving)}</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-3 px-3 py-3">
+            <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <span
+                className="flex h-5 w-5 items-center justify-center rounded-full bg-green-600 text-white"
+                style={celebrate ? { animation: 'ssBadge .55s ease-out' } : undefined}
+              >
+                <Check className="h-3 w-3" strokeWidth={3} />
+              </span>
               &quot;{appliedCoupon.code}&quot; applied
             </span>
             <button
@@ -1901,84 +2476,337 @@ export default function CheckoutPage() {
               Remove
             </button>
           </div>
-          {availableCoupons.length > 1 && (
-            <button
-              type="button"
-              onClick={() => setShowAllCoupons((v) => !v)}
-              className="flex w-full items-center gap-0.5 border-t border-border/60 bg-card px-3 py-2 text-xs font-medium text-secondary hover:underline"
-            >
-              View all coupons <ChevronRight className="h-3 w-3" />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setOffersOpen(true)}
+            className="flex w-full items-center gap-0.5 border-t border-border/60 px-3 py-2 text-xs font-semibold text-secondary hover:underline"
+          >
+            View all coupons <ChevronRight className="h-3 w-3" />
+          </button>
         </div>
       ) : (
-        (paymentDiscount.enabled && potentialOnlinePaymentDiscount > 0 || availableCoupons.length > 0 || totalSavings > 0) && (
-          <div className="mb-4 overflow-hidden rounded-lg border border-border/60">
-            {/* Single banner now doing both jobs: once any discount is
-                actually applied (coupon, BOGO, gift card, loyalty points,
-                or the online-payment discount) it shows the real combined
-                total the customer is saving; before that, it falls back to
-                nudging them toward the prepaid discount. Used to be two
-                separate banners (a green "you're saving" one up top plus
-                this one) — merged into one so only one shows at a time. */}
-            {totalSavings > 0 ? (
-              <div className="flex items-center justify-center gap-1.5 bg-primary px-3 py-1.5 text-center text-xs font-semibold text-primary-foreground">
-                <BadgePercent className="h-3.5 w-3.5" />
-                You're saving {formatINR(totalSavings)} on this order
-              </div>
-            ) : (
-              paymentDiscount.enabled && potentialOnlinePaymentDiscount > 0 && (
-                <div className="flex items-center justify-center gap-1.5 bg-primary px-3 py-1.5 text-center text-xs font-semibold text-primary-foreground">
-                  <BadgePercent className="h-3.5 w-3.5" />
-                  Upto {formatINR(potentialOnlinePaymentDiscount)} off on prepaid orders
+        <div className="mb-4 overflow-hidden rounded-xl border-2 border-dashed border-secondary/60 bg-gradient-to-br from-secondary/15 via-background to-background shadow-sm">
+          {availableCoupons.length === 0 && (
+            <div className="flex items-center gap-2.5 px-3 pt-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
+                <Gift className="h-4 w-4" />
+              </span>
+              <p className="text-sm font-bold text-primary">Have a coupon code or gift card?</p>
+            </div>
+          )}
+          {availableCoupons.length > 0 && (
+            <div className="flex items-center justify-between gap-3 px-3 pb-1 pt-3">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
+                  <span className="ss-ring absolute inset-0 rounded-full bg-secondary/60" />
+                  <Gift className="relative h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-primary">
+                    Save{' '}
+                    {availableCoupons[0].discount_type === 'percentage'
+                      ? `${availableCoupons[0].discount_value}%`
+                      : formatINR(availableCoupons[0].discount_value)}{' '}
+                    on this order
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    Use code{' '}
+                    <span className="rounded bg-secondary/25 px-1.5 py-0.5 font-mono font-bold tracking-wide text-primary">
+                      {availableCoupons[0].code}
+                    </span>
+                  </p>
                 </div>
-              )
-            )}
-            {availableCoupons.length > 0 && (
-              <div className="flex items-center justify-between gap-3 bg-card px-3 py-3">
-                <div className="flex min-w-0 items-start gap-2.5">
-                  <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-secondary/15 text-secondary">
-                    <Tag className="h-3.5 w-3.5" />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-foreground">
-                      Save{' '}
-                      {availableCoupons[0].discount_type === 'percentage'
-                        ? `${availableCoupons[0].discount_value}%`
-                        : formatINR(availableCoupons[0].discount_value)}{' '}
-                      with &quot;{availableCoupons[0].code}&quot;
-                    </p>
-                    {availableCoupons.length > 1 ? (
-                      <button
-                        type="button"
-                        onClick={() => setShowAllCoupons((v) => !v)}
-                        className="mt-0.5 flex items-center gap-0.5 text-xs font-medium text-secondary hover:underline"
-                      >
-                        View all coupons <ChevronRight className="h-3 w-3" />
-                      </button>
-                    ) : (
-                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {availableCoupons[0].min_order_value > 0
-                          ? `On orders above ${formatINR(availableCoupons[0].min_order_value)}`
-                          : 'No minimum order value'}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleApplyFromList(availableCoupons[0])}
-                  disabled={applyingFromList === availableCoupons[0].code}
-                  className="shrink-0 rounded-md border border-secondary px-3.5 py-1.5 text-xs font-semibold text-secondary transition-colors hover:bg-secondary hover:text-secondary-foreground disabled:opacity-60"
-                >
-                  {applyingFromList === availableCoupons[0].code ? 'Applying…' : 'Apply'}
-                </button>
               </div>
-            )}
-          </div>
-        )
+              <button
+                type="button"
+                onClick={() => handleApplyFromList(availableCoupons[0])}
+                disabled={applyingFromList === availableCoupons[0].code}
+                className="relative shrink-0 overflow-hidden rounded-lg bg-primary px-4 py-2 text-xs font-bold text-primary-foreground shadow disabled:opacity-60"
+              >
+                <span className="ss-sweep absolute inset-y-0 left-0 w-1/4 bg-white/30" style={{ transform: 'translateX(-120%)' }} />
+                <span className="relative">{applyingFromList === availableCoupons[0].code ? 'Applying…' : 'Apply'}</span>
+              </button>
+            </div>
+          )}
+          {couponError && <p className="px-3 pt-1 text-xs text-destructive">{couponError}</p>}
+          <button
+            type="button"
+            onClick={() => setOffersOpen(true)}
+            className="mt-2 flex w-full items-center gap-0.5 border-t border-secondary/30 px-3 py-2 text-xs font-semibold text-secondary hover:underline"
+          >
+            View all coupons <ChevronRight className="h-3 w-3" />
+          </button>
+        </div>
       )}
 
+      {/* Coupons & Offers sheet — opened by every "View all coupons" link.
+          Shows coupons, payment offer, gift card, reward points (logged-in)
+          and everything already applied to this order. */}
+      <Sheet open={offersOpen} onOpenChange={setOffersOpen}>
+        <SheetContent
+          side="bottom"
+          hideClose
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          className="flex max-h-[88vh] flex-col gap-0 rounded-t-2xl p-0 sm:mx-auto sm:max-w-md"
+        >
+          <SheetHeader className="border-b border-border/60 px-5 pb-3 pt-4 text-left">
+            <div className="flex items-center justify-between gap-3">
+              <SheetTitle className="font-serif text-lg font-bold text-primary">Coupons &amp; Offers</SheetTitle>
+              <SheetClose
+                aria-label="Close"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-background text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </SheetClose>
+            </div>
+            <SheetDescription className="sr-only">
+              All coupons, gift card, reward points and payment offers for this order
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
+            {!user && (
+              <button
+                type="button"
+                onClick={() => router.push('/login?next=/checkout')}
+                className="flex w-full items-center justify-between gap-2 rounded-lg border border-secondary/40 bg-secondary/10 px-3 py-2.5 text-left text-sm font-medium text-primary"
+              >
+                <span>Log in to get more offers &amp; use reward points</span>
+                <ChevronRight className="h-4 w-4 shrink-0" />
+              </button>
+            )}
+
+            {(discountBreakdown.length > 0 || (paymentMethod === 'online' && potentialOnlinePaymentDiscount > 0)) && (
+              <section>
+                <h3 className="mb-2 text-sm font-semibold">Applied on this order</h3>
+                <div className="flex flex-col gap-1.5 rounded-lg bg-green-50 px-3 py-2.5 text-xs">
+                  {discountBreakdown.map((d) => (
+                    <div key={d.label} className="flex items-center justify-between gap-3 font-medium text-green-800">
+                      <span className="flex items-center gap-1.5">
+                        <BadgeCheck className="h-3.5 w-3.5" /> {d.label}
+                      </span>
+                      <span>-{formatINR(d.amount)}</span>
+                    </div>
+                  ))}
+                  {paymentMethod === 'online' && potentialOnlinePaymentDiscount > 0 && (
+                    <div className="flex items-center justify-between gap-3 font-medium text-green-800">
+                      <span className="flex items-center gap-1.5">
+                        <BadgeCheck className="h-3.5 w-3.5" /> Online payment discount
+                      </span>
+                      <span>-{formatINR(potentialOnlinePaymentDiscount)}</span>
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+
+            <section>
+              <h3 className="mb-2 text-sm font-semibold">Coupons</h3>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Enter coupon code"
+                  value={couponInput}
+                  onChange={(e) => setCouponInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (couponInput.trim() && !applyingCoupon) handleApplyCoupon();
+                    }
+                  }}
+                  autoCapitalize="characters"
+                  autoComplete="off"
+                  className="h-10"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 shrink-0"
+                  disabled={applyingCoupon || !couponInput.trim()}
+                  onClick={handleApplyCoupon}
+                >
+                  {applyingCoupon ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}
+                </Button>
+              </div>
+              {couponError && <p className="mt-1.5 text-xs text-destructive">{couponError}</p>}
+              {appliedCoupon && (
+                <div className="mt-2 flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2.5 text-sm">
+                  <span className="flex items-center gap-1.5 font-medium text-secondary-foreground">
+                    <BadgeCheck className="h-4 w-4 text-green-600" /> &quot;{appliedCoupon.code}&quot; applied
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleRemoveCoupon}
+                    className="text-xs font-semibold text-muted-foreground hover:text-destructive"
+                  >
+                    Remove
+                  </button>
+                </div>
+              )}
+
+              {availableCoupons.length > 0 && (
+                <div className="mt-3 flex flex-col gap-2">
+                  {availableCoupons.map((c) => {
+                    const isApplied = appliedCoupon?.code === c.code;
+                    return (
+                      <div
+                        key={c.id}
+                        className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-secondary/60 bg-secondary/10 px-3 py-2.5"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-mono text-sm font-bold tracking-wide text-primary">{c.code}</span>
+                            <span className="text-xs font-semibold text-secondary-foreground">
+                              {c.discount_type === 'percentage' ? `${c.discount_value}% OFF` : `${formatINR(c.discount_value)} OFF`}
+                            </span>
+                          </div>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {c.min_order_value > 0 ? `On orders above ${formatINR(c.min_order_value)}` : 'No minimum order value'}
+                          </p>
+                        </div>
+                        {isApplied ? (
+                          <span className="shrink-0 text-xs font-semibold text-green-700">Applied</span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleApplyFromList(c)}
+                            disabled={applyingFromList === c.code}
+                            className="shrink-0 rounded-md border border-primary bg-background px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary hover:text-primary-foreground disabled:opacity-60"
+                          >
+                            {applyingFromList === c.code ? 'Applying…' : 'Apply'}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            {paymentDiscount.enabled && potentialOnlinePaymentDiscount > 0 && (
+              <section>
+                <h3 className="mb-2 text-sm font-semibold">Payment offers</h3>
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">Save {formatINR(potentialOnlinePaymentDiscount)} on online payment</p>
+                    <p className="text-xs text-muted-foreground">UPI, cards, net banking &amp; wallets</p>
+                  </div>
+                  {paymentMethod === 'online' ? (
+                    <span className="shrink-0 text-xs font-semibold text-green-700">Applied</span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPaymentMethod('online');
+                        setOffersOpen(false);
+                      }}
+                      className="shrink-0 rounded-md border border-primary bg-background px-3 py-1.5 text-xs font-semibold text-primary"
+                    >
+                      Pay online
+                    </button>
+                  )}
+                </div>
+              </section>
+            )}
+
+            <section>
+              <h3 className="mb-2 text-sm font-semibold">Gift card</h3>
+              {appliedGiftCard ? (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2.5 text-sm">
+                  <span className="flex items-center gap-1.5 font-medium text-secondary-foreground">
+                    <Gift className="h-3.5 w-3.5" /> {appliedGiftCard.code} applied (-{formatINR(clampedGiftCardDiscount)})
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleRemoveGiftCard}
+                    className="text-xs font-semibold text-muted-foreground hover:text-destructive"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Gift card code"
+                      value={giftCardInput}
+                      onChange={(e) => setGiftCardInput(e.target.value)}
+                      className="h-10"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-10 shrink-0"
+                      disabled={applyingGiftCard || !giftCardInput.trim()}
+                      onClick={handleApplyGiftCard}
+                    >
+                      {applyingGiftCard ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}
+                    </Button>
+                  </div>
+                  {giftCardError && <p className="text-xs text-destructive">{giftCardError}</p>}
+                </div>
+              )}
+            </section>
+
+            {user && loyaltySettings.enabled && (
+              <section>
+                <h3 className="mb-2 text-sm font-semibold">Reward points</h3>
+                <div className="rounded-lg bg-muted/40 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="flex items-center gap-1.5 text-sm font-medium">
+                      <Sparkles className="h-3.5 w-3.5 text-secondary" /> Use reward points
+                    </span>
+                    <Switch
+                      checked={redeemPoints}
+                      disabled={!canRedeemPoints}
+                      onCheckedChange={handleToggleRedeemPoints}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {pointsBalance <= 0
+                      ? 'You have no reward points yet. You earn points on every order.'
+                      : canRedeemPoints
+                        ? `You have ${pointsBalance} points (worth ${formatINR(
+                            Math.round(pointsBalance * loyaltySettings.redeem_value_per_point)
+                          )}).`
+                        : `You have ${pointsBalance} points — minimum ${loyaltySettings.min_redeem_points} needed to redeem.`}
+                  </p>
+                  {redeemPoints && canRedeemPoints && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        max={maxRedeemablePoints}
+                        value={pointsToRedeem}
+                        onChange={(e) =>
+                          setPointsToRedeem(Math.max(0, Math.min(maxRedeemablePoints, Number(e.target.value) || 0)))
+                        }
+                        className="h-9"
+                      />
+                      <span className="shrink-0 text-xs text-muted-foreground">= -{formatINR(loyaltyDiscount)}</span>
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <PriceDetailsSheet
+        open={priceSheetOpen}
+        onOpenChange={setPriceSheetOpen}
+        items={items}
+        partialAdvance={partialOption?.advance}
+        partialBalance={partialOption?.balance}
+        onSwitchToOnline={() => setPaymentMethod('online')}
+        subtotal={subtotal}
+        shipping={shipping}
+        payableTotal={payableTotal}
+        totalSavings={totalSavings}
+        paymentMethod={paymentMethod}
+        onlineDiscountAmount={potentialOnlinePaymentDiscount}
+        discountBreakdown={discountBreakdown}
+      />
       <StickyOrderBar
         items={items}
         subtotal={subtotal}
@@ -2049,13 +2877,15 @@ export default function CheckoutPage() {
         </DialogContent>
       </Dialog>
 
-      <form onSubmit={onSubmit} className="grid gap-8 lg:grid-cols-3">
+      <form id="checkout-form" onSubmit={onSubmit} className="grid gap-8 lg:grid-cols-3">
         <div className="lg:col-span-2">
           {/* Login status — always shown, whether the saved-address summary
               or the editable guest form is what's displayed below it. */}
           <section
-            className={`mb-4 flex items-center justify-between gap-3 rounded-lg border p-4 ${
-              user ? 'border-green-200 bg-green-50' : 'border-border/60 bg-card'
+            className={`mb-3 ${
+              user
+                ? 'flex items-center justify-between gap-3 rounded-lg border border-green-200 bg-green-50 p-4'
+                : 'rounded-xl border border-primary/20 bg-primary/5 p-3.5'
             }`}
           >
             {user ? (
@@ -2063,18 +2893,27 @@ export default function CheckoutPage() {
                 ✓ Logged in as {user.email}
               </span>
             ) : (
-              <>
-                <span className="text-sm text-muted-foreground">
-                  Checking out as a guest.
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <span className="text-xs text-muted-foreground sm:text-sm">
+                  Checking out as a guest — no account needed.
                 </span>
-                <button
-                  type="button"
-                  onClick={goToLoginFromCheckout}
-                  className="shrink-0 text-sm font-medium text-secondary underline-offset-2 hover:underline"
-                >
-                  Already have an account? Log in
-                </button>
-              </>
+                <div className="grid shrink-0 grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={goToLoginFromCheckout}
+                    className="rounded-lg border border-primary bg-background px-3 py-2 text-center text-xs font-semibold text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
+                  >
+                    Have an account? Log in
+                  </button>
+                  <button
+                    type="button"
+                    onClick={goToSignupFromCheckout}
+                    className="rounded-lg bg-primary px-3 py-2 text-center text-xs font-semibold text-primary-foreground shadow-sm transition-opacity hover:opacity-90"
+                  >
+                    Sign up
+                  </button>
+                </div>
+              </div>
             )}
           </section>
 
@@ -2107,6 +2946,37 @@ export default function CheckoutPage() {
               </div>
             </section>
           ) : (
+            inlineForm ? (
+            <section
+              onInputCapture={() => {
+                if (invalidField) hideSheetError();
+              }}
+              className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm sm:p-5 [&_input]:h-11 [&_[role=combobox]]:h-11 [&_[aria-invalid=true]]:border-red-400 [&_[aria-invalid=true]]:ring-2 [&_[aria-invalid=true]]:ring-red-200"
+            >
+              {sheetError?.visible && (
+                <div
+                  role="alert"
+                  style={{ top: (phoneHeaderH || 0) + 8 }}
+                  className="sticky z-30 mb-3 flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm font-medium text-red-700 shadow-sm"
+                >
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span className="flex-1 leading-snug">{sheetError.message}</span>
+                  <button
+                    type="button"
+                    onClick={hideSheetError}
+                    aria-label="Dismiss message"
+                    className="-mr-1 rounded-full p-1 text-red-400"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+              {detailsFields}
+              <p className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
+                <Lock className="h-3 w-3" /> Your details are used only to deliver this order.
+              </p>
+            </section>
+            ) : (
             <>
               {/* Delivery details card -- tap to open the bottom sheet */}
               <section className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm">
@@ -2174,14 +3044,74 @@ export default function CheckoutPage() {
                 )}
               </section>
 
-              <Sheet open={detailsSheetOpen && !isPhone} onOpenChange={setDetailsSheetOpen}>
+              <Sheet
+                open={detailsSheetOpen && !isPhone}
+                onOpenChange={(open) => {
+                  setDetailsSheetOpen(open);
+                  if (!open) {
+                    setSheetError(null);
+                    setInvalidField(null);
+                  }
+                }}
+              >
                 <SheetContent
                   side="bottom"
-                  className="mx-auto flex max-h-[92vh] max-w-lg flex-col gap-0 rounded-t-3xl p-0"
+                  hideClose
+                  // Full-screen on phones (max-sm), the familiar rounded bottom
+                  // sheet from sm: up. Top/height are pinned to the visible
+                  // area by the effect above so the keyboard can't push/shake it.
+                  // Don't auto-focus the first field on open: that popped the
+                  // keyboard up mid slide-in animation and made the sheet jump.
+                  onOpenAutoFocus={(e) => e.preventDefault()}
+                  className="mx-auto flex max-w-lg flex-col gap-0 overscroll-none p-0 data-[state=open]:duration-300 max-sm:inset-0 max-sm:h-[100dvh] max-sm:max-w-none max-sm:rounded-none max-sm:border-t-0 max-sm:pt-[env(safe-area-inset-top)] sm:max-h-[92dvh] sm:rounded-t-3xl"
                 >
-                  <SheetHeader className="border-b border-border/60 px-5 pb-4 pt-6 text-left">
-                    <SheetTitle className="font-serif text-xl font-bold text-primary">Delivery details</SheetTitle>
-                    <SheetDescription>Tell us where to send your handcrafted piece.</SheetDescription>
+                  {/* Grab handle (only on the bottom-sheet look, not full-screen) */}
+                  <div className="mx-auto mt-2.5 hidden h-1 w-10 shrink-0 rounded-full bg-border sm:block" aria-hidden="true" />
+
+                  {/* Error banner — lives ABOVE the title and the close button,
+                      so it never covers either of them. */}
+                  <div
+                    aria-live="assertive"
+                    className={`grid shrink-0 transition-[grid-template-rows] duration-200 ease-out ${
+                      sheetError?.visible ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+                    }`}
+                  >
+                    <div className="overflow-hidden">
+                      {sheetError && (
+                        <div
+                          role="alert"
+                          className="mx-4 mt-3 flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm font-medium text-red-700 shadow-sm"
+                        >
+                          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                          <span className="flex-1 leading-snug">{sheetError.message}</span>
+                          <button
+                            type="button"
+                            onClick={hideSheetError}
+                            aria-label="Dismiss message"
+                            className="-mr-1 rounded-full p-1 text-red-400 transition-colors hover:bg-red-100 hover:text-red-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <SheetHeader className="border-b border-border/60 px-5 pb-4 pt-4 text-left">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 space-y-1">
+                        <SheetTitle className="font-serif text-xl font-bold text-primary">Delivery details</SheetTitle>
+                        <SheetDescription>
+                          Tell us where to send your handcrafted piece.
+                        </SheetDescription>
+                      </div>
+                      <SheetClose
+                        aria-label="Close delivery details"
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-secondary/40 bg-gradient-to-b from-background to-muted text-primary shadow-sm transition-all duration-200 hover:rotate-90 hover:border-primary hover:bg-primary hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 active:scale-90"
+                      >
+                        <X className="h-[18px] w-[18px]" strokeWidth={2.25} />
+                      </SheetClose>
+                    </div>
                     {user && savedAddresses.length > 0 && (
                       <button
                         type="button"
@@ -2192,11 +3122,16 @@ export default function CheckoutPage() {
                       </button>
                     )}
                   </SheetHeader>
-                  <div className="flex-1 overflow-y-auto px-5 py-5">
+                  <div
+                    onInputCapture={() => {
+                      if (invalidField) hideSheetError();
+                    }}
+                    className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 [&_[aria-invalid=true]]:border-red-400 [&_[aria-invalid=true]]:ring-2 [&_[aria-invalid=true]]:ring-red-200"
+                  >
               {detailsFields}
                   </div>
-                  <div className="border-t border-border/60 bg-card px-5 pb-6 pt-4">
-                    <Button type="button" className="w-full" size="lg" onClick={saveDeliveryDetails}>
+                  <div className="shrink-0 border-t border-border/60 bg-card px-5 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+                    <Button type="button" className="h-12 w-full text-base" size="lg" onClick={saveDeliveryDetails}>
                       Save &amp; continue
                     </Button>
                     <p className="mt-2 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
@@ -2206,6 +3141,7 @@ export default function CheckoutPage() {
                 </SheetContent>
               </Sheet>
             </>
+            )
           )}
 
           {/* Payment info */}
@@ -2219,19 +3155,70 @@ export default function CheckoutPage() {
               <Lock className="h-3 w-3" /> Choose how you'd like to pay
             </p>
 
+            {isIntl && selectedIntlCountry ? (
+              <div className="space-y-3 text-sm">
+                <div className="flex items-center gap-2 rounded-lg border border-primary bg-primary/5 p-3">
+                  <CreditCard className="h-4 w-4 text-primary" />
+                  <div>
+                    <p className="font-medium text-primary">Pay by card (Stripe)</p>
+                    <p className="text-xs text-muted-foreground">
+                      You will be charged in {selectedIntlCountry.currency}
+                      {intlChargeEstimate ? ` — about ${intlChargeEstimate}` : ''}. Please use a card issued outside India.
+                    </p>
+                  </div>
+                </div>
+                {intlEta && (
+                  <p className="text-xs text-muted-foreground">📦 Estimated delivery: {intlEta} after dispatch.</p>
+                )}
+                {!intlZone && (
+                  <p className="text-xs font-medium text-red-600">Shipping is not available to this country right now.</p>
+                )}
+                {intlZone && intlZone.min_order_inr > 0 && discountedSubtotal < intlZone.min_order_inr && (
+                  <p className="text-xs font-medium text-red-600">
+                    Minimum order value for {country} is {formatINR(intlZone.min_order_inr)}.
+                  </p>
+                )}
+                {intlDutyMode === 'DAP' ? (
+                  <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-amber-300/70 bg-amber-50 p-3">
+                    <Checkbox
+                      className="mt-0.5"
+                      checked={dutyAccepted}
+                      onCheckedChange={(v) => setDutyAccepted(v === true)}
+                    />
+                    <span className="text-xs text-amber-900">
+                      <span className="block font-semibold">Duties &amp; taxes notice</span>
+                      I understand that import duties, VAT/GST and customs fees of my country are NOT included and
+                      must be paid by me on delivery.
+                      {selectedIntlCountry.vat_note ? ` ${selectedIntlCountry.vat_note}` : ''}
+                    </span>
+                  </label>
+                ) : (
+                  <p className="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground">
+                    Import duties and taxes are included in your price.
+                  </p>
+                )}
+              </div>
+            ) : (
             <PaymentMethodSelector
               value={paymentMethod}
               onChange={setPaymentMethod}
               partial={partialOption}
+              onlineAvailable={onlineAvailable}
               savings={onlineSavingsDisplay}
               onlineTotal={onlineTotalDisplay}
               codTotal={codTotalDisplay}
+              action={payButtonNode}
             />
+            )}
+
+            {/* International orders have no method picker, so the button sits here. */}
+            {isIntl && payButtonNode && <div className="mt-4">{payButtonNode}</div>}
+
           </section>
         </div>
 
         {/* Summary */}
-        <aside className="lg:col-span-1">
+        <aside id="order-summary" className="lg:col-span-1">
           <div
             ref={orderSummaryRef}
             style={{ transform: 'translateZ(0)', WebkitBackfaceVisibility: 'hidden', backfaceVisibility: 'hidden' }}
@@ -2387,7 +3374,7 @@ export default function CheckoutPage() {
                           {availableCoupons.length > 1 ? (
                             <button
                               type="button"
-                              onClick={() => setShowAllCoupons((v) => !v)}
+                              onClick={() => setOffersOpen(true)}
                               className="mt-0.5 flex items-center gap-0.5 text-xs font-medium text-secondary hover:underline"
                             >
                               View all coupons <ChevronRight className="h-3 w-3" />
@@ -2691,6 +3678,16 @@ export default function CheckoutPage() {
               </div>
             )}
 
+            {!isIntl && !isResale && !showResellBox && (
+              <button
+                type="button"
+                onClick={() => setShowResellBox(true)}
+                className="mt-4 text-xs text-muted-foreground underline underline-offset-2 hover:text-primary"
+              >
+                Are you a reseller?
+              </button>
+            )}
+            {!isIntl && (isResale || showResellBox) && (
             <div className="mt-4 rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3">
               <label className="flex cursor-pointer items-start gap-3">
                 <Checkbox
@@ -2754,6 +3751,7 @@ export default function CheckoutPage() {
                 </div>
               )}
             </div>
+            )}
 
             <AlertDialog open={showResaleLoginPrompt} onOpenChange={setShowResaleLoginPrompt}>
               <AlertDialogContent>
@@ -2805,7 +3803,7 @@ export default function CheckoutPage() {
 
             {deliveryEstimate?.serviceable && (
               <p className="mt-3 text-xs text-muted-foreground">
-                📦 Estimated delivery in {deliveryEstimate.etaDays}-{deliveryEstimate.etaDays + 2} business days
+                📦 Estimated delivery in {TOTAL_DELIVERY_LABEL}
                 {deliveryEstimate.city ? ` to ${deliveryEstimate.city}, ${deliveryEstimate.state}` : ''}, dispatched from our Naihati, West Bengal facility.
               </p>
             )}
@@ -2830,11 +3828,17 @@ export default function CheckoutPage() {
                 {formatINR(payableTotal)}
               </span>
             </div>
+            {isIntl && intlChargeEstimate && selectedIntlCountry && (
+              <p className="mt-1 text-right text-xs text-muted-foreground">
+                You will be charged in {selectedIntlCountry.currency}: about {intlChargeEstimate}. The exact amount is
+                confirmed on the next step.
+              </p>
+            )}
             <Button
               type="submit"
               size="lg"
-              disabled={placing || resalePriceTooLow || (isResale && resaleSellingPriceNum <= 0)}
-              className="mt-5 w-full bg-primary"
+              disabled={placing || intlBlocked || resalePriceTooLow || (isResale && resaleSellingPriceNum <= 0)}
+              className="mt-5 w-full bg-primary max-lg:hidden"
             >
               {placing ? (
                 <>
@@ -2854,10 +3858,75 @@ export default function CheckoutPage() {
               ) : (
                 <>
                   <Lock className="mr-2 h-4 w-4" />
-                  Pay securely — {formatINR(payableTotal)}
+                  Pay securely — {isIntl && intlChargeEstimate ? intlChargeEstimate : formatINR(payableTotal)}
                 </>
               )}
             </Button>
+            {/* Mobile: pay button always visible at the bottom of the screen.
+                Rendered in a portal on <body> so no parent (transform/overflow)
+                can break position:fixed; it still submits the form via form="". */}
+            {barMounted && !phoneSheetActive && (checkoutButtons.sticky_button_enabled || checkoutButtons.sticky_price_bar_enabled) && createPortal(
+            <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-card shadow-[0_-4px_16px_rgba(0,0,0,0.08)] lg:hidden">
+              {checkoutButtons.sticky_price_bar_enabled && totalSavings > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setPriceSheetOpen(true)}
+                  className="flex w-full items-center justify-center gap-1.5 bg-green-50 px-4 py-1.5 text-xs font-semibold text-green-700"
+                >
+                  You&apos;ll save {formatINR(totalSavings)} on this order
+                  <ChevronDown className="h-3.5 w-3.5 rotate-180" />
+                </button>
+              )}
+              <div className="flex items-center gap-3 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
+              {checkoutButtons.sticky_price_bar_enabled && (
+              <div className="shrink-0">
+                <p className="font-serif text-xl font-bold leading-tight text-primary">
+                  {isIntl && intlChargeEstimate ? intlChargeEstimate : formatINR(payableTotal)}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setPriceSheetOpen(true)}
+                  className="text-[11px] font-semibold uppercase tracking-wide text-secondary"
+                >
+                  View price details
+                </button>
+              </div>
+              )}
+              {checkoutButtons.sticky_button_enabled && (
+              <Button
+                type="submit"
+                form="checkout-form"
+                size="lg"
+                disabled={placing || intlBlocked || resalePriceTooLow || (isResale && resaleSellingPriceNum <= 0)}
+                className="h-12 min-w-0 flex-1 bg-primary text-base"
+              >
+{placing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : paymentMethod === 'cod' ? (
+                <>
+                  <Wallet className="mr-2 h-4 w-4" />
+                  Place Order (COD) — {formatINR(payableTotal)}
+                </>
+              ) : paymentMethod === 'partial' && partialOption ? (
+                <>
+                  <Lock className="mr-2 h-4 w-4" />
+                  Pay advance — {formatINR(partialOption.advance)}
+                </>
+              ) : (
+                <>
+                  <Lock className="mr-2 h-4 w-4" />
+                  Pay securely — {isIntl && intlChargeEstimate ? intlChargeEstimate : formatINR(payableTotal)}
+                </>
+              )}
+              </Button>
+              )}
+              </div>
+            </div>,
+            document.body
+            )}
             <p className="mt-3 text-center text-[11px] text-muted-foreground">
               By placing your order, you agree to our Terms & Privacy Policy.
             </p>

@@ -20,11 +20,10 @@ import { formatINR } from '@/lib/format';
  */
 export const PAYMENT_COPY = {
   onlineTitle: 'Pay Online',
-  onlineSub: 'UPI, cards, netbanking · Razorpay secured',
+  onlineSub: 'UPI (GPay, PhonePe, Paytm) · Cards · Netbanking',
   onlineNote: 'Prepaid orders are confirmed instantly and packed ahead of COD orders.',
   benefits: [
     { icon: 'zap', title: 'Dispatched first', sub: 'Priority packing' },
-    { icon: 'truck', title: 'Ships sooner', sub: 'Ships ahead of COD' },
     { icon: 'check', title: 'Instant confirmation', sub: 'No verification wait' },
   ],
   codTitle: 'Cash on Delivery',
@@ -62,12 +61,18 @@ interface PaymentMethodSelectorProps {
   value: CheckoutPaymentMethod;
   onChange: (method: CheckoutPaymentMethod) => void;
   partial?: PartialPayOption | null;
+  /** false when the admin switched ALL online payment gateways off (Admin > Settings > Payment Gateways): only COD is shown. */
+  onlineAvailable?: boolean;
   /** Rupees saved by paying online (0 / undefined hides all saving UI). */
   savings: number;
   /** Final amount if the customer pays online. */
   onlineTotal: number;
   /** Final amount if the customer chooses COD. */
   codTotal: number;
+  /** Pay button (Admin > Settings > Checkout Pay Buttons). Rendered INSIDE
+   *  the card of whichever method is currently selected, so the customer
+   *  sees at a glance whether it is the online or the COD button. */
+  action?: React.ReactNode;
 }
 
 function RadioDot({ selected }: { selected: boolean }) {
@@ -101,6 +106,41 @@ function Expand({ open, children }: { open: boolean; children: React.ReactNode }
   );
 }
 
+/** Small payment-brand marks (UPI, Visa, Mastercard, RuPay, Netbanking) for the Pay Online card. */
+function PaymentLogos() {
+  const chip =
+    'inline-flex h-[22px] items-center justify-center rounded border border-border/70 bg-white px-1.5';
+  return (
+    <span className="mt-1 flex flex-wrap items-center gap-1" aria-label="UPI, cards and netbanking accepted">
+      <span className={chip}>
+        <span className="text-[10px] font-extrabold italic tracking-tight">
+          <span className="text-[#5f259f]">U</span>
+          <span className="text-[#ea7a1b]">P</span>
+          <span className="text-[#1b8a3d]">I</span>
+        </span>
+      </span>
+      <span className={chip}>
+        <span className="text-[11px] font-extrabold italic tracking-tight text-[#1a1f71]">VISA</span>
+      </span>
+      <span className={chip}>
+        <svg width="24" height="15" viewBox="0 0 24 15" aria-hidden="true">
+          <circle cx="8.5" cy="7.5" r="6.5" fill="#eb001b" />
+          <circle cx="15.5" cy="7.5" r="6.5" fill="#f79e1b" fillOpacity="0.9" />
+        </svg>
+      </span>
+      <span className={chip}>
+        <span className="text-[10px] font-extrabold tracking-tight">
+          <span className="text-[#1a4a9c]">Ru</span>
+          <span className="text-[#e8731a]">Pay</span>
+        </span>
+      </span>
+      <span className={chip}>
+        <span className="text-[9px] font-semibold text-muted-foreground">Netbanking</span>
+      </span>
+    </span>
+  );
+}
+
 const cardBase =
   'relative block w-full rounded-xl border bg-card px-3.5 py-3 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40';
 const cardOn =
@@ -111,28 +151,44 @@ export default function PaymentMethodSelector({
   value,
   onChange,
   partial,
+  onlineAvailable = true,
   savings,
   onlineTotal,
   codTotal,
+  action,
 }: PaymentMethodSelectorProps) {
   const online = value === 'online';
   const cod = value === 'cod';
   const part = value === 'partial';
   const hasSavings = savings > 0;
 
+  // The selected card and its button read as ONE box: the card loses its
+  // bottom border/radius and the action strip continues the same outline.
+  const joined = (selected: boolean) => (selected && action ? 'rounded-b-none border-b-0' : '');
+  const actionSlot = (selected: boolean) =>
+    selected && action ? (
+      <div className="rounded-b-xl border border-t-0 border-primary bg-primary/[0.035] px-3.5 pb-3 pt-1 shadow-[0_8px_24px_-14px_hsl(var(--primary)/0.55)]">
+        {action}
+      </div>
+    ) : null;
+
   return (
     <div role="radiogroup" aria-label="Payment method" className="flex flex-col gap-2.5">
       {/* ───────── Pay Online (recommended) ───────── */}
+      {onlineAvailable && (
+      <div>
       <button
         type="button"
         role="radio"
         aria-checked={online}
         onClick={() => onChange('online')}
-        className={`${cardBase} ${online ? cardOn : 'border-primary/40 hover:border-primary'}`}
+        className={`${cardBase} ${online ? cardOn : 'border-primary/40 hover:border-primary'} ${joined(online)}`}
       >
         <span className="flex items-center gap-3">
           <RadioDot selected={online} />
-          <CreditCard className="hidden h-4 w-4 shrink-0 text-secondary sm:block" />
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <CreditCard className="h-[18px] w-[18px]" />
+          </span>
           <span className="min-w-0 flex-1">
             <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
               <span className="font-serif text-[15px] font-bold leading-tight text-primary">
@@ -142,9 +198,7 @@ export default function PaymentMethodSelector({
                 Recommended
               </span>
             </span>
-            <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
-              {PAYMENT_COPY.onlineSub}
-            </span>
+            <PaymentLogos />
           </span>
           <span className="shrink-0 text-right">
             <span className="block font-serif text-base font-bold leading-tight text-primary">
@@ -159,7 +213,7 @@ export default function PaymentMethodSelector({
         </span>
 
         {/* Benefits: always visible, one compact line */}
-        <span className="mt-2.5 flex flex-wrap gap-1.5 pl-[30px]">
+        <span className="mt-2.5 flex flex-wrap gap-1.5">
           {PAYMENT_COPY.benefits.map((b) => {
             const Icon = BENEFIT_ICONS[b.icon];
             return (
@@ -176,22 +230,20 @@ export default function PaymentMethodSelector({
           })}
         </span>
 
-        <Expand open={online}>
-          <span className="flex items-start gap-1.5 pl-[30px] pt-2 text-[11px] leading-snug text-muted-foreground">
-            <Lock className="mt-px h-3 w-3 shrink-0 text-secondary" />
-            {PAYMENT_COPY.onlineNote}
-          </span>
-        </Expand>
       </button>
+      {actionSlot(online)}
+      </div>
+      )}
 
       {/* ───────── Partial Pay (advance online, rest on delivery) ───────── */}
-      {partial && (
+      {onlineAvailable && partial && (
+        <div>
         <button
           type="button"
           role="radio"
           aria-checked={part}
           onClick={() => onChange('partial')}
-          className={`${cardBase} ${part ? cardOn : cardOff}`}
+          className={`${cardBase} ${part ? cardOn : cardOff} ${joined(part)}`}
         >
           <span className="flex items-center gap-3">
             <RadioDot selected={part} />
@@ -259,6 +311,8 @@ export default function PaymentMethodSelector({
             </span>
           </Expand>
         </button>
+        {actionSlot(part)}
+        </div>
       )}
 
       {/* ───────── Cash on Delivery ───────── */}
@@ -268,11 +322,13 @@ export default function PaymentMethodSelector({
           role="radio"
           aria-checked={cod}
           onClick={() => onChange('cod')}
-          className={`${cardBase} ${cod ? cardOn : cardOff}`}
+          className={`${cardBase} ${cod ? cardOn : cardOff} ${joined(cod)}`}
         >
           <span className="flex items-center gap-3">
             <RadioDot selected={cod} />
-            <Wallet className="hidden h-4 w-4 shrink-0 text-secondary sm:block" />
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+              <Wallet className="h-[18px] w-[18px]" />
+            </span>
             <span className="min-w-0 flex-1">
               <span className="block font-serif text-[15px] font-bold leading-tight text-foreground">
                 {PAYMENT_COPY.codTitle}
@@ -290,21 +346,16 @@ export default function PaymentMethodSelector({
             </span>
           </span>
 
-          <span className="mt-2 flex items-center gap-1 pl-[30px] text-[10px] font-medium text-muted-foreground">
+          <span className="mt-1.5 flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
             <Truck className="h-3 w-3" />
             {PAYMENT_COPY.codQueueNote}
           </span>
 
-          <Expand open={cod}>
-            <span className="mt-2 flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-snug text-amber-900">
-              <Info className="mt-px h-3.5 w-3.5 shrink-0" />
-              {PAYMENT_COPY.codNote}
-            </span>
-          </Expand>
         </button>
+        {actionSlot(cod)}
 
         {/* Separate button (not nested inside the card button) */}
-        {cod && hasSavings && (
+        {cod && hasSavings && onlineAvailable && (
           <button
             type="button"
             onClick={() => onChange('online')}
@@ -317,7 +368,9 @@ export default function PaymentMethodSelector({
       </div>
 
       <p className="text-center text-[10px] leading-snug text-muted-foreground">
-        {partial
+        {!onlineAvailable
+          ? 'Online payment is temporarily unavailable — please choose Cash on Delivery.'
+          : partial
           ? 'Same product price on every option — the online-payment discount applies to full online payment only.'
           : 'Same price either way — the only difference is the online-payment discount shown above.'}
       </p>
